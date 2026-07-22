@@ -1,0 +1,2495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>My RSS Reader</title>
+    <link rel="stylesheet" href="/public/styles.css?v=20260722">
+    <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/collapse@3.x.x/dist/cdn.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <style>\n        .hide-scrollbar::-webkit-scrollbar, .hide-scrollbars::-webkit-scrollbar, .scrollbar-hide::-webkit-scrollbar { display: none; }\n        .hide-scrollbar, .hide-scrollbars, .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+        [x-cloak] { display: none !important; }
+        ::-webkit-scrollbar { width: 8px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(128,128,128,0.3); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #555; }
+        /* Keep scrolling content on the normal paint path.  A previous
+           version used content-visibility/filters/transforms here; on
+           WebKit that can briefly expose a stale layer from another card. */
+        .drag-over { border-top: 2px solid #4facfe !important; padding-top: 6px; }
+        /* Mobile performance: do not virtualise cards with content-visibility.
+           Alpine owns these nodes and WebKit can paint a recycled snapshot for
+           one frame while a nested scroller is moving. */
+        @media (max-width: 767px) {
+            * { -webkit-tap-highlight-color: transparent; }
+        }
+
+        #scroll-container,
+        #overlay-scroll-container {
+            min-height: 0;
+            overscroll-behavior: contain;
+            scrollbar-gutter: stable;
+        }
+
+        /* Isolate the reader without forcing a permanent GPU transform. */
+        .article-overlay-root { isolation: isolate; }
+        .article-overlay-panel {
+            min-height: 0;
+            transform: none;
+            filter: none;
+            will-change: auto;
+        }
+        .article-overlay-backdrop {
+            background: rgba(11, 16, 30, 0.82);
+            transition: opacity 0.15s ease;
+        }
+
+        /* Hide scrollbar for Chrome, Safari and Opera */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        /* Hide scrollbar for IE, Edge and Firefox */
+        .no-scrollbar {
+            -ms-overflow-style: none;  /* IE and Edge */
+            scrollbar-width: none;  /* Firefox */
+        }
+
+        /* Desktop sizing overrides for the modal panel */
+        @media (min-width: 768px) {
+            .article-overlay-panel {
+                height: 100dvh !important;
+                max-height: 100dvh !important;
+                max-width: 860px !important;
+                width: 90% !important;
+                border-radius: 0 !important;
+            }
+        }
+
+        /* Avoid mask/filter compositing on the feed cards while they move. */
+        #scroll-container .article-card {
+            transform: none;
+            filter: none;
+            content-visibility: visible !important;
+            contain: none !important;
+            will-change: auto;
+        }
+        #scroll-container [class*="backdrop-blur"],
+        #overlay-scroll-container [class*="backdrop-blur"] {
+            -webkit-backdrop-filter: none !important;
+            backdrop-filter: none !important;
+        }
+
+        /* VOZ Unfurl Link Preview Redesign */
+        .voz-post .bbCodeBlock--unfurl {
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+            background-color: rgba(255, 255, 255, 0.05) !important;
+            border-radius: 0.75rem !important;
+            overflow: hidden !important;
+            margin: 0.75rem 0 !important;
+            height: auto !important;
+            min-height: 0 !important;
+            max-height: none !important;
+            padding: 0 !important;
+        }
+        .voz-post .bbCodeBlock--unfurl .contentRow {
+            display: flex !important;
+            align-items: center !important;
+            gap: 12px !important;
+            padding: 10px 12px !important;
+            margin: 0 !important;
+            height: auto !important;
+            min-height: 0 !important;
+        }
+        .voz-post .bbCodeBlock--unfurl .contentRow-figure {
+            width: 180px !important;
+            height: 110px !important;
+            flex-shrink: 0 !important;
+            overflow: hidden !important;
+            border-radius: 0.5rem !important;
+            margin: 0 !important;
+            display: block !important;
+            float: none !important;
+            padding: 0 !important;
+        }
+        .voz-post .bbCodeBlock--unfurl .bbCodeBlockUnfurl-image {
+            display: block !important;
+            width: 100% !important;
+            height: 100% !important;
+            object-fit: cover !important;
+            max-width: none !important;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+        .voz-post .bbCodeBlock--unfurl .contentRow-main {
+            min-width: 0 !important;
+            flex: 1 !important;
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: center !important;
+            gap: 4px !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            height: auto !important;
+        }
+        .voz-post .bbCodeBlock--unfurl .contentRow-header {
+            font-weight: 600 !important;
+            font-size: 0.875rem !important;
+            line-height: 1.3 !important;
+            display: -webkit-box !important;
+            -webkit-line-clamp: 2 !important;
+            -webkit-box-orient: vertical !important;
+            overflow: hidden !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            color: #f3f4f6 !important;
+        }
+        .voz-post .bbCodeBlock--unfurl .contentRow-snippet {
+            font-size: 0.75rem !important;
+            color: #9ca3af !important;
+            line-height: 1.4 !important;
+            display: -webkit-box !important;
+            -webkit-line-clamp: 2 !important;
+            -webkit-box-orient: vertical !important;
+            overflow: hidden !important;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+        .voz-post .bbCodeBlock--unfurl a {
+            text-decoration: none !important;
+            color: inherit !important;
+            pointer-events: auto !important;
+        }
+        .voz-post .bbCodeBlock--unfurl .contentRow-minor {
+            display: flex !important;
+            align-items: center !important;
+            gap: 6px !important;
+            font-size: 0.75rem !important;
+            color: #9ca3af !important;
+            line-height: 1 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+        .voz-post .bbCodeBlock--unfurl .js-unfurl-favicon {
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            flex-shrink: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            vertical-align: middle !important;
+        }
+        .voz-post .bbCodeBlock--unfurl .bbCodeBlockUnfurl-icon {
+            display: block !important;
+            width: 16px !important;
+            height: 16px !important;
+            object-fit: contain !important;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+        @media (max-width: 640px) {
+            .voz-post .bbCodeBlock--unfurl .contentRow {
+                padding: 8px !important;
+                gap: 10px !important;
+            }
+            .voz-post .bbCodeBlock--unfurl .contentRow-figure {
+                width: 110px !important;
+                height: 78px !important;
+            }
+            .voz-post .bbCodeBlock--unfurl .contentRow-snippet {
+                -webkit-line-clamp: 1 !important;
+            }
+        }
+
+        /* Consolidated VOZ Post Styles */
+        .voz-post .voz-like-icon {
+            width: 16px !important;
+            height: 16px !important;
+            object-fit: contain !important;
+            flex-shrink: 0 !important;
+            display: block !important;
+            transform: translateY(-3px) !important;
+        }
+        .voz-post .voz-post-likes {
+            line-height: 16px !important;
+        }
+        .voz-post .voz-like-users {
+            text-decoration: none !important;
+            line-height: 16px !important;
+        }
+        .voz-post {
+            padding: 9px 12px 10px 12px !important;
+            margin-bottom: 1rem !important;
+            background-color: rgba(255, 255, 255, 0.05) !important;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+            border-radius: 0.75rem !important;
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05) !important;
+        }
+
+        .voz-post .voz-post-header {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: space-between !important;
+            flex-wrap: wrap !important;
+            gap: 4px 8px !important;
+            margin-bottom: 8px !important;
+        }
+
+        .voz-post .voz-post-author-group {
+            display: flex !important;
+            align-items: center !important;
+            flex-wrap: wrap !important;
+            gap: 4px 8px !important;
+            min-width: 0 !important;
+        }
+
+        .voz-post .voz-post-header img {
+            width: 32px !important;
+            height: 32px !important;
+            border-radius: 9999px !important;
+            object-fit: cover !important;
+            border: 1px solid rgba(255, 255, 255, 0.2) !important;
+            margin: 0 !important;
+            flex-shrink: 0 !important;
+            display: block !important;
+        }
+
+        .voz-post .voz-post-author {
+            font-size: 14px !important;
+            font-weight: 600 !important;
+            line-height: 20px !important;
+            color: #60a5fa !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            white-space: nowrap !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+        }
+
+        .voz-post .voz-post-rank {
+            font-size: 12px !important;
+            font-weight: 400 !important;
+            line-height: 18px !important;
+            color: #6b7280 !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            flex-shrink: 0 !important;
+        }
+        
+        .voz-post .voz-post-info {
+            display: flex !important;
+            align-items: center !important;
+            flex-wrap: wrap !important;
+            gap: 4px 8px !important;
+            margin-left: auto !important;
+            justify-content: flex-end !important;
+        }
+
+        .voz-post .voz-post-time,
+        .voz-post .voz-post-index,
+        .voz-post .voz-post-index:visited {
+            display: inline-flex !important;
+            align-items: center !important;
+            font-size: 12px !important;
+            font-weight: 400 !important;
+            line-height: 18px !important;
+            color: rgb(156, 163, 175) !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            text-decoration: none !important;
+            background: transparent !important;
+            border: 0 !important;
+            box-shadow: none !important;
+        }
+
+        .voz-post .voz-post-index:hover,
+        .voz-post .voz-post-index:focus,
+        .voz-post .voz-post-index:active {
+            color: rgb(209, 213, 219) !important;
+            text-decoration: none !important;
+            background: transparent !important;
+            border: 0 !important;
+            box-shadow: none !important;
+        }
+
+        .voz-post .voz-post-index::before,
+        .voz-post .voz-post-index::after {
+            border: 0 !important;
+            text-decoration: none !important;
+            box-shadow: none !important;
+            display: none !important;
+        }
+
+        .voz-post .voz-post-body {
+            font-size: 15px !important;
+            font-weight: 400 !important;
+            line-height: 1.5 !important;
+            color: #e5e7eb !important;
+            margin-top: 0 !important;
+        }
+
+        .voz-post .voz-small-img-wrapper,
+        .voz-post .voz-small-img {
+            display: inline-block !important;
+            vertical-align: middle !important;
+            width: auto !important;
+            height: auto !important;
+            max-height: 150px !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            clear: none !important;
+            float: none !important;
+        }
+
+
+        
+
+        .voz-post-body > :first-child,
+        .voz-post-body > .bbCodeBlock:first-child,
+        .voz-post-body > .quote:first-child,
+        .article-rendered-content .voz-post-body > .bbCodeBlock:first-child,
+        .article-rendered-content .voz-post-body > .quote:first-child,
+        .bbImageWrapper:first-child,
+        .bbImageWrapper:first-child .bbImage {
+            margin-top: 0 !important;
+        }
+        .voz-post-body .bbImageWrapper {
+            display: inline-block !important;
+            max-width: 100% !important;
+            vertical-align: middle !important;
+        }
+        .voz-post-body .bbImageWrapper img {
+            max-width: 100% !important;
+            height: auto !important;
+        }
+
+        /* Article Overlay Panel */
+        /* Article content styling */
+        .article-rendered-content {
+            color: #d1d5db;
+            font-size: 17px;
+            line-height: 1.82;
+            max-width: 760px;
+            margin: 0 auto;
+            overflow-wrap: anywhere;
+            white-space: normal;
+        }
+        .article-rendered-content p {
+            margin: 0 0 1.25em;
+        }
+        .article-rendered-content > :first-child {
+            margin-top: 0 !important;
+        }
+        .article-rendered-content > :last-child {
+            margin-bottom: 0 !important;
+        }
+        .article-rendered-content h1,
+        .article-rendered-content h2,
+        .article-rendered-content h3,
+        .article-rendered-content h4 {
+            color: #f3f4f6;
+            font-weight: 700;
+            margin-top: 1.5em;
+            margin-bottom: 0.6em;
+            line-height: 1.3;
+        }
+        .article-rendered-content h1 { font-size: 1.6em; }
+        .article-rendered-content h2 { font-size: 1.35em; }
+        .article-rendered-content h3 { font-size: 1.15em; }
+        .article-rendered-content img {
+            display: block;
+            max-width: 100%;
+            height: auto;
+            border-radius: 14px;
+            margin: 1.6em auto 0.7em;
+            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.22);
+        }
+        .article-rendered-content img.smilie,
+        .article-rendered-content img.emoji,
+        .article-rendered-content img[class*="smilie"],
+        .article-rendered-content img[src*="smilies"],
+        .article-rendered-content img[src*="emoji"],
+        .article-rendered-content img[data-shortname],
+        .article-rendered-content img[class*="bbImage--smilie"],
+        .voz-post img.smilie,
+        .voz-post img[src*="smilies"],
+        .voz-quote img.smilie,
+        .voz-quote img[src*="smilies"] {
+            display: inline-block !important;
+            vertical-align: middle !important;
+            margin: 0 0.15em !important;
+            padding: 0 !important;
+            border: none !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            width: auto !important;
+            height: 1.4em !important;
+            max-height: 24px !important;
+        }
+        .article-rendered-content video {
+            display: block;
+            width: 100%;
+            max-height: 70vh;
+            background: #000;
+            border-radius: 12px;
+            margin: 0 0 1.5em;
+        }
+        .article-rendered-content audio {
+            display: block;
+            width: 100%;
+            margin: 0.4em 0 1.5em;
+            color-scheme: dark;
+        }
+        .article-rendered-content .article-audio-player {
+            margin: 1.25em 0 1.6em;
+            padding: 0.9em 1em;
+            border: 1px solid rgba(52, 211, 153, 0.2);
+            border-radius: 14px;
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(15, 23, 42, 0.45));
+        }
+        .article-rendered-content .article-audio-player__label {
+            display: flex;
+            align-items: center;
+            gap: 0.55rem;
+            margin: 0 0 0.65rem;
+            color: #a7f3d0;
+            font-size: 0.78rem;
+            font-weight: 700;
+            letter-spacing: 0.01em;
+        }
+        .article-rendered-content .article-audio-player__label::before {
+            content: '▶';
+            display: grid;
+            place-items: center;
+            width: 1.6rem;
+            height: 1.6rem;
+            border-radius: 999px;
+            color: #052e24;
+            background: #34d399;
+            font-size: 0.62rem;
+            padding-left: 0.08rem;
+        }
+        .article-rendered-content .article-audio-player audio {
+            margin: 0;
+        }
+        .article-rendered-content a {
+            color: #60a5fa;
+            text-decoration: underline;
+            text-underline-offset: 2px;
+        }
+        .article-rendered-content a:hover {
+            color: #93bbfc;
+            text-decoration-thickness: 2px;
+        }
+        .article-rendered-content blockquote {
+            border-left: 3px solid #34d399;
+            background: rgba(16, 185, 129, 0.06);
+            padding: 0.9em 1.1em;
+            margin: 1.4em 0;
+            color: #cbd5e1;
+            font-style: italic;
+            border-radius: 0 10px 10px 0;
+        }
+        .article-rendered-content ul, .article-rendered-content ol {
+            padding-left: 1.5em;
+            margin-bottom: 1em;
+        }
+        .article-rendered-content li {
+            margin-bottom: 0.4em;
+        }
+        .article-rendered-content figure {
+            margin: 1.7em 0;
+        }
+        .article-rendered-content figcaption {
+            font-size: 0.85em;
+            color: #6b7280;
+            text-align: center;
+            margin-top: 0.5em;
+        }
+        .article-rendered-content table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1em 0;
+        }
+        .article-rendered-content th, .article-rendered-content td {
+            border: 1px solid #374151;
+            padding: 0.5em 0.75em;
+            text-align: left;
+        }
+        .article-rendered-content th {
+            background: #1f2937;
+            font-weight: 600;
+        }
+        .theme-glass-light .article-rendered-content pre {
+            background-color: #f1f5f9 !important; /* slate-100 */
+            color: #334155 !important;
+            border: 1px solid #e2e8f0 !important;
+        }
+
+        /* Improved legibility for cluster sources and icons in light mode */
+        .theme-glass-light .text-cyan-300 {
+            color: #0284c7 !important; /* light blue-600 */
+        }
+        .theme-glass-light .text-emerald-400 {
+            color: #059669 !important; /* emerald-600 */
+        }
+        .theme-glass-light .text-orange-300,
+        .theme-glass-light .text-orange-400 {
+            color: #ea580c !important; /* orange-600 */
+        }
+        .theme-glass-light .bg-\[\#0B101E\]\/90 {
+            background-color: #f1f5f9 !important; /* slate-100 */
+        }
+        .article-rendered-content pre {
+            background: #0d1117;
+            padding: 1em;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 1em 0;
+            font-size: 0.9em;
+        }
+        .article-rendered-content code {
+            background: #1f2937;
+            padding: 0.15em 0.4em;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+        .article-rendered-content pre code {
+            background: none;
+            padding: 0;
+        }
+        .article-rendered-content hr {
+            border: 0;
+            border-top: 1px solid rgba(255,255,255,0.1);
+            margin: 2em 0;
+        }
+        .article-rendered-content strong { color: #f3f4f6; }
+        .article-rendered-content .bbCodeBlock,
+        .article-rendered-content .quote,
+        .article-rendered-content .infobox {
+            background: rgba(255,255,255,0.035);
+            border: 1px solid rgba(255,255,255,0.09);
+            border-radius: 12px;
+            padding: 1em 1.1em;
+            margin: 1.4em 0;
+            font-size: 0.95em !important;
+        }
+        .article-rendered-content .voz-quote .voz-quote .voz-quote,
+        .article-rendered-content blockquote blockquote blockquote {
+            display: none !important;
+        }
+        .article-rendered-content [hidden] { display: none !important; }
+        
+        .voz-post { padding: 12px 16px; margin-bottom: 12px; background: #00000030; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.05); }  /* Embedded Suggested Articles Carousel */
+        .embedded-suggested-articles {
+            margin: 24px 0;
+            padding-top: 24px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .embedded-suggested-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 16px;
+            font-weight: 700;
+            color: #4ade80; /* Green */
+            text-transform: uppercase;
+            margin-bottom: 16px;
+            letter-spacing: 0.05em;
+        }
+        .embedded-suggested-header svg {
+            width: 20px;
+            height: 20px;
+            fill: currentColor;
+        }
+        .embedded-suggested-carousel {
+            display: flex;
+            gap: 16px;
+            overflow-x: auto;
+            padding-bottom: 16px;
+            scroll-snap-type: x mandatory;
+            scrollbar-width: none; /* Firefox */
+        }
+        .embedded-suggested-carousel::-webkit-scrollbar {
+            display: none; /* Chrome, Safari */
+        }
+        .embedded-suggested-card {
+            position: relative;
+            flex: 0 0 250px;
+            width: 250px;
+            min-width: 250px;
+            max-width: 250px;
+            background-color: #1e293b;
+            border-radius: 8px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            scroll-snap-align: start;
+            border: 1px solid #334155;
+            transition: box-shadow 0.2s;
+            text-decoration: none !important;
+        }
+        .embedded-suggested-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+        }
+        @media (max-width: 768px) {
+            .embedded-suggested-card {
+                flex: 0 0 220px;
+                width: 220px;
+                min-width: 220px;
+                max-width: 220px;
+            }
+        }
+        .embedded-suggested-card:hover {
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+        }
+        .embedded-suggested-image {
+            width: 100% !important;
+            height: 140px !important;
+            flex-shrink: 0;
+            object-fit: cover !important;
+            aspect-ratio: 16 / 9;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            display: block;
+            margin: 0 !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+        }
+        .embedded-suggested-content {
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            min-width: 0;
+        }
+        .embedded-suggested-meta {
+            display: flex;
+            justify-content: flex-start;
+            align-items: center;
+            margin-bottom: 4px;
+        }
+        .embedded-suggested-category {
+            color: #10b981;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            margin-right: 8px;
+        }
+        .embedded-suggested-time {
+            color: #94a3b8;
+            font-size: 11px;
+        }
+        .embedded-suggested-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #f8fafc !important;
+            line-height: 1.4;
+            margin-bottom: 4px;
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            word-break: normal;
+        }
+        .embedded-suggested-summary {
+            font-size: 12px;
+            color: #94a3b8;
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            word-break: normal;
+        }
+        /* Tinhte Photo Compare & Info Box */
+        .tinhte-photo-compare { position: relative; width: 100%; margin: 16px 0; border-radius: 8px; overflow: hidden; display: flex; align-items: center; justify-content: center; user-select: none; }
+        .tinhte-photo-compare img { display: block; width: 100%; height: auto; max-height: 70vh; object-fit: contain; }
+        .tinhte-photo-compare .compare-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; clip-path: inset(0 50% 0 0); }
+        .tinhte-photo-compare .compare-slider { position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: ew-resize; z-index: 10; margin: 0; }
+        .tinhte-photo-compare .compare-handle { position: absolute; top: 0; bottom: 0; left: 50%; width: 2px; background: white; z-index: 5; pointer-events: none; transform: translateX(-50%); box-shadow: 0 0 5px rgba(0,0,0,0.5); }
+        .tinhte-photo-compare .compare-handle-arrows { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 40px; height: 40px; background: rgba(0,0,0,0.5); color: white; border-radius: 50%; border: 2px solid white; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 18px; }
+        .TinhteMods_Tag_Info { background: rgba(59, 130, 246, 0.1); border-left: 4px solid #3b82f6; padding: 16px; margin: 16px 0; border-radius: 0 8px 8px 0; font-size: 0.95em; line-height: 1.6; }
+        .tinhte-galleria { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin: 16px 0; }
+        .tinhte-galleria img { width: 100%; border-radius: 8px; margin: 0 !important; }
+
+    
+                .theme-glass {
+            background: linear-gradient(135deg, #1f1f1f 0%, #0a0a0a 50%, #141414 100%) !important;
+            background-attachment: fixed !important;
+        }
+        /* Target all dark background variations for dark glass mode */
+        .theme-glass [class*="bg-[#111827]"],
+        .theme-glass [class*="bg-[#0B101E]"],
+        .theme-glass [class*="bg-[#121212]"],
+        .theme-glass [class*="bg-[#1e1e1e]"],
+        .theme-glass [class*="bg-[#1A2230]"],
+        .theme-glass [class*="bg-gray-800"] {
+            background: rgba(17, 24, 39, 0.4) !important;
+            backdrop-filter: blur(40px) saturate(200%);
+            -webkit-backdrop-filter: blur(40px) saturate(200%);
+            border: 1px solid rgba(255, 255, 255, 0.08) !important;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.05) !important;
+        }
+        
+        .theme-glass .bg-\[\#2a2a2a\] {
+            background-color: rgba(255, 255, 255, 0.1) !important;
+            backdrop-filter: blur(8px) !important;
+        }
+        .theme-glass .border-t-\[\#333\] {
+            border-top-color: rgba(255, 255, 255, 0.1) !important;
+        }
+
+        /* Make the main container completely transparent so the body gradient shows through */
+        .theme-glass [class*="bg-[#0A0F1A]"] {
+            background: transparent !important;
+            backdrop-filter: none !important;
+            border: none !important;
+            box-shadow: none !important;
+        }
+        .theme-glass .text-\[\#d4d4d4\] {
+            color: #f3f4f6 !important;
+        }
+        
+        .theme-glass .embedded-suggested-card {
+            background: rgba(17, 24, 39, 0.4) !important;
+            backdrop-filter: blur(40px) saturate(200%) !important;
+            -webkit-backdrop-filter: blur(40px) saturate(200%) !important;
+            border: 1px solid rgba(255, 255, 255, 0.08) !important;
+        }
+        
+        .theme-glass .article-overlay-panel {
+            background: rgba(11, 16, 30, 0.75) !important;
+            backdrop-filter: blur(20px) !important;
+            -webkit-backdrop-filter: blur(20px) !important;
+        }
+
+        .theme-glass .article-overlay-backdrop {
+            background: rgba(11, 16, 30, 0.6) !important;
+            backdrop-filter: blur(12px) !important;
+            -webkit-backdrop-filter: blur(12px) !important;
+        }
+
+        .theme-glass-light {
+            /* Common Liquid Glass variables */
+            --apple-blur: blur(24px);
+            --apple-saturate: saturate(190%);
+            background: radial-gradient(circle at 10% 20%, #fdfbfb 0%, #ebedee 100%) !important;
+            background-attachment: fixed !important;
+            color: #1d1d1f !important;
+        }
+
+        /* Unified Liquid Glass Overrides (Light Only) */
+        .theme-glass-light [class*="bg-[#111827]"], .theme-glass-light [class*="bg-[#0B101E]"], .theme-glass-light [class*="bg-[#121212]"], .theme-glass-light [class*="bg-[#1e1e1e]"], .theme-glass-light [class*="bg-[#080F19]"], .theme-glass-light [class*="bg-gray-800"] {
+            background: rgba(255, 255, 255, 0.65) !important;
+            backdrop-filter: var(--apple-blur) var(--apple-saturate) !important;
+            -webkit-backdrop-filter: var(--apple-blur) var(--apple-saturate) !important;
+            border: 1px solid rgba(255, 255, 255, 0.8) !important;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05) !important;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.8) !important;
+            transition: all 0.3s ease !important;
+        }
+        
+        /* Light mode hover effect for article cards */
+        .theme-glass-light .article-card:hover {
+            background: rgba(255, 255, 255, 0.95) !important;
+            border: 1px solid rgba(0, 0, 0, 0.2) !important;
+            box-shadow: 0 16px 48px 0 rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 1) !important;
+            transform: translateY(-3px) scale(1.005);
+        }
+        
+        /* Premium seamless image mask for all modes */
+        .article-card img {
+            opacity: 1 !important;
+            -webkit-mask-image: linear-gradient(to right, 
+                transparent 0%, 
+                rgba(0,0,0,0.05) 8%, 
+                rgba(0,0,0,0.2) 18%, 
+                rgba(0,0,0,0.6) 28%, 
+                black 38%
+            ) !important;
+            mask-image: linear-gradient(to right, 
+                transparent 0%, 
+                rgba(0,0,0,0.05) 8%, 
+                rgba(0,0,0,0.2) 18%, 
+                rgba(0,0,0,0.6) 28%, 
+                black 38%
+            ) !important;
+        }
+        
+        .theme-glass-light [class*="bg-[#0A0F1A]"] {
+            background: transparent !important;
+            backdrop-filter: none !important;
+            border: none !important;
+            box-shadow: none !important;
+        }
+
+        .theme-glass-light .article-overlay-backdrop {
+            background: rgba(0, 0, 0, 0.5) !important;
+            backdrop-filter: blur(12px) !important;
+            -webkit-backdrop-filter: blur(12px) !important;
+        }
+
+        .theme-glass-light .article-overlay-panel {
+            background: rgba(255, 255, 255, 0.35) !important; /* more transparent */
+            backdrop-filter: blur(40px) saturate(200%) !important;
+            -webkit-backdrop-filter: blur(40px) saturate(200%) !important;
+            border: 1px solid rgba(255, 255, 255, 0.8) !important;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.1) !important;
+        }
+
+        /* Prevent modal header from stacking a second glass layer */
+        .theme-glass-light .article-overlay-panel > div.bg-\[\#0B101E\] {
+            background: transparent !important;
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+            border: none !important;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05) !important;
+            box-shadow: none !important;
+        }
+        
+        /* Reduce washout of read articles in light mode */
+        .theme-glass-light .article-card.opacity-60 {
+            opacity: 0.7 !important;
+        }
+
+        /* Override embedded blocks for Light Mode */
+        .theme-glass-light .styled-rel-card {
+            background-color: #f8fafc !important; /* slate-50 */
+            border-color: #e2e8f0 !important; /* slate-200 */
+        }
+        .theme-glass-light .styled-rel-card .text-gray-900,
+        .theme-glass-light .styled-rel-card .dark\:text-gray-100 {
+            color: #1e293b !important; /* slate-800 */
+        }
+        .theme-glass-light .styled-rel-card .text-blue-600,
+        .theme-glass-light .styled-rel-card .dark\:text-blue-400 {
+            color: #2563eb !important; /* blue-600 */
+        }
+        .theme-glass-light .voz-post {
+            background-color: #f8fafc !important;
+            border-color: #e2e8f0 !important;
+            color: #334155 !important;
+        }
+        .theme-glass-light .voz-post .bbCodeBlock--unfurl .contentRow-header {
+            color: #0f172a !important; /* slate-900 */
+        }
+        .theme-glass-light .voz-post .bbCodeBlock--unfurl .contentRow-snippet,
+        .theme-glass-light .voz-post .js-unfurl-desc {
+            color: #334155 !important; /* slate-700 for better contrast */
+        }
+        .theme-glass-light .voz-post .bbCodeBlock--unfurl .contentRow-minor {
+            color: #475569 !important; /* slate-600 */
+        }
+
+        /* Light mode overrides for embedded related articles (BÀI VIẾT LIÊN QUAN / SỰ KIỆN) */
+        .theme-glass-light .embedded-suggested-header {
+            color: #16a34a !important; /* Green-600 */
+        }
+        .theme-glass-light .embedded-suggested-card {
+            background-color: rgba(255, 255, 255, 0.4) !important;
+            backdrop-filter: blur(24px) saturate(190%) !important;
+            -webkit-backdrop-filter: blur(24px) saturate(190%) !important;
+            border-color: rgba(255, 255, 255, 0.3) !important;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05) !important;
+        }
+        .theme-glass-light .embedded-suggested-title {
+            color: #0f172a !important; /* Slate-900 */
+        }
+        .theme-glass-light .embedded-suggested-summary {
+            color: #475569 !important; /* Slate-600 */
+        }
+        .theme-glass-light .embedded-suggested-time {
+            color: #64748b !important; /* Slate-500 */
+        }
+        
+        /* Fix Listen to Article colors */
+        .theme-glass-light .text-emerald-200 { color: #059669 !important; }
+        .theme-glass-light .bg-emerald-500\/\[0\.07\] { background-color: rgba(16, 185, 129, 0.1) !important; border-color: rgba(16, 185, 129, 0.3) !important; }
+
+        /* Force article content text color in Light Liquid Mode */
+        .theme-glass-light .article-rendered-content,
+        .theme-glass-light .article-rendered-content p,
+        .theme-glass-light .article-rendered-content div,
+        .theme-glass-light .article-rendered-content span,
+        .theme-glass-light .article-rendered-content ul,
+        .theme-glass-light .article-rendered-content ol,
+        .theme-glass-light .article-rendered-content li {
+            color: #1d1d1f !important;
+        }
+        
+        .theme-glass-light .article-rendered-content h1,
+        .theme-glass-light .article-rendered-content h2,
+        .theme-glass-light .article-rendered-content h3,
+        .theme-glass-light .article-rendered-content h4,
+        .theme-glass-light .article-rendered-content strong,
+        .theme-glass-light .article-rendered-content b {
+            color: #000000 !important;
+        }
+
+        /* Clean up separators and heavy UI */
+        .theme-glass-light .border-white\/10 {
+            border-color: rgba(128, 128, 128, 0.1) !important;
+        }
+
+        /* Typography overrides for reading */
+        .theme-glass-light .text-white, .theme-glass-light .text-gray-200 { color: #1d1d1f !important; }
+        .theme-glass-light .text-gray-300 { color: #424245 !important; }
+        .theme-glass-light .text-gray-400 { color: #86868b !important; }
+
+        /* Sidebar & Widget overrides for Light Mode */
+        .theme-glass-light .bg-gradient-to-br.from-emerald-500\/\[0\.09\] {
+            background: #f8fafc !important; /* slate-50 */
+            border: 1px solid rgba(0, 0, 0, 0.05) !important;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05) !important;
+        }
+        .theme-glass-light .bg-\[\#080F19\]\/80,
+        .theme-glass-light .bg-\[\#0B101E\]\/90 {
+            background-color: #f1f5f9 !important; /* slate-100 */
+            border: 1px solid rgba(0, 0, 0, 0.05) !important;
+        }
+        
+        /* Add Feed Widget Overrides for Light Mode */
+        .theme-glass-light .bg-\[\#1A2230\] {
+            background-color: rgba(255, 255, 255, 0.4) !important;
+            border-color: rgba(255, 255, 255, 0.6) !important;
+            backdrop-filter: blur(24px) saturate(190%) !important;
+            -webkit-backdrop-filter: blur(24px) saturate(190%) !important;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.8) !important;
+        }
+        .theme-glass-light .bg-\[\#2A1D1A\] {
+            background-color: rgba(243, 123, 61, 0.15) !important;
+        }
+        .theme-glass-light .bg-\[\#20C997\] {
+            background-color: #10b981 !important; /* emerald-500 */
+            color: #ffffff !important;
+        }
+        .theme-glass-light .mix-blend-screen {
+            mix-blend-mode: multiply !important;
+            opacity: 0.1 !important;
+            filter: grayscale(1) !important;
+        }
+        
+        .theme-glass-light .bg-\[\#2a2a2a\] {
+            background-color: rgba(0, 0, 0, 0.08) !important;
+            backdrop-filter: blur(8px) !important;
+        }
+        .theme-glass-light .border-t-\[\#333\] {
+            border-top-color: rgba(0, 0, 0, 0.1) !important;
+        }
+
+        .theme-glass-light .hover\:bg-white\/5:hover {
+            background-color: rgba(0, 0, 0, 0.05) !important;
+            color: #1d1d1f !important;
+        }
+        .theme-glass-light .hover\:text-white:hover {
+            color: #1d1d1f !important;
+        }
+        .theme-glass-light .bg-teal-900\/40, 
+        .theme-glass-light .bg-orange-900\/40, 
+        .theme-glass-light .bg-blue-900\/40 {
+            background-color: rgba(0, 0, 0, 0.06) !important;
+            box-shadow: none !important;
+        }
+        
+        /* Neon color removal for Light Mode ONLY */
+        .theme-glass-light .text-emerald-400, .theme-glass-light .text-teal-400 { color: #34C759 !important; }
+        .theme-glass-light .text-orange-400, .theme-glass-light .text-amber-300 { color: #FF9500 !important; }
+        .theme-glass-light .text-blue-400, .theme-glass-light .text-cyan-400 { color: #007AFF !important; }
+        .theme-glass-light a.bg-emerald-600, .theme-glass-light button.bg-emerald-600 {
+            background-color: #34C759 !important;
+            color: #ffffff !important;
+            border: none !important;
+        }
+
+        .theme-glass-light input[type="text"] { border-radius: 20px !important; }
+        .theme-glass-light button, .theme-glass-light a { color: inherit; }
+
+        /* Override text colors globally for light mode */
+        .theme-glass-light .text-\[\#d4d4d4\], .theme-glass-light .text-gray-200, .theme-glass-light .text-white, .theme-glass-light .text-gray-400, .theme-glass-light .text-gray-300 {
+            color: #2d3748 !important;
+        }
+        .theme-glass-light .text-gray-500 {
+            color: #4a5568 !important;
+        }
+        /* Except for primary colored buttons */
+        .theme-glass-light button.bg-\[\#2a6049\], 
+        .theme-glass-light button.bg-\[\#1e293b\], 
+        .theme-glass-light button.bg-emerald-600, 
+        .theme-glass-light button.bg-blue-600,
+        .theme-glass-light a.bg-emerald-600 {
+            color: #ffffff !important;
+        }
+        /* Also restore white text for buttons with .text-white inside those backgrounds */
+        .theme-glass-light button.bg-\[\#2a6049\] .text-white, 
+        .theme-glass-light button.bg-\[\#1e293b\] .text-white, 
+        .theme-glass-light button.bg-emerald-600 .text-white, 
+        .theme-glass-light button.bg-blue-600 .text-white,
+        .theme-glass-light a.bg-emerald-600 .text-white {
+            color: #ffffff !important;
+        }
+        
+        /* Fix hover states */
+        .theme-glass-light .hover\:text-white:hover {
+            color: #1a202c !important;
+        }
+        .theme-glass-light .hover\:bg-white\/10:hover, .theme-glass-light .hover\:bg-white\/\[0\.06\]:hover {
+            background-color: rgba(0, 0, 0, 0.05) !important;
+        }
+        .theme-glass-light .bg-white\/\[0\.03\] {
+            background-color: rgba(0, 0, 0, 0.02) !important;
+        }
+
+        /* Fix border colors */
+        .theme-glass-light .border-white\/10, .theme-glass-light .border-white\/5, .theme-glass-light .border-white\/\[0\.07\], .theme-glass-light .border-white\/\[0\.08\] {
+            border-color: rgba(0, 0, 0, 0.1) !important;
+        }
+        .theme-glass-light .hover\:border-white\/20:hover {
+            border-color: rgba(0, 0, 0, 0.2) !important;
+        }
+
+        /* Fix placeholder */
+        .theme-glass-light input::placeholder, .theme-glass-light textarea::placeholder {
+            color: #718096 !important;
+        }
+        
+        .theme-glass-light .text-white\/20 {
+            color: rgba(0, 0, 0, 0.2) !important;
+        }
+
+        /* Highlight colors for light mode */
+        .theme-glass-light .text-emerald-400, .theme-glass-light .text-emerald-300 {
+            color: #059669 !important;
+        }
+        .theme-glass-light .bg-emerald-500\/20 {
+            background-color: rgba(5, 150, 105, 0.15) !important;
+        }
+        .theme-glass-light .border-emerald-500\/30 {
+            border-color: rgba(5, 150, 105, 0.3) !important;
+        }
+        .theme-glass-light .text-amber-300, .theme-glass-light .text-amber-200 {
+            color: #d97706 !important;
+        }
+        .theme-glass-light .border-amber-400\/30 {
+            border-color: rgba(217, 119, 6, 0.3) !important;
+        }
+        .theme-glass-light .text-teal-400, .theme-glass-light .text-teal-300 {
+            color: #0f766e !important;
+        }
+        .theme-glass-light .bg-teal-900\/40, .theme-glass-light .bg-teal-900\/70 {
+            background-color: rgba(13, 148, 136, 0.15) !important;
+        }
+        .theme-glass-light .text-blue-400, .theme-glass-light .text-blue-300 {
+            color: #2563eb !important;
+        }
+        .theme-glass-light .bg-blue-900\/40 {
+            background-color: rgba(37, 99, 235, 0.15) !important;
+        }
+        .theme-glass-light .border-blue-500\/30 {
+            border-color: rgba(37, 99, 235, 0.3) !important;
+        }
+        .theme-glass-light .text-orange-400, .theme-glass-light .text-orange-300 {
+            color: #ea580c !important;
+        }
+        .theme-glass-light .text-red-400, .theme-glass-light .text-red-300 {
+            color: #dc2626 !important;
+        }
+        .theme-glass-light .bg-orange-900\/40 {
+            background-color: rgba(234, 88, 12, 0.15) !important;
+        }
+        .theme-glass-light .border-orange-500\/30 {
+            border-color: rgba(234, 88, 12, 0.3) !important;
+        }
+
+        /* Scrollbar styles for light mode */
+        .theme-glass-light::-webkit-scrollbar-track,
+        .theme-glass-light *::-webkit-scrollbar-track { background: rgba(0,0,0,0.05); }
+        .theme-glass-light::-webkit-scrollbar-thumb,
+        .theme-glass-light *::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.2); }
+        .theme-glass-light::-webkit-scrollbar-thumb:hover,
+        .theme-glass-light *::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.3); }
+</style>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
+</head>
+<body class="font-sans antialiased h-[100dvh] overflow-hidden flex selection:bg-blue-500/30" :class="theme === 'glass' ? 'theme-glass text-gray-200' : (theme === 'glass-light' ? 'theme-glass-light text-gray-800' : 'bg-[#1e1e1e] text-[#d4d4d4]')" x-data="rssApp()" x-init="initApp()" @resize.window="isMobile = window.innerWidth < 768" @keydown.escape.window="if(articleOverlayOpen) closeArticleOverlay()">
+
+    <div x-show="!isLoggedIn" x-cloak class="absolute inset-0 bg-[#121212] z-50 flex items-center justify-center p-4">
+        <div class="bg-[#1e1e1e] p-8 rounded-xl max-w-md w-full border border-[#333]">
+            <h1 class="text-2xl font-bold mb-6 text-center text-white">RSS Login</h1>
+            <input type="password" x-model="password" placeholder="Password" class="w-full bg-[#121212] border border-[#333] text-white p-3 rounded-lg mb-4 focus:border-blue-500 outline-none" @keyup.enter="login()">
+            <button @click="login()" class="w-full bg-blue-600 text-white p-3 rounded-lg font-semibold hover:bg-blue-700 transition">Login</button>
+        </div>
+    </div>
+    <!-- Add Feed Modal -->
+    <div x-show="showAddFeedModal" x-cloak class="fixed inset-0 bg-[#0B101E]/90 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-[#111827] p-6 rounded-2xl max-w-sm w-full border border-white/10 shadow-2xl relative overflow-hidden" @click.outside="showAddFeedModal = false">
+            <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-400 to-teal-500"></div>
+            <div class="flex items-center justify-between mb-5">
+                <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                    <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
+                    New Feed
+                </h2>
+                <button @click="showAddFeedModal = false" class="text-gray-500 hover:text-white transition">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            
+            <label class="block text-xs font-semibold text-gray-400 mb-1.5 uppercase tracking-wider">Feed URL</label>
+            <input type="url" x-model="newFeedUrl" placeholder="Paste RSS or Website URL..." class="w-full bg-[#0B101E] border border-white/10 text-white text-sm px-4 py-3 rounded-xl focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none mb-4 transition shadow-inner">
+            
+            <label class="block text-xs font-semibold text-gray-400 mb-1.5 uppercase tracking-wider">Category</label>
+            <select x-model="selectedDropdownCategory" class="w-full bg-[#0B101E] border border-white/10 text-white text-sm px-4 py-3 rounded-xl focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none mb-3 transition shadow-inner appearance-none cursor-pointer">
+                <option value="" class="text-gray-500">Select Category...</option>
+                <template x-for="category in categories" :key="category.name">
+                    <option :value="category.name" x-text="category.name"></option>
+                </template>
+                <option value="CREATE_NEW" class="text-emerald-400 font-bold">+ Create New Category...</option>
+            </select>
+            
+            <div x-show="selectedDropdownCategory === 'CREATE_NEW'" x-transition class="mb-4">
+                <input type="text" x-model="newFeedCategory" placeholder="Enter New Category Name" class="w-full bg-[#0B101E] border border-emerald-500/50 text-white text-sm px-4 py-3 rounded-xl focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400 outline-none transition shadow-[0_0_10px_rgba(16,185,129,0.1)]">
+            </div>
+            
+            <button @click="addFeed(); if(!isAdding) showAddFeedModal = false;" class="w-full mt-2 bg-gradient-to-r from-emerald-400 to-teal-500 hover:from-emerald-500 hover:to-teal-600 text-[#0B101E] py-3 rounded-xl text-sm font-bold shadow-[0_4px_15px_rgba(16,185,129,0.3)] transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2" :disabled="isAdding || !newFeedUrl.trim()">
+                <svg x-show="isAdding" class="animate-spin -ml-1 mr-2 h-4 w-4 text-[#0B101E]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span x-text="isAdding ? 'Adding Feed...' : 'Add Feed'"></span>
+            </button>
+        </div>
+    </div>
+    <!-- Content Filter Settings -->
+    <div x-show="contentFilterSettingsOpen" x-cloak class="fixed inset-0 bg-[#0B101E]/90 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
+        <div class="bg-[#111827] rounded-2xl max-w-5xl w-full max-h-[92vh] border border-white/10 shadow-2xl overflow-hidden flex flex-col" @click.outside="contentFilterSettingsOpen = false">
+            <div class="flex items-start justify-between gap-4 px-6 py-5 border-b border-white/10">
+                <div>
+                    <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                        <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707L13 15v4l-4 2v-6L3.293 7.293A1 1 0 013 6.586V4z"></path></svg>
+                        Content filters
+                    </h2>
+                    <p class="text-sm text-gray-500 mt-1">Hide stories containing words or phrases you do not want to see.</p>
+                </div>
+                <button @click="contentFilterSettingsOpen = false" class="text-gray-500 hover:text-white transition p-1"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+            </div>
+            <div class="p-5 md:p-6 overflow-y-auto">
+                <label class="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">Blocked words or phrases</label>
+                <textarea x-model="blockedKeywordsDraft" @input="onContentFilterInput($event)" rows="5" placeholder="One per line&#10;celebrity gossip&#10;spoiler" class="w-full resize-y bg-[#0B101E] border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 leading-relaxed outline-none focus:border-emerald-500/60 focus:ring-1 focus:ring-emerald-500/30 placeholder-gray-700"></textarea>
+                <div class="flex items-center justify-between mt-2 text-xs text-gray-500">
+                    <span>Checks titles, subheadlines, summaries, and excerpts.</span>
+                    <span><span x-text="blockedKeywordsDraft.split(/\n/).filter(line => line.trim()).length"></span> active</span>
+                </div>
+
+                <div class="mt-6 pt-5 border-t border-white/10">
+                    <div class="flex items-center justify-between gap-3 mb-3">
+                        <div>
+                            <h3 class="text-sm font-bold text-white">Affected articles</h3>
+                            <p class="text-xs text-gray-500 mt-0.5">Each phrase has its own preview. Filters are not saved until you press Save filters.</p>
+                        </div>
+                        <button @click="fetchContentFilterPreview()" :disabled="contentFilterPreviewLoading" class="shrink-0 px-3 py-2 rounded-lg border border-white/10 text-xs font-semibold text-gray-300 hover:text-white hover:border-emerald-400/30 transition disabled:opacity-50">
+                            <span x-text="contentFilterPreviewLoading ? 'Checking…' : 'Check again'"></span>
+                        </button>
+                    </div>
+
+                    <div x-show="draftBlockedKeywords().length" class="flex gap-2 overflow-x-auto pb-3 mb-1">
+                        <template x-for="keyword in draftBlockedKeywords()" :key="keyword">
+                            <button @click="selectContentFilterPreviewKeyword(keyword)" class="shrink-0 inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-semibold transition" :class="contentFilterPreviewKeyword === keyword ? 'border-emerald-400/40 bg-emerald-500/12 text-emerald-200' : 'border-white/10 bg-white/[0.025] text-gray-500 hover:text-gray-300'">
+                                <span x-text="'“' + keyword + '”'"></span>
+                                <span class="min-w-[1.4rem] px-1.5 py-0.5 rounded-full text-[10px] text-center" :class="contentFilterPreviewKeyword === keyword ? 'bg-emerald-400/15 text-emerald-300' : 'bg-white/5 text-gray-600'" x-text="contentFilterPreviewCount(keyword)"></span>
+                            </button>
+                        </template>
+                    </div>
+
+                    <div x-show="contentFilterPreviewError" class="mb-3 px-3 py-2 rounded-lg bg-red-500/10 border border-red-400/20 text-xs text-red-300" x-text="contentFilterPreviewError"></div>
+                    <div x-show="!draftBlockedKeywords().length" class="rounded-xl border border-dashed border-white/10 px-4 py-8 text-center text-sm text-gray-500">
+                        Add a word or phrase to see which articles would be hidden.
+                    </div>
+                    <div x-show="draftBlockedKeywords().length && !contentFilterPreviewLoading && contentFilterPreviewTotal === 0 && !contentFilterPreviewError" class="rounded-xl border border-emerald-400/15 bg-emerald-500/5 px-4 py-8 text-center text-sm text-emerald-300">
+                        No current articles match this phrase.
+                    </div>
+
+                    <div x-show="contentFilterPreviewTotal > 0" class="space-y-2.5">
+                        <div class="flex items-center justify-between text-xs text-gray-500 px-1">
+                            <span><span class="text-gray-300 font-semibold" x-text="contentFilterPreviewTotal"></span> affected by <span class="text-amber-300" x-text="'“' + contentFilterPreviewKeyword + '”'"></span></span>
+                            <span>Showing <span x-text="contentFilterPreview.length"></span></span>
+                        </div>
+                        <template x-for="item in contentFilterPreview" :key="item.id">
+                            <article class="rounded-xl border border-white/10 bg-[#0B101E]/65 p-4">
+                                <div class="flex items-center gap-2 text-[11px] text-gray-500 mb-2">
+                                    <img x-show="item.feedIcon" :src="item.feedIcon" alt="" class="w-4 h-4 rounded object-contain" @error="$el.style.display='none'">
+                                    <span class="text-gray-400 font-medium truncate" x-text="item.feedTitle"></span>
+                                    <template x-for="surface in item.surfaces" :key="surface">
+                                        <span class="px-1.5 py-0.5 rounded bg-white/5 text-gray-500" x-text="surface"></span>
+                                    </template>
+                                    <span class="ml-auto whitespace-nowrap" x-text="formatVietnamDateTime(item.pubDate)"></span>
+                                </div>
+                                <a x-show="item.link" :href="item.link" target="_blank" rel="noopener noreferrer" class="block text-sm md:text-[15px] leading-snug font-semibold text-gray-100 hover:text-emerald-300 transition" x-text="item.title"></a>
+                                <div x-show="!item.link" class="text-sm md:text-[15px] leading-snug font-semibold text-gray-100" x-text="item.title"></div>
+                                <div class="mt-3 space-y-2">
+                                    <template x-for="(detail, detailIndex) in item.matches" :key="detail.keyword + ':' + detailIndex">
+                                        <div class="rounded-lg bg-white/[0.035] px-3 py-2">
+                                            <div class="flex flex-wrap items-center gap-1.5 text-[11px] mb-1">
+                                                <span class="px-1.5 py-0.5 rounded bg-amber-400/10 text-amber-300 font-semibold" x-text="'“' + detail.keyword + '”'"></span>
+                                                <span class="text-gray-500">matched in</span>
+                                                <span class="text-emerald-300" x-text="detail.fieldLabels.join(' + ')"></span>
+                                            </div>
+                                            <p class="text-xs leading-relaxed text-gray-400" x-text="detail.snippet"></p>
+                                        </div>
+                                    </template>
+                                </div>
+                            </article>
+                        </template>
+                        <button x-show="contentFilterPreview.length < contentFilterPreviewTotal" @click="fetchContentFilterPreview(true)" :disabled="contentFilterPreviewLoading" class="w-full py-2.5 rounded-xl border border-white/10 text-sm font-semibold text-gray-300 hover:text-white hover:border-emerald-400/30 transition disabled:opacity-50" x-text="contentFilterPreviewLoading ? 'Loading…' : 'Load more affected articles'"></button>
+                    </div>
+                </div>
+            </div>
+            <div class="px-5 md:px-6 py-4 border-t border-white/10 bg-[#0B101E]/70 flex items-center justify-end gap-3">
+                <button @click="blockedKeywordsDraft = ''; saveContentFilterSettings()" class="mr-auto text-sm text-gray-500 hover:text-red-300 transition">Clear all</button>
+                <button @click="contentFilterSettingsOpen = false" class="px-4 py-2 text-sm text-gray-400 hover:text-white transition">Cancel</button>
+                <button @click="saveContentFilterSettings()" :disabled="savingContentFilter" class="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-[#07130f] text-sm font-bold transition disabled:opacity-50" x-text="savingContentFilter ? 'Saving…' : 'Save filters'"></button>
+            </div>
+        </div>
+    </div>
+    <!-- Gemini API Status -->
+    <div x-show="geminiStatusOpen" x-cloak @keydown.escape.window="geminiStatusOpen = false" class="fixed inset-0 bg-[#0B101E]/90 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
+        <div class="bg-[#111827] rounded-2xl max-w-2xl w-full border border-white/10 shadow-2xl overflow-hidden" @click.outside="geminiStatusOpen = false">
+            <div class="flex items-start justify-between gap-4 px-6 py-5 border-b border-white/10">
+                <div>
+                    <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                        <svg class="w-5 h-5 text-violet-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3l1.7 4.3L18 9l-4.3 1.7L12 15l-1.7-4.3L6 9l4.3-1.7L12 3zm6 11l.9 2.1L21 17l-2.1.9L18 20l-.9-2.1L15 17l2.1-.9L18 14z"></path></svg>
+                        Gemini API
+                    </h2>
+                    <p class="text-sm text-gray-500 mt-1">Validate the private key and review Smart clustering usage.</p>
+                </div>
+                <button @click="geminiStatusOpen = false" class="text-gray-500 hover:text-white transition p-1"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+            </div>
+            <div class="p-6 max-h-[70vh] overflow-y-auto">
+                <div x-show="geminiStatusLoading" class="py-12 text-center text-sm text-gray-400">Checking the key without making a billed generation request…</div>
+                <div x-show="geminiStatusError" class="mb-4 rounded-xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-300" x-text="geminiStatusError"></div>
+                <div x-show="geminiKeyStatus && !geminiStatusLoading" class="space-y-4">
+                    <div class="rounded-2xl border p-4" :class="geminiKeyStatus?.valid ? 'border-emerald-400/25 bg-emerald-500/[0.07]' : 'border-amber-400/25 bg-amber-500/[0.06]'">
+                        <div class="flex items-center gap-3">
+                            <span class="w-10 h-10 rounded-xl flex items-center justify-center" :class="geminiKeyStatus?.valid ? 'bg-emerald-400/15 text-emerald-300' : 'bg-amber-400/15 text-amber-300'">
+                                <svg x-show="geminiKeyStatus?.valid" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                                <svg x-show="!geminiKeyStatus?.valid" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4c-.77-1.33-2.69-1.33-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z"></path></svg>
+                            </span>
+                            <div class="min-w-0">
+                                <div class="font-bold" :class="geminiKeyStatus?.valid ? 'text-emerald-200' : 'text-amber-200'" x-text="geminiKeyStatus?.state === 'ready' ? 'Key is valid and ready' : (geminiKeyStatus?.state === 'quota_limited' ? 'Key is valid · quota is currently limited' : (geminiKeyStatus?.configured ? 'Key could not be validated' : 'Key is not configured'))"></div>
+                                <div class="text-xs text-gray-500 mt-1">Model: <span class="text-gray-300" x-text="geminiKeyStatus?.model"></span></div>
+                            </div>
+                        </div>
+                        <p x-show="geminiKeyStatus?.error" class="text-xs text-amber-200/80 mt-3" x-text="geminiKeyStatus?.error"></p>
+                        <p x-show="geminiKeyStatus?.valid" class="text-xs text-gray-500 mt-3">The validation uses token counting, which Google does not bill or count against inference quota.</p>
+                    </div>
+
+                    <div class="grid md:grid-cols-2 gap-3">
+                        <div class="rounded-xl border border-white/[0.07] bg-[#0B101E]/60 p-4">
+                            <div class="text-[11px] uppercase tracking-wider font-bold text-gray-500">Exact remaining limit</div>
+                            <div class="text-sm font-semibold text-white mt-2">Available in Google AI Studio</div>
+                            <p class="text-xs leading-relaxed text-gray-500 mt-1" x-text="geminiKeyStatus?.exactRemainingExplanation"></p>
+                            <a :href="geminiKeyStatus?.usageUrl" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 mt-3 text-xs font-bold text-violet-300 hover:text-violet-200 transition">
+                                Open Usage &amp; Rate Limits
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5h5v5m0-5L10 14M5 7v12h12v-5"></path></svg>
+                            </a>
+                        </div>
+                        <div class="rounded-xl border border-white/[0.07] bg-[#0B101E]/60 p-4">
+                            <div class="text-[11px] uppercase tracking-wider font-bold text-gray-500">Last Smart refresh</div>
+                            <div class="text-sm font-semibold text-white mt-2" x-text="geminiKeyStatus?.lastSmartRun?.geminiUsed ? 'Gemini was used' : 'Gemini was not used'"></div>
+                            <div class="text-xs text-gray-500 mt-1"><span x-text="geminiKeyStatus?.lastSmartRun?.reviewedArticleCount || 0"></span> articles reviewed by Gemini</div>
+                            <div class="text-xs text-gray-500 mt-1"><span x-text="geminiKeyStatus?.lastSmartRun?.eligibleArticleCount || 0"></span> articles eligible</div>
+                            <div x-show="geminiKeyStatus?.lastSmartRun?.completedAt" class="text-xs text-gray-600 mt-2" x-text="formatVietnamDateTime(geminiKeyStatus?.lastSmartRun?.completedAt)"></div>
+                        </div>
+                    </div>
+                    <div x-show="geminiKeyStatus?.lastSmartRun?.reason" class="rounded-xl border border-white/[0.06] px-4 py-3 text-xs text-gray-400" x-text="geminiKeyStatus?.lastSmartRun?.reason"></div>
+                </div>
+            </div>
+            <div class="px-6 py-4 border-t border-white/10 bg-[#0B101E]/50 flex justify-end gap-3">
+                <button @click="geminiStatusOpen = false" class="px-4 py-2 text-sm text-gray-400 hover:text-white transition">Close</button>
+                <button @click="fetchGeminiKeyStatus()" :disabled="geminiStatusLoading" class="px-5 py-2.5 rounded-xl bg-violet-400 hover:bg-violet-300 text-[#120b21] text-sm font-bold transition disabled:opacity-50" x-text="geminiStatusLoading ? 'Checking…' : 'Check now'"></button>
+            </div>
+        </div>
+    </div>
+    <!-- Smart Source Settings -->
+    <div x-show="smartSourcesSettingsOpen" x-cloak @keydown.escape.window="smartSourcesSettingsOpen = false" class="fixed inset-0 bg-[#0B101E]/90 backdrop-blur-sm z-[70] flex items-center justify-center p-3 md:p-6">
+        <div class="bg-[#111827] rounded-2xl max-w-4xl w-full max-h-[92vh] border border-white/10 shadow-2xl overflow-hidden flex flex-col" @click.outside="smartSourcesSettingsOpen = false">
+            <div class="flex items-start justify-between gap-4 px-5 md:px-6 py-5 border-b border-white/10">
+                <div>
+                    <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                        <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m7-7v14m8-7a8 8 0 11-16 0 8 8 0 0116 0z"></path></svg>
+                        Smart sources
+                    </h2>
+                    <p class="text-sm text-gray-500 mt-1">Manage the private source list used only for Smart Briefing.</p>
+                </div>
+                <button @click="smartSourcesSettingsOpen = false" class="text-gray-500 hover:text-white transition p-1"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+            </div>
+
+            <div class="px-5 md:px-6 py-4 border-b border-white/10 bg-[#0B101E]/35">
+                <div class="grid grid-cols-3 md:grid-cols-6 gap-1.5">
+                    <template x-for="section in smartSourceSections" :key="section.value">
+                        <button @click="setSmartSourceKind(section.value)" class="px-2 py-2 rounded-lg border text-[11px] font-semibold transition truncate" :class="smartSourceKind === section.value ? 'border-emerald-400/30 bg-emerald-500/12 text-emerald-300' : 'border-white/[0.06] text-gray-600 hover:text-gray-300 hover:bg-white/[0.03]'" x-text="section.short"></button>
+                    </template>
+                </div>
+                <div class="grid grid-cols-3 gap-1 mt-3 p-1 rounded-xl bg-[#080D17] border border-white/[0.06]">
+                    <button @click="smartSourcePanel = 'sources'" class="py-2 rounded-lg text-xs font-semibold transition" :class="smartSourcePanel === 'sources' ? 'bg-white/[0.07] text-white' : 'text-gray-600 hover:text-gray-300'">Sources</button>
+                    <button @click="smartSourcePanel = 'add'" class="py-2 rounded-lg text-xs font-semibold transition" :class="smartSourcePanel === 'add' ? 'bg-emerald-500/15 text-emerald-300' : 'text-gray-600 hover:text-gray-300'">Add source</button>
+                    <button @click="smartSourcePanel = 'discover'" class="py-2 rounded-lg text-xs font-semibold transition" :class="smartSourcePanel === 'discover' ? 'bg-cyan-500/10 text-cyan-300' : 'text-gray-600 hover:text-gray-300'">Find sources</button>
+                </div>
+            </div>
+
+            <form x-show="smartSourcePanel === 'add'" x-transition.opacity @submit.prevent="addSmartSource()" class="px-5 md:px-6 py-6 border-b border-white/10 bg-[#0B101E]/20">
+                <div class="flex items-center justify-between gap-4 mb-4">
+                    <div>
+                        <h3 class="text-sm font-bold text-white">Add to <span class="text-emerald-300" x-text="smartSourceKindLabel(smartSourceKind)"></span></h3>
+                        <p class="text-xs text-gray-600 mt-1">Add a publisher’s RSS or Atom feed directly.</p>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-[0.8fr_1.5fr_auto] gap-3 items-end">
+                    <label class="block">
+                        <span class="block text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">Name</span>
+                        <input x-model="newSmartSource.title" required maxlength="120" placeholder="Publisher name" class="w-full bg-[#0B101E] border border-white/10 rounded-xl px-3.5 py-2.5 text-sm text-white outline-none focus:border-emerald-500/60">
+                    </label>
+                    <label class="block">
+                        <span class="block text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">RSS or Atom URL</span>
+                        <input x-model="newSmartSource.url" required type="url" placeholder="https://example.com/feed.xml" class="w-full bg-[#0B101E] border border-white/10 rounded-xl px-3.5 py-2.5 text-sm text-white outline-none focus:border-emerald-500/60">
+                    </label>
+                    <button type="submit" :disabled="savingSmartSource" class="h-[42px] px-5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-[#07130f] text-sm font-bold transition disabled:opacity-50" x-text="savingSmartSource ? 'Adding…' : 'Add'"></button>
+                </div>
+                <p x-show="smartSourceError" x-text="smartSourceError" class="text-xs text-red-300 mt-3"></p>
+            </form>
+
+            <div x-show="smartSourcePanel === 'discover'" x-transition.opacity class="px-5 md:px-6 py-6 border-b border-white/10 bg-cyan-500/[0.02] overflow-y-auto">
+                <div class="flex flex-col md:flex-row md:items-center gap-3">
+                    <div class="min-w-0 flex-1">
+                        <h3 class="text-sm font-bold text-white">Find sources for <span class="text-cyan-300" x-text="smartSourceKindLabel(smartSourceKind)"></span></h3>
+                        <p class="text-[11px] text-gray-600 mt-1">Curated results rank below the built-in sources. Skipped results are remembered under “Not used”.</p>
+                    </div>
+                    <button @click="discoverSmartSources()" :disabled="discoveringSmartSources" class="h-[42px] px-5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/15 text-sm font-semibold transition disabled:opacity-50">
+                        <span x-text="discoveringSmartSources ? 'Searching…' : (smartDiscoveryCandidates.length ? 'Search again' : 'Find 5 sources')"></span>
+                    </button>
+                </div>
+
+                <div x-show="smartDiscoveryCandidates.length" x-transition class="mt-4 rounded-xl border border-white/[0.08] bg-[#0B101E]/70 p-3">
+                    <div class="space-y-1.5">
+                        <template x-for="source in smartDiscoveryCandidates" :key="source.url">
+                            <label class="flex items-center gap-3 rounded-lg px-2.5 py-2 hover:bg-white/[0.035] cursor-pointer">
+                                <input type="checkbox" :checked="smartDiscoverySelected.includes(source.url)" @change="toggleSmartDiscoverySelection(source.url)" class="accent-emerald-500">
+                                <img :src="smartSourceIcon(source)" class="w-6 h-6 rounded bg-white/5" @error="$el.style.display='none'">
+                                <span class="min-w-0 flex-1">
+                                    <span class="block text-sm text-gray-200 font-medium truncate" x-text="source.title"></span>
+                                    <span class="block text-[10px] text-gray-600 truncate" x-text="smartSourceHost(source.url)"></span>
+                                </span>
+                            </label>
+                        </template>
+                    </div>
+                    <div class="flex items-center justify-end gap-2 mt-3 pt-3 border-t border-white/[0.06]">
+                        <button @click="smartDiscoverySelected = smartDiscoveryCandidates.map(source => source.url)" class="px-3 py-2 text-xs text-gray-400 hover:text-white">Select all</button>
+                        <button @click="enableSelectedDiscoveredSources()" :disabled="!smartDiscoverySelected.length || savingDiscoveredSources" class="px-4 py-2 rounded-lg bg-emerald-500 text-[#07130f] text-xs font-bold disabled:opacity-40" x-text="savingDiscoveredSources ? 'Adding…' : 'Add selected'"></button>
+                    </div>
+                </div>
+            </div>
+
+            <div x-show="smartSourcePanel === 'sources'" class="px-5 md:px-6 pt-4 pb-3">
+                <div class="flex items-center justify-between gap-3 mb-3">
+                    <div>
+                        <h3 class="text-sm font-bold text-white" x-text="smartSourceKindLabel(smartSourceKind)"></h3>
+                        <p class="text-[11px] text-gray-600">Only sources in this section are shown.</p>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-1 p-1 rounded-xl bg-[#0B101E] border border-white/[0.07] mb-3">
+                    <button @click="smartSourceView = 'enabled'" class="py-2 rounded-lg text-xs font-semibold transition" :class="smartSourceView === 'enabled' ? 'bg-emerald-500/15 text-emerald-300' : 'text-gray-600 hover:text-gray-300'">Used by Smart</button>
+                    <button @click="smartSourceView = 'disabled'" class="py-2 rounded-lg text-xs font-semibold transition" :class="smartSourceView === 'disabled' ? 'bg-amber-500/10 text-amber-200' : 'text-gray-600 hover:text-gray-300'">Not used · add later</button>
+                </div>
+                <div class="relative">
+                    <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35m1.35-5.65a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                    <input x-model="smartSourceSearch" placeholder="Find a Smart source…" class="w-full bg-[#0B101E] border border-white/10 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white outline-none focus:border-emerald-500/50">
+                </div>
+            </div>
+
+            <div x-show="smartSourcePanel === 'sources'" class="flex-1 overflow-y-auto px-5 md:px-6 pb-4 min-h-[320px]">
+                <div x-show="loadingSmartSources" class="py-12 text-center text-sm text-gray-500">Loading sources…</div>
+                <div x-show="!loadingSmartSources" class="space-y-2">
+                    <template x-for="source in filteredSmartSources()" :key="source.url">
+                        <div class="flex items-center gap-3 rounded-xl border border-white/[0.07] bg-white/[0.025] px-3.5 py-3">
+                            <img :src="smartSourceIcon(source)" class="w-7 h-7 rounded-md bg-white/5 flex-shrink-0" @error="$el.style.display='none'">
+                            <div class="min-w-0 flex-1">
+                                <div class="text-sm font-semibold text-gray-200 truncate" x-text="source.title"></div>
+                                <div class="flex flex-wrap items-center gap-x-2 text-[11px] text-gray-600 mt-0.5">
+                                    <span x-text="smartSourceHost(source.url)"></span>
+                                    <span>•</span>
+                                    <span class="text-emerald-400/70" x-text="smartSourceCategoryLabel(source)"></span>
+                                </div>
+                            </div>
+                            <button @click="toggleSmartSource(source)" :disabled="removingSmartSourceUrl === source.url" class="px-3 py-1.5 rounded-lg text-xs font-semibold transition disabled:opacity-40" :class="source.enabled === false ? 'text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20' : 'text-gray-500 bg-white/[0.03] hover:text-amber-200 hover:bg-amber-500/10'" x-text="source.enabled === false ? 'Use source' : 'Do not use'" :aria-label="(source.enabled === false ? 'Use ' : 'Do not use ') + source.title">
+                            </button>
+                        </div>
+                    </template>
+                    <div x-show="filteredSmartSources().length === 0" class="py-10 text-center text-sm text-gray-600">No matching sources.</div>
+                </div>
+            </div>
+
+            <div class="px-5 md:px-6 py-4 border-t border-white/10 bg-[#0B101E]/50 flex items-center justify-between gap-3">
+                <button @click="resetSmartSources()" class="text-sm text-gray-500 hover:text-amber-300 transition">Restore built-in list</button>
+                <div class="flex items-center gap-4">
+                    <span class="hidden md:inline text-xs text-gray-600">Changes apply on the next Smart refresh.</span>
+                    <button @click="smartSourcesSettingsOpen = false" class="px-4 py-2 text-sm text-gray-300 hover:text-white transition">Done</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div x-show="editModalOpen" x-cloak class="fixed inset-0 bg-[#0B101E]/80 z-50 flex items-center justify-center p-4">
+        <div class="bg-[#1e1e1e] p-6 rounded-xl max-w-sm w-full border border-[#333]" @click.outside="editModalOpen = false">
+            <h2 class="text-lg font-bold text-white mb-4">Edit Source</h2>
+            <label class="block text-xs text-gray-400 mb-1">Source URL (Read-only)</label>
+            <input type="text" readonly :value="editingFeed?.url" class="w-full bg-[#121212] border border-[#333] text-gray-500 text-sm p-2 rounded mb-4 cursor-not-allowed">
+            <label class="block text-xs text-gray-400 mb-1">Display Title</label>
+            <input type="text" x-model="editFeedTitle" class="w-full bg-[#121212] border border-[#333] text-white text-sm p-2 rounded focus:border-blue-500 outline-none mb-4">
+            <label class="block text-xs text-gray-400 mb-1">Category</label>
+            <select x-model="editFeedCategoryDropdown" class="w-full bg-[#121212] border border-[#333] text-gray-300 text-sm p-2 rounded focus:border-blue-500 outline-none mb-2">
+                <template x-for="category in categories" :key="category.name">
+                    <option :value="category.name" x-text="category.name"></option>
+                </template>
+                <option value="CREATE_NEW">+ Create New...</option>
+            </select>
+            <div x-show="editFeedCategoryDropdown === 'CREATE_NEW'" class="mb-4">
+                <input type="text" x-model="editFeedCategoryNew" placeholder="New Category Name" class="w-full bg-[#121212] border border-[#333] text-white text-sm p-2 rounded focus:border-blue-500 outline-none">
+            </div>
+            <div class="flex justify-end gap-3 mt-6 border-t border-[#333] pt-4">
+                <button @click="editModalOpen = false" class="px-4 py-2 text-sm text-gray-400 hover:text-white transition">Cancel</button>
+                <button @click="saveEditFeed()" class="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2 rounded text-sm font-medium transition disabled:opacity-50" :disabled="isSavingEdit">
+                    <span x-text="isSavingEdit ? 'Saving...' : 'Save'"></span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- LOGS PANEL MODAL -->
+    <div x-show="logsPanelOpen" x-cloak class="fixed inset-0 bg-[#0B101E]/80 z-[60] flex items-center justify-center p-2 md:p-4">
+        <div class="bg-[#0B101E] rounded-xl w-full max-w-5xl h-[90vh] flex flex-col border border-[#333] shadow-2xl" @click.outside="closeLogsPanel()">
+            <div class="flex items-center justify-between px-5 py-4 border-b border-[#333] flex-shrink-0">
+                <div class="flex items-center gap-4">
+                    <h2 class="text-lg font-bold text-white">System Monitor</h2>
+                    <div class="flex bg-[#252525] rounded-lg p-0.5">
+                        <button @click="logsTab = 'stats'; fetchSourceStats()" class="px-4 py-1.5 rounded-md text-sm font-medium transition"
+                                :class="logsTab === 'stats' ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-gray-200'">Source Stats</button>
+                        <button @click="logsTab = 'history'; fetchFetchHistory()" class="px-4 py-1.5 rounded-md text-sm font-medium transition"
+                                :class="logsTab === 'history' ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-gray-200'">Fetch History</button>
+                        <button @click="logsTab = 'errors'; fetchFetchErrors()" class="px-4 py-1.5 rounded-md text-sm font-medium transition"
+                                :class="logsTab === 'errors' ? 'bg-red-600 text-white shadow' : 'text-gray-400 hover:text-gray-200'">Error Log</button>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <button @click="toggleSyncPause()" class="px-3 py-1.5 rounded-md text-xs font-bold transition flex items-center gap-1.5 border"
+                            :class="syncPaused ? 'bg-green-600/20 text-green-400 border-green-500/30 hover:bg-green-600/30' : 'bg-yellow-600/20 text-yellow-400 border-yellow-500/30 hover:bg-yellow-600/30'"
+                            :title="syncPaused ? 'Resume background auto-sync' : 'Pause background auto-sync'">
+                        <span x-text="syncPaused ? '▶ Resume Sync' : '⏸ Pause Sync'"></span>
+                    </button>
+                    <button @click="refreshLogs()" class="text-gray-400 hover:text-white transition p-1.5" title="Refresh">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                    </button>
+                    <button @click="closeLogsPanel()" class="text-gray-400 hover:text-white transition p-1.5">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- SOURCE STATS TAB -->
+            <div x-show="logsTab === 'stats'" class="flex-1 overflow-y-auto">
+                <template x-if="sourceStatsData.length === 0">
+                    <div class="flex items-center justify-center h-full text-gray-500">No stats gathered yet.</div>
+                </template>
+                <table x-show="sourceStatsData.length > 0" class="w-full text-sm">
+                    <thead class="sticky top-0 bg-[#1e1e1e] z-10">
+                        <tr class="text-left text-gray-500 text-xs uppercase border-b border-[#333]">
+                            <th class="px-4 py-3 font-medium">Source</th>
+                            <th class="px-4 py-3 font-medium text-center">Success</th>
+                            <th class="px-4 py-3 font-medium text-center">Error</th>
+                            <th class="px-4 py-3 font-medium text-center">Skipped</th>
+                            <th class="px-4 py-3 font-medium text-center">Total</th>
+                            <th class="px-4 py-3 font-medium">Last Fetch</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="stat in sourceStatsData" :key="stat.feedUrl">
+                            <tr class="border-b border-[#252525] hover:bg-[#222] transition">
+                                <td class="px-4 py-2.5 text-gray-200 max-w-[250px] truncate" :title="stat.feedUrl" x-text="stat.feedTitle"></td>
+                                <td class="px-4 py-2.5 text-center text-green-400 font-medium" x-text="stat.success"></td>
+                                <td class="px-4 py-2.5 text-center text-red-400 font-medium" x-text="stat.error"></td>
+                                <td class="px-4 py-2.5 text-center text-yellow-400 font-medium" x-text="stat.skipped"></td>
+                                <td class="px-4 py-2.5 text-center text-gray-400" x-text="stat.total"></td>
+                                <td class="px-4 py-2.5 text-xs">
+                                    <div class="text-gray-400" x-text="formatLogTime(stat.lastFetch)"></div>
+                                    <div class="text-[10px] mt-0.5 truncate max-w-[150px]"
+                                         :class="{
+                                             'text-green-500/80': stat.lastStatus === 'success',
+                                             'text-red-500/80': stat.lastStatus === 'error',
+                                             'text-yellow-500/80': stat.lastStatus === 'skipped'
+                                         }" x-text="stat.lastDetails" :title="stat.lastDetails"></div>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- FETCH HISTORY TAB -->
+            <div x-show="logsTab === 'history'" class="flex-1 overflow-y-auto">
+                <template x-if="fetchHistoryData.length === 0">
+                    <div class="flex items-center justify-center h-full text-gray-500">No fetch history recorded yet.</div>
+                </template>
+                <table x-show="fetchHistoryData.length > 0" class="w-full text-sm">
+                    <thead class="sticky top-0 bg-[#1e1e1e] z-10">
+                        <tr class="text-left text-gray-500 text-xs uppercase border-b border-[#333]">
+                            <th class="px-4 py-3 font-medium">Time</th>
+                            <th class="px-4 py-3 font-medium">Source</th>
+                            <th class="px-4 py-3 font-medium w-24">Status</th>
+                            <th class="px-4 py-3 font-medium">Details</th>
+                            <th class="px-4 py-3 font-medium w-20 text-right">Duration</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="(entry, i) in fetchHistoryData" :key="i">
+                            <tr class="border-b border-[#252525] hover:bg-[#222] transition">
+                                <td class="px-4 py-2.5 text-gray-400 whitespace-nowrap text-xs" x-text="formatLogTime(entry.timestamp)"></td>
+                                <td class="px-4 py-2.5 text-gray-200 max-w-[280px] truncate" :title="entry.feedUrl" x-text="entry.feedTitle"></td>
+                                <td class="px-4 py-2.5">
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold"
+                                          :class="{
+                                              'bg-green-900/40 text-green-400': entry.status === 'success',
+                                              'bg-red-900/40 text-red-400': entry.status === 'error',
+                                              'bg-yellow-900/40 text-yellow-400': entry.status === 'skipped'
+                                          }" x-text="entry.status.toUpperCase()"></span>
+                                </td>
+                                <td class="px-4 py-2.5 text-gray-400 text-xs max-w-[300px] truncate" :title="entry.details" x-text="entry.details"></td>
+                                <td class="px-4 py-2.5 text-gray-500 text-xs text-right whitespace-nowrap" x-text="entry.durationMs < 1000 ? entry.durationMs + 'ms' : (entry.durationMs / 1000).toFixed(1) + 's'"></td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- ERROR LOG TAB -->
+            <div x-show="logsTab === 'errors'" class="flex-1 overflow-y-auto">
+                <template x-if="fetchErrorsData.length === 0">
+                    <div class="flex items-center justify-center h-full text-gray-500">No fetch errors recorded! System is healthy.</div>
+                </template>
+                <table x-show="fetchErrorsData.length > 0" class="w-full text-sm">
+                    <thead class="sticky top-0 bg-[#1e1e1e] z-10">
+                        <tr class="text-left text-gray-500 text-xs uppercase border-b border-[#333]">
+                            <th class="px-4 py-3 font-medium">Time</th>
+                            <th class="px-4 py-3 font-medium">Source</th>
+                            <th class="px-4 py-3 font-medium w-20">Type</th>
+                            <th class="px-4 py-3 font-medium">Error Details & Why</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="(entry, i) in fetchErrorsData" :key="i">
+                            <tr class="border-b border-[#252525] hover:bg-[#222] transition align-top">
+                                <td class="px-4 py-3 text-gray-400 whitespace-nowrap text-xs font-mono" x-text="formatLogTime(entry.timestamp)"></td>
+                                <td class="px-4 py-3 text-gray-200 font-semibold max-w-[220px] break-words">
+                                    <div x-text="entry.feedTitle"></div>
+                                    <div class="text-[10px] text-gray-500 font-mono truncate mt-0.5" x-text="entry.feedUrl" :title="entry.feedUrl"></div>
+                                </td>
+                                <td class="px-4 py-3">
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-red-950 text-red-300 border border-red-800/50" x-text="entry.errorType || 'error'"></span>
+                                </td>
+                                <td class="px-4 py-3 text-red-300 font-mono text-xs break-all select-text">
+                                    <div class="font-bold mb-1" x-text="entry.details"></div>
+                                    <template x-if="entry.httpStatus">
+                                        <div class="text-gray-400 text-[11px]">HTTP Status Code: <span class="text-yellow-400 font-bold" x-text="entry.httpStatus"></span></div>
+                                    </template>
+                                    <div class="text-gray-500 text-[10px] mt-1">Check source URL availability or Cloudflare block.</div>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="flex items-center justify-between px-5 py-3 border-t border-[#333] flex-shrink-0 text-xs text-gray-500">
+                <div>
+                    <span x-show="logsTab === 'stats'" x-text="sourceStatsData.length + ' sources tracked'"></span>
+                    <span x-show="logsTab === 'history'" x-text="fetchHistoryData.length + ' fetch records'"></span>
+                    <span x-show="logsTab === 'errors'" class="text-red-400 font-bold" x-text="fetchErrorsData.length + ' error events recorded'"></span>
+                </div>
+                <div class="flex items-center gap-4">
+                    <span :class="syncPaused ? 'text-yellow-500 font-bold' : 'text-green-500'" x-text="syncPaused ? 'Sync Paused' : 'Sync Active'"></span>
+                    <span>Manual refresh only</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ARTICLE DEBUG MODAL -->
+    <div x-show="debugModalOpen" x-cloak class="fixed inset-0 bg-[#0B101E]/80 z-[70] flex items-center justify-center p-2 md:p-4">
+        <div class="bg-[#0B101E] rounded-xl w-full max-w-4xl max-h-[90vh] flex flex-col border border-[#333] shadow-2xl" @click.outside="debugModalOpen = false">
+            <div class="flex items-center justify-between px-5 py-4 border-b border-[#333] flex-shrink-0">
+                <h2 class="text-lg font-bold text-white flex items-center gap-2">
+                    <svg class="w-5 h-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path></svg>
+                    Article Debugger
+                </h2>
+                <button @click="debugModalOpen = false" class="text-gray-400 hover:text-white transition">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            
+            <div class="flex-1 overflow-y-auto p-5 text-sm">
+                <div x-show="isDebugging" class="flex flex-col items-center justify-center h-40 text-gray-400 gap-3">
+                    <svg class="w-8 h-8 animate-spin text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                    Fetching and parsing live article...
+                </div>
+                
+                <div x-show="!isDebugging && debugData" class="space-y-6">
+                    <div class="bg-[#222] p-4 rounded-lg border border-[#333]">
+                        <div class="text-xs text-gray-500 mb-1">Target URL</div>
+                        <a :href="debugData?.url" target="_blank" class="text-blue-400 hover:underline break-all" x-text="debugData?.url"></a>
+                        <div class="mt-3" x-show="debugData?.error">
+                            <span class="text-red-400 font-bold">Error:</span> <span class="text-gray-300" x-text="debugData?.error"></span>
+                            <div x-show="debugData?.fetchAttempts?.length" class="mt-3 space-y-1.5">
+                                <div class="text-xs text-gray-500 font-bold mb-1">Fetch Attempts:</div>
+                                <template x-for="(a, idx) in debugData?.fetchAttempts" :key="idx">
+                                    <div class="flex items-center gap-2 text-xs bg-[#0B101E] px-3 py-1.5 rounded border border-[#333]">
+                                        <span class="font-mono text-purple-400 w-20" x-text="a.method"></span>
+                                        <span :class="a.status === 'ok' ? 'text-green-400' : 'text-red-400'" class="font-bold w-20" x-text="a.status"></span>
+                                        <span class="text-gray-400 truncate" x-text="a.detail || (a.length ? a.length + ' bytes' : '')"></span>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+
+                    <template x-if="debugData && !debugData.error">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <!-- TITLE EXTRACTION -->
+                            <div class="bg-[#222] p-4 rounded-lg border border-[#333]">
+                                <h3 class="font-bold text-gray-300 mb-3 border-b border-[#333] pb-2">Title Extraction</h3>
+                                <div class="space-y-2">
+                                    <div><span class="text-xs text-gray-500 block">og:title</span><span class="text-gray-200" x-text="debugData?.ogTitle || 'N/A'"></span></div>
+                                    <div><span class="text-xs text-gray-500 block">&lt;title&gt; tag</span><span class="text-gray-200" x-text="debugData?.htmlTitle || 'N/A'"></span></div>
+                                    <div><span class="text-xs text-gray-500 block">&lt;h1&gt; tag</span><span class="text-gray-200" x-text="debugData?.h1 || 'N/A'"></span></div>
+                                </div>
+                            </div>
+
+                            <!-- IMAGE EXTRACTION -->
+                            <div class="bg-[#222] p-4 rounded-lg border border-[#333]">
+                                <h3 class="font-bold text-gray-300 mb-3 border-b border-[#333] pb-2">Image Extraction</h3>
+                                <div class="space-y-2">
+                                    <div><span class="text-xs text-gray-500 block">og:image</span>
+                                        <a x-show="debugData?.ogImage" :href="debugData?.ogImage" target="_blank" class="text-blue-400 truncate block hover:underline" x-text="debugData?.ogImage"></a>
+                                        <span x-show="!debugData?.ogImage" class="text-gray-500">N/A</span>
+                                    </div>
+                                    <div><span class="text-xs text-gray-500 block">DOM Extracted Image (Fallback)</span>
+                                        <a x-show="debugData?.extractedImage" :href="debugData?.extractedImage" target="_blank" class="text-blue-400 truncate block hover:underline" x-text="debugData?.extractedImage"></a>
+                                        <span x-show="!debugData?.extractedImage" class="text-gray-500">N/A</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- PUBLISHER & CATEGORY -->
+                            <div class="bg-[#222] p-4 rounded-lg border border-[#333]">
+                                <h3 class="font-bold text-gray-300 mb-3 border-b border-[#333] pb-2">Metadata</h3>
+                                <div class="space-y-2">
+                                    <div><span class="text-xs text-gray-500 block">og:site_name (Publisher)</span><span class="text-gray-200" x-text="debugData?.ogSiteName || 'N/A'"></span></div>
+                                    <div><span class="text-xs text-gray-500 block">Logo Alt (Fallback Publisher)</span><span class="text-gray-200" x-text="debugData?.logoAlt || 'N/A'"></span></div>
+                                    <div><span class="text-xs text-gray-500 block">article:section (Category)</span><span class="text-gray-200" x-text="debugData?.articleSection || 'N/A'"></span></div>
+                                    <div><span class="text-xs text-gray-500 block">Breadcrumb Category (Fallback)</span><span class="text-gray-200" x-text="debugData?.breadcrumbCategory || 'N/A'"></span></div>
+                                    <div><span class="text-xs text-gray-500 block">Meta Date</span><span class="text-gray-200" x-text="debugData?.metaDate || 'N/A'"></span></div>
+                                </div>
+                            </div>
+
+                            <!-- JSON-LD -->
+                            <div class="bg-[#222] p-4 rounded-lg border border-[#333]">
+                                <h3 class="font-bold text-gray-300 mb-3 border-b border-[#333] pb-2">JSON-LD Data</h3>
+                                <div x-show="!debugData?.jsonLdSummary?.length" class="text-gray-500">No JSON-LD blocks found</div>
+                                <div class="space-y-3 max-h-[200px] overflow-y-auto pr-2">
+                                    <template x-for="(block, idx) in debugData?.jsonLdSummary" :key="idx">
+                                        <div class="bg-[#0B101E] p-2 rounded text-xs border border-[#333]">
+                                            <div class="text-purple-400 font-bold mb-1" x-text="block.type"></div>
+                                            <div x-show="block.headline"><span class="text-gray-500">Headline:</span> <span class="text-gray-300" x-text="block.headline"></span></div>
+                                            <div x-show="block.publisher"><span class="text-gray-500">Publisher:</span> <span class="text-gray-300" x-text="block.publisher"></span></div>
+                                            <div x-show="block.datePublished"><span class="text-gray-500">Date:</span> <span class="text-gray-300" x-text="block.datePublished"></span></div>
+                                            <div x-show="block.articleSection"><span class="text-gray-500">Section:</span> <span class="text-gray-300" x-text="block.articleSection"></span></div>
+                                            <div x-show="block.breadcrumbs && block.breadcrumbs.length > 0">
+                                                <span class="text-gray-500">Breadcrumbs:</span>
+                                                <div class="flex flex-wrap gap-1 mt-1">
+                                                    <template x-for="(bc, idx) in block.breadcrumbs" :key="idx">
+                                                        <span class="bg-[#333] px-1.5 py-0.5 rounded text-gray-300 whitespace-nowrap" x-text="bc.position + ': ' + bc.name"></span>
+                                                    </template>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div x-show="isLoggedIn && mobileSidebarOpen && isMobile" x-cloak @click="mobileSidebarOpen = false" class="fixed inset-0 bg-[#0B101E]/60 z-40 md:hidden transition-opacity"></div>
+
+    <aside x-show="isLoggedIn" x-cloak
+           class="fixed md:relative inset-y-0 left-0 z-50 bg-[#111827] flex-shrink-0 flex-col h-[100dvh] transition-all duration-300 ease-in-out whitespace-nowrap overflow-x-hidden border-r border-white/5"
+           :class="{
+               'w-72 translate-x-0': isMobile && mobileSidebarOpen,
+               'w-72 -translate-x-full border-none': isMobile && !mobileSidebarOpen,
+               'w-64 translate-x-0 opacity-100': !isMobile && desktopSidebarOpen,
+               'w-0 translate-x-0 border-none opacity-0': !isMobile && !desktopSidebarOpen
+           }"
+           style="display: flex;">
+        
+        <div class="p-4 border-b border-white/5 flex items-center justify-between gap-3 w-72 md:w-64 flex-shrink-0">
+            <div class="flex items-center gap-3">
+                <div class="w-12 h-12 rounded-full bg-[#20C997] flex items-center justify-center text-white font-bold text-xl">ME</div>
+                <span class="font-bold text-white tracking-wide text-2xl">News</span>
+            </div>
+            <button @click="mobileSidebarOpen = false" class="md:hidden text-gray-400 hover:text-white p-2">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+        </div>
+
+        <div class="flex-1 overflow-y-auto no-scrollbar w-72 md:w-64 min-h-0 flex flex-col pb-[env(safe-area-inset-bottom)]">
+            <div class="flex-1 pb-4">
+                <ul class="space-y-1 px-2 mb-6 mt-4">
+                    <div class="mb-4 rounded-2xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/[0.09] via-[#0D1721] to-[#0B121D] p-2.5 shadow-[0_14px_36px_rgba(0,0,0,0.22)]">
+                        <div class="flex items-center px-1.5 pb-2.5">
+                            <div class="flex items-center gap-2 text-sm font-bold text-white">
+                                <span class="w-7 h-7 rounded-lg bg-emerald-400/15 text-emerald-300 flex items-center justify-center">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                                </span>
+                                Smart Briefing
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-3 gap-1 rounded-xl bg-[#080F19]/80 border border-white/[0.06] p-1">
+                            <button @click="setSmartSection('news')" class="py-2 rounded-lg text-[11px] font-semibold transition" :class="selectedFilterType === 'smart' && smartSection === 'news' ? 'bg-emerald-400 text-[#07130f] shadow' : 'text-gray-500 hover:text-white hover:bg-white/5'">News</button>
+                            <button @click="setSmartSection('finance')" class="py-2 rounded-lg text-[11px] font-semibold transition" :class="selectedFilterType === 'smart' && smartSection === 'finance' ? 'bg-emerald-400 text-[#07130f] shadow' : 'text-gray-500 hover:text-white hover:bg-white/5'">Finance</button>
+                            <button @click="setSmartSection('tech')" class="py-2 rounded-lg text-[11px] font-semibold transition" :class="selectedFilterType === 'smart' && smartSection === 'tech' ? 'bg-emerald-400 text-[#07130f] shadow' : 'text-gray-500 hover:text-white hover:bg-white/5'">Tech</button>
+                        </div>
+
+                        <div x-show="selectedFilterType === 'smart' && smartSection !== 'tech'" x-transition.opacity class="grid grid-cols-2 gap-1 mt-2">
+                            <button @click="setFilter('smart', smartSection === 'news' ? 'news_vietnam' : 'finance_vietnam')" class="px-2 py-2 rounded-lg text-[11px] font-medium transition border" :class="(selectedFilterValue || '').endsWith('_vietnam') ? 'bg-teal-400/10 border-teal-400/30 text-teal-200' : 'border-transparent text-gray-500 hover:text-white hover:bg-white/5'">Vietnam</button>
+                            <button @click="setFilter('smart', smartSection === 'news' ? 'news_world' : 'finance_global')" class="px-2 py-2 rounded-lg text-[11px] font-medium transition border" :class="selectedFilterValue === 'news_world' || selectedFilterValue === 'finance_global' ? 'bg-teal-400/10 border-teal-400/30 text-teal-200' : 'border-transparent text-gray-500 hover:text-white hover:bg-white/5'" x-text="smartSection === 'news' ? 'World' : 'Global'"></button>
+                        </div>
+                        <div x-show="selectedFilterType === 'smart' && smartSection === 'tech'" x-transition.opacity class="mt-2 px-2 py-1.5 text-[10px] text-center text-gray-500">Vietnam + global technology sources</div>
+                    </div>
+                    <li @click="setFilter('today', null)" class="flex items-center justify-between px-3 py-2 rounded-md cursor-pointer transition font-medium text-sm"
+                        :class="selectedFilterType === 'today' ? 'bg-teal-900/40 text-teal-400 shadow-[inset_0_0_10px_rgba(20,184,166,0.1)]' : 'text-gray-400 hover:bg-white/5 hover:text-white'">
+                        <div class="flex items-center gap-3">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 002-2V9.5L18.5 7H20"></path></svg>
+                            Today
+                        </div>
+                        <span class="text-xs font-semibold" x-text="unreadCounts.total > 0 ? (unreadCounts.total > 99 ? '99+' : unreadCounts.total) : ''"></span>
+                    </li>
+                    <li @click="setFilter('recent', null)" class="flex items-center justify-between px-3 py-2 rounded-md cursor-pointer transition font-medium text-sm"
+                        :class="selectedFilterType === 'recent' ? 'bg-teal-900/40 text-teal-400 shadow-[inset_0_0_10px_rgba(20,184,166,0.1)]' : 'text-gray-400 hover:bg-white/5 hover:text-white'">
+                        <div class="flex items-center gap-3">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            Recently Read
+                        </div>
+                    </li>
+                    <li @click="setFilter('saved', null)" class="flex items-center justify-between px-3 py-2 rounded-md cursor-pointer transition font-medium text-sm mt-2"
+                        :class="selectedFilterType === 'saved' ? 'bg-teal-900/40 text-teal-400 shadow-[inset_0_0_10px_rgba(20,184,166,0.1)]' : 'text-gray-400 hover:bg-white/5 hover:text-white'">
+                        <div class="flex items-center gap-3">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"></path></svg>
+                            Read Later
+                        </div>
+                        <span class="text-xs font-semibold text-gray-500" x-text="savedStates.filter(link => articles.some(a => a.link === link)).length || ''"></span>
+                    </li>
+                    <li @click="setFilter('board', null)" class="flex items-center justify-between px-3 py-2 rounded-md cursor-pointer transition font-medium text-sm"
+                        :class="selectedFilterType === 'board' ? 'bg-teal-900/40 text-teal-400 shadow-[inset_0_0_10px_rgba(20,184,166,0.1)]' : 'text-gray-400 hover:bg-white/5 hover:text-white'">
+                        <div class="flex items-center gap-3">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"></path></svg>
+                            Boards
+                        </div>
+                        <span class="text-xs font-semibold text-gray-500" x-text="boardStates.filter(link => articles.some(a => a.link === link)).length || ''"></span>
+                    </li>
+                    <li @click="setFilter('hidden', null)" class="flex items-center justify-between px-3 py-2 rounded-md cursor-pointer transition font-medium text-sm"
+                        :class="selectedFilterType === 'hidden' ? 'bg-teal-900/40 text-teal-400 shadow-[inset_0_0_10px_rgba(20,184,166,0.1)]' : 'text-gray-400 hover:bg-white/5 hover:text-white'">
+                        <div class="flex items-center gap-3">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"></path></svg>
+                            Hidden Articles
+                        </div>
+                        <span class="text-xs font-semibold text-gray-500" x-text="hiddenStates.length > 0 ? hiddenStates.length : ''"></span>
+                    </li>
+                    <li @click="openContentFilterSettings()" class="flex items-center justify-between px-3 py-2 rounded-md cursor-pointer transition font-medium text-sm text-gray-400 hover:bg-white/5 hover:text-white">
+                        <div class="flex items-center gap-3">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707L13 15v4l-4 2v-6L3.293 7.293A1 1 0 013 6.586V4z"></path></svg>
+                            Content Filters
+                        </div>
+                        <span x-show="blockedKeywords.length" class="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 rounded-full px-2 py-0.5" x-text="blockedKeywords.length"></span>
+                    </li>
+                    <li @click="openSmartSourcesSettings()" class="flex items-center justify-between px-3 py-2 rounded-md cursor-pointer transition font-medium text-sm text-gray-400 hover:bg-white/5 hover:text-white">
+                        <div class="flex items-center gap-3">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                            Smart Sources
+                        </div>
+                    </li>
+                    <li @click="openGeminiStatus()" class="flex items-center justify-between px-3 py-2 rounded-md cursor-pointer transition font-medium text-sm text-gray-400 hover:bg-white/5 hover:text-white">
+                        <div class="flex items-center gap-3">
+                            <svg class="w-4 h-4 text-violet-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3l1.7 4.3L18 9l-4.3 1.7L12 15l-1.7-4.3L6 9l4.3-1.7L12 3z"></path></svg>
+                            Gemini API
+                        </div>
+                        <span x-show="geminiKeyStatus?.valid" class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                    </li>
+
+                    <!-- Trending Categories -->
+                    <div class="px-3 pt-4 pb-1 text-[10px] font-bold tracking-wider text-gray-600 uppercase">Voz Trending</div>
+                    
+                    <li @click="setFilter('hot_today', null)" class="flex items-center justify-between px-3 py-2 rounded-md cursor-pointer transition font-medium text-sm"
+                        :class="selectedFilterType === 'hot_today' ? 'bg-orange-900/40 text-orange-400 shadow-[inset_0_0_10px_rgba(249,115,22,0.1)]' : 'text-gray-400 hover:bg-white/5 hover:text-white'">
+                        <div class="flex items-center gap-3">
+                            <span class="text-orange-500">🔥</span>
+                            Hot Today
+                        </div>
+                    </li>
+                    <li @click="setFilter('hot_week', null)" class="flex items-center justify-between px-3 py-2 rounded-md cursor-pointer transition font-medium text-sm"
+                        :class="selectedFilterType === 'hot_week' ? 'bg-orange-900/40 text-orange-400 shadow-[inset_0_0_10px_rgba(249,115,22,0.1)]' : 'text-gray-400 hover:bg-white/5 hover:text-white'">
+                        <div class="flex items-center gap-3">
+                            <span class="text-orange-500">🔥</span>
+                            Hot This Week
+                        </div>
+                    </li>
+                    <li @click="setFilter('views_today', null)" class="flex items-center justify-between px-3 py-2 rounded-md cursor-pointer transition font-medium text-sm"
+                        :class="selectedFilterType === 'views_today' ? 'bg-blue-900/40 text-blue-400 shadow-[inset_0_0_10px_rgba(59,130,246,0.1)]' : 'text-gray-400 hover:bg-white/5 hover:text-white'">
+                        <div class="flex items-center gap-3">
+                            <span class="text-blue-500">👁</span>
+                            Most Views Today
+                        </div>
+                    </li>
+                    <li @click="setFilter('views_week', null)" class="flex items-center justify-between px-3 py-2 rounded-md cursor-pointer transition font-medium text-sm"
+                        :class="selectedFilterType === 'views_week' ? 'bg-blue-900/40 text-blue-400 shadow-[inset_0_0_10px_rgba(59,130,246,0.1)]' : 'text-gray-400 hover:bg-white/5 hover:text-white'">
+                        <div class="flex items-center gap-3">
+                            <span class="text-blue-500">👁</span>
+                            Most Views This Week
+                        </div>
+                    </li>
+
+                    <li @click="openLogsPanel()" class="flex items-center justify-between px-3 py-2 rounded-md cursor-pointer transition font-medium text-sm mt-4 text-gray-400 hover:bg-white/5 hover:text-white">
+                        <div class="flex items-center gap-3">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                            System Logs
+                        </div>
+                    </li>
+                </ul>
+
+                <div class="px-5 mb-2 text-xs font-bold tracking-wider text-gray-500 uppercase">Feeds</div>
+                
+                <ul class="space-y-1 px-2 pb-2">
+                    <template x-for="category in categories" :key="category.name">
+                        <li draggable="true"
+                            @dragstart.stop="dragStartCategory(category.name)"
+                            @dragend.stop="dragEndCategory()"
+                            @dragover.prevent.stop="dragTargetCategory = category.name"
+                            @dragleave.prevent.stop="if(dragTargetCategory === category.name) dragTargetCategory = null"
+                            @drop.prevent.stop="dropCategory(category.name)"
+                            class="transition-all duration-200 border-t-2"
+                            :class="{
+                                'opacity-40': draggedCategory === category.name,
+                                'border-[#4facfe] pt-2 mt-2': dragTargetCategory === category.name,
+                                'border-transparent border-t-white/10 pt-2 mt-2': dragTargetCategory !== category.name
+                            }">
+                            <div class="flex items-center justify-between px-3 py-1.5 rounded-md cursor-grab active:cursor-grabbing group text-sm"
+                                 :class="selectedFilterType === 'category' && selectedFilterValue === category.name ? (theme === 'glass-light' ? 'text-black' : 'text-white') : (theme === 'glass-light' ? 'text-slate-500 hover:text-black hover:bg-black/5' : 'text-gray-400 hover:text-gray-200 hover:bg-white/5')">
+                                <div class="flex items-center gap-2 flex-1" @click="setFilter('category', category.name)">
+                                    <svg @click.stop="toggleCategory(category.name)" class="w-3 h-3 transition-transform" :class="expandedCategories.includes(category.name) ? 'rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                                    <span class="font-medium truncate" x-text="category.name"></span>
+                                </div>
+                                <span class="text-xs font-medium" x-text="(unreadCounts.categories[category.name] || 0) > 0 ? unreadCounts.categories[category.name] : ''"></span>
+                            </div>
+                            
+                            <ul x-show="expandedCategories.includes(category.name)" x-collapse class="mt-1 space-y-1 mb-2">
+                                <template x-for="feed in category.feeds" :key="feed.url">
+                                    <li x-data="{ isHovered: false }"
+                                        @mouseenter="isHovered = true"
+                                        @mouseleave="isHovered = false"
+                                        class="relative flex items-center justify-between px-3 py-1.5 pl-8 rounded-md cursor-grab active:cursor-grabbing text-sm border border-transparent transition-colors overflow-hidden"
+                                        draggable="true"
+                                        @dragstart.stop="dragStart(feed)"
+                                        @dragend.stop="dragEnd()"
+                                        @dragover.prevent.stop="dragTargetUrl = feed.url"
+                                        @dragleave.prevent.stop="if(dragTargetUrl === feed.url) dragTargetUrl = null"
+                                        @drop.prevent.stop="dropFeed(feed)"
+                                        :class="{
+                                            'bg-teal-900/40 text-teal-400 shadow-[inset_0_0_10px_rgba(20,184,166,0.1)]': selectedFilterType === 'feed' && selectedFilterValue === feed.url,
+                                            'text-gray-400 hover:bg-white/5 hover:text-white': !(selectedFilterType === 'feed' && selectedFilterValue === feed.url),
+                                            'opacity-50': draggedUrl === feed.url,
+                                            'drag-over': dragTargetUrl === feed.url
+                                        }">
+                                        
+                                        <div class="flex items-center gap-2 flex-1 overflow-hidden cursor-pointer" @click="setFilter('feed', feed.url)">
+                                            <img :src="feed.icon" class="w-4 h-4 rounded object-cover bg-white transition" @error="$el.src='data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'16\' height=\'16\' fill=\'gray\'><rect width=\'16\' height=\'16\'/></svg>'">
+                                            <span class="truncate" x-text="feed.title" :title="feed.url"></span>
+                                        </div>
+                                        <span class="text-xs font-medium" x-text="(unreadCounts.feeds[feed.url] || 0) > 0 ? unreadCounts.feeds[feed.url] : ''"></span>
+                                        
+                                        <div x-show="(!isMobile && isHovered) || (isMobile && selectedFilterType === 'feed' && selectedFilterValue === feed.url)" 
+                                             style="display: none;" 
+                                             class="absolute right-0 top-0 h-full flex items-center bg-[#2a2a2a] px-2 rounded-r-md border-l border-white/5">
+                                            <div class="text-gray-500 px-1 cursor-grab" title="Drag to reorder">
+                                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8h16M4 16h16"></path></svg>
+                                            </div>
+                                            <button @click.stop="openEditModal(feed)" class="text-gray-500 hover:text-blue-400 px-1" title="Edit Source">
+                                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                                            </button>
+                                            <button @click.stop="removeFeed(feed)" class="text-gray-500 hover:text-red-400 px-1" title="Remove Feed">
+                                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                            </button>
+                                        </div>
+                                    </li>
+                                </template>
+                            </ul>
+                        </li>
+                    </template>
+                </ul>
+            </div>
+
+            <div class="px-4 pb-4 mt-8 relative rounded-2xl overflow-hidden flex-shrink-0 whitespace-normal">
+                <div class="relative z-10 bg-[#1A2230] rounded-2xl p-5 border border-transparent flex flex-col gap-3 overflow-hidden whitespace-normal">
+                    <div class="w-12 h-12 rounded-[14px] bg-[#2A1D1A] flex items-center justify-center text-[#F37B3D] mb-1">
+                        <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M4 11a9 9 0 019 9h-2a7 7 0 00-7-7v-2zm0-4a13 13 0 0113 13h-2a11 11 0 00-11-11V7zm1.5 13a1.5 1.5 0 110-3 1.5 1.5 0 010 3z"></path></svg>
+                    </div>
+                    <h3 class="font-bold text-white text-[16px] leading-tight whitespace-normal break-words">Add your favorite feeds</h3>
+                    <p class="text-[14px] text-gray-400 mb-2 leading-snug whitespace-normal break-words max-w-full">Stay updated with the content you love.</p>
+                    <button @click="showAddFeedModal = true" class="w-full bg-[#20C997] hover:bg-[#1BAE83] text-[#0A0F1A] py-2.5 rounded-xl text-[15px] font-bold transition flex items-center justify-center gap-2">
+                        <span>+</span>
+                        Add Feed
+                    </button>
+                </div>
+                <div class="absolute z-0 -bottom-8 -left-4 w-[120%] h-56 pointer-events-none opacity-60 mix-blend-screen overflow-hidden" style="background-image: url('/public/astronaut.png'); background-size: contain; background-repeat: no-repeat; background-position: center bottom;"></div>
+            </div>
+        </div>
+    </aside>
+
+    <main x-show="isLoggedIn" x-cloak class="flex-1 min-h-0 flex flex-col h-full bg-[#0A0F1A] overflow-hidden relative">
+        <header class="border-b border-white/5 flex flex-col px-4 md:px-6 py-4 flex-shrink-0 bg-[#0B101E] z-10 gap-3 transition-all duration-300">
+            <div class="flex flex-col md:flex-row md:items-start justify-between w-full min-w-0 gap-4">
+                <div class="flex items-start gap-4 min-w-0">
+                    <button @click="mobileSidebarOpen = true" class="md:hidden text-gray-400 hover:text-white flex-shrink-0 pt-1 -ml-2">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                    </button>
+                    <button @click="desktopSidebarOpen = !desktopSidebarOpen" class="hidden md:block text-gray-400 hover:text-white flex-shrink-0 pt-1">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                    </button>
+                    <div>
+                        <h1 class="text-2xl md:text-3xl font-extrabold text-white truncate flex items-center gap-2">
+                            <span x-text="headerTitle"></span>
+                            <span class="text-emerald-400 text-xl">✨</span>
+                        </h1>
+                        
+                    </div>
+                </div>
+                
+                <div class="flex items-center gap-1.5 md:gap-3 w-full md:w-auto text-gray-400 flex-shrink-0">
+                    <div class="relative flex items-center flex-1 md:flex-initial w-full md:w-48 lg:w-80 transition-all group">
+                        <svg class="w-4 h-4 absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-500 group-focus-within:text-emerald-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                        <input type="text" x-model="searchQuery" @input.debounce.500ms="fetchData()" placeholder="Search articles..." class="w-full bg-[#111827] border border-white/10 text-sm text-gray-200 pl-10 pr-12 py-2.5 rounded-full focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all placeholder-gray-600 shadow-inner">
+                        <div class="absolute right-3 top-1/2 transform -translate-y-1/2 flex items-center pointer-events-none">
+                            <span class="text-[10px] font-mono text-gray-500 border border-white/10 rounded px-1.5 py-0.5 bg-[#0B101E]">⌘K</span>
+                        </div>
+                    </div>
+
+                    <button @click="hideRead = !hideRead; localStorage.setItem('hideRead', hideRead); fetchData()" class="hover:text-white transition p-1.5 md:p-2 rounded-full border border-white/10 bg-[#111827]" :class="hideRead ? 'text-emerald-400 border-emerald-500/30' : ''" title="Hide Read Articles">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path x-show="!hideRead" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            <path x-show="!hideRead" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            <path x-show="hideRead" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                        </svg>
+                    </button>
+
+                    <button @click="markAllUndo ? undoMarkAllRead() : markAllAsRead()" class="hidden md:flex hover:text-white transition items-center gap-2 text-sm font-medium px-3 py-2 rounded-full border bg-[#111827]" :class="markAllUndo ? 'text-amber-300 border-amber-400/30' : 'border-white/10'" :title="markAllUndo ? 'Undo mark all read' : 'Mark all displayed as read'">
+                        <svg class="w-4 h-4" :class="markAllUndo ? 'text-amber-300' : 'text-emerald-400'" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path x-show="!markAllUndo" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path><path x-show="markAllUndo" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h11a4 4 0 010 8H9m-6-8l4-4m-4 4l4 4"></path></svg>
+                        <span class="hidden xl:inline" x-text="markAllUndo ? 'Undo' : 'Mark All Read'"></span>
+                    </button>
+                    
+                    
+                    <button @click="theme = theme === 'glass' ? 'glass-light' : (theme === 'glass-light' ? 'classic' : 'glass'); localStorage.setItem('theme', theme)" class="hover:text-white transition p-1.5 md:p-2 rounded-full border border-white/10 bg-[#111827]" title="Toggle Theme (Classic -> Dark Glass -> Light Glass)">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <!-- Classic -> Dark Glass -> Light Glass icons -->
+                            <path x-show="theme === 'classic'" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                            <path x-show="theme === 'glass'" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+                            <path x-show="theme === 'glass-light'" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                        </svg>
+                    </button>
+                    <button @click="syncNow()" class="hover:text-white transition p-1.5 md:p-2 rounded-full border border-white/10 bg-[#111827]" :class="isSyncing ? 'animate-spin text-emerald-400 border-emerald-500/30' : ''" title="Refresh">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Unified Smart and existing feed navigation -->
+            <div class="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-hide hide-scrollbars">
+                <div class="flex items-center flex-shrink-0 rounded-full bg-[#111827] border border-white/10 p-1 gap-0.5">
+                    <span class="px-2 text-[10px] font-bold uppercase tracking-wider text-emerald-400">Smart</span>
+                    <button @click="setSmartSection('news')" class="px-3 py-1.5 rounded-full text-xs font-semibold transition" :class="selectedFilterType === 'smart' && smartSection === 'news' ? 'bg-emerald-500 text-[#08130f]' : 'text-gray-400 hover:text-white hover:bg-white/5'">News</button>
+                    <button @click="setSmartSection('finance')" class="px-3 py-1.5 rounded-full text-xs font-semibold transition" :class="selectedFilterType === 'smart' && smartSection === 'finance' ? 'bg-emerald-500 text-[#08130f]' : 'text-gray-400 hover:text-white hover:bg-white/5'">Finance</button>
+                    <button @click="setSmartSection('tech')" class="px-3 py-1.5 rounded-full text-xs font-semibold transition" :class="selectedFilterType === 'smart' && smartSection === 'tech' ? 'bg-emerald-500 text-[#08130f]' : 'text-gray-400 hover:text-white hover:bg-white/5'">Tech</button>
+                </div>
+
+                <div x-show="selectedFilterType === 'smart' && smartSection === 'news'" class="flex items-center flex-shrink-0 rounded-full bg-[#111827] border border-white/10 p-1 gap-0.5">
+                    <button @click="setFilter('smart', 'news_vietnam')" class="px-3 py-1.5 rounded-full text-xs font-medium transition" :class="selectedFilterValue === 'news_vietnam' ? 'bg-teal-900/70 text-teal-300' : 'text-gray-500 hover:text-white'">Vietnam</button>
+                    <button @click="setFilter('smart', 'news_world')" class="px-3 py-1.5 rounded-full text-xs font-medium transition" :class="selectedFilterValue === 'news_world' ? 'bg-teal-900/70 text-teal-300' : 'text-gray-500 hover:text-white'">World</button>
+                </div>
+
+                <div x-show="selectedFilterType === 'smart' && smartSection === 'finance'" class="flex items-center flex-shrink-0 rounded-full bg-[#111827] border border-white/10 p-1 gap-0.5">
+                    <button @click="setFilter('smart', 'finance_vietnam')" class="px-3 py-1.5 rounded-full text-xs font-medium transition" :class="selectedFilterValue === 'finance_vietnam' ? 'bg-teal-900/70 text-teal-300' : 'text-gray-500 hover:text-white'">Vietnam</button>
+                    <button @click="setFilter('smart', 'finance_global')" class="px-3 py-1.5 rounded-full text-xs font-medium transition" :class="selectedFilterValue === 'finance_global' ? 'bg-teal-900/70 text-teal-300' : 'text-gray-500 hover:text-white'">Global</button>
+                </div>
+
+                <div class="w-px h-7 bg-white/10 flex-shrink-0 mx-1"></div>
+
+                <button @click="setFilter('today', null)" class="flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition" :class="selectedFilterType === 'today' ? 'bg-teal-900/40 text-teal-400 border border-teal-500/30' : 'bg-[#111827] text-gray-400 border border-white/5 hover:text-white'">All</button>
+                <button @click="hideRead = !hideRead; localStorage.setItem('hideRead', hideRead); fetchData()" class="flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition flex items-center gap-2" :class="hideRead ? 'bg-teal-900/40 text-teal-400 border border-teal-500/30' : 'bg-[#111827] text-gray-400 border border-white/5 hover:text-white'">
+                    Unread <span class="bg-emerald-500/20 text-emerald-400 text-[10px] px-1.5 py-0.5 rounded-full" x-text="unreadCounts.total > 0 ? (unreadCounts.total > 99 ? '99+' : unreadCounts.total) : ''" x-show="unreadCounts.total > 0"></span>
+                </button>
+                <template x-for="category in categories" :key="category.name">
+                    <button @click="setFilter('category', category.name)" class="flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition" :class="selectedFilterType === 'category' && selectedFilterValue === category.name ? 'bg-teal-900/40 text-teal-400 border border-teal-500/30' : 'bg-[#111827] text-gray-400 border border-white/5 hover:text-white'" x-text="category.name"></button>
+                </template>
+                <button @click="setFilter('hot_today', null)" class="flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition flex items-center gap-1.5" :class="selectedFilterType === 'hot_today' ? 'bg-orange-900/40 text-orange-400 border border-orange-500/30' : 'bg-[#111827] text-gray-400 border border-white/5 hover:text-white'"><span class="text-orange-500">🔥</span> Hot Today</button>
+                <button @click="setFilter('hot_week', null)" class="flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition flex items-center gap-1.5" :class="selectedFilterType === 'hot_week' ? 'bg-orange-900/40 text-orange-400 border border-orange-500/30' : 'bg-[#111827] text-gray-400 border border-white/5 hover:text-white'"><span class="text-orange-500">🔥</span> Hot Week</button>
+                <button @click="setFilter('views_today', null)" class="flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition flex items-center gap-1.5" :class="selectedFilterType === 'views_today' ? 'bg-blue-900/40 text-blue-400 border border-blue-500/30' : 'bg-[#111827] text-gray-400 border border-white/5 hover:text-white'"><span class="text-blue-500">👁</span> Views Today</button>
+                <button @click="setFilter('views_week', null)" class="flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition flex items-center gap-1.5" :class="selectedFilterType === 'views_week' ? 'bg-blue-900/40 text-blue-400 border border-blue-500/30' : 'bg-[#111827] text-gray-400 border border-white/5 hover:text-white'"><span class="text-blue-500">👁</span> Views Week</button>
+            </div>
+        </header>
+
+        <div class="flex-1 min-h-0 overflow-y-auto overscroll-contain" id="scroll-container" @scroll.passive.debounce.100ms="!isMobile && handleScroll($event)">
+            <div class="max-w-4xl mx-auto py-8 px-2 md:px-8">
+                
+                <div x-show="searchQuery && displayedArticles.length > 0" class="mb-4 text-gray-400 text-sm px-4">
+                    Found <span x-text="displayedArticles.length" class="text-white font-bold"></span> results for "<span x-text="searchQuery" class="text-white"></span>"
+                </div>
+
+                <template x-for="(article, articleIndex) in displayedArticles" :key="articleKey(article, articleIndex)">
+                    <div class="article-card mb-4 md:mb-5 relative overflow-hidden bg-[#111827] rounded-2xl cursor-pointer group border border-white/5 hover:border-white/20 transition-colors duration-200 shadow-lg" :class="[
+                            (isMobile && mobileActiveCard === article.link) ? 'ring-2 ring-emerald-500' : '',
+                            readStates.includes(article.link) ? 'opacity-60' : ''
+                        ]" @click="handleCardClick(article, $event)">
+                        
+                        <!-- Background Image with Gradient Overlay -->
+                        <div class="absolute inset-y-0 right-0 w-[55%] md:w-[50%] z-0">
+                            <img :src="proxyImageUrl(article.image || '/public/default.jpg')" @error="$el.src='/public/default.jpg'" loading="lazy" decoding="async" class="w-full h-full object-cover">
+                        </div>
+
+                        <!-- Content over background -->
+                        <div class="relative z-10 flex flex-col p-4 md:p-8 w-[65%] md:w-[65%] min-w-0 overflow-hidden min-h-[180px] md:min-h-[220px] justify-center">
+                            <div class="flex items-center gap-1.5 md:gap-2 text-[10px] md:text-[11px] font-bold tracking-wider mb-2.5 md:mb-4 uppercase">
+                                <span class="flex items-center gap-1.5 md:gap-2 bg-[#0B101E]/90 px-2 py-1 md:px-2.5 md:py-1 rounded-md text-emerald-400 border border-emerald-500/10">
+                                    <img :src="article.feedIcon || smartSourceIcon({ domain: new URL(article.link).hostname })" class="w-3.5 h-3.5 md:w-4 md:h-4 rounded" @error="$el.style.display='none'">
+                                    <span x-text="stripHtml(article.feedTitle)" class="truncate max-w-[80px] md:max-w-none"></span>
+                                </span>
+                                <span class="text-white/20 hidden md:inline">•</span>
+                                <span class="text-gray-400 whitespace-nowrap" x-text="article.publicationTimeReliable === false ? 'Time unavailable' : timeAgo(article.pubDate)"></span>
+                                <template x-if="article.isCluster">
+                                    <div class="flex items-center gap-1.5 md:gap-2 ml-1" :title="(article.sources || []).join(', ')">
+                                        <span class="text-white/20 hidden md:inline">•</span>
+                                        <span class="flex items-center gap-1 text-orange-300 whitespace-nowrap">
+                                            <span>🔥</span><span x-text="article.hotness"></span>
+                                        </span>
+                                        <span class="flex items-center gap-1 text-cyan-300 whitespace-nowrap">
+                                            <span x-text="article.sourceCount"></span><span x-text="article.sourceCount === 1 ? 'source' : 'sources'"></span>
+                                        </span>
+                                    </div>
+                                </template>
+                                <template x-if="['hot_today', 'hot_week', 'views_today', 'views_week'].includes(selectedFilterType)">
+                                    <div class="flex items-center gap-1.5 md:gap-2 ml-1">
+                                        <span class="text-white/20 hidden md:inline">•</span>
+                                        <span class="flex items-center gap-1 text-orange-400 font-bold" title="Replies">
+                                            <svg class="w-3 h-3 md:w-3.5 md:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
+                                            <span x-text="formatCount(article.replyCount || 0)"></span>
+                                        </span>
+                                        <span class="text-white/20 hidden md:inline">•</span>
+                                        <span class="flex items-center gap-1 text-blue-400 font-bold" title="Views">
+                                            <svg class="w-3 h-3 md:w-3.5 md:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
+                                            <span x-text="formatCount(article.viewCount || 0)"></span>
+                                        </span>
+                                    </div>
+                                </template>
+                            </div>
+                            
+                            <h2 class="text-[17px] md:text-[26px] font-extrabold text-white leading-tight md:leading-tight mb-2 md:mb-3 pr-2 md:pr-4 line-clamp-2 break-words" x-text="stripHtml(article.title)"></h2>
+                            <p class="text-[13px] md:text-[14px] text-gray-300 line-clamp-2 md:line-clamp-2 pr-2 md:pr-4 leading-snug md:leading-relaxed break-words" x-text="stripHtml(article.content)"></p>
+                            
+                            
+                        </div>
+
+                        <!-- Action Buttons Overlay -->
+                        <div class="absolute right-4 items-center gap-1.5 bg-[#111827] p-1.5 rounded-xl border border-white/10 shadow-xl flex-wrap justify-end z-20"
+                             :class="(isMobile && mobileActiveCard === article.link) ? 'flex bottom-4 max-w-[85%]' : 'top-1/2 -translate-y-1/2 hidden md:group-hover:flex'">
+                            
+                            <button @click.stop="toggleState('hiddenStates', article.link)" class="hover:bg-white/10 transition p-1.5 rounded-lg" :title="hiddenStates.includes(article.link) ? 'Unhide Article' : 'Hide Article'">
+                                <svg class="w-4 h-4 md:w-5 md:h-5" :class="hiddenStates.includes(article.link) ? 'text-red-500' : 'text-gray-400'" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"></path></svg>
+                            </button>
+                            <button @click.stop="toggleState('savedStates', article.link)" class="hover:bg-white/10 transition p-1.5 rounded-lg" :title="savedStates.includes(article.link) ? 'Remove from Read Later' : 'Read Later'">
+                                <svg class="w-4 h-4 md:w-5 md:h-5 text-gray-400" :class="savedStates.includes(article.link) ? 'fill-gray-300 text-gray-300' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"></path></svg>
+                            </button>
+                            <button @click.stop="toggleState('boardStates', article.link)" class="hover:bg-white/10 transition p-1.5 rounded-lg" :title="boardStates.includes(article.link) ? 'Remove from Board' : 'Save to Board'">
+                                <svg class="w-4 h-4 md:w-5 md:h-5 text-gray-400" :class="boardStates.includes(article.link) ? 'fill-yellow-500 text-yellow-500' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"></path></svg>
+                            </button>
+                            <button @click.stop="toggleState('readStates', article.link)" class="hover:bg-white/10 transition p-1.5 rounded-lg" :title="readStates.includes(article.link) ? 'Keep unread' : 'Mark as read'">
+                                <svg class="w-4 h-4 md:w-5 md:h-5 text-gray-400" :class="readStates.includes(article.link) ? 'text-emerald-500' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                            </button>
+                            <button @click.stop.prevent="navigator.clipboard.writeText(article.link); let btn = $event.currentTarget; let orig = btn.innerHTML; btn.innerHTML = '<svg class=\'w-4 h-4 md:w-5 md:h-5 text-emerald-400\' fill=\'none\' stroke=\'currentColor\' viewBox=\'0 0 24 24\'><path stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'2\' d=\'M5 13l4 4L19 7\'></path></svg>'; setTimeout(() => btn.innerHTML = orig, 1000);" class="hover:bg-white/10 transition p-1.5 rounded-lg text-gray-400" title="Copy Link">
+                                <svg class="w-4 h-4 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg>
+                            </button>
+                            <button @click.stop="openDebugModal(article.link)" class="hover:bg-white/10 transition p-1.5 rounded-lg text-gray-400 hidden lg:block" title="Debug Extraction">
+                                <svg class="w-4 h-4 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path></svg>
+                            </button>
+                            <button x-show="isMobile" @click.stop="mobileActiveCard = null" class="hover:bg-white/10 transition p-1.5 rounded-lg text-gray-400 ml-1">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                            </button>
+                            <a :href="article.link" target="_blank" rel="noopener noreferrer" @click.stop class="bg-[#1e293b] hover:bg-emerald-500/20 text-emerald-400 transition p-1.5 rounded-lg ml-1 border border-white/5 group-hover:border-emerald-500/30" title="Open on original site">
+                                <svg class="w-4 h-4 md:w-5 md:h-5 transform -rotate-45" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+                            </a>
+                        </div>
+                    </div>
+                </template>
+
+                <div x-show="isLoadingArticles && displayedArticles.length === 0" class="text-center py-20 px-4">
+                    <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-[#172033] mb-4">
+                        <svg class="w-7 h-7 text-emerald-400 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="9" stroke="currentColor" stroke-width="3"></circle><path class="opacity-90" fill="currentColor" d="M12 3a9 9 0 00-9 9h3a6 6 0 016-6V3z"></path></svg>
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-200" x-text="'Loading ' + (headerTitle || 'articles') + '…'"></h3>
+                    <p class="text-gray-500 mt-2" x-text="selectedFilterType === 'smart' ? 'Fetching ' + (headerTitle || 'Smart briefing') + ' from pre-clustered database (grouped automatically every 30 mins)…' : 'Fetching latest articles from database…'"></p>
+                </div>
+
+                <div x-show="displayedArticles.length === 0 && !isLoadingArticles" class="text-center py-20 px-4">
+                    <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-[#222] mb-4">
+                        <svg class="w-8 h-8 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-200" x-text="searchQuery ? 'No matching results found.' : 'No articles here.'"></h3>
+                    <p class="text-gray-500 mt-2" x-show="!searchQuery">Try syncing or selecting a different category.</p>
+                </div>
+
+                <!-- Desktop: Load More button (infinite scroll also triggers this) -->
+                <div class="w-full flex justify-center py-8" x-show="displayedArticles.length > 0 && !isMobile">
+                    <template x-if="hasMore">
+                        <button @click="loadMore()" :disabled="isLoadingMore" class="px-6 py-3 bg-[#2a6049] hover:bg-[#23533f] text-white font-semibold rounded-lg shadow-md transition-all disabled:opacity-50">
+                            <span x-show="!isLoadingMore">Load More Articles</span>
+                            <span x-show="isLoadingMore">Loading...</span>
+                        </button>
+                    </template>
+                    <template x-if="!hasMore && articles.length > 0">
+                        <p class="text-gray-500 text-sm italic">You've reached the end of your feed!</p>
+                    </template>
+                </div>
+
+                <!-- Mobile: Pagination controls -->
+                <div class="w-full flex items-center justify-center gap-3 py-6 px-4" x-show="displayedArticles.length > 0 && isMobile">
+                    <button @click="goToPage(currentPage - 1)" :disabled="currentPage <= 1 || isLoadingMore" class="px-4 py-2.5 bg-[#1e293b] text-white font-semibold rounded-xl border border-white/10 transition disabled:opacity-30 disabled:cursor-not-allowed active:scale-95">
+                        ← Prev
+                    </button>
+                    <span class="text-gray-400 text-sm font-medium tabular-nums min-w-[80px] text-center">
+                        Page <span x-text="currentPage" class="text-white font-bold"></span>
+                    </span>
+                    <button @click="goToPage(currentPage + 1)" :disabled="!hasMore || isLoadingMore" class="px-4 py-2.5 bg-[#2a6049] hover:bg-[#23533f] text-white font-semibold rounded-xl border border-emerald-500/20 transition disabled:opacity-30 disabled:cursor-not-allowed active:scale-95">
+                        Next →
+                    </button>
+                </div>
+
+            </div>
+        </div>
+    </main>
+
+    <!-- Non-blocking action status -->
+    <div x-show="syncProgress.visible" x-transition.opacity x-cloak class="fixed right-4 bottom-4 z-[110] w-[min(360px,calc(100vw-2rem))] rounded-2xl border border-white/10 bg-[#0B1220] shadow-2xl p-4">
+        <div class="flex items-start gap-3">
+            <div class="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" :class="syncProgress.failed ? 'bg-red-500/10 text-red-300' : syncProgress.done ? 'bg-emerald-500/10 text-emerald-300' : 'bg-cyan-500/10 text-cyan-300'">
+                <svg x-show="!syncProgress.done" class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="9" stroke="currentColor" stroke-width="3"></circle><path class="opacity-90" fill="currentColor" d="M12 3a9 9 0 00-9 9h3a6 6 0 016-6V3z"></path></svg>
+                <svg x-show="syncProgress.done && !syncProgress.failed" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                <svg x-show="syncProgress.done && syncProgress.failed" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </div>
+            <div class="min-w-0 flex-1">
+                <div class="flex items-center justify-between gap-3">
+                    <p class="text-xs font-bold uppercase tracking-wider text-gray-300">Refreshing feed</p>
+                    <span x-show="syncProgress.total" class="text-[10px] tabular-nums text-gray-500" x-text="syncProgress.current + '/' + syncProgress.total"></span>
+                </div>
+                <p class="text-sm text-gray-400 mt-1 leading-snug" x-text="syncProgress.message"></p>
+                <div x-show="!syncProgress.done" class="h-1 rounded-full bg-white/5 overflow-hidden mt-3">
+                    <div class="h-full bg-gradient-to-r from-cyan-400 to-emerald-400 transition-all duration-300" :class="syncProgress.total ? '' : 'w-1/3 animate-pulse'" :style="syncProgress.total ? 'width:' + Math.max(4, (syncProgress.current / syncProgress.total) * 100) + '%' : ''"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div x-show="markAllUndo" x-transition x-cloak class="fixed left-4 bottom-4 z-[111] flex items-center gap-3 rounded-2xl border border-amber-400/20 bg-[#16130D] shadow-2xl px-4 py-3">
+        <span class="text-sm text-gray-300"><span class="font-semibold text-white" x-text="markAllUndo ? markAllUndo.links.length : 0"></span> articles marked read</span>
+        <button @click="undoMarkAllRead()" class="text-sm font-bold text-amber-300 hover:text-amber-200 transition">Undo</button>
+    </div>
+
+    <!-- ARTICLE OVERLAY PANEL -->
+    <div x-show="articleOverlayOpen" x-cloak class="article-overlay-root fixed inset-0 z-[80] flex justify-center items-center">
+        <!-- Backdrop -->
+        <div x-show="articleOverlayOpen" 
+             x-transition:enter="transition ease-out duration-300"
+             x-transition:enter-start="opacity-0"
+             x-transition:enter-end="opacity-100"
+             x-transition:leave="transition ease-in duration-200"
+             x-transition:leave-start="opacity-100"
+             x-transition:leave-end="opacity-0"
+             class="absolute inset-0 bg-black/60" :class="theme.includes('glass') ? 'backdrop-blur-md' : ''" @click="closeArticleOverlay"></div>
+        
+        <!-- Panel -->
+        <div x-show="articleOverlayOpen"
+             x-transition:enter="transition ease-out duration-300 transform"
+             x-transition:enter-start="opacity-0 translate-y-8 md:translate-y-4 scale-95"
+             x-transition:enter-end="opacity-100 translate-y-0 scale-100"
+             x-transition:leave="transition ease-in duration-200 transform"
+             x-transition:leave-start="opacity-100 translate-y-0 scale-100"
+             x-transition:leave-end="opacity-0 translate-y-8 md:translate-y-4 scale-95"
+             class="article-overlay-panel relative w-full h-[100dvh] md:w-[90%] md:max-w-[720px] md:h-[85vh] md:max-h-[85vh] md:rounded-3xl bg-[#111827] shadow-2xl flex flex-col overflow-hidden" @click.stop @touchstart.stop>
+            
+            <!-- Header -->
+            <div class="flex items-center justify-between px-5 py-4 border-b border-white/10 flex-shrink-0 bg-[#0B101E]">
+                <div class="flex items-center gap-3 min-w-0 flex-1">
+                    <button @click="closeArticleOverlay()" class="text-gray-400 hover:text-gray-800 dark:hover:text-white transition p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 flex-shrink-0 bg-white/5 backdrop-blur-md" title="Close">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                    <div class="min-w-0 flex-1">
+                        <div class="text-xs text-emerald-400 font-bold tracking-wider uppercase truncate" x-text="(overlayArticle && overlayArticle.siteName) || (overlayArticle && overlayArticle.feedTitle) || 'Article'"></div>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2 flex-shrink-0">
+                    <button @click="overlayArticle && toggleState('savedStates', overlayArticle.link)" class="hover:bg-white/10 transition p-2 rounded-lg" :title="overlayArticle && savedStates.includes(overlayArticle.link) ? 'Remove from Read Later' : 'Read Later'">
+                        <svg class="w-5 h-5 text-gray-400" :class="overlayArticle && savedStates.includes(overlayArticle.link) ? 'fill-gray-300 text-gray-300' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"></path></svg>
+                    </button>
+                    <button @click="overlayArticle && toggleState('boardStates', overlayArticle.link)" class="hover:bg-white/10 transition p-2 rounded-lg" :title="overlayArticle && boardStates.includes(overlayArticle.link) ? 'Remove from Board' : 'Save to Board'">
+                        <svg class="w-5 h-5 text-gray-400" :class="overlayArticle && boardStates.includes(overlayArticle.link) ? 'fill-yellow-500 text-yellow-500' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"></path></svg>
+                    </button>
+                    <a :href="overlayArticle ? overlayArticle.link : '#'" target="_blank" class="hover:bg-white/10 transition p-2 rounded-lg text-gray-400 hover:text-white" title="Open in new tab">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                    </a>
+                </div>
+            </div>
+
+            <div x-show="(isLoadingOverlay || overlayTryingMethod) && overlayProgress.message" x-transition.opacity class="absolute right-4 top-[72px] z-20 max-w-[min(330px,calc(100%-2rem))] rounded-xl border border-white/10 bg-[#09111D] shadow-xl px-3.5 py-3">
+                <div class="flex items-center gap-2.5">
+                    <span class="w-6 h-6 rounded-lg bg-emerald-500/10 text-emerald-300 flex items-center justify-center flex-shrink-0">
+                        <svg class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="9" stroke="currentColor" stroke-width="3"></circle><path fill="currentColor" d="M12 3a9 9 0 00-9 9h3a6 6 0 016-6V3z"></path></svg>
+                    </span>
+                    <div class="min-w-0">
+                        <p class="text-[10px] font-bold uppercase tracking-wider text-emerald-400/80">Article reader</p>
+                        <p class="text-xs text-gray-400 leading-snug mt-0.5" x-text="overlayProgress.message"></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Content -->
+            <div id="overlay-scroll-container" class="flex-1 min-h-0 overflow-y-auto overscroll-contain" @scroll.passive="trackVozThreadScroll($event)">
+                <!-- Loading state -->
+                <div x-show="isLoadingOverlay" class="flex flex-col items-center justify-center h-full gap-4">
+                    <div class="relative">
+                        <div class="w-12 h-12 rounded-full border-2 border-emerald-500/20 border-t-emerald-500 animate-spin"></div>
+                    </div>
+                    <p class="text-gray-400 text-sm">Fetching article content...</p>
+                </div>
+
+                <!-- Error state -->
+                <div x-show="!isLoadingOverlay && overlayError" class="flex flex-col items-center justify-center h-full gap-4 px-8">
+                    <div class="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center">
+                        <svg class="w-8 h-8 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"></path></svg>
+                    </div>
+                    <p class="text-gray-300 text-center" x-text="overlayError"></p>
+                    <a :href="overlayArticle ? overlayArticle.link : '#'" target="_blank" class="mt-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-sm font-semibold transition">
+                        Open in Browser →
+                    </a>
+                </div>
+
+                <!-- Article content -->
+                <div x-show="!isLoadingOverlay && !overlayError && overlayContent" class="px-6 md:px-10 py-8 mx-auto max-w-[760px]" :class="theme === 'glass-light' ? '!text-gray-900' : ''">
+                    <!-- VOZ Thread Notice / Position Banner -->
+                    <template x-if="vozThreadNotice">
+                        <div class="relative z-50 mb-6 flex items-center justify-between gap-4 p-4 rounded-xl bg-[#0f172a] border border-blue-500/50 text-blue-200 shadow-2xl">
+                            <span class="text-sm font-medium flex items-center gap-2" x-text="vozThreadNotice.text"></span>
+                            <button @click="vozThreadNotice.action && vozThreadNotice.action()" class="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-lg transition shadow-sm flex-shrink-0" x-text="vozThreadNotice.actionText || 'OK'"></button>
+                        </div>
+                    </template>
+
+                    <!-- Hero image -->
+                    <template x-if="overlayArticle && overlayArticle.overlayImage">
+                        <img :src="overlayArticle.overlayImage" class="w-full h-auto max-h-[40vh] md:max-h-[320px] object-cover rounded-2xl mb-8 shadow-lg" @error="$el.style.display='none'">
+                    </template>
+                    
+                    <!-- Title -->
+                    <h1 class="text-3xl md:text-4xl font-bold leading-tight mb-6 mt-4 tracking-tight" :class="theme === 'glass-light' ? 'text-black' : 'text-white'" x-text="overlayArticle ? (overlayArticle.overlayTitle || stripHtml(overlayArticle.title)) : ''"></h1>
+                    
+                    <!-- Meta row -->
+                    <div class="flex flex-wrap items-center gap-3 text-sm text-gray-400 mb-8 pb-6 border-b border-white/10">
+                        <template x-if="overlayArticle && (overlayArticle.siteName || overlayArticle.feedTitle)">
+                            <span class="flex items-center gap-2">
+                                <img :src="overlayArticle.feedIcon || smartSourceIcon({ domain: overlayArticle.link ? new URL(overlayArticle.link).hostname : '' })" class="w-4 h-4 rounded" @error="$el.style.display='none'">
+                                <span class="text-emerald-400 font-semibold" x-text="overlayArticle.siteName || stripHtml(overlayArticle.feedTitle)"></span>
+                            </span>
+                        </template>
+                        <template x-if="overlayArticle && overlayArticle.overlayAuthor">
+                            <span>
+                                <span class="text-gray-500 mr-2">•</span>
+                                <span x-text="overlayArticle.overlayAuthor"></span>
+                            </span>
+                        </template>
+                        <template x-if="overlayArticle && (overlayArticle.overlayDate || overlayArticle.pubDate)">
+                            <span>
+                                <span class="text-gray-500 mr-2">•</span>
+                                <span x-text="overlayArticle.publicationTimeReliable === false ? 'Time unavailable' : formatVietnamDateTime(overlayArticle.overlayDate || overlayArticle.pubDate)"></span>
+                            </span>
+                        </template>
+                    </div>
+
+                    <div x-show="supportsArticleSpeech() && overlayContent && !overlayHasNativeAudio && articleSpeechChunks.length && !((overlayArticle && overlayArticle.link) || '').includes('voz.vn')" class="mb-7 rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.07] p-3.5 md:p-4">
+                        <div class="flex items-center gap-3">
+                            <button @click="toggleArticleSpeech()" class="w-11 h-11 shrink-0 rounded-full bg-emerald-400 hover:bg-emerald-300 text-[#07130f] flex items-center justify-center transition" :title="articleSpeechState === 'playing' ? 'Pause' : 'Play article'">
+                                <svg x-show="articleSpeechState !== 'playing'" class="w-5 h-5 ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"></path></svg>
+                                <svg x-show="articleSpeechState === 'playing'" class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M6 5h4v14H6zm8 0h4v14h-4z"></path></svg>
+                            </button>
+                            <button @click="skipArticleSpeech(-1)" class="w-9 h-9 shrink-0 rounded-full text-gray-400 hover:text-white hover:bg-white/[0.06] flex items-center justify-center transition" title="Previous section" aria-label="Previous section">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7"></path></svg>
+                            </button>
+                            <div class="min-w-0 flex-1">
+                                <div class="flex items-center justify-between gap-3 mb-2 text-xs">
+                                    <span class="font-semibold text-emerald-200">Listen to article</span>
+                                    <span class="tabular-nums text-gray-500" x-text="articleSpeechProgressLabel()"></span>
+                                </div>
+                                <input type="range" min="0" :max="Math.max(0, articleSpeechChunks.length - 1)" :value="articleSpeechIndex" @change="seekArticleSpeech(Number($event.target.value))" class="w-full h-1.5 accent-emerald-400 cursor-pointer" aria-label="Article playback position">
+                            </div>
+                            <button @click="skipArticleSpeech(1)" class="w-9 h-9 shrink-0 rounded-full text-gray-400 hover:text-white hover:bg-white/[0.06] flex items-center justify-center transition" title="Skip forward" aria-label="Skip forward">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7"></path></svg>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- VOZ Thread Top Pagination Bar -->
+                    <template x-if="overlayPagination && (overlayPagination.pages.length > 1 || overlayPagination.prevUrl || overlayPagination.nextUrl)">
+                        <div class="mb-4 pb-4 border-b border-white/10 flex items-center justify-center">
+                            <div class="flex items-center justify-center gap-1.5 flex-wrap">
+                                <template x-if="overlayPagination.prevUrl">
+                                    <button @click="navigateToThreadPage(overlayPagination.prevUrl)" class="px-2.5 py-1 bg-[#1e293b] hover:bg-[#334155] text-white font-medium text-xs rounded-lg border border-white/10 transition active:scale-95 flex items-center gap-1">
+                                        <span>←</span> Trước
+                                    </button>
+                                </template>
+                                <template x-for="p in overlayPagination.pages" :key="p.page">
+                                    <button @click="navigateToThreadPage(p.url)" 
+                                            :class="p.isCurrent ? 'bg-emerald-600 border-emerald-500 text-white font-bold shadow-sm' : 'bg-white/[0.03] hover:bg-white/[0.08] text-gray-300 border-white/10'" 
+                                            class="px-2.5 py-1 rounded-lg border text-xs tabular-nums transition min-w-[28px] text-center">
+                                        <span x-text="p.page"></span>
+                                    </button>
+                                </template>
+                                <template x-if="overlayPagination.nextUrl">
+                                    <button @click="navigateToThreadPage(overlayPagination.nextUrl)" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs rounded-lg border border-emerald-500/20 transition active:scale-95 flex items-center gap-1 shadow-sm">
+                                        Sau <span>→</span>
+                                    </button>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+
+                    <!-- Rendered article body -->
+                    <div class="article-rendered-content" x-html="overlayContent"></div>
+
+                    <!-- VOZ Thread Pagination Bar -->
+                    <template x-if="overlayPagination && (overlayPagination.pages.length > 1 || overlayPagination.prevUrl || overlayPagination.nextUrl)">
+                        <div class="mt-6 pt-5 border-t border-white/10 flex items-center justify-center">
+                            <div class="flex items-center justify-center gap-1.5 flex-wrap">
+                                <template x-if="overlayPagination.prevUrl">
+                                    <button @click="navigateToThreadPage(overlayPagination.prevUrl)" class="px-2.5 py-1 bg-[#1e293b] hover:bg-[#334155] text-white font-medium text-xs rounded-lg border border-white/10 transition active:scale-95 flex items-center gap-1">
+                                        <span>←</span> Trước
+                                    </button>
+                                </template>
+                                <template x-for="p in overlayPagination.pages" :key="p.page">
+                                    <button @click="navigateToThreadPage(p.url)" 
+                                            :class="p.isCurrent ? 'bg-emerald-600 border-emerald-500 text-white font-bold shadow-sm' : 'bg-white/[0.03] hover:bg-white/[0.08] text-gray-300 border-white/10'" 
+                                            class="px-2.5 py-1 rounded-lg border text-xs tabular-nums transition min-w-[28px] text-center">
+                                        <span x-text="p.page"></span>
+                                    </button>
+                                </template>
+                                <template x-if="overlayPagination.nextUrl">
+                                    <button @click="navigateToThreadPage(overlayPagination.nextUrl)" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs rounded-lg border border-emerald-500/20 transition active:scale-95 flex items-center gap-1 shadow-sm">
+                                        Sau <span>→</span>
+                                    </button>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+
+
+
+                    <!-- Clear Cache Button (At the bottom of the article) -->
+                    <template x-if="overlayArticle && overlayFetchedFromCache">
+                        <div class="mt-8 flex justify-end">
+                            <button @click="clearArticleCache" 
+                                    class="px-4 py-2 bg-white/[0.05] hover:bg-red-500/20 text-gray-400 hover:text-red-400 border border-white/10 hover:border-red-500/30 rounded-xl transition-all active:scale-95 flex items-center gap-2 text-sm font-medium"
+                                    title="Tải lại bản mới nhất">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                </svg>
+                                <span>Xoá bộ nhớ đệm (Làm mới)</span>
+                            </button>
+                        </div>
+                    </template>
+
+                    <!-- All sources in the same Smart cluster -->
+                    <template x-if="overlayArticle && overlayArticle.relatedArticles && overlayArticle.relatedArticles.length > 0">
+                        <section class="mt-12 pt-7 border-t border-white/10" :class="theme === 'glass-light' ? 'border-gray-200' : 'border-white/10'">
+                            <div class="flex items-center justify-between gap-4 mb-4">
+                                <h2 class="text-lg font-bold" :class="theme === 'glass-light' ? 'text-gray-900' : 'text-white'">Related coverage</h2>
+                                <span class="text-xs rounded-full px-3 py-1 font-medium" :class="theme === 'glass-light' ? 'bg-gray-100 text-gray-600 border border-gray-200' : 'text-cyan-300 bg-cyan-500/10 border border-cyan-500/20'" x-text="overlayArticle.sourceCount + (overlayArticle.sourceCount === 1 ? ' source' : ' sources')"></span>
+                            </div>
+                            <div class="space-y-2">
+                            <template x-for="(related, relatedIndex) in sortedRelatedArticles(overlayArticle.relatedArticles)" :key="articleKey(related, relatedIndex)">
+                                    <a :href="related.link" target="_blank" rel="noopener noreferrer" @click="markAsReadExplicit(related.link)" class="flex items-start gap-3 p-3 rounded-xl border transition group/source" :class="theme === 'glass-light' ? 'bg-gray-50 border-gray-100 hover:border-gray-300 hover:bg-gray-100' : 'bg-white/[0.03] border-white/5 hover:border-emerald-500/30 hover:bg-white/[0.05]'">
+                                        <img :src="related.feedIcon || smartSourceIcon({ domain: related.link ? new URL(related.link).hostname : '' })" class="w-5 h-5 rounded mt-0.5 flex-shrink-0" @error="$el.style.display='none'">
+                                        <span class="min-w-0 flex-1">
+                                            <span class="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] mb-1">
+                                                <span class="font-semibold" :class="theme === 'glass-light' ? 'text-gray-800' : 'text-emerald-400'" x-text="related.feedTitle"></span>
+                                                <span :class="theme === 'glass-light' ? 'text-gray-400' : 'text-gray-600'">•</span>
+                                                <span :class="theme === 'glass-light' ? 'text-gray-500' : 'text-gray-500'" x-text="related.publicationTimeReliable === false ? 'Time unavailable' : formatVietnamDateTime(related.pubDate)"></span>
+                                            </span>
+                                            <span class="block text-sm leading-snug transition" :class="theme === 'glass-light' ? 'text-gray-900' : 'text-gray-200 group-hover/source:text-white'" x-text="stripHtml(related.title)"></span>
+                                        </span>
+                                        <svg class="w-4 h-4 text-gray-600 group-hover/source:text-emerald-400 flex-shrink-0 mt-1 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+                                    </a>
+                                </template>
+                            </div>
+                        </section>
+                    </template>
+
+                    <div x-show="overlayFetchStrategy && overlayFetchStrategy !== 'none'" class="mt-8 pt-5 border-t border-white/[0.07]">
+                        <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+                            <div class="flex items-center gap-2 text-[11px] text-gray-600">
+                                <svg class="w-3.5 h-3.5 text-emerald-500/60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                                <span>Reader method<span x-show="overlayFetchedFromCache"> · cached</span></span>
+                            </div>
+                            <button @click="rejectAndTryNextArticleMethod()" :disabled="overlayTryingMethod" class="px-3 py-1.5 rounded-lg border border-white/10 text-[11px] font-semibold text-gray-400 hover:text-amber-200 hover:border-amber-500/30 transition disabled:opacity-40">
+                                <span x-text="overlayTryingMethod ? 'Trying next method…' : 'Reject current · try next'"></span>
+                            </button>
+                        </div>
+                        <div class="space-y-2">
+                            <template x-for="strategy in overlaySuccessfulStrategies()" :key="strategy">
+                                <div class="flex items-center gap-2 rounded-xl border px-3 py-2 transition" :class="overlayFetchStrategy === strategy ? 'border-emerald-500/25 bg-emerald-500/[0.06]' : 'border-white/[0.06] bg-white/[0.015]'">
+                                    <button @click="switchOverlayFetchStrategy(strategy)" class="min-w-0 flex-1 text-left">
+                                        <span class="block text-xs font-semibold truncate" :class="overlayFetchStrategy === strategy ? 'text-emerald-300' : 'text-gray-400'" x-text="articleFetchStrategyLabel(strategy)"></span>
+                                        <span x-show="overlayRejectedStrategies.includes(strategy)" class="block text-[10px] text-amber-300/70 mt-0.5">Rejected for this article · still available to compare</span>
+                                    </button>
+                                    <button @click="setArticleFetchPreference(strategy, 'like')" class="p-1.5 rounded-lg transition" :class="overlayMethodPreferences[strategy] === 'like' ? 'text-emerald-300 bg-emerald-500/15' : 'text-gray-600 hover:text-emerald-300 hover:bg-white/5'" :aria-label="'Prefer ' + articleFetchStrategyLabel(strategy)" title="Prefer this method for this publisher">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 001.94-1.515l1.5-6A2 2 0 0019.78 12H15M7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3"></path></svg>
+                                    </button>
+                                    <button @click="setArticleFetchPreference(strategy, 'dislike')" class="p-1.5 rounded-lg transition" :class="overlayMethodPreferences[strategy] === 'dislike' ? 'text-red-300 bg-red-500/15' : 'text-gray-600 hover:text-red-300 hover:bg-white/5'" :aria-label="'Avoid ' + articleFetchStrategyLabel(strategy)" title="Avoid this method for this publisher">
+                                        <svg class="w-4 h-4 rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 001.94-1.515l1.5-6A2 2 0 0019.78 12H15M7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3"></path></svg>
+                                    </button>
+                                </div>
+                            </template>
+                        </div>
+                        <p x-show="overlayMethodError" x-text="overlayMethodError" class="text-[11px] text-red-300 mt-2"></p>
+                        <p class="text-[10px] text-gray-700 mt-2">Like or dislike changes the method order only for this publisher.</p>
+                    </div>
+                    
+                </div>
+            </div>
+        </div>
+    </div>
+    </div>
+
+    <script src="/script.js?v=3"></script>
+</body>
+</html>

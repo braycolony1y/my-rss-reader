@@ -1,0 +1,189 @@
+app.get('/api/article-content', authMiddleware, async (req, res) => {
+    const requestedUrl = req.query.url;
+    if (!requestedUrl) return res.status(400).json({ error: 'URL required' });
+    let url = requestedUrl;
+    const requestId = String(req.query.requestId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80);
+    updateArticleFetchProgress(requestId, 'starting', 'Identifying source and loading its fetch history…');
+
+    try {
+        const requestedStrategy = String(req.query.strategy || '').trim();
+        const rejectedStrategy = String(req.query.reject || '').trim();
+        const excludedStrategies = new Set(String(req.query.exclude || '').split(',').map(value => value.trim()).filter(Boolean));
+        if (requestedStrategy && requestedStrategy !== 'refresh' && !(requestedStrategy in ARTICLE_FETCH_BASE_POINTS)) {
+            return res.status(400).json({ error: 'Unknown fetch method' });
+        }
+        const bypassCache = Boolean(req.query.bypassCache === 'true' || req.query.bypassCache === '1' || requestedStrategy || rejectedStrategy || excludedStrategies.size);
+        if (bypassCache) {
+            try { await deleteCachedArticle(requestedUrl); } catch(e) {}
+        }
+
+        if (isGoogleNewsArticleUrl(requestedUrl)) {
+            url = await resolveGoogleNewsUrl(requestedUrl, {
+                title: req.query.title,
+                feedTitle: req.query.feedTitle,
+                feedUrl: req.query.feedUrl,
+                feedIcon: req.query.feedIcon,
+                domain: req.query.domain
+            }, { force: bypassCache, backgroundResolve: false });
+        }
+
+        if (!bypassCache) {
+            let directCached = await getCachedArticle(requestedUrl);
+            if (!directCached && googleNewsUrlCache && googleNewsUrlCache[requestedUrl]?.resolvedUrl) {
+                url = googleNewsUrlCache[requestedUrl].resolvedUrl;
+                directCached = await getCachedArticle(url);
+            } else if (directCached && isGoogleNewsArticleUrl(directCached.url || requestedUrl)) {
+                if (googleNewsUrlCache && googleNewsUrlCache[requestedUrl]?.resolvedUrl) {
+                    url = googleNewsUrlCache[requestedUrl].resolvedUrl;
+                    directCached = await getCachedArticle(url);
+                } else {
+                    directCached = null;
+                }
+            }
+            if (directCached && !isGoogleNewsArticleUrl(directCached.url || '')) {
+                let hostname = '';
+                try { hostname = new URL(url).hostname.toLowerCase(); } catch (e) { }
+                const availableStrategies = Object.keys(ARTICLE_FETCH_BASE_POINTS).filter(name => name !== 'vietserver' || Boolean(VIETSERVER_PROXY_BASE));
+                const methodPreferences = await getArticleFetchPreferences(hostname);
+                finishArticleFetchProgress(requestId, 'Article loaded from cache.', { method: 'cache', cached: true });
+                if (directCached.pagination?.nextUrl && (hostname === 'voz.vn' || hostname.endsWith('.voz.vn'))) {
+                    triggerVozNextPagePrefetch(directCached.pagination.nextUrl, 1);
+                }
+                if (hostname === 'voz.vn' || hostname.endsWith('.voz.vn')) {
+                    triggerVozCurrentPageBackgroundUpdate(url, directCached);
+                }
+                triggerNextFiveArticlesPrefetch(url);
+                return res.json({
+                    url,
+                    ...directCached,
+                    content: cleanArticleMarkup(directCached.content),
+                    title: normalizeArticleTitle(directCached.title),
+                    cached: true,
+                    attemptedStrategies: [directCached.fetchStrategy].filter(Boolean),
+                    availableStrategies,
+                    methodPreferences
+                });
+            }
+        }
+
+        if (!isGoogleNewsArticleUrl(requestedUrl)) {
+            url = await resolveGoogleNewsUrl(requestedUrl, {
+                title: req.query.title,
+                feedTitle: req.query.feedTitle,
+                feedUrl: req.query.feedUrl,
+                feedIcon: req.query.feedIcon,
+                domain: req.query.domain
+            }, { force: bypassCache, backgroundResolve: false });
+        }
+        let hostname = '';
+        try { hostname = new URL(url).hostname.toLowerCase(); } catch (e) { }
+        if (rejectedStrategy && rejectedStrategy in ARTICLE_FETCH_BASE_POINTS) {
+            excludedStrategies.add(rejectedStrategy);
+            await recordArticleFetchOutcome(hostname, rejectedStrategy, false, 'Rejected by user');
+            await deleteCachedArticle(url);
+        }
+        const availableStrategies = Object.keys(ARTICLE_FETCH_BASE_POINTS).filter(name => name !== 'vietserver' || Boolean(VIETSERVER_PROXY_BASE));
+        const methodPreferences = await getArticleFetchPreferences(hostname);
+
+        let html = '';
+        let htmlStrategy = '';
+        const attemptedStrategies = new Set();
+        const rankedStrategies = await rankArticleFetchStrategies(hostname);
+        const strategyOrder = ((requestedStrategy && requestedStrategy !== 'refresh') ? [requestedStrategy] : rankedStrategies)
+            .filter(strategy => !excludedStrategies.has(strategy));
+        const strategyLabels = {
+            direct: 'publisher website',
+            cloudflare: 'reader proxy',
+            vietserver: 'Vietnam reader proxy',
+            allorigins: 'backup reader proxy',
+            jina: 'text reader backup',
+            opencli: 'browser reader backup'
+        };
+        updateArticleFetchProgress(requestId, 'ranking', 'Choosing the best reader method for this source…', {
+            methods: strategyOrder.length
+        });
+
+        for (let strategyIndex = 0; strategyIndex < strategyOrder.length; strategyIndex++) {
+            const strategy = strategyOrder[strategyIndex];
+            attemptedStrategies.add(strategy);
+            updateArticleFetchProgress(requestId, 'fetching', `Trying ${strategyLabels[strategy] || strategy}…`, {
+                current: strategyIndex + 1,
+                total: strategyOrder.length
+            });
+            try {
+                if (strategy === 'jina') {
+                    const jinaResult = await fetchViaJina(url);
+                    await recordArticleFetchOutcome(hostname, strategy, true);
+                    finishArticleFetchProgress(requestId, 'Article is ready.', { method: strategy });
+                    const payload = {
+                        url,
+                        ...jinaResult,
+                        fetchStrategy: strategy,
+                        attemptedStrategies: [...attemptedStrategies],
+                        availableStrategies,
+                        methodPreferences
+                    };
+                    await cacheArticleResult(url, payload);
+                    triggerNextFiveArticlesPrefetch(url);
+                    return res.json(payload);
+                }
+
+                if (strategy === 'opencli') {
+                    const openCliResult = await fetchViaOpenCli(url);
+                    await recordArticleFetchOutcome(hostname, strategy, true);
+                    finishArticleFetchProgress(requestId, 'Article is ready.', { method: strategy });
+                    const payload = {
+                        url,
+                        ...openCliResult,
+                        fetchStrategy: strategy,
+                        attemptedStrategies: [...attemptedStrategies],
+                        availableStrategies,
+                        methodPreferences
+                    };
+                    if (payload.pagination?.nextUrl && (hostname === 'voz.vn' || hostname.endsWith('.voz.vn'))) {
+                        triggerVozNextPagePrefetch(payload.pagination.nextUrl, 1);
+                    }
+                    await cacheArticleResult(url, payload);
+                    triggerNextFiveArticlesPrefetch(url);
+                    return res.json(payload);
+                }
+
+                const candidateHtml = await fetchArticleHtmlByStrategy(strategy, url);
+                if (!isUsableArticlePage(candidateHtml)) throw new Error('Fetched page did not contain usable article HTML');
+                html = candidateHtml;
+                htmlStrategy = strategy;
+                break;
+            } catch (error) {
+                await recordArticleFetchOutcome(hostname, strategy, false, error.message);
+            }
+        }
+
+        if (!html) {
+            finishArticleFetchProgress(requestId, 'No reader method could load this article.', { failed: true });
+            return res.json({
+                error: 'Failed to fetch article',
+                url,
+                attemptedStrategies: [...attemptedStrategies],
+                availableStrategies,
+                methodPreferences
+            });
+        }
+
+        const result = await parseArticleHtmlContent(html, url, htmlStrategy, [...attemptedStrategies], availableStrategies, methodPreferences, requestId, excludedStrategies);
+        const extractedTextLength = (result.content || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().length;
+        const extractionSucceeded = extractedTextLength >= 200 || /<(?:video|audio|img)\b/i.test(result.content || '');
+
+        finishArticleFetchProgress(requestId, extractionSucceeded ? 'Article is ready.' : 'Only part of the article could be recovered.', {
+            method: result.fetchStrategy,
+            partial: !extractionSucceeded
+        });
+        if (extractionSucceeded) await cacheArticleResult(url, result);
+        if (result.pagination?.nextUrl && (hostname === 'voz.vn' || hostname.endsWith('.voz.vn'))) {
+            triggerVozNextPagePrefetch(result.pagination.nextUrl, 1);
+        }
+        triggerNextFiveArticlesPrefetch(url);
+        res.json(result);
+    } catch (e) {
+        finishArticleFetchProgress(requestId, 'Article loading failed.', { failed: true });
+        res.json({ error: e.message, url });
+    }
