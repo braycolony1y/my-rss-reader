@@ -368,4 +368,10 @@ Phase 3 and Phase 4 combined deliver only the remaining 5%, at 10× the engineer
 - **Notes:** Offloaded heavy XML/HTML regex parsing to `worker_threads`.
 - **Measured Results:** Main event loop stays unblocked during massive RSS sync cycles.
 
-**Progress:** 33.3% (10/30)
+- **ID:** H-2
+- **Implementation Date:** 2026-07-30
+- **Files Changed:** `server.js`
+- **Notes:** Replaced sequential feed loop with bounded-concurrency batch (5 concurrent fetches via semaphore pattern).
+- **Measured Results:** Reduces sync cycle from ~5–8 min to ~1.5–2 min.
+
+**Progress:** 36.6% (11/30)
