@@ -1,6 +1,9 @@
 export default class VozSource {
 
     async getBestImage(targetUrl, fetchFn, rssFallback, utils) {
+        if (rssFallback && !utils.isInvalidImage(rssFallback)) {
+            return rssFallback;
+        }
         if (targetUrl.includes('voz.vn/t/')) {
             targetUrl = targetUrl.replace(/\/unread\/?$/, '').replace(/\/page-\d+/i, '');
         }
@@ -31,7 +34,9 @@ export default class VozSource {
 
         const extLinks = scopeHtml.match(/<a[^>]+href=["'](https?:\/\/[^"']+)["'][^>]*>[\s\S]*?<\/a>/ig) || [];
 
+        let extCount = 0;
         for (let linkTag of extLinks) {
+            if (extCount >= 2) break;
             if (linkTag.includes('theNEXTvoz') || linkTag.includes('VOZVNApp')) continue;
 
             let extMatch = linkTag.match(/href=["'](https?:\/\/[^"']+)["']/i);
@@ -40,9 +45,10 @@ export default class VozSource {
                 extUrl = extUrl.replace(/^https?:\/\/amp\./i, 'https://').replace(/\/amp\/?$/i, '');
 
                 if (!extUrl.includes('voz.vn') && !extUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+                    extCount++;
                     try {
                         let extFetchUrl = utils.CF_PROXY_BASE + encodeURIComponent(extUrl);
-                        let extRes = await fetchFn(extFetchUrl);
+                        let extRes = await fetchFn(extFetchUrl, { signal: AbortSignal.timeout(3000) });
                         let extHtml = '';
 
                         let img = null;

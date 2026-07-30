@@ -147,6 +147,35 @@ export async function prepareEmbeddings(articles) {
     }
 }
 
+export async function loadEmbeddings(db) {
+    if (_embeddingCache.size > 0) return;
+    try {
+        const stored = await db.get('smartEmbeddings', { type: 'json' });
+        if (stored) {
+            for (const [title, b64] of Object.entries(stored)) {
+                if (typeof b64 === 'string') {
+                    const buf = Buffer.from(b64, 'base64');
+                    _embeddingCache.set(title, new Float32Array(buf.buffer, buf.byteOffset, buf.length / 4));
+                }
+            }
+        }
+    } catch (e) {
+        console.error('[SMART] Failed to load embedding cache:', e.message);
+    }
+}
+
+export async function saveEmbeddings(db) {
+    try {
+        const cacheToSave = {};
+        for (const [title, vec] of _embeddingCache.entries()) {
+            cacheToSave[title] = Buffer.from(vec.buffer, vec.byteOffset, vec.byteLength).toString('base64');
+        }
+        await db.put('smartEmbeddings', JSON.stringify(cacheToSave));
+    } catch (e) {
+        console.error('[SMART] Failed to save embedding cache:', e.message);
+    }
+}
+
 function titleTokens(title) {
     const cleaned = cleanTitleForScoring(title);
     return new Set(normalizeText(cleaned).split(' ').filter(word => word.length > 2 && !STOP_WORDS.has(word) && !batchStopTokens.has(word)));
@@ -1450,7 +1479,9 @@ export function createSmartNewsEngine({ db, helpers, headers = {} }) {
             }
 
             notify('smart-clustering', 'Pre-calculating local embedding vectors (CPU MiniLM)...');
+            await loadEmbeddings(db);
             await prepareEmbeddings(candidates);
+            await saveEmbeddings(db);
             updateBatchStopTokens(candidates);
 
             notify('smart-clustering', 'Matching related stories and calculating hotness…');

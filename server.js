@@ -5564,7 +5564,7 @@ app.get('/api/og-image', authMiddleware, async (req, res) => {
     if (!targetUrl) return res.status(400).send('Missing URL');
     try {
         const scrapeUrl = targetUrl.replace(/\/unread\/?$/, '');
-        const foundImg = await getBestImage(scrapeUrl, async (u) => fetch(u, { headers: BROWSER_HEADERS }), rssFallback);
+        const foundImg = await getBestImage(scrapeUrl, async (u, opts = {}) => fetch(u, { headers: BROWSER_HEADERS, ...opts }), rssFallback);
         if (foundImg) {
             if (foundImg.includes('dantri.com.vn') || foundImg.includes('baodautu.vn')) {
                 return res.redirect(301, `/api/proxy-image?url=${encodeURIComponent(foundImg)}`);
