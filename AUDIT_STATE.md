@@ -127,15 +127,16 @@ These areas were examined and found to have no significant performance concerns:
 19. M-12: VozSource image fetch limits
 20. M-11: Unified summary provider concurrency
 21. M-2: Caching universal tab prefetch computation
+22. M-4: In-memory index for clear-article-cache
 
 ## Remaining Implementations
-6 findings remain (M-1, M-4, M-5, M-9, L-2, L-3).
+5 findings remain (M-1, M-5, M-9, L-2, L-3).
 
 ## Current Progress %
-76.6% (23/30)
+80.0% (24/30)
 
 ## Last Completed Finding
-M-2
+M-4
 
 ## Blockers
 None

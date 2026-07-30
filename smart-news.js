@@ -123,6 +123,18 @@ async function getEmbeddingVector(text) {
     }
 }
 
+async function unloadModel() {
+    if (_embeddingPipeline) {
+        try {
+            if (_embeddingPipeline.dispose) {
+                await _embeddingPipeline.dispose();
+            }
+        } catch (e) {}
+        _embeddingPipeline = null;
+        console.log('[SMART] ML Pipeline unloaded from memory.');
+    }
+}
+
 function cosineSimilarity(vecA, vecB) {
     if (!vecA || !vecB || vecA.length !== vecB.length) return 0;
     let dot = 0;
@@ -1615,6 +1627,7 @@ export function createSmartNewsEngine({ db, helpers, headers = {} }) {
         } finally {
             running = false;
             if (_embeddingCache && _embeddingCache.size > 5000) _embeddingCache.clear();
+            await unloadModel();
             if (global.gc) global.gc();
         }
     }
