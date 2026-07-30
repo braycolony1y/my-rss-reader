@@ -410,4 +410,16 @@ Phase 3 and Phase 4 combined deliver only the remaining 5%, at 10× the engineer
 - **Notes:** Capped `fetchHistory` to 5000 in `server.js`, raised `_embeddingCache` clear threshold from 2000 to 5000 in `smart-news.js`, replaced `DOMParser` with `textarea.innerHTML` in `script.js`'s `stripHtml`.
 - **Measured Results:** Fixes bounded memory leak in `fetchHistory`, prevents aggressive ML embedding cache clears during GC, speeds up `stripHtml` by avoiding heavy `DOMParser` allocation.
 
-**Progress:** 63.3% (19/30)
+- **ID:** M-7
+- **Implementation Date:** 2026-07-30
+- **Files Changed:** `smart-news.js`
+- **Notes:** Added `loadEmbeddings` and `saveEmbeddings` in `smart-news.js` using Base64 Float32Array to persist ML inference outputs between sync cycles.
+- **Measured Results:** Eliminates redundant ML inferences for known articles, reducing CPU time per sync cycle substantially.
+
+- **ID:** M-12
+- **Implementation Date:** 2026-07-30
+- **Files Changed:** `src/sources/VozSource.js`, `server.js`
+- **Notes:** Short-circuited `VozSource` on valid RSS thumbnails, bounded external link evaluation to top 2 links, and added a 3s AbortController timeout on proxy fetches.
+- **Measured Results:** Reduces `getBestImage` wall-clock time from up to 30s to <5s for Voz threads.
+
+**Progress:** 70.0% (21/30)
