@@ -2466,18 +2466,18 @@ async function syncFeeds(env, targetFeedUrl = null, onProgress = null, targetCat
     allArticles.sort((a, b) => b._ts - a._ts);
 
     const uniqueArticles = [];
-    const seenLinks = new Set();
-    const seenTitles = new Set();
+    const linkMap = new Map();
+    const titleMap = new Map();
     for (const article of allArticles) {
         const titleKey = `${article.feedUrl}|${article.title.toLowerCase()}`;
-        if (!seenLinks.has(article.link) && !seenTitles.has(titleKey)) {
-            seenLinks.add(article.link);
-            seenTitles.add(titleKey);
+        if (!linkMap.has(article.link) && !titleMap.has(titleKey)) {
+            linkMap.set(article.link, article);
+            titleMap.set(titleKey, article);
             delete article._ts;
             uniqueArticles.push(article);
         } else {
             // Keep the maximum view/reply count and createDate even if we skip the duplicate
-            const existing = uniqueArticles.find(a => a.link === article.link || `${a.feedUrl}|${a.title.toLowerCase()}` === titleKey);
+            const existing = linkMap.get(article.link) || titleMap.get(titleKey);
             if (existing) {
                 if (article.replyCount > (existing.replyCount || 0)) existing.replyCount = article.replyCount;
                 if (article.viewCount > (existing.viewCount || 0)) existing.viewCount = article.viewCount;
