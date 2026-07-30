@@ -392,4 +392,10 @@ Phase 3 and Phase 4 combined deliver only the remaining 5%, at 10× the engineer
 - **Notes:** Fired Gemini merge requests concurrently per-category with a 1s stagger instead of a sequential loop with 4.2s gaps.
 - **Measured Results:** Reduces Gemini clustering phase from 60–90s to 15–25s.
 
-**Progress:** 46.6% (14/30)
+- **ID:** H-8
+- **Implementation Date:** 2026-07-30
+- **Files Changed:** `server.js`, `script.js`
+- **Notes:** Moved `beautifyArticleHtml` logic to server-side `cleanArticleMarkup` utilizing `cheerio` for headless DOM manipulation.
+- **Measured Results:** Eliminates heavy client-side DOM processing (DOMParser, regexes) on every article view, reducing memory spikes and improving perceived load time.
+
+**Progress:** 50.0% (15/30)
