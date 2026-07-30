@@ -128,15 +128,16 @@ These areas were examined and found to have no significant performance concerns:
 20. M-11: Unified summary provider concurrency
 21. M-2: Caching universal tab prefetch computation
 22. M-4: In-memory index for clear-article-cache
+23. M-1: Lazy model unloading
 
 ## Remaining Implementations
-5 findings remain (M-1, M-5, M-9, L-2, L-3).
+4 findings remain (M-5, M-9, L-2, L-3).
 
 ## Current Progress %
-80.0% (24/30)
+83.3% (25/30)
 
 ## Last Completed Finding
-M-4
+M-1
 
 ## Blockers
 None
