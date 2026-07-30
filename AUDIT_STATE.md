@@ -118,15 +118,16 @@ These areas were examined and found to have no significant performance concerns:
 10. H-1: Feed parser runs block Node.js event loop
 11. H-2: Concurrent feed sync
 12. H-3: In-memory cache index
+13. H-4: Cache `content-filter-preview`
 
 ## Remaining Implementations
-18 findings remain (H-4, H-6, H-8, M-1 to M-12 excluding M-6, M-8 and M-10, L-1 to L-5).
+17 findings remain (H-6, H-8, M-1 to M-12 excluding M-6, M-8 and M-10, L-1 to L-5).
 
 ## Current Progress %
-40.0% (12/30)
+43.3% (13/30)
 
 ## Last Completed Finding
-H-3
+H-4
 
 ## Blockers
 None

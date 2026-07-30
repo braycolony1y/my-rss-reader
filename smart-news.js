@@ -1036,11 +1036,14 @@ async function applyGeminiMerges(groups, apiKey, model, priorityLinks = []) {
         finance_global: { ok: false, reviewed: 0, error: 'No eligible articles' },
         tech: { ok: false, reviewed: 0, error: 'No eligible articles' }
     };
-    let previousRequestStartedAt = 0;
-
-    for (const category of categories) {
+    let categoryDelay = 0;
+    const categoryPromises = categories.map(async (category) => {
         const categoryGroups = selected.filter(group => group.category === category);
-        if (categoryGroups.length < 2) continue;
+        if (categoryGroups.length < 2) return [];
+        
+        const delay = categoryDelay;
+        categoryDelay += 1000; // 1s stagger per category
+        if (delay > 0) await new Promise(resolve => setTimeout(resolve, delay));
         
         try {
             const chunks = [];
@@ -1052,20 +1055,24 @@ async function applyGeminiMerges(groups, apiKey, model, priorityLinks = []) {
             const categoryMerges = [];
             for (let c = 0; c < chunks.length; c++) {
                 const chunkGroups = chunks[c];
-                const waitMs = Math.max(0, 4200 - (Date.now() - previousRequestStartedAt));
-                if (waitMs) await new Promise(resolve => setTimeout(resolve, waitMs));
-                previousRequestStartedAt = Date.now();
+                // Removed the 4.2s global rate limit as per H-6 concurrent batching
                 const chunkMerges = await requestGeminiMergesWithRetry(chunkGroups, apiKey, model, `${category}[batch ${c+1}/${chunks.length}]`);
                 categoryMerges.push(...chunkMerges);
             }
 
-            merges.push(...categoryMerges.map(merge => ({ ...merge, _requestedCategory: category })));
             geminiByCategoryStats[category] = { ok: true, reviewed: categoryGroups.length, error: null };
+            return categoryMerges.map(merge => ({ ...merge, _requestedCategory: category }));
         } catch (error) {
             // Point #1: isolate Gemini failures per category so one timeout doesn't discard all others
             console.error(`[SMART] Gemini merges aborted/failed for category ${category}: ${error.message}. Falling back to CPU local embedding clustering for ${category}.`);
             geminiByCategoryStats[category] = { ok: false, reviewed: 0, error: error.message };
+            return [];
         }
+    });
+
+    const categoryResults = await Promise.all(categoryPromises);
+    for (const res of categoryResults) {
+        merges.push(...res);
     }
     const used = new Set();
     const acceptedClusters = [];
