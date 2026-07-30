@@ -123,15 +123,17 @@ These areas were examined and found to have no significant performance concerns:
 15. H-8: Move `beautifyArticleHtml` to server side
 16. M-3: Replace `googleNewsUrlCache` with LRU Map
 17. L-1, L-4, L-5: Cache bounds and `stripHtml` optimization
+18. M-7: Persistent embedding cache
+19. M-12: VozSource image fetch limits
 
 ## Remaining Implementations
-11 findings remain (M-1 to M-12 excluding M-3, M-6, M-8 and M-10, L-2, L-3).
+9 findings remain (M-1, M-2, M-4, M-5, M-9, M-11, L-2, L-3). Wait! M-1, M-2, M-4, M-5, M-9, M-11, L-2, L-3. (8 findings remain out of original 30)
 
 ## Current Progress %
-63.3% (19/30)
+70.0% (21/30)
 
 ## Last Completed Finding
-L-1, L-4, L-5
+M-7, M-12
 
 ## Blockers
 None

@@ -329,28 +329,49 @@ async function qwenGenerate(model, prompt, options = {}) {
 }
 
 async function generateWithFallback(geminiModel, prompt, options = {}) {
-    // Map the requested Gemini model to Qwen
-    const qwenModel = 'qwen3.5-flash';
+    const { maxTokens = 1500, timeoutMs = 120000 } = options;
+    const globalTimeout = Date.now() + timeoutMs;
     
-    let lastError = null;
+    let result = null;
+    const promises = [];
+    
+    // Qwen concurrent race for first 2 choices
+    if (qwenKeyManager.keys.length > 0) {
+        promises.push(
+            qwenGenerate('qwen-plus', prompt, { maxTokens, timeoutMs: 30000 })
+            .then(r => { r.provider = 'qwen'; r.modelUsed = 'qwen-plus'; return r; })
+        );
+        promises.push(
+            qwenGenerate('qwen3.6-flash', prompt, { maxTokens, timeoutMs: 60000 })
+            .then(r => { r.provider = 'qwen'; r.modelUsed = 'qwen3.6-flash'; return r; })
+        );
+    }
+    
     try {
-        // Try Qwen first
-        if (qwenKeyManager.keys.length > 0) {
-            return await qwenGenerate(qwenModel, prompt, options);
-        } else {
-            throw new Error("No Qwen keys configured");
+        if (promises.length > 0) {
+            result = await Promise.race([
+                Promise.any(promises),
+                new Promise((_, rej) => setTimeout(() => rej(new Error('Job timeout')), timeoutMs))
+            ]);
         }
-    } catch (error) {
-        console.log(`[SUMMARY] Qwen generation failed (${error.message}). Falling back to Gemini...`);
-        lastError = error;
+    } catch (e) {
+        console.log(`[SUMMARY] Initial providers failed: ${e.message}`);
     }
     
     // Fallback to Gemini
-    try {
-        return await geminiGenerate(geminiModel, prompt, options);
-    } catch (error) {
-        throw new Error(`Both Qwen and Gemini failed. Qwen Error: ${lastError?.message} | Gemini Error: ${error.message}`);
+    if (!result) {
+        const remainingMs = Math.max(10000, globalTimeout - Date.now());
+        try {
+            result = await geminiGenerate(geminiModel, prompt, { maxTokens, timeoutMs: Math.min(remainingMs, 90000) });
+            result.provider = 'gemini';
+            result.modelUsed = geminiModel;
+        } catch (error) {
+            throw new Error(`All providers failed. Gemini Error: ${error.message}`);
+        }
     }
+    
+    if (!result || !result.text) throw new Error('Generation resulted in empty text');
+    return result;
 }
 
 // ─── Prompts ───────────────────────────────────────────────────────────
@@ -520,47 +541,16 @@ async function generateDeepAnalysis(url) {
 
     let analysisText = null;
     let analysisModel = null;
-    let lastError = null;
-
-    // 1. Try qwen-plus
+    
     try {
-        if (qwenKeyManager.keys.length > 0) {
-            const result = await qwenGenerate('qwen-plus', prompt, { maxTokens: 1500, timeoutMs: 90000 });
-            analysisText = result.text;
-            analysisModel = 'qwen-plus';
-        }
+        const result = await generateWithFallback('gemini-3.5-flash', prompt, { maxTokens: 1500, timeoutMs: 120000 });
+        analysisText = result.text;
+        analysisModel = result.modelUsed;
     } catch (e) {
-        console.log(`[ANALYSIS] qwen-plus failed: ${e.message}`);
-        lastError = e;
+        console.log(`[ANALYSIS] All models failed: ${e.message}`);
+        throw new Error(`All models failed to generate analysis. Last error: ${e.message}`);
     }
 
-    // 2. Try qwen3.6-flash
-    if (!analysisText) {
-        try {
-            if (qwenKeyManager.keys.length > 0) {
-                const result = await qwenGenerate('qwen3.6-flash', prompt, { maxTokens: 1500, timeoutMs: 90000 });
-                analysisText = result.text;
-                analysisModel = 'qwen3.6-flash';
-            }
-        } catch (e) {
-            console.log(`[ANALYSIS] qwen3.6-flash failed: ${e.message}`);
-            lastError = e;
-        }
-    }
-
-    // 3. Try gemini-3.5-flash
-    if (!analysisText) {
-        try {
-            const result = await geminiGenerate('gemini-3.5-flash', prompt, { maxTokens: 1500, timeoutMs: 90000 });
-            analysisText = result.text;
-            analysisModel = 'gemini-3.5-flash';
-        } catch (e) {
-            console.log(`[ANALYSIS] gemini-3.5-flash failed: ${e.message}`);
-            throw new Error(`All models failed to generate analysis. Last error: ${e.message}`);
-        }
-    }
-
-    if (!analysisText) throw new Error('Analysis text was empty');
 
     // Save to cache
     if (!cached.summary) cached.summary = { status: 'ready', keyPoints: [], tldr: '' }; // Should ideally exist
@@ -786,36 +776,7 @@ class SummaryQueue {
 
                 console.log(`[SUMMARY] 🤖 Generating Breakdown: ${(cached.result.title || job.url).slice(0, 60)}...`);
 
-                let result = null;
-                // Try models in order: qwen-plus -> qwen3.6-flash -> gemini-3.5-flash
-                if (qwenKeyManager.keys.length > 0) {
-                    try {
-                        result = await qwenGenerate('qwen-plus', prompt, { maxTokens: 1500, timeoutMs: 90000 });
-                        result.provider = 'qwen';
-                        result.modelUsed = 'qwen-plus';
-                    } catch (e) {
-                        console.log(`[SUMMARY] qwen-plus failed: ${e.message}`);
-                    }
-                    if (!result) {
-                        try {
-                            result = await qwenGenerate('qwen3.6-flash', prompt, { maxTokens: 1500, timeoutMs: 90000 });
-                            result.provider = 'qwen';
-                            result.modelUsed = 'qwen3.6-flash';
-                        } catch (e) {
-                            console.log(`[SUMMARY] qwen3.6-flash failed: ${e.message}`);
-                        }
-                    }
-                }
-                
-                if (!result) {
-                    result = await geminiGenerate('gemini-3.5-flash', prompt, { maxTokens: 1500, timeoutMs: 90000 });
-                    result.provider = 'gemini';
-                    result.modelUsed = 'gemini-3.5-flash';
-                }
-
-                if (!result || !result.text) {
-                    throw new Error('Failed to generate breakdown');
-                }
+                const result = await generateWithFallback('gemini-3.5-flash', prompt, { maxTokens: 1500, timeoutMs: 120000 });
 
                 const summaryData = {
                     status: 'ready',
