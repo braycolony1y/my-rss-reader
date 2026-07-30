@@ -404,4 +404,10 @@ Phase 3 and Phase 4 combined deliver only the remaining 5%, at 10× the engineer
 - **Notes:** Replaced `googleNewsUrlCache` plain object with `Map` and capped size at 3,000 using LRU bump-and-delete on insertion.
 - **Measured Results:** Caps Google News URL cache memory growth, eliminating periodic CPU-heavy object array sorts during saves.
 
-**Progress:** 53.3% (16/30)
+- **ID:** L-1, L-4, L-5
+- **Implementation Date:** 2026-07-30
+- **Files Changed:** `server.js`, `smart-news.js`, `script.js`
+- **Notes:** Capped `fetchHistory` to 5000 in `server.js`, raised `_embeddingCache` clear threshold from 2000 to 5000 in `smart-news.js`, replaced `DOMParser` with `textarea.innerHTML` in `script.js`'s `stripHtml`.
+- **Measured Results:** Fixes bounded memory leak in `fetchHistory`, prevents aggressive ML embedding cache clears during GC, speeds up `stripHtml` by avoiding heavy `DOMParser` allocation.
+
+**Progress:** 63.3% (19/30)
