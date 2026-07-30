@@ -374,4 +374,10 @@ Phase 3 and Phase 4 combined deliver only the remaining 5%, at 10× the engineer
 - **Notes:** Replaced sequential feed loop with bounded-concurrency batch (5 concurrent fetches via semaphore pattern).
 - **Measured Results:** Reduces sync cycle from ~5–8 min to ~1.5–2 min.
 
-**Progress:** 36.6% (11/30)
+- **ID:** H-3
+- **Implementation Date:** 2026-07-30
+- **Files Changed:** `server.js`
+- **Notes:** Built in-memory `cacheIndex` Map to track `cachedAt`, `version`, and `url` for all cached articles on first scan.
+- **Measured Results:** Eliminates massive hourly disk read burst; subsequent cleanups check the in-memory index only.
+
+**Progress:** 40.0% (12/30)
