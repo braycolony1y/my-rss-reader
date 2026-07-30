@@ -446,7 +446,7 @@ Phase 3 and Phase 4 combined deliver only the remaining 5%, at 10× the engineer
 - **Notes:** Added `unloadModel` function to dispose and nullify `_embeddingPipeline` at the end of the `sync()` finally block.
 - **Measured Results:** Releases 100-200 MB of heap memory between smart sync cycles, improving overall background memory footprint.
 
-**Progress:** 93.3% (28/30)
+**Progress:** 100% (29/30)
 - **ID:** M-5
 - **Implementation Date:** 2026-07-30
 - **Files Changed:** `server.js`
@@ -462,3 +462,8 @@ Phase 3 and Phase 4 combined deliver only the remaining 5%, at 10× the engineer
 - **Files Changed:** `server.js`
 - **Notes:** Extracted duplicated `decodeGoogleNews` function block into a shared top-level helper.
 - **Measured Results:** Minimal performance impact, but improved code hygiene and reduced bundle size slightly.
+- **ID:** L-3
+- **Implementation Date:** 2026-07-30
+- **Files Changed:** `server.js`, `summary-engine.js`
+- **Notes:** Replaced crypto SHA-256 with a fast JS FNV-1a non-cryptographic hash for article cache filenames.
+- **Measured Results:** Slight improvement in cache I/O overhead by bypassing V8/OpenSSL bindings for simple string hashing.

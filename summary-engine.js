@@ -9,6 +9,14 @@ import fs from 'fs/promises';
 import fsSync from 'fs';
 import path from 'path';
 import { createHash } from 'crypto';
+function fnv1a(str) {
+    let hash = 2166136261;
+    for (let i = 0; i < str.length; i++) {
+        hash ^= str.charCodeAt(i);
+        hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
+    }
+    return (hash >>> 0).toString(16);
+}
 
 const ARTICLE_CACHE_DIR = './article_cache';
 const SUMMARY_MAX_INPUT_CHARS = 12000;
@@ -604,7 +612,7 @@ function parseSummaryResponse(text) {
 
 function articleCacheFilename(url) {
     const canonicalUrl = String(url).replace(/\/unread\/?(?:[?#].*)?$/i, '');
-    return path.join(ARTICLE_CACHE_DIR, createHash('sha256').update(canonicalUrl).digest('hex') + '.json');
+    return path.join(ARTICLE_CACHE_DIR, fnv1a(canonicalUrl) + '.json');
 }
 
 async function readArticleCache(url) {

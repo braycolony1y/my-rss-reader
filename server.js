@@ -3,6 +3,14 @@ import { fileURLToPath } from 'url';
 import cron from 'node-cron';
 import fs from 'fs/promises';
 import { Worker } from 'worker_threads';
+function fnv1a(str) {
+    let hash = 2166136261;
+    for (let i = 0; i < str.length; i++) {
+        hash ^= str.charCodeAt(i);
+        hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
+    }
+    return (hash >>> 0).toString(16);
+}
 import * as cheerio from 'cheerio';
 const workerPath = new URL('./feed-worker.js', import.meta.url);
 function runParserWorker(type, data) {
@@ -96,7 +104,7 @@ let _articleCacheIndex = null;
 
 function articleCacheBasename(url) {
     const canonicalUrl = String(url).replace(/\/unread\/?(?:[?#].*)?$/i, '');
-    return createHash('sha256').update(canonicalUrl).digest('hex') + '.json';
+    return fnv1a(canonicalUrl) + '.json';
 }
 
 function articleCacheFilename(url) {
