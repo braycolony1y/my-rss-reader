@@ -2999,7 +2999,10 @@ function isGoogleNewsArticleUrl(value) {
 }
 
 async function ensureGoogleNewsUrlCache() {
-    if (!googleNewsUrlCache) googleNewsUrlCache = await env.RSS_DATA.get('googleNewsUrlCache', { type: 'json' }) || {};
+    if (!googleNewsUrlCache) {
+        const obj = await env.RSS_DATA.get('googleNewsUrlCache', { type: 'json' }) || {};
+        googleNewsUrlCache = new Map(Object.entries(obj));
+    }
     return googleNewsUrlCache;
 }
 
@@ -3008,11 +3011,9 @@ function scheduleGoogleNewsUrlCacheSave() {
     googleNewsUrlCacheSaveTimer = setTimeout(async () => {
         googleNewsUrlCacheSaveTimer = null;
         try {
-            const entries = Object.entries(googleNewsUrlCache || {})
-                .sort((a, b) => Number(b[1]?.cachedAt || 0) - Number(a[1]?.cachedAt || 0))
-                .slice(0, 3000);
-            googleNewsUrlCache = Object.fromEntries(entries);
-            await env.RSS_DATA.put('googleNewsUrlCache', JSON.stringify(googleNewsUrlCache));
+            if (!googleNewsUrlCache) return;
+            const obj = Object.fromEntries(googleNewsUrlCache);
+            await env.RSS_DATA.put('googleNewsUrlCache', JSON.stringify(obj));
         } catch (error) {
             console.error('[GOOGLE NEWS] Could not persist destination cache:', error.message);
         }
@@ -3122,7 +3123,12 @@ async function resolveGoogleNewsUrl(sourceUrl, hints = {}, options = {}) {
     const original = safeHttpUrl(sourceUrl);
     if (!original || !isGoogleNewsArticleUrl(original)) return original || sourceUrl;
     const cache = await ensureGoogleNewsUrlCache();
-    const cached = cache[original];
+    let cached = cache.get(original);
+    if (cached) {
+        // LRU bump
+        cache.delete(original);
+        cache.set(original, cached);
+    }
     const ttl = cached?.resolvedUrl ? GOOGLE_NEWS_URL_CACHE_TTL_MS : GOOGLE_NEWS_URL_FAILURE_TTL_MS;
     if (cached?.cachedAt && Date.now() - cached.cachedAt < ttl && (cached.resolvedUrl || !options.force)) return cached.resolvedUrl || original;
     if (googleNewsUrlPending.has(original)) {
@@ -3151,7 +3157,8 @@ async function resolveGoogleNewsUrl(sourceUrl, hints = {}, options = {}) {
             }
         }
         if (!resolvedUrl && resolutionError) console.error('[GOOGLE NEWS] Destination resolution failed:', resolutionError);
-        cache[original] = { resolvedUrl, cachedAt: Date.now(), error: resolvedUrl ? '' : resolutionError };
+        cache.set(original, { resolvedUrl, cachedAt: Date.now(), error: resolvedUrl ? '' : resolutionError });
+        if (cache.size > 3000) cache.delete(cache.keys().next().value);
         scheduleGoogleNewsUrlCacheSave();
         return resolvedUrl || original;
     })().finally(() => googleNewsUrlPending.delete(original));
@@ -4558,12 +4565,12 @@ app.get('/api/article-content', authMiddleware, async (req, res) => {
 
         if (!bypassCache) {
             let directCached = await getCachedArticle(requestedUrl);
-            if (!directCached && googleNewsUrlCache && googleNewsUrlCache[requestedUrl]?.resolvedUrl) {
-                url = googleNewsUrlCache[requestedUrl].resolvedUrl;
+            if (!directCached && googleNewsUrlCache && googleNewsUrlCache.has(requestedUrl) && googleNewsUrlCache.get(requestedUrl).resolvedUrl) {
+                url = googleNewsUrlCache.get(requestedUrl).resolvedUrl;
                 directCached = await getCachedArticle(url);
             } else if (directCached && isGoogleNewsArticleUrl(directCached.url || requestedUrl)) {
-                if (googleNewsUrlCache && googleNewsUrlCache[requestedUrl]?.resolvedUrl) {
-                    url = googleNewsUrlCache[requestedUrl].resolvedUrl;
+                if (googleNewsUrlCache && googleNewsUrlCache.has(requestedUrl) && googleNewsUrlCache.get(requestedUrl).resolvedUrl) {
+                    url = googleNewsUrlCache.get(requestedUrl).resolvedUrl;
                     directCached = await getCachedArticle(url);
                 } else {
                     directCached = null;
@@ -5673,8 +5680,8 @@ async function runUniversalTabPrefetch(env) {
             const url = art.originalLink || art.link;
             if (!url) continue;
             let cached = await getCachedArticle(url);
-            if (!cached && googleNewsUrlCache && googleNewsUrlCache[url]?.resolvedUrl) {
-                cached = await getCachedArticle(googleNewsUrlCache[url].resolvedUrl);
+            if (!cached && googleNewsUrlCache && googleNewsUrlCache.has(url) && googleNewsUrlCache.get(url).resolvedUrl) {
+                cached = await getCachedArticle(googleNewsUrlCache.get(url).resolvedUrl);
             }
             if (cached && cached.content) {
                 enqueuePrefetchedSummary(url, art, 2);

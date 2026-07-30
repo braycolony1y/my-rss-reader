@@ -120,15 +120,16 @@ These areas were examined and found to have no significant performance concerns:
 12. H-3: In-memory cache index
 13. H-4: Cache `content-filter-preview`
 14. H-6: Concurrent Gemini per-category calls
+15. H-8: Move `beautifyArticleHtml` to server side
 
 ## Remaining Implementations
-16 findings remain (H-8, M-1 to M-12 excluding M-6, M-8 and M-10, L-1 to L-5).
+15 findings remain (M-1 to M-12 excluding M-6, M-8 and M-10, L-1 to L-5).
 
 ## Current Progress %
-46.6% (14/30)
+50.0% (15/30)
 
 ## Last Completed Finding
-H-6
+H-8
 
 ## Blockers
 None
