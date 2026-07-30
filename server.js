@@ -2,7 +2,7 @@ import express from 'express';
 import { fileURLToPath } from 'url';
 import cron from 'node-cron';
 import fs from 'fs/promises';
-import { Worker } from 'worker_threads';
+import { Worker, isMainThread } from 'worker_threads';
 function fnv1a(str) {
     let hash = 2166136261;
     for (let i = 0; i < str.length; i++) {
@@ -719,7 +719,7 @@ async function acquireDatabaseWriterLock() {
     throw new Error('Could not acquire the database writer lock');
 }
 
-const databaseWriterLock = !process.env.SKIP_DB_LOCK ? await acquireDatabaseWriterLock() : null;
+const databaseWriterLock = (!process.env.SKIP_DB_LOCK && isMainThread) ? await acquireDatabaseWriterLock() : null;
 process.on('exit', () => {
     try {
         const owner = JSON.parse(readFileSync(DB_WRITER_LOCK_FILE, 'utf-8'));
