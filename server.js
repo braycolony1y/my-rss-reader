@@ -2643,7 +2643,10 @@ async function syncFeeds(env, targetFeedUrl = null, onProgress = null, targetCat
     } catch (error) {
         console.error('[STATE CLEANUP] Could not prune stale feed state:', error.message);
     }
-    if (!targetFeedUrl) await env.RSS_DATA.put('feeds', JSON.stringify(feeds));
+    if (!targetFeedUrl) {
+        await env.RSS_DATA.put('feeds', JSON.stringify(feeds));
+        computeUniversalPrefetchList(env).catch(e => console.error('[PREFETCH ENGINE] Failed computing targets:', e.message));
+    }
 
     return { success: true, logs: syncLogs };
 }
@@ -5606,11 +5609,9 @@ app.get('/', async (req, res) => {
 // ============================================================================
 
 let isUniversalPrefetching = false;
-async function runUniversalTabPrefetch(env) {
-    if (isUniversalPrefetching) return;
-    isUniversalPrefetching = true;
+async function computeUniversalPrefetchList(env) {
     try {
-        console.log('\n[PREFETCH ENGINE] Starting universal prefetch for first 5 articles of all tabs...');
+        console.log('\n[PREFETCH ENGINE] Computing universal prefetch targets...');
         const articles = await env.RSS_DATA.get('articles', { type: 'json' }) || [];
         const blockedKeywords = await env.RSS_DATA.get('blockedArticleKeywords', { type: 'json' }) || [];
         const blockedKeywordEntries = normalizeBlockedKeywordEntries(blockedKeywords);
@@ -5628,7 +5629,7 @@ async function runUniversalTabPrefetch(env) {
                 if (!art) continue;
                 const url = art.originalLink || art.link;
                 if (url && !topArticlesMap.has(url)) {
-                    topArticlesMap.set(url, art);
+                    topArticlesMap.set(url, { url, title: art.title, originalLink: art.originalLink, link: art.link });
                 }
             }
         };
@@ -5674,7 +5675,20 @@ async function runUniversalTabPrefetch(env) {
         }
 
         const toProcess = Array.from(topArticlesMap.values());
-        console.log(`[PREFETCH ENGINE] Found ${toProcess.length} unique top-5 articles across all tabs. Checking cache and prefetching...`);
+        await env.RSS_DATA.put('universalPrefetchTargets', JSON.stringify(toProcess));
+        console.log(`[PREFETCH ENGINE] Computed and saved ${toProcess.length} prefetch targets.`);
+    } catch (e) {
+        console.error('[PREFETCH ENGINE] Target computation failed:', e.message);
+    }
+}
+
+async function runUniversalTabPrefetch(env) {
+    if (isUniversalPrefetching) return;
+    isUniversalPrefetching = true;
+    try {
+        const toProcess = await env.RSS_DATA.get('universalPrefetchTargets', { type: 'json' }) || [];
+        console.log(`[PREFETCH ENGINE] Loaded ${toProcess.length} unique top-5 articles from cache. Checking cache and prefetching...`);
+
 
         let prefetchedCount = 0;
         for (const art of toProcess) {

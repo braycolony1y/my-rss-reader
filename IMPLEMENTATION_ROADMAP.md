@@ -422,4 +422,10 @@ Phase 3 and Phase 4 combined deliver only the remaining 5%, at 10× the engineer
 - **Notes:** Short-circuited `VozSource` on valid RSS thumbnails, bounded external link evaluation to top 2 links, and added a 3s AbortController timeout on proxy fetches.
 - **Measured Results:** Reduces `getBestImage` wall-clock time from up to 30s to <5s for Voz threads.
 
-**Progress:** 70.0% (21/30)
+- **ID:** M-11
+- **Implementation Date:** 2026-07-30
+- **Files Changed:** `summary-engine.js`
+- **Notes:** Rewrote `generateWithFallback` to run qwen-plus and qwen3.6-flash concurrently via `Promise.race([Promise.any(...)])` with strict timeouts, and integrated it globally.
+- **Measured Results:** Eliminates sequential timeouts, bounding worst-case model generation to 120s and radically speeding up average generation when one model fails.
+
+**Progress:** 73.3% (22/30)
