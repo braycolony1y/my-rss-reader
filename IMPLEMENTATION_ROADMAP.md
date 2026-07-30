@@ -428,10 +428,10 @@ Phase 3 and Phase 4 combined deliver only the remaining 5%, at 10× the engineer
 - **Notes:** Rewrote `generateWithFallback` to run qwen-plus and qwen3.6-flash concurrently via `Promise.race([Promise.any(...)])` with strict timeouts, and integrated it globally.
 - **Measured Results:** Eliminates sequential timeouts, bounding worst-case model generation to 120s and radically speeding up average generation when one model fails.
 
-- **ID:** M-2
+- **ID:** M-4
 - **Implementation Date:** 2026-07-30
 - **Files Changed:** `server.js`
-- **Notes:** Extracted `computeUniversalPrefetchList` and run it during `syncFeeds`. `runUniversalTabPrefetch` now just reads the cached `universalPrefetchTargets` payload.
-- **Measured Results:** Eliminates redundant massive O(N log N) array sorts for the prefetch engine loop.
+- **Notes:** Updated `clear-article-cache` to iterate `_articleCacheIndex.entries()` instead of performing a full `fs.readdir` and parsing JSON files for thread cleanup.
+- **Measured Results:** Eliminates full-cache disk scans on cache clearance, significantly reducing disk I/O and latency.
 
-**Progress:** 76.6% (23/30)
+**Progress:** 80.0% (24/30)
