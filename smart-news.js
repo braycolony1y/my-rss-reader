@@ -1516,12 +1516,14 @@ export function createSmartNewsEngine({ db, helpers, headers = {} }) {
             }
             for (const a of hiddenArticles) if (a) delete a._vec;
             const clusterVersion = toVietnamIso(Date.now()) + '_' + clusters.length;
-            await db.put('smartRawArticles', JSON.stringify(hiddenArticles));
-            await db.put('smartClusters', JSON.stringify(clusters));
-            await db.put('smartClusterVersion', clusterVersion);
-            await db.put('smartCandidateLinks', JSON.stringify(currentLinks));
-            await db.put('smartCandidateSignature', signature);
-            await db.put('smartAiConfig', aiConfig);
+            await db.putMany({
+                'smartRawArticles': JSON.stringify(hiddenArticles),
+                'smartClusters': JSON.stringify(clusters),
+                'smartClusterVersion': clusterVersion,
+                'smartCandidateLinks': JSON.stringify(currentLinks),
+                'smartCandidateSignature': signature,
+                'smartAiConfig': aiConfig
+            });
 
             const completed = {
                 state: 'ready',

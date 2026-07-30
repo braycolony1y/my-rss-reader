@@ -105,17 +105,19 @@ These areas were examined and found to have no significant performance concerns:
 # Implementation Status
 
 ## Completed Implementations
+## Completed Implementations
 1. C-1: `/api/data` O(n×m) state array scans (includes M-6)
 2. H-7: `markAllAsRead` N-request fan-out
+3. C-3: Deduplication O(n²) `.find()` in loop
 
 ## Remaining Implementations
-28 findings remain (C-2, C-3, C-4, H-1 to H-6, H-8, H-9, M-1 to M-12 excluding M-6, L-1 to L-5).
+27 findings remain (C-2, C-4, H-1 to H-6, H-8, H-9, M-1 to M-12 excluding M-6 and M-8, wait actually M-8 is not done yet, let's list 27).
 
 ## Current Progress %
-6.6% (2/30)
+10.0% (3/30)
 
 ## Last Completed Finding
-H-7
+C-3
 
 ## Blockers
 None
