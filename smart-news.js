@@ -857,21 +857,45 @@ async function requestGeminiMergesWithRetry(groups, apiKey, model, categoryName 
 }
 
 function largestTimeConsistentGroup(groups) {
+    if (groups.length <= 1) return groups;
+
+    const parsedGroups = groups.map(g => {
+        const times = g.articles.map(a => safeDate(a.pubDate));
+        return {
+            group: g,
+            minT: Math.min(...times),
+            maxT: Math.max(...times),
+            count: g.articles.length
+        };
+    }).filter(g => g.maxT - g.minT <= EVENT_MATCH_WINDOW_MS);
+
+    parsedGroups.sort((a, b) => a.minT - b.minT);
+
     let best = [];
     let bestArticleCount = 0;
-    const starts = groups.map(group => Math.min(...group.articles.map(article => safeDate(article.pubDate))));
-    for (const start of starts) {
+
+    for (let i = 0; i < parsedGroups.length; i++) {
+        const start = parsedGroups[i].minT;
         const end = start + EVENT_MATCH_WINDOW_MS;
-        const inliers = groups.filter(group => {
-            const times = group.articles.map(article => safeDate(article.pubDate));
-            return Math.min(...times) >= start && Math.max(...times) <= end;
-        });
-        const articleCount = inliers.reduce((sum, group) => sum + group.articles.length, 0);
-        if (inliers.length > best.length || (inliers.length === best.length && articleCount > bestArticleCount)) {
-            best = inliers;
-            bestArticleCount = articleCount;
+        
+        let j = i;
+        const currentGroups = [];
+        let currentCount = 0;
+
+        while (j < parsedGroups.length && parsedGroups[j].minT <= end) {
+            if (parsedGroups[j].maxT <= end) {
+                currentGroups.push(parsedGroups[j].group);
+                currentCount += parsedGroups[j].count;
+            }
+            j++;
+        }
+
+        if (currentGroups.length > best.length || (currentGroups.length === best.length && currentCount > bestArticleCount)) {
+            best = currentGroups;
+            bestArticleCount = currentCount;
         }
     }
+
     return best;
 }
 

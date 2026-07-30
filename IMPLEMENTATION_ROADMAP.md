@@ -446,9 +446,14 @@ Phase 3 and Phase 4 combined deliver only the remaining 5%, at 10× the engineer
 - **Notes:** Added `unloadModel` function to dispose and nullify `_embeddingPipeline` at the end of the `sync()` finally block.
 - **Measured Results:** Releases 100-200 MB of heap memory between smart sync cycles, improving overall background memory footprint.
 
-**Progress:** 86.6% (26/30)
+**Progress:** 90.0% (27/30)
 - **ID:** M-5
 - **Implementation Date:** 2026-07-30
 - **Files Changed:** `server.js`
 - **Notes:** Replaced sequential string manipulations and Regex passes in `cleanArticleMarkup` with a single, fast Cheerio AST-based transformation.
 - **Measured Results:** Significant improvement to robustness for deeply nested elements, plus CPU cycle reductions for larger HTML inputs.
+- **ID:** M-9
+- **Implementation Date:** 2026-07-30
+- **Files Changed:** `smart-news.js`
+- **Notes:** Optimized `largestTimeConsistentGroup` to use an $O(N \log N)$ sorted-time-window approach instead of the previous $O(N^2)$ brute-force implementation.
+- **Measured Results:** Eliminates $O(N^2)$ algorithmic bottleneck, resulting in near-instantaneous subset filtering for merge proposals.
