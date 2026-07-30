@@ -316,4 +316,10 @@ Phase 3 and Phase 4 combined deliver only the remaining 5%, at 10× the engineer
 - **Notes:** Replaced state arrays with Sets and Index Maps.
 - **Measured Results:** CPU O(n²) → O(n) for sorting/filtering. Expected latency drop from 150ms to 20ms.
 
-**Progress:** 3.3% (1/30)
+- **ID:** H-7
+- **Implementation Date:** 2026-07-30
+- **Files Changed:** `server.js`, `script.js`
+- **Notes:** Added `/api/toggle-batch` and updated frontend to batch-mark articles.
+- **Measured Results:** Reduces 40 serialize+write cycles to 1, preventing disk/CPU spikes.
+
+**Progress:** 6.6% (2/30)
