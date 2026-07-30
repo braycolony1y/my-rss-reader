@@ -386,4 +386,10 @@ Phase 3 and Phase 4 combined deliver only the remaining 5%, at 10× the engineer
 - **Notes:** Cached `content-filter-preview` results with a 30s TTL keyed by keyword hash.
 - **Measured Results:** Eliminates event-loop-blocking keyword scans when user updates filter configurations rapidly.
 
-**Progress:** 43.3% (13/30)
+- **ID:** H-6
+- **Implementation Date:** 2026-07-30
+- **Files Changed:** `smart-news.js`
+- **Notes:** Fired Gemini merge requests concurrently per-category with a 1s stagger instead of a sequential loop with 4.2s gaps.
+- **Measured Results:** Reduces Gemini clustering phase from 60–90s to 15–25s.
+
+**Progress:** 46.6% (14/30)
