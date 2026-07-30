@@ -2,6 +2,7 @@ import express from 'express';
 import cron from 'node-cron';
 import fs from 'fs/promises';
 import { Worker } from 'worker_threads';
+import * as cheerio from 'cheerio';
 const workerPath = new URL('./feed-worker.js', import.meta.url);
 function runParserWorker(type, data) {
     return new Promise((resolve, reject) => {
@@ -4115,6 +4116,90 @@ function cleanArticleMarkup(markup) {
     for (let i = 0; i < 3; i++) {
         cleaned = cleaned.replace(/<(p|div|span|section|figure)\b[^>]*>(?:\s|&nbsp;|<br\s*\/?>)*<\/\1>/gi, '');
     }
+
+    try {
+        const $ = cheerio.load(cleaned, null, false);
+        $('script,style,template,nav,aside,form,noscript,button,[aria-hidden="true"]').remove();
+
+        const noise = /(?:advert|adsbygoogle|breadcrumb|pagination|related|recommend|share|social|signature|message-user|message-attribution|message-footer|post-meta|author-box|author-info|user-panel|member-header|comment-list|comments-area|newsletter|subscribe|trending|popular-post|read-more|tags-list)/i;
+
+        $('*').each((i, el) => {
+            const node = $(el);
+            const marker = [node.attr('id'), node.attr('class'), node.attr('role')].filter(Boolean).join(' ');
+            if (noise.test(marker)) {
+                node.remove();
+                return;
+            }
+            if (['div', 'p', 'span', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(el.tagName)) {
+                const text = node.text().replace(/\s+/g, ' ').trim();
+                if (/^Quảng cáo$/i.test(text)) {
+                    node.remove();
+                    return;
+                }
+            }
+            const isMediaNode = ['img', 'video', 'audio', 'iframe'].includes(el.tagName);
+            const isProtectedNode = node.hasClass('voz-post-likes') || node.closest('.voz-post-likes').length > 0 || 
+                                    node.hasClass('box_tiso_all') || node.closest('.box_tiso_all').length > 0 ||
+                                    node.hasClass('highcharts-container') || node.closest('.highcharts-container').length > 0;
+            if (!isProtectedNode) {
+                if (!isMediaNode || el.tagName === 'img') {
+                    node.removeAttr('style');
+                    node.removeAttr('height');
+                    node.removeAttr('min-height');
+                    node.removeAttr('max-height');
+                    node.removeAttr('width');
+                }
+            }
+            Object.keys(el.attribs || {}).forEach(attr => {
+                if (/^on/i.test(attr)) node.removeAttr(attr);
+            });
+        });
+
+        $('div,section,ul').each((i, el) => {
+            const node = $(el);
+            if (node.hasClass('embedded-suggested-articles') || node.closest('.embedded-suggested-articles').length > 0 || 
+                node.hasClass('styled-rel-card') || node.closest('.styled-rel-card').length > 0) return;
+            const textLength = node.text().replace(/\s+/g, ' ').trim().length;
+            const links = node.find('a');
+            let linkLength = 0;
+            links.each((_, link) => { linkLength += $(link).text().trim().length; });
+            if (links.length >= 4 && textLength > 0 && linkLength / textLength > 0.78) node.remove();
+        });
+
+        $('img,video,audio').each((i, el) => {
+            const node = $(el);
+            const lazy = node.attr('data-src') || node.attr('data-url') || node.attr('data-original') || node.attr('data-lazy-src');
+            if (lazy) node.attr('src', lazy);
+            const mediaMarker = [node.attr('src'), node.attr('alt'), node.attr('class')].filter(Boolean).join(' ');
+            if (/(?:newsletter|captcha|default[-_ ]?avatar|userdeff?ault|draggable-icon|cmsads|admicro|doubleclick|googlesyndication)/i.test(mediaMarker)) {
+                node.remove();
+                return;
+            }
+            node.attr('referrerpolicy', 'no-referrer');
+            const width = Number(node.attr('width') || 0);
+            const height = Number(node.attr('height') || 0);
+            if ((width && width <= 2) || (height && height <= 2)) {
+                node.remove();
+                return;
+            }
+            if (el.tagName === 'video' || el.tagName === 'audio') {
+                node.attr('controls', '');
+                node.attr('playsinline', '');
+            }
+        });
+
+        $('audio').each((i, el) => {
+            const node = $(el);
+            if (node.closest('.article-audio-player').length === 0) {
+                node.wrap('<div class="article-audio-player bg-gray-50 dark:bg-gray-800 rounded-xl p-4 my-6 shadow-sm border border-gray-200 dark:border-gray-700 flex items-center justify-center"></div>');
+            }
+        });
+
+        cleaned = $.html();
+    } catch (e) {
+        console.error('[CLEAN] Cheerio processing failed:', e.message);
+    }
+
     return cleaned.replace(/>\s{3,}(?=<)/g, '>').replace(/\s{3,}/g, ' ').trim();
 }
 
