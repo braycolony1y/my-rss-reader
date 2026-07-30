@@ -446,7 +446,7 @@ Phase 3 and Phase 4 combined deliver only the remaining 5%, at 10× the engineer
 - **Notes:** Added `unloadModel` function to dispose and nullify `_embeddingPipeline` at the end of the `sync()` finally block.
 - **Measured Results:** Releases 100-200 MB of heap memory between smart sync cycles, improving overall background memory footprint.
 
-**Progress:** 90.0% (27/30)
+**Progress:** 93.3% (28/30)
 - **ID:** M-5
 - **Implementation Date:** 2026-07-30
 - **Files Changed:** `server.js`
@@ -457,3 +457,8 @@ Phase 3 and Phase 4 combined deliver only the remaining 5%, at 10× the engineer
 - **Files Changed:** `smart-news.js`
 - **Notes:** Optimized `largestTimeConsistentGroup` to use an $O(N \log N)$ sorted-time-window approach instead of the previous $O(N^2)$ brute-force implementation.
 - **Measured Results:** Eliminates $O(N^2)$ algorithmic bottleneck, resulting in near-instantaneous subset filtering for merge proposals.
+- **ID:** L-2
+- **Implementation Date:** 2026-07-30
+- **Files Changed:** `server.js`
+- **Notes:** Extracted duplicated `decodeGoogleNews` function block into a shared top-level helper.
+- **Measured Results:** Minimal performance impact, but improved code hygiene and reduced bundle size slightly.

@@ -46,6 +46,14 @@ import {
 const { GoogleDecoder } = GoogleDecoderPkg;
 const googleDecoder = new GoogleDecoder();
 
+async function decodeGoogleNews(url) {
+    if (url && typeof url === 'string' && url.includes('news.google.com/rss/articles/')) {
+        try { return await googleDecoder.decode(url); } catch (e) { }
+    }
+    return url;
+}
+
+
 dotenv.config();
 // Keep the Gemini credential separate from the rest of the application config.
 // Values here intentionally override matching entries in the general .env file.
@@ -5253,12 +5261,7 @@ app.get('/api/summary', authMiddleware, async (req, res) => {
     let url = req.query.url;
     if (!url) return res.status(400).json({ error: 'URL required' });
     
-    async function decodeGoogleNews(url) {
-        if (url && typeof url === 'string' && url.includes('news.google.com/rss/articles/')) {
-            try { return await googleDecoder.decode(url); } catch (e) { }
-        }
-        return url;
-    }
+    
     url = await decodeGoogleNews(url);
     
     try {
@@ -5288,12 +5291,7 @@ app.post('/api/summary/prioritize', authMiddleware, async (req, res) => {
     let url = req.body?.url;
     if (!url) return res.status(400).json({ error: 'URL required' });
     
-    async function decodeGoogleNews(url) {
-        if (url && typeof url === 'string' && url.includes('news.google.com/rss/articles/')) {
-            try { return await googleDecoder.decode(url); } catch (e) { }
-        }
-        return url;
-    }
+    
     url = await decodeGoogleNews(url);
 
     summaryQueue.prioritize(url);
@@ -5392,12 +5390,7 @@ app.post('/api/summary/feedback', authMiddleware, async (req, res) => {
     let { url, feedback } = req.body;
     if (!url) return res.status(400).json({ error: 'URL required' });
     
-    async function decodeGoogleNews(url) {
-        if (url && typeof url === 'string' && url.includes('news.google.com/rss/articles/')) {
-            try { return await googleDecoder.decode(url); } catch (e) { }
-        }
-        return url;
-    }
+    
     url = await decodeGoogleNews(url);
 
     try {
@@ -5417,12 +5410,7 @@ app.post('/api/summary/analysis', authMiddleware, async (req, res) => {
     let url = req.body?.url;
     if (!url) return res.status(400).json({ error: 'URL required' });
     
-    async function decodeGoogleNews(url) {
-        if (url && typeof url === 'string' && url.includes('news.google.com/rss/articles/')) {
-            try { return await googleDecoder.decode(url); } catch (e) { }
-        }
-        return url;
-    }
+    
     url = await decodeGoogleNews(url);
     
     try {
