@@ -1,6 +1,26 @@
 import express from 'express';
 import cron from 'node-cron';
 import fs from 'fs/promises';
+import { Worker } from 'worker_threads';
+const workerPath = new URL('./feed-worker.js', import.meta.url);
+function runParserWorker(type, data) {
+    return new Promise((resolve, reject) => {
+        const worker = new Worker(workerPath);
+        worker.postMessage({ type, data });
+        worker.on('message', (msg) => {
+            if (msg.success) resolve(msg.data);
+            else reject(new Error(msg.error));
+            worker.terminate();
+        });
+        worker.on('error', (err) => {
+            reject(err);
+            worker.terminate();
+        });
+        worker.on('exit', (code) => {
+            if (code !== 0) reject(new Error(`Worker stopped with exit code ${code}`));
+        });
+    });
+}
 import { readFileSync, unlinkSync } from 'fs';
 import path from 'path';
 import dotenv from 'dotenv';
@@ -2045,7 +2065,7 @@ async function syncFeeds(env, targetFeedUrl = null, onProgress = null, targetCat
                 // [BAO MOI LOGIC REMAINS UNCHANGED]
                 console.log(`[BÁO MỚI DEBUG] Intercepted Request to: ${feed.url} | HTTP Status: ${response.status}`);
                 try {
-                    feedData = parseBaoMoi(xmlData);
+                    feedData = await runParserWorker('parseBaoMoi', xmlData);
 
                     feedData.items = await Promise.all(feedData.items.map(async (item, index) => {
                         try {
@@ -2315,16 +2335,16 @@ async function syncFeeds(env, targetFeedUrl = null, onProgress = null, targetCat
                 }
             } else if (feed.url.includes('morningstar.com')) {
                 console.log(`[MORNINGSTAR DEBUG] Intercepted Request to: ${feed.url} | HTTP Status: ${response.status}`);
-                feedData = parseMorningstar(xmlData);
+                feedData = await runParserWorker('parseMorningstar', xmlData);
             } else if (feed.url.includes('techcombank.com')) {
                 console.log(`[TECHCOMBANK DEBUG] Intercepted Request to: ${feed.url} | HTTP Status: ${response.status}`);
-                feedData = parseTechcombank(xmlData);
+                feedData = await runParserWorker('parseTechcombank', xmlData);
             } else if (feed.url.includes('uobgroup.com')) {
                 console.log(`[UOB DEBUG] Intercepted Request to: ${feed.url} | HTTP Status: ${response.status}`);
-                feedData = parseUOB(xmlData);
+                feedData = await runParserWorker('parseUOB', xmlData);
             } else if (feed.url.includes('uob.com.vn')) {
                 console.log(`[UOB VN DEBUG] Intercepted Request to: ${feed.url} | HTTP Status: ${response.status}`);
-                feedData = parseUOBVN(xmlData);
+                feedData = await runParserWorker('parseUOBVN', xmlData);
             } else {
                 if (xmlData.trim().toLowerCase().startsWith('<!doctype html') || xmlData.trim().toLowerCase().startsWith('<html')) {
                     syncLogs.push({ Feed: feed.title || feed.url, Issue: 'Received HTML instead of XML.' });
@@ -2332,7 +2352,7 @@ async function syncFeeds(env, targetFeedUrl = null, onProgress = null, targetCat
                     continue;
                 }
                 try {
-                    feedData = fastParseRSS(xmlData);
+                    feedData = await runParserWorker('fastParseRSS', xmlData);
                 } catch (parseErr) {
                     syncLogs.push({ Feed: feed.title || feed.url, Issue: `XML Parser crashed: ${parseErr.message}` });
                     recordFetch(feed.url, feed.title || feed.url, 'error', `XML parse: ${parseErr.message}`, Date.now() - feedFetchStart, { errorType: 'parse' });
@@ -5606,7 +5626,7 @@ async function startSequentialSyncLoop() {
 // always available even if the sync loop causes issues. Previously, the sync
 // loop started before listen(), which meant OOM kills during sync could
 // prevent port 3000 from ever binding.
-const isMainModule = import.meta.url === `file://${process.argv[1]}` || import.meta.url.endsWith('/server.js') || import.meta.url.endsWith('\\server.js');
+const isMainModule = process.argv[1] && process.argv[1] === fileURLToPath(import.meta.url);
 if (isMainModule) {
     app.listen(PORT, () => {
         console.log(`🚀 RSS Reader running on http://localhost:${PORT}`);
@@ -5628,5 +5648,11 @@ export {
     stripJinaLeadingNavigation,
     cleanArticleMarkup,
     jinaMarkdownToHtml,
-    normalizeArticleTitle
+    normalizeArticleTitle,
+    fastParseRSS,
+    parseBaoMoi,
+    parseMorningstar,
+    parseTechcombank,
+    parseUOB,
+    parseUOBVN
 };

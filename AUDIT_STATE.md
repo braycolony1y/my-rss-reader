@@ -112,15 +112,16 @@ These areas were examined and found to have no significant performance concerns:
 4. M-8: 6× `db.put()` at end of smart sync
 5. H-5: `_jsonParsedCache` returns mutable refs
 6. H-9: Frontend `readStates` plain array
+7. M-10: Debounce hover prefetch
 
 ## Remaining Implementations
-24 findings remain (C-2, C-4, H-1 to H-4, H-6, H-8, M-1 to M-12 excluding M-6 and M-8, L-1 to L-5).
+23 findings remain (C-2, C-4, H-1 to H-4, H-6, H-8, M-1 to M-12 excluding M-6, M-8 and M-10, L-1 to L-5).
 
 ## Current Progress %
-20.0% (6/30)
+23.3% (7/30)
 
 ## Last Completed Finding
-H-9
+M-10
 
 ## Blockers
 None
