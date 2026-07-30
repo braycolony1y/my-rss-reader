@@ -3080,7 +3080,14 @@ app.get('/api/data', authMiddleware, async (req, res) => {
     const visibleArticles = allArticles.filter(article => !articleIsBlocked(article));
 
     const readSet = new Set(readStates);
+    const savedSet = new Set(savedStates);
+    const boardSet = new Set(boardStates);
     const hiddenSet = new Set(hiddenStates);
+
+    const readIndex = new Map(readStates.map((link, i) => [link, i]));
+    const savedIndex = new Map(savedStates.map((link, i) => [link, i]));
+    const boardIndex = new Map(boardStates.map((link, i) => [link, i]));
+    const hiddenIndex = new Map(hiddenStates.map((link, i) => [link, i]));
 
     const unreadCounts = { feeds: {}, categories: {}, total: 0 };
     visibleArticles.forEach(a => {
@@ -3171,7 +3178,7 @@ app.get('/api/data', authMiddleware, async (req, res) => {
         );
     } else if (filterType === 'hidden') {
         filteredArticles = filteredArticles.filter(a => hiddenSet.has(a.link))
-            .sort((a, b) => hiddenStates.indexOf(b.link) - hiddenStates.indexOf(a.link));
+            .sort((a, b) => hiddenIndex.get(b.link) - hiddenIndex.get(a.link));
     } else {
         if (['recent', 'saved', 'board'].includes(filterType)) {
             const smartClustersRaw = await env.RSS_DATA.get('smartClusters', { type: 'json' }) || [];
@@ -3188,19 +3195,19 @@ app.get('/api/data', authMiddleware, async (req, res) => {
             const oneWeekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
             filteredArticles = filteredArticles
                 .filter(a => readSet.has(a.link) && (new Date(a.pubDate || 0).getTime() > oneWeekAgo))
-                .sort((a, b) => readStates.indexOf(b.link) - readStates.indexOf(a.link));
+                .sort((a, b) => readIndex.get(b.link) - readIndex.get(a.link));
         } else if (filterType === 'saved') {
-            filteredArticles = filteredArticles.filter(a => savedStates.includes(a.link));
+            filteredArticles = filteredArticles.filter(a => savedSet.has(a.link));
             if (hideRead) filteredArticles = filteredArticles.filter(a => !readSet.has(a.link));
-            filteredArticles.sort((a, b) => savedStates.indexOf(b.link) - savedStates.indexOf(a.link));
+            filteredArticles.sort((a, b) => savedIndex.get(b.link) - savedIndex.get(a.link));
         } else if (filterType === 'board') {
-            filteredArticles = filteredArticles.filter(a => boardStates.includes(a.link));
+            filteredArticles = filteredArticles.filter(a => boardSet.has(a.link));
             if (filterValue) {
                 const mappings = userPreferences.boardFolderMappings || {};
                 filteredArticles = filteredArticles.filter(a => mappings[a.link] === filterValue);
             }
             if (hideRead) filteredArticles = filteredArticles.filter(a => !readSet.has(a.link));
-            filteredArticles.sort((a, b) => boardStates.indexOf(b.link) - boardStates.indexOf(a.link));
+            filteredArticles.sort((a, b) => boardIndex.get(b.link) - boardIndex.get(a.link));
         } else if (filterType === 'category') {
             filteredArticles = filteredArticles.filter(a => a.feedCategory === filterValue || (filterValue === 'Others' && !a.feedCategory));
         } else if (filterType === 'feed') {
