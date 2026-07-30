@@ -11,7 +11,7 @@
                 
                 feeds: [],
                 articles: [],
-                readStates: [],
+                readStates: new Set(),
                 savedStates: [],
                 boardStates: [],
                 hiddenStates: [], 
@@ -218,7 +218,7 @@
                                 if (state.articles && state.articles.length > 0) {
                                     this.feeds = state.feeds || [];
                                     this.articles = state.articles || [];
-                                    this.readStates = state.readStates || [];
+                                    this.readStates = new Set(state.readStates || []);
                                     this.savedStates = state.savedStates || [];
                                     this.boardStates = state.boardStates || [];
                                     this.hiddenStates = state.hiddenStates || [];
@@ -303,7 +303,7 @@
                         const state = {
                             feeds: this.feeds,
                             articles: compactArticles,
-                            readStates: this.readStates,
+                            readStates: Array.from(this.readStates),
                             savedStates: this.savedStates,
                             boardStates: this.boardStates,
                             hiddenStates: this.hiddenStates,
@@ -862,19 +862,19 @@
                                 const existingLinks = new Set(this.articles.map(a => a.link));
                                 let newUniqueArticles = (data.articles || []).filter(a => !existingLinks.has(a.link));
                                 if (this.hideRead && !['recent', 'saved', 'board'].includes(this.selectedFilterType)) {
-                                    newUniqueArticles = newUniqueArticles.filter(a => !this.readStates.includes(a.link));
+                                    newUniqueArticles = newUniqueArticles.filter(a => !this.readStates.has(a.link));
                                 }
                                 this.articles = [...this.articles, ...newUniqueArticles];
                             } else {
                                 this.feeds = data.feeds || [];
-                                this.readStates = [...new Set([...(data.readStates || []), ...this.readStates])];
+                                this.readStates = new Set([...(data.readStates || []), ...this.readStates]);
                                 this.savedStates = [...new Set([...(data.savedStates || []), ...this.savedStates])];
                                 this.boardStates = [...new Set([...(data.boardStates || []), ...this.boardStates])];
                                 this.hiddenStates = [...new Set([...(data.hiddenStates || []), ...this.hiddenStates])];
                                 
                                 let newArticles = data.articles || [];
                                 if (this.hideRead && !['recent', 'saved', 'board'].includes(this.selectedFilterType)) {
-                                    newArticles = newArticles.filter(a => !this.readStates.includes(a.link));
+                                    newArticles = newArticles.filter(a => !this.readStates.has(a.link));
                                 }
                                 this.articles = newArticles;
                                 
@@ -1178,7 +1178,7 @@
                     
                     if (list === 'hiddenStates') {
                          const article = this.articles.find(a => a.link === link);
-                         if (article && !this.readStates.includes(link)) {
+                         if (article && !this.readStates.has(link)) {
                              if (isAdding) {
                                  if (this.unreadCounts.total > 0) this.unreadCounts.total--;
                                  if (this.unreadCounts.feeds[article.feedUrl] > 0) this.unreadCounts.feeds[article.feedUrl]--;
@@ -1240,8 +1240,8 @@
 
                 async markAsReadExplicit(link) {
                     this.prefetchNextAfter(link);
-                    if (!this.readStates.includes(link)) {
-                        this.readStates.push(link);
+                    if (!this.readStates.has(link)) {
+                        this.readStates = new Set([...this.readStates, link]);
                         
                         const article = this.articles.find(a => a.link === link);
                         if (article && !this.hiddenStates.includes(link)) {
@@ -1262,14 +1262,14 @@
                 },
 
                 async markAllAsRead() {
-                    const unreadInView = this.articles.filter(a => !this.readStates.includes(a.link) && !this.hiddenStates.includes(a.link));
+                    const unreadInView = this.articles.filter(a => !this.readStates.has(a.link) && !this.hiddenStates.includes(a.link));
                     let linksToMark = unreadInView.map(a => a.link);
                     
                     // Also mark all related articles as read
                     unreadInView.forEach(a => {
                         if (a.relatedArticles && Array.isArray(a.relatedArticles)) {
                             a.relatedArticles.forEach(r => {
-                                if (!this.readStates.includes(r.link)) {
+                                if (!this.readStates.has(r.link)) {
                                     linksToMark.push(r.link);
                                 }
                             });
@@ -1289,7 +1289,7 @@
                         this.markAllUndoTimer = null;
                     }, 15000);
 
-                    this.readStates = [...this.readStates, ...linksToMark];
+                    this.readStates = new Set([...this.readStates, ...linksToMark]);
                     
                     unreadInView.forEach(article => {
                         if (this.unreadCounts.total > 0) this.unreadCounts.total--;
@@ -1314,7 +1314,7 @@
                     this.markAllUndo = null;
                     this.markAllUndoTimer = null;
                     const links = new Set(undo.links);
-                    this.readStates = this.readStates.filter(link => !links.has(link));
+                    this.readStates = new Set([...this.readStates].filter(link => !links.has(link)));
                     this.unreadCounts = JSON.parse(JSON.stringify(undo.unreadCounts));
                     if (typeof this.saveState === 'function') this.saveState();
                     await fetch('/api/toggle-batch', {
@@ -1412,14 +1412,14 @@
                         const res = await fetch('/api/user-states');
                         if (res.ok) {
                             const data = await res.json();
-                            if (data.readStates) this.readStates = [...new Set([...data.readStates, ...this.readStates])];
+                            if (data.readStates) this.readStates = new Set([...data.readStates, ...this.readStates]);
                             if (data.savedStates) this.savedStates = [...new Set([...data.savedStates, ...this.savedStates])];
                             if (data.boardStates) this.boardStates = [...new Set([...data.boardStates, ...this.boardStates])];
                             if (data.hiddenStates) this.hiddenStates = [...new Set([...data.hiddenStates, ...this.hiddenStates])];
                             
                             // Re-filter articles if hideRead is active and new readStates arrived
                             if (this.hideRead && !['recent', 'saved', 'board'].includes(this.selectedFilterType)) {
-                                this.articles = this.articles.filter(a => !this.readStates.includes(a.link));
+                                this.articles = this.articles.filter(a => !this.readStates.has(a.link));
                             }
                         }
                     } catch (e) {
