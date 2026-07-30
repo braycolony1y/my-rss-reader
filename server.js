@@ -862,10 +862,10 @@ const env = {
             let val = _dbCache[key];
             if (!val) return null;
             if (opts && opts.type === 'json' && typeof val === 'string') {
-                if (_jsonParsedCache[key]?.raw === val) return _jsonParsedCache[key].parsed;
+                if (_jsonParsedCache[key]?.raw === val) return structuredClone(_jsonParsedCache[key].parsed);
                 const parsed = JSON.parse(val);
                 _jsonParsedCache[key] = { raw: val, parsed };
-                return parsed;
+                return structuredClone(parsed);
             }
             return val;
         },
