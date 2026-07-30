@@ -5280,6 +5280,41 @@ app.post('/api/toggle', authMiddleware, async (req, res) => {
     res.status(200).send('Toggled');
 });
 
+app.post('/api/toggle-batch', authMiddleware, async (req, res) => {
+    const { links, list, forceAdd, forceRemove } = req.body;
+    if (!['readStates', 'savedStates', 'boardStates', 'hiddenStates'].includes(list)) return res.status(400).send('Invalid List');
+    if (!Array.isArray(links)) return res.status(400).send('links must be an array');
+
+    let stateArray = await env.RSS_DATA.get(list, { type: 'json' }) || [];
+    let stateSet = new Set(stateArray);
+    
+    if (forceRemove) {
+        links.forEach(link => stateSet.delete(link));
+    } else if (forceAdd) {
+        links.forEach(link => stateSet.add(link));
+    }
+    
+    stateArray = Array.from(stateSet);
+    while (stateArray.length > 2000) stateArray.shift();
+    
+    await env.RSS_DATA.put(list, JSON.stringify(stateArray));
+
+    if (list === 'readStates' && forceAdd) {
+        const linkSet = new Set(links);
+        for (const bumpList of ['savedStates', 'boardStates']) {
+            let bArray = await env.RSS_DATA.get(bumpList, { type: 'json' }) || [];
+            const commonLinks = bArray.filter(l => linkSet.has(l));
+            if (commonLinks.length > 0) {
+                bArray = bArray.filter(l => !linkSet.has(l));
+                bArray.push(...commonLinks);
+                await env.RSS_DATA.put(bumpList, JSON.stringify(bArray));
+            }
+        }
+    }
+
+    res.status(200).send('Toggled Batch');
+});
+
 app.get('/api/proxy-image', authMiddleware, async (req, res) => {
     const targetUrl = req.query.url;
     if (!targetUrl) return res.status(400).send('Missing URL');

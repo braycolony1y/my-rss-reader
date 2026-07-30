@@ -1300,13 +1300,11 @@
 
                     if (typeof this.saveState === 'function') this.saveState();
 
-                    await Promise.allSettled(linksToMark.map(link =>
-                        fetch('/api/toggle', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ link: link, list: 'readStates', forceAdd: true })
-                        })
-                    ));
+                    await fetch('/api/toggle-batch', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ links: linksToMark, list: 'readStates', forceAdd: true })
+                    });
                 },
 
                 async undoMarkAllRead() {
@@ -1319,13 +1317,11 @@
                     this.readStates = this.readStates.filter(link => !links.has(link));
                     this.unreadCounts = JSON.parse(JSON.stringify(undo.unreadCounts));
                     if (typeof this.saveState === 'function') this.saveState();
-                    await Promise.allSettled(undo.links.map(link =>
-                        fetch('/api/toggle', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ link, list: 'readStates', forceRemove: true })
-                        })
-                    ));
+                    await fetch('/api/toggle-batch', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ links: undo.links, list: 'readStates', forceRemove: true })
+                    });
                 },
                 
                 openEditModal(feed) {
