@@ -380,4 +380,10 @@ Phase 3 and Phase 4 combined deliver only the remaining 5%, at 10× the engineer
 - **Notes:** Built in-memory `cacheIndex` Map to track `cachedAt`, `version`, and `url` for all cached articles on first scan.
 - **Measured Results:** Eliminates massive hourly disk read burst; subsequent cleanups check the in-memory index only.
 
-**Progress:** 40.0% (12/30)
+- **ID:** H-4
+- **Implementation Date:** 2026-07-30
+- **Files Changed:** `server.js`
+- **Notes:** Cached `content-filter-preview` results with a 30s TTL keyed by keyword hash.
+- **Measured Results:** Eliminates event-loop-blocking keyword scans when user updates filter configurations rapidly.
+
+**Progress:** 43.3% (13/30)
