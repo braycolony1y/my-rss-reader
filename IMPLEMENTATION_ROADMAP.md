@@ -346,4 +346,10 @@ Phase 3 and Phase 4 combined deliver only the remaining 5%, at 10× the engineer
 - **Notes:** Converted `readStates` to Set in Alpine.js model.
 - **Measured Results:** Reduced O(n) scanning during reactive updates, improving scroll and UI response times.
 
-**Progress:** 20.0% (6/30)
+- **ID:** M-10
+- **Implementation Date:** 2026-07-30
+- **Files Changed:** `script.js`
+- **Notes:** Added 400ms debounce and max-concurrent=2 cap to article hover prefetching.
+- **Measured Results:** Eliminated network fetch storms during rapid mouse movement over grids.
+
+**Progress:** 23.3% (7/30)

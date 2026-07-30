@@ -111,15 +111,16 @@ These areas were examined and found to have no significant performance concerns:
 3. C-3: Deduplication O(n²) `.find()` in loop
 4. M-8: 6× `db.put()` at end of smart sync
 5. H-5: `_jsonParsedCache` returns mutable refs
+6. H-9: Frontend `readStates` plain array
 
 ## Remaining Implementations
-25 findings remain (C-2, C-4, H-1 to H-4, H-6, H-8, H-9, M-1 to M-12 excluding M-6 and M-8, L-1 to L-5).
+24 findings remain (C-2, C-4, H-1 to H-4, H-6, H-8, M-1 to M-12 excluding M-6 and M-8, L-1 to L-5).
 
 ## Current Progress %
-16.6% (5/30)
+20.0% (6/30)
 
 ## Last Completed Finding
-H-5
+H-9
 
 ## Blockers
 None
