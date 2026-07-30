@@ -3751,7 +3751,7 @@
                     <div class="article-card mb-4 md:mb-5 relative overflow-hidden bg-[#111827] rounded-2xl cursor-pointer group border border-white/5 hover:border-white/20 transition-all duration-300 shadow-lg"
                         :class="[
                             (isMobile && mobileActiveCard === article.link) ? 'ring-2 ring-emerald-500' : '',
-                            readStates.includes(article.link) ? 'opacity-60 grayscale-[50%]' : ''
+                            readStates.has(article.link) ? 'opacity-60 grayscale-[50%]' : ''
                         ]" @click="handleCardClick(article, $event)" @mouseenter="handleCardHover(article)"
                         @mouseleave="handleCardHoverOut(article)">
 
@@ -3886,9 +3886,9 @@
                             <button @click.stop="toggleState('readStates', article.link)"
                                 class="transition p-1.5 rounded-lg"
                                 :class="theme === 'glass-light' ? 'hover:bg-black/5 text-gray-500 hover:text-gray-800' : 'hover:bg-white/10 text-gray-400'"
-                                :title="readStates.includes(article.link) ? 'Keep unread' : 'Mark as read'">
+                                :title="readStates.has(article.link) ? 'Keep unread' : 'Mark as read'">
                                 <svg class="w-4 h-4 md:w-5 md:h-5 text-gray-400"
-                                    :class="readStates.includes(article.link) ? 'text-emerald-500' : ''" fill="none"
+                                    :class="readStates.has(article.link) ? 'text-emerald-500' : ''" fill="none"
                                     stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                         d="M5 13l4 4L19 7"></path>
