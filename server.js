@@ -82,18 +82,54 @@ const ARTICLE_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;// NOTE: If you change anyt
 const ARTICLE_CACHE_VERSION = 17;
 const execFileAsync = promisify(execFile);
 
-function articleCacheFilename(url) {
+let _articleCacheIndex = null;
+
+function articleCacheBasename(url) {
     const canonicalUrl = String(url).replace(/\/unread\/?(?:[?#].*)?$/i, '');
-    return path.join(ARTICLE_CACHE_DIR, createHash('sha256').update(canonicalUrl).digest('hex') + '.json');
+    return createHash('sha256').update(canonicalUrl).digest('hex') + '.json';
+}
+
+function articleCacheFilename(url) {
+    return path.join(ARTICLE_CACHE_DIR, articleCacheBasename(url));
+}
+
+async function _initArticleCacheIndex() {
+    if (_articleCacheIndex !== null) return;
+    _articleCacheIndex = new Map();
+    try {
+        await fs.mkdir(ARTICLE_CACHE_DIR, { recursive: true });
+        const files = await fs.readdir(ARTICLE_CACHE_DIR);
+        for (const name of files) {
+            if (!name.endsWith('.json')) continue;
+            try {
+                // Regex extraction is much faster than JSON.parse for large HTML blobs
+                const content = await fs.readFile(path.join(ARTICLE_CACHE_DIR, name), 'utf-8');
+                const versionMatch = content.match(/"version":\s*(\d+)/);
+                const cachedAtMatch = content.match(/"cachedAt":\s*(\d+)/);
+                const urlMatch = content.match(/"url":\s*"([^"\\]*(?:\\.[^"\\]*)*)"/);
+                _articleCacheIndex.set(name, {
+                    version: versionMatch ? parseInt(versionMatch[1]) : 0,
+                    cachedAt: cachedAtMatch ? parseInt(cachedAtMatch[1]) : 0,
+                    url: urlMatch ? JSON.parse(`"${urlMatch[1]}"`) : null
+                });
+            } catch (e) {
+                _articleCacheIndex.set(name, { version: 0, cachedAt: 0, url: null });
+            }
+        }
+    } catch (e) {
+        console.error('[ARTICLE CACHE] Failed to init index:', e.message);
+    }
 }
 
 async function getCachedArticle(url) {
-    const filename = articleCacheFilename(url);
+    const name = articleCacheBasename(url);
+    const filename = path.join(ARTICLE_CACHE_DIR, name);
     try {
         const cached = JSON.parse(await fs.readFile(filename, 'utf-8'));
         const isExpired = Date.now() - cached.cachedAt >= ARTICLE_CACHE_TTL_MS;
         if (cached.version !== ARTICLE_CACHE_VERSION || !cached.cachedAt || !cached.result?.content) {
             await fs.unlink(filename).catch(() => {});
+            if (_articleCacheIndex !== null) _articleCacheIndex.delete(name);
             return null;
         }
         if (isExpired) {
@@ -110,6 +146,7 @@ async function getCachedArticle(url) {
             } catch (e) {}
             if (!isProtected) {
                 await fs.unlink(filename).catch(() => {});
+                if (_articleCacheIndex !== null) _articleCacheIndex.delete(name);
                 return null;
             }
         }
@@ -123,41 +160,43 @@ async function cacheArticleResult(url, result) {
     if (!result?.content) return;
     try {
         await fs.mkdir(ARTICLE_CACHE_DIR, { recursive: true });
-        await _writeJsonAtomic(articleCacheFilename(url), { version: ARTICLE_CACHE_VERSION, cachedAt: Date.now(), url, result });
+        const name = articleCacheBasename(url);
+        await _writeJsonAtomic(path.join(ARTICLE_CACHE_DIR, name), { version: ARTICLE_CACHE_VERSION, cachedAt: Date.now(), url, result });
+        if (_articleCacheIndex !== null) {
+            _articleCacheIndex.set(name, { version: ARTICLE_CACHE_VERSION, cachedAt: Date.now(), url });
+        }
     } catch (error) {
         console.error('[ARTICLE CACHE] Could not save article:', error.message);
     }
 }
 
 async function deleteCachedArticle(url) {
-    await fs.unlink(articleCacheFilename(url)).catch(() => {});
+    const name = articleCacheBasename(url);
+    await fs.unlink(path.join(ARTICLE_CACHE_DIR, name)).catch(() => {});
+    if (_articleCacheIndex !== null) _articleCacheIndex.delete(name);
 }
 
 async function cleanupArticleCache() {
     try {
+        await _initArticleCacheIndex();
+
         const savedStatesForPruning = await env.RSS_DATA.get('savedStates', { type: 'json' }) || [];
         const boardStatesForPruning = await env.RSS_DATA.get('boardStates', { type: 'json' }) || [];
         const protectedUrls = new Set([...savedStatesForPruning, ...boardStatesForPruning]);
 
-        await fs.mkdir(ARTICLE_CACHE_DIR, { recursive: true });
-        const files = await fs.readdir(ARTICLE_CACHE_DIR);
         let removed = 0;
-        for (const name of files) {
-            if (!name.endsWith('.json')) continue;
+        for (const [name, meta] of _articleCacheIndex.entries()) {
             const filename = path.join(ARTICLE_CACHE_DIR, name);
-            try {
-                const cached = JSON.parse(await fs.readFile(filename, 'utf-8'));
-                if (cached.version !== ARTICLE_CACHE_VERSION || !cached.cachedAt || Date.now() - cached.cachedAt >= ARTICLE_CACHE_TTL_MS) {
-                    if (cached.url && (protectedUrls.has(cached.url) || protectedUrls.has(cached.url.split('?')[0]))) {
-                        // Protected, do not delete
-                    } else {
-                        await fs.unlink(filename);
-                        removed++;
-                    }
+            const isExpired = Date.now() - meta.cachedAt >= ARTICLE_CACHE_TTL_MS;
+            
+            if (meta.version !== ARTICLE_CACHE_VERSION || !meta.cachedAt || isExpired) {
+                if (meta.url && (protectedUrls.has(meta.url) || protectedUrls.has(meta.url.split('?')[0]))) {
+                    // Protected, do not delete
+                } else {
+                    await fs.unlink(filename).catch(() => {});
+                    _articleCacheIndex.delete(name);
+                    removed++;
                 }
-            } catch (e) {
-                await fs.unlink(filename).catch(() => {});
-                removed++;
             }
         }
         if (removed) console.log(`[ARTICLE CACHE] Removed ${removed} expired or invalid entries.`);
