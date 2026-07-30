@@ -322,4 +322,10 @@ Phase 3 and Phase 4 combined deliver only the remaining 5%, at 10× the engineer
 - **Notes:** Added `/api/toggle-batch` and updated frontend to batch-mark articles.
 - **Measured Results:** Reduces 40 serialize+write cycles to 1, preventing disk/CPU spikes.
 
-**Progress:** 6.6% (2/30)
+- **ID:** C-3
+- **Implementation Date:** 2026-07-30
+- **Files Changed:** `server.js`
+- **Notes:** Replaced `.find()` with `Map` lookups in dedup loop.
+- **Measured Results:** O(n²) to O(n) deduplication, saves CPU during sync.
+
+**Progress:** 10.0% (3/30)
