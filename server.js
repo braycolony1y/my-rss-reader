@@ -4493,7 +4493,6 @@ app.post('/api/clear-article-cache', authMiddleware, async (req, res) => {
     if (!url) return res.status(400).json({ error: 'URL required' });
     try {
         await deleteCachedArticle(url);
-        // If it's a voz.vn thread, clear all pages of the thread
         if (url.includes('voz.vn/t/')) {
             const baseUrl = url.split('?')[0];
             const isSpecificPostOrPage = baseUrl.match(/\/(page-\d+|post-\d+|unread|latest)/i);
@@ -4501,15 +4500,13 @@ app.post('/api/clear-article-cache', authMiddleware, async (req, res) => {
                 const threadMatch = url.match(/\/t\/.*?\.(\d+)/);
                 if (threadMatch) {
                     const threadId = threadMatch[1];
-                    const files = await fs.readdir(ARTICLE_CACHE_DIR).catch(() => []);
-                    for (const file of files) {
-                        const filename = path.join(ARTICLE_CACHE_DIR, file);
-                        try {
-                            const cached = JSON.parse(await fs.readFile(filename, 'utf-8'));
-                            if (cached.url && cached.url.includes(`voz.vn/t/`) && cached.url.includes(`.${threadId}`)) {
-                                await fs.unlink(filename).catch(() => {});
+                    if (_articleCacheIndex !== null) {
+                        for (const [filename, meta] of _articleCacheIndex.entries()) {
+                            if (meta.url && meta.url.includes(`voz.vn/t/`) && meta.url.includes(`.${threadId}`)) {
+                                await fs.unlink(path.join(ARTICLE_CACHE_DIR, filename)).catch(() => {});
+                                _articleCacheIndex.delete(filename);
                             }
-                        } catch (e) {}
+                        }
                     }
                 }
             }
