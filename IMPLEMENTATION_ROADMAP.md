@@ -340,4 +340,10 @@ Phase 3 and Phase 4 combined deliver only the remaining 5%, at 10× the engineer
 - **Notes:** Wrapped json cache returns in `structuredClone`.
 - **Measured Results:** Prevents accidental memory corruption bugs.
 
-**Progress:** 16.6% (5/30)
+- **ID:** H-9
+- **Implementation Date:** 2026-07-30
+- **Files Changed:** `script.js`
+- **Notes:** Converted `readStates` to Set in Alpine.js model.
+- **Measured Results:** Reduced O(n) scanning during reactive updates, improving scroll and UI response times.
+
+**Progress:** 20.0% (6/30)
