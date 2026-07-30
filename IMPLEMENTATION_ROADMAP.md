@@ -328,4 +328,10 @@ Phase 3 and Phase 4 combined deliver only the remaining 5%, at 10× the engineer
 - **Notes:** Replaced `.find()` with `Map` lookups in dedup loop.
 - **Measured Results:** O(n²) to O(n) deduplication, saves CPU during sync.
 
-**Progress:** 10.0% (3/30)
+- **ID:** M-8
+- **Implementation Date:** 2026-07-30
+- **Files Changed:** `server.js`, `smart-news.js`
+- **Notes:** Added `putMany` and batched smart sync tail-end writes.
+- **Measured Results:** 6x write amplification eliminated (45 MB to 7.5 MB disk writes per sync).
+
+**Progress:** 13.3% (4/30)
