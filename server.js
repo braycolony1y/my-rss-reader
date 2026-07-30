@@ -1867,8 +1867,10 @@ async function syncFeeds(env, targetFeedUrl = null, onProgress = null, targetCat
     let syncLogs = [];
     let feedsToSync = targetFeedUrl ? feeds.filter(f => f.url === targetFeedUrl) : targetCategory ? feeds.filter(f => (f.category || 'Others') === targetCategory) : feeds;
 
-    for (let feedIndex = 0; feedIndex < feedsToSync.length; feedIndex++) {
-        const feed = feedsToSync[feedIndex];
+    const CONCURRENCY_LIMIT = 5;
+    const activePromises = new Set();
+
+    const processOneFeed = async (feed, feedIndex) => {
         if (onProgress) onProgress({
             stage: 'feeds',
             message: `Refreshing ${feed.title || new URL(feed.url).hostname}…`,
@@ -1881,7 +1883,7 @@ async function syncFeeds(env, targetFeedUrl = null, onProgress = null, targetCat
             if (!global.lastFetchTimeByUrl) global.lastFetchTimeByUrl = {};
             const lastFetch = global.lastFetchTimeByUrl[feed.url] || 0;
             if (now - lastFetch < 86400000 - 30000) {
-                continue;
+                return;
             }
         }
 
@@ -2018,7 +2020,7 @@ async function syncFeeds(env, targetFeedUrl = null, onProgress = null, targetCat
                     console.error(`[MORNINGSTAR DEBUG] 🔴 ALL 5 fetch methods failed for ${feed.url}`);
                     syncLogs.push({ Feed: feed.title || feed.url, Issue: 'All fetch methods failed (direct, CF proxy, Vietserver, Jina, OpenCLI)' });
                     recordFetch(feed.url, feed.title || feed.url, 'error', 'All 5 fetch methods failed', Date.now() - feedFetchStart, { errorType: 'all-methods-failed' });
-                    continue;
+                    return;
                 }
             } else if (feed.url.includes('techcombank.com')) {
                 // Techcombank loads data via GraphQL
@@ -2055,7 +2057,7 @@ async function syncFeeds(env, targetFeedUrl = null, onProgress = null, targetCat
             if (!response.ok && response.status !== 202) {
                 syncLogs.push({ Feed: feed.title || feed.url, Issue: `HTTP Error ${response.status}` });
                 recordFetch(feed.url, feed.title || feed.url, 'error', `HTTP ${response.status}`, Date.now() - feedFetchStart, { httpStatus: response.status, errorType: 'http' });
-                continue;
+                return;
             }
 
             const xmlData = await response.text();
@@ -2331,7 +2333,7 @@ async function syncFeeds(env, targetFeedUrl = null, onProgress = null, targetCat
                 } catch (parseErr) {
                     syncLogs.push({ Feed: feed.title || feed.url, Issue: `Báo Mới Scraper crashed: ${parseErr.message}` });
                     recordFetch(feed.url, feed.title || feed.url, 'error', `Scraper crash: ${parseErr.message}`, Date.now() - feedFetchStart, { errorType: 'scraper' });
-                    continue;
+                    return;
                 }
             } else if (feed.url.includes('morningstar.com')) {
                 console.log(`[MORNINGSTAR DEBUG] Intercepted Request to: ${feed.url} | HTTP Status: ${response.status}`);
@@ -2349,14 +2351,14 @@ async function syncFeeds(env, targetFeedUrl = null, onProgress = null, targetCat
                 if (xmlData.trim().toLowerCase().startsWith('<!doctype html') || xmlData.trim().toLowerCase().startsWith('<html')) {
                     syncLogs.push({ Feed: feed.title || feed.url, Issue: 'Received HTML instead of XML.' });
                     recordFetch(feed.url, feed.title || feed.url, 'error', 'Received HTML instead of XML', Date.now() - feedFetchStart, { errorType: 'format' });
-                    continue;
+                    return;
                 }
                 try {
                     feedData = await runParserWorker('fastParseRSS', xmlData);
                 } catch (parseErr) {
                     syncLogs.push({ Feed: feed.title || feed.url, Issue: `XML Parser crashed: ${parseErr.message}` });
                     recordFetch(feed.url, feed.title || feed.url, 'error', `XML parse: ${parseErr.message}`, Date.now() - feedFetchStart, { errorType: 'parse' });
-                    continue;
+                    return;
                 }
             }
 
@@ -2510,7 +2512,19 @@ async function syncFeeds(env, targetFeedUrl = null, onProgress = null, targetCat
             syncLogs.push({ Feed: feed.title || feed.url, Issue: `Network Crash: ${err.message}` });
             recordFetch(feed.url, feed.title || feed.url, 'error', `Network: ${err.message}`, Date.now() - feedFetchStart, { errorType: 'network' });
         }
+    };
+
+    for (let feedIndex = 0; feedIndex < feedsToSync.length; feedIndex++) {
+        const feed = feedsToSync[feedIndex];
+        const p = processOneFeed(feed, feedIndex).finally(() => activePromises.delete(p));
+        activePromises.add(p);
+        
+        if (activePromises.size >= CONCURRENCY_LIMIT) {
+            await Promise.race(activePromises);
+        }
+        await new Promise(r => setTimeout(r, 500));
     }
+    await Promise.all(activePromises);
 
     let allArticles = [...newArticles, ...existingArticles];
 

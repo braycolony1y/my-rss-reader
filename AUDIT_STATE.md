@@ -113,15 +113,18 @@ These areas were examined and found to have no significant performance concerns:
 5. H-5: `_jsonParsedCache` returns mutable refs
 6. H-9: Frontend `readStates` plain array
 7. M-10: Debounce hover prefetch
+8. C-2: `Date.parse()` inside map/sort loops (Verified complete)
+9. C-4: Unnecessary re-rendering of entire feed list (Verified complete)
+10. H-1: Feed parser runs block Node.js event loop
 
 ## Remaining Implementations
-23 findings remain (C-2, C-4, H-1 to H-4, H-6, H-8, M-1 to M-12 excluding M-6, M-8 and M-10, L-1 to L-5).
+20 findings remain (H-2 to H-4, H-6, H-8, M-1 to M-12 excluding M-6, M-8 and M-10, L-1 to L-5).
 
 ## Current Progress %
-23.3% (7/30)
+33.3% (10/30)
 
 ## Last Completed Finding
-M-10
+H-1
 
 ## Blockers
 None
