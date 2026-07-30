@@ -46,6 +46,12 @@ export default class ThanhNienSource {
         if (authorMatch && result) {
             result.author = authorMatch[1].trim();
         }
+        
+        // Author avatar extraction
+        const authorAvatarMatch = html.match(/<a[^>]*class=["'][^"']*avatar author-data[^"']*["'][^>]*>\s*<img[^>]*src=["']([^"']+)["']/i);
+        if (authorAvatarMatch && result) {
+            result.authorAvatar = authorAvatarMatch[1];
+        }
 
         const createSuggestedHtml = (title, itemsHtml) => {
             if (!itemsHtml) return '';

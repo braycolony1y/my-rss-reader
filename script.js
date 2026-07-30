@@ -71,12 +71,18 @@
                 hideRead: localStorage.getItem('hideRead') === 'true',
                 
                 isMobile: window.innerWidth < 768,
+                isTouch: ('ontouchstart' in window) || navigator.maxTouchPoints > 0,
                 mobileSidebarOpen: false,
-                desktopSidebarOpen: true, 
+                sidebarExpanded: false,
+                desktopSidebarOpen: false, 
                 mobileActiveCard: null,
                 lastSavedScrollY: 0,
                 saveState: null,
                 
+                debugModalOpen: false,
+                boardModalOpen: false,
+                boardModalArticle: null,
+                newBoardFolderName: '',
                 editModalOpen: false,
                 editingFeed: null,
                 editFeedTitle: '',
@@ -107,6 +113,10 @@
                 overlayPagination: null,
                 vozThreadNotice: null,
                 overlayError: null,
+                
+                hoverSummaries: {},
+                hoveredArticleUrl: null,
+                hoverTimeouts: {},
                 overlayProgress: { message: '' },
                 overlayProgressInterval: null,
                 overlayRequestId: '',
@@ -123,6 +133,18 @@
                 articleSpeechChunks: [],
                 articleSpeechIndex: 0,
                 articleSpeechGeneration: 0,
+                // AI Summary state
+                aiSummary: null,
+                aiSummaryLoading: false,
+                aiSummaryExpanded: false,
+                aiSummaryError: null,
+                aiAnalysisLoading: false,
+                aiSummaryPollTimer: null,
+                aiSummaryUpgradePollTimer: null,
+                vozSummaryProgress: null,
+                geminiDebugStats: null,
+                geminiDebugTimer: null,
+                vozSummaryController: null,
                 vozScrollRaf: 0,
                 lastVozMeasureAt: 0,
                 lastTrackedVozPost: '',
@@ -131,12 +153,51 @@
                 debugModalOpen: false,
                 isDebugging: false,
                 debugData: null,
+                debugModalArticle: null,
+
+                // CUSTOM TOOLTIP STATE
+                customTooltipOpen: false,
+                tooltipTitle: '',
+                tooltipContent: '',
+                tooltipX: 0,
+                tooltipY: 0,
+                showTooltip(e, title, content) {
+                    if (this.articleOverlayOpen) return;
+                    if (this.isTouch && this.customTooltipOpen && this.tooltipTitle === title) return;
+                    this.tooltipTitle = title;
+                    this.tooltipContent = content;
+                    
+                    let x = e.clientX + 15;
+                    let y = e.clientY + 15;
+                    const maxW = Math.min(350, window.innerWidth - 32);
+                    if (x + maxW > window.innerWidth) x = window.innerWidth - maxW - 16;
+                    if (x < 16) x = 16;
+                    
+                    this.tooltipX = x;
+                    this.tooltipY = y;
+                    this.customTooltipOpen = true;
+                },
+                moveTooltip(e) {
+                    if (this.isTouch) return;
+                    let x = e.clientX + 15;
+                    let y = e.clientY + 15;
+                    const maxW = Math.min(350, window.innerWidth - 32);
+                    if (x + maxW > window.innerWidth) x = window.innerWidth - maxW - 16;
+                    if (x < 16) x = 16;
+                    
+                    this.tooltipX = x;
+                    this.tooltipY = y;
+                },
+                hideTooltip() {
+                    this.customTooltipOpen = false;
+                },
 
                 // PAGINATION & SIDEBAR STATE
                 currentPage: 1,
                 hasMore: true,
                 isLoadingMore: false,
                 isLoadingArticles: false,
+                loadingArticleStatus: '',
                 articleRequestGeneration: 0,
                 unreadCounts: { feeds: {}, categories: {}, total: 0 },
 
@@ -164,9 +225,16 @@
                                     this.userPreferences = state.userPreferences || {};
                                     this.categoryOrder = state.categoryOrder || [];
                                     this.unreadCounts = state.unreadCounts || { feeds: {}, categories: {}, total: 0 };
-                                    cacheMatchesSmartDefault = state.selectedFilterType === 'smart' && state.selectedFilterValue === 'news_vietnam';
-                                    this.selectedFilterType = 'smart';
-                                    this.selectedFilterValue = 'news_vietnam';
+                                    const hashFilter = this.getFilterFromHash();
+                                    if (hashFilter) {
+                                        this.selectedFilterType = hashFilter.type;
+                                        this.selectedFilterValue = hashFilter.value;
+                                    } else {
+                                        this.selectedFilterType = state.selectedFilterType || 'smart';
+                                        this.selectedFilterValue = state.selectedFilterValue || 'news_vietnam';
+                                        window.history.replaceState(null, null, `#${this.selectedFilterType}${this.selectedFilterValue ? '/' + this.selectedFilterValue : ''}`);
+                                    }
+                                    cacheMatchesSmartDefault = this.selectedFilterType === state.selectedFilterType && this.selectedFilterValue === state.selectedFilterValue;
                                     this.currentPage = state.currentPage || 1;
                                     this.hasMore = state.hasMore !== undefined ? state.hasMore : true;
                                     this.expandedCategories = state.expandedCategories || this.categories.map(c => c.name);
@@ -217,6 +285,10 @@
                             this.prefetchArticlesList(this.articles.slice(0, 5), true);
                         }
                     }, 600);
+                    
+                    // Background poll for debug stats (quota warning)
+                    this.fetchGeminiDebugStats();
+                    setInterval(() => this.fetchGeminiDebugStats(), 30000);
 
                     // Save state securely to both sessionStorage and localStorage with lightweight compacting so it never exceeds quota on mobile
                     this.saveState = () => {
@@ -268,6 +340,7 @@
                             if (typeof this.saveState === 'function') this.saveState();
                         } else {
                             this.fetchSyncStatus();
+                            this.syncUserStatesInBackground();
                             const sc = document.getElementById('scroll-container');
                             if (sc && sc.scrollTop === 0 && this.lastSavedScrollY > 0) {
                                 sc.scrollTop = this.lastSavedScrollY;
@@ -286,6 +359,33 @@
                         }
                     });
                     this.fetchSyncStatus();
+
+                    // Ping backend for Forum active tab status to accelerate sync
+                    setInterval(() => {
+                        if (document.hidden) return;
+                        
+                        let isForum = false;
+                        if (this.overlayArticle && this.overlayArticle.feedCategory && this.overlayArticle.feedCategory.toLowerCase().includes('forum')) {
+                            isForum = true;
+                        } else if (this.selectedFilterType === 'feed' && this.selectedFilterValue) {
+                            const feed = this.feeds.find(f => f.url === this.selectedFilterValue);
+                            if (feed && feed.category && feed.category.toLowerCase().includes('forum')) {
+                                isForum = true;
+                            }
+                        } else if (this.selectedFilterType === 'category' && this.selectedFilterValue) {
+                            if (this.selectedFilterValue.toLowerCase().includes('forum')) {
+                                isForum = true;
+                            }
+                        }
+
+                        if (isForum) {
+                            fetch('/api/ping-active', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ isForum: true })
+                            }).catch(() => {});
+                        }
+                    }, 30000);
                 },
 
                 async login() {
@@ -427,6 +527,27 @@
                     this.geminiStatusOpen = true;
                     this.mobileSidebarOpen = false;
                     this.fetchGeminiKeyStatus();
+                    if (!this.geminiDebugTimer) {
+                        this.fetchGeminiDebugStats();
+                        this.geminiDebugTimer = setInterval(() => this.fetchGeminiDebugStats(), 5000);
+                    }
+                },
+
+                closeGeminiStatus() {
+                    this.geminiStatusOpen = false;
+                    if (this.geminiDebugTimer) {
+                        clearInterval(this.geminiDebugTimer);
+                        this.geminiDebugTimer = null;
+                    }
+                },
+
+                async fetchGeminiDebugStats() {
+                    try {
+                        const res = await fetch('/api/summary/debug');
+                        if (res.ok) {
+                            this.geminiDebugStats = await res.json();
+                        }
+                    } catch (e) {}
                 },
 
                 async fetchGeminiKeyStatus() {
@@ -657,7 +778,28 @@
                     }
                     if (!isLoadMore) {
                         this.isLoadingArticles = true;
+                        this.loadingArticleStatus = 'Connecting to server...';
                         this.articles = [];
+                        
+                        if (this._connectTimer) clearInterval(this._connectTimer);
+                        let connectWaitTime = 0;
+                        this._connectTimer = setInterval(() => {
+                            connectWaitTime += 500;
+                            // Only update if we are still in the pre-download phase
+                            if (!this.loadingArticleStatus || this.loadingArticleStatus.startsWith('Downloading') || this.loadingArticleStatus.startsWith('Processing')) {
+                                clearInterval(this._connectTimer);
+                                return;
+                            }
+                            if (connectWaitTime === 1000) {
+                                this.loadingArticleStatus = 'Reading database into memory...';
+                            } else if (connectWaitTime === 2000) {
+                                this.loadingArticleStatus = 'Filtering and sorting articles...';
+                            } else if (connectWaitTime === 3500) {
+                                this.loadingArticleStatus = 'Almost there, preparing response...';
+                            } else if (connectWaitTime > 5000 && connectWaitTime % 1000 === 0) {
+                                this.loadingArticleStatus = `Still processing... (${connectWaitTime/1000}s)`;
+                            }
+                        }, 500);
                     }
 
                     const pageLimit = this.isMobile ? 15 : 40;
@@ -678,12 +820,48 @@
                     try {
                         const res = await fetch(`/api/data?${params.toString()}`);
                         if (res.ok) {
-                            const data = await res.json();
+                            if (!isLoadMore) this.loadingArticleStatus = 'Downloading data...';
+                            
+                            let data;
+                            if (res.body && window.ReadableStream) {
+                                const contentLength = res.headers.get('content-length');
+                                const total = contentLength ? parseInt(contentLength, 10) : 0;
+                                let loaded = 0;
+                                const reader = res.body.getReader();
+                                const chunks = [];
+                                while(true) {
+                                    const {done, value} = await reader.read();
+                                    if (done) break;
+                                    chunks.push(value);
+                                    loaded += value.length;
+                                    if (!isLoadMore) {
+                                        if (total) {
+                                            this.loadingArticleStatus = `Downloading data... ${Math.round(loaded/total*100)}%`;
+                                        } else {
+                                            this.loadingArticleStatus = `Downloading data... ${(loaded/1024).toFixed(1)} KB`;
+                                        }
+                                    }
+                                }
+                                if (!isLoadMore) this.loadingArticleStatus = 'Processing...';
+                                let position = 0;
+                                let result = new Uint8Array(loaded);
+                                for(let chunk of chunks) {
+                                    result.set(chunk, position);
+                                    position += chunk.length;
+                                }
+                                const text = new TextDecoder("utf-8").decode(result);
+                                data = JSON.parse(text);
+                            } else {
+                                data = await res.json();
+                                if (!isLoadMore) this.loadingArticleStatus = 'Processing...';
+                            }
+                            
                             if (requestGeneration !== this.articleRequestGeneration) return;
                             
                             if (isLoadMore) {
+                                const existingLinks = new Set(this.articles.map(a => a.link));
                                 let newUniqueArticles = (data.articles || []).filter(a => !existingLinks.has(a.link));
-                                if (this.hideRead) {
+                                if (this.hideRead && !['recent', 'saved', 'board'].includes(this.selectedFilterType)) {
                                     newUniqueArticles = newUniqueArticles.filter(a => !this.readStates.includes(a.link));
                                 }
                                 this.articles = [...this.articles, ...newUniqueArticles];
@@ -695,12 +873,14 @@
                                 this.hiddenStates = [...new Set([...(data.hiddenStates || []), ...this.hiddenStates])];
                                 
                                 let newArticles = data.articles || [];
-                                if (this.hideRead) {
+                                if (this.hideRead && !['recent', 'saved', 'board'].includes(this.selectedFilterType)) {
                                     newArticles = newArticles.filter(a => !this.readStates.includes(a.link));
                                 }
                                 this.articles = newArticles;
                                 
                                 this.userPreferences = data.userPreferences || {};
+                                this.userPreferences.boardFolders = this.userPreferences.boardFolders || [];
+                                this.userPreferences.boardFolderMappings = this.userPreferences.boardFolderMappings || {};
                                 this.categoryOrder = data.categoryOrder || [];
                                 this.unreadCounts = data.unreadCounts || { feeds: {}, categories: {}, total: 0 };
                                 if (data.smartClusterVersion) {
@@ -710,7 +890,7 @@
                             this.hasMore = data.hasMore !== undefined ? data.hasMore : false;
                             if (typeof this.saveState === 'function') this.saveState();
                             if (!isLoadMore && this.articles && this.articles.length > 0) {
-                                setTimeout(() => this.prefetchArticlesList(this.articles.slice(0, 5), false), 250);
+                                setTimeout(() => this.prefetchArticlesList(this.articles.slice(0, 10), false), 250);
                             }
                         }
                     } catch (e) {
@@ -840,6 +1020,7 @@
                     this._preserveSmartVersionCall = preserveVersion && this.selectedFilterType === 'smart';
                     this.selectedFilterType = type;
                     this.selectedFilterValue = value;
+                    window.location.hash = `${type}${value ? '/' + value : ''}`;
                     this.currentPage = 1;
                     this.hasMore = false;
                     this.articles = [];
@@ -860,6 +1041,64 @@
                         }
                     } else {
                         this.openArticleOverlay(article);
+                    }
+                },
+
+                handleCardHover(article) {
+                    if (this.isMobile) return;
+                    const url = article.originalLink || article.link;
+                    if (!url) return;
+                    
+                    this.hoveredArticleUrl = url;
+                    
+                    // If we don't have the summary cached client-side, check backend
+                    if (!this.hoverSummaries[url]) {
+                        if (this.hoverTimeouts[url]) clearTimeout(this.hoverTimeouts[url]);
+                        this.hoverTimeouts[url] = setTimeout(() => {
+                            if (this.hoveredArticleUrl !== url) return;
+                            fetch('/api/summary?url=' + encodeURIComponent(url))
+                                .then(res => res.ok ? res.json() : null)
+                                .then(data => {
+                                    if (data && data.status === 'ready' && data.tldr) {
+                                        this.hoverSummaries[url] = data;
+                                    }
+                                }).catch(() => {});
+                        }, 200); // Small delay to avoid spamming while moving mouse
+                    }
+
+                    // If already in client-side cache, skip
+                    if (this.articleContentCache && this.articleContentCache.has(url)) return;
+                    // Eagerly prefetch this specific article with high priority
+                    if (!this.articleContentCache) this.articleContentCache = new Map();
+                    // Fire a direct fetch immediately (bypasses queue)
+                    fetch('/api/article-content?' + new URLSearchParams({
+                        url,
+                        title: article.title || '',
+                        feedTitle: article.feedTitle || '',
+                        feedUrl: article.feedUrl || '',
+                        feedIcon: article.feedIcon || '',
+                        prefetch: '1',
+                        _t: Date.now().toString()
+                    }).toString()).then(res => res.ok ? res.json() : null).then(data => {
+                        if (data && !data.error && data.content) {
+                            if (!this.articleContentCache) this.articleContentCache = new Map();
+                            this.articleContentCache.set(url, data);
+                            if (this.articleContentCache.size > 80) {
+                                const firstKey = this.articleContentCache.keys().next().value;
+                                this.articleContentCache.delete(firstKey);
+                            }
+                        }
+                    }).catch(() => {});
+                },
+
+                handleCardHoverOut(article) {
+                    const url = article.originalLink || article.link;
+                    if (this.hoveredArticleUrl === url) {
+                        this.hoveredArticleUrl = null;
+                    }
+                    if (this.hoverTimeouts[url]) {
+                        clearTimeout(this.hoverTimeouts[url]);
+                        delete this.hoverTimeouts[url];
                     }
                 },
 
@@ -907,19 +1146,37 @@
                     this.dragTargetCategory = null;
                 },
 
-                async toggleState(listName, link) {
-                    let isAdding = !this[listName].includes(link);
+                toggleState(list, link) {
+                    if (!link) return;
+                    const array = this[list];
+                    const index = array.indexOf(link);
+                    const isAdding = index === -1;
                     if (isAdding) {
-                        this[listName].push(link);
-                        if (listName === 'savedStates' || listName === 'boardStates') {
-                            // Auto-cache article content in background when saved
+                        array.push(link);
+                        if (list === 'savedStates' || list === 'boardStates') {
                             fetch(`/api/article-content?url=${encodeURIComponent(link)}`).catch(() => {});
                         }
+                        fetch('/api/toggle', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ link, list, forceAdd: true })
+                        });
                     } else {
-                        this[listName] = this[listName].filter(l => l !== link);
+                        array.splice(index, 1);
+                        fetch('/api/toggle', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ link, list, forceRemove: true })
+                        });
+                        
+                        // Clean up folder mapping if removing from board
+                        if (list === 'boardStates' && this.userPreferences.boardFolderMappings?.[link]) {
+                            delete this.userPreferences.boardFolderMappings[link];
+                            this.syncUserPreferenceDebounced('boardFolderMappings', this.userPreferences.boardFolderMappings);
+                        }
                     }
                     
-                    if (listName === 'hiddenStates') {
+                    if (list === 'hiddenStates') {
                          const article = this.articles.find(a => a.link === link);
                          if (article && !this.readStates.includes(link)) {
                              if (isAdding) {
@@ -935,13 +1192,50 @@
                              }
                          }
                     }
-
+                    
                     if (typeof this.saveState === 'function') this.saveState();
-                    await fetch('/api/toggle', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ link: link, list: listName })
-                    });
+                },
+
+                openBoardModal(article) {
+                    this.boardModalArticle = article;
+                    this.newBoardFolderName = '';
+                    this.boardModalOpen = true;
+                },
+
+                assignBoardFolder(folderName) {
+                    if (!this.boardModalArticle) return;
+                    const link = this.boardModalArticle.originalLink || this.boardModalArticle.link;
+                    
+                    // Add to boardStates if not already there
+                    if (!this.boardStates.includes(link)) {
+                        this.toggleState('boardStates', link);
+                    }
+                    
+                    // Set folder mapping
+                    this.userPreferences.boardFolderMappings[link] = folderName;
+                    this.syncUserPreferenceDebounced('boardFolderMappings', this.userPreferences.boardFolderMappings);
+                    
+                    this.boardModalOpen = false;
+                },
+
+                createNewBoardFolder() {
+                    const name = this.newBoardFolderName.trim();
+                    if (!name) return;
+                    
+                    if (!this.userPreferences.boardFolders.includes(name)) {
+                        this.userPreferences.boardFolders.push(name);
+                        this.syncUserPreferenceDebounced('boardFolders', this.userPreferences.boardFolders);
+                    }
+                    this.assignBoardFolder(name);
+                },
+
+                removeArticleFromBoard() {
+                    if (!this.boardModalArticle) return;
+                    const link = this.boardModalArticle.originalLink || this.boardModalArticle.link;
+                    if (this.boardStates.includes(link)) {
+                        this.toggleState('boardStates', link);
+                    }
+                    this.boardModalOpen = false;
                 },
 
                 async markAsReadExplicit(link) {
@@ -1116,6 +1410,27 @@
                     }
                 },
 
+                async syncUserStatesInBackground() {
+                    if (!this.isLoggedIn) return;
+                    try {
+                        const res = await fetch('/api/user-states');
+                        if (res.ok) {
+                            const data = await res.json();
+                            if (data.readStates) this.readStates = [...new Set([...data.readStates, ...this.readStates])];
+                            if (data.savedStates) this.savedStates = [...new Set([...data.savedStates, ...this.savedStates])];
+                            if (data.boardStates) this.boardStates = [...new Set([...data.boardStates, ...this.boardStates])];
+                            if (data.hiddenStates) this.hiddenStates = [...new Set([...data.hiddenStates, ...this.hiddenStates])];
+                            
+                            // Re-filter articles if hideRead is active and new readStates arrived
+                            if (this.hideRead && !['recent', 'saved', 'board'].includes(this.selectedFilterType)) {
+                                this.articles = this.articles.filter(a => !this.readStates.includes(a.link));
+                            }
+                        }
+                    } catch (e) {
+                        console.error('Failed to background sync user states:', e);
+                    }
+                },
+
                 async syncNow() {
                     let isRefreshingAll = true;
                     if (this.selectedFilterType === 'feed' && this.selectedFilterValue) {
@@ -1219,15 +1534,17 @@
                     this.overlayArticle.overlayTitle = this.stripHtml(data.title || fallbackArticle?.title || this.overlayArticle.title);
                     this.overlayArticle.overlayImage = data.image || fallbackArticle?.image || this.overlayArticle.image;
                     this.overlayArticle.overlayAuthor = data.author || '';
+                    this.overlayArticle.overlayAuthorAvatar = data.authorAvatar || fallbackArticle?.authorAvatar || this.overlayArticle.authorAvatar || '';
                     this.overlayArticle.overlayDate = data.date || fallbackArticle?.pubDate || this.overlayArticle.pubDate;
                     
                     if (data.image && !this.overlayArticle.image) this.overlayArticle.image = data.image;
                     if (data.author && !this.overlayArticle.author) this.overlayArticle.author = data.author;
+                    if (data.authorAvatar && !this.overlayArticle.authorAvatar) this.overlayArticle.authorAvatar = data.authorAvatar;
                     this.overlayArticle.siteName = data.siteName || this.overlayArticle.siteName || '';
                     this.overlayArticle.isCached = Boolean(data.cached);
                     if (data.url && data.url !== this.overlayArticle.link) {
                         this.overlayArticle.originalLink ||= this.overlayArticle.link;
-                        this.overlayArticle.link = data.url;
+                        this.overlayArticle.resolvedLink = data.url;
                     }
                     this.overlayFetchStrategy = strategy;
                     this.overlayFetchedFromCache = data.cached === true;
@@ -1259,6 +1576,8 @@
                                 }
                             });
                         }
+                        const articleScroll = document.getElementById('overlay-scroll-container');
+                        if (articleScroll) articleScroll.scrollTop = 0;
                     });
                 },
 
@@ -1289,16 +1608,16 @@
                             if (!this.articleOverlayOpen || this.overlayRequestId !== requestId) return;
                             const postEl = document.getElementById('voz-post-' + lastRead);
                             if (postEl && postEl.offsetParent !== null) {
-                                postEl.scrollIntoView({ behavior: 'auto', block: 'center' });
-                                
                                 const existingNotice = document.getElementById('voz-inline-notice');
                                 if (existingNotice) existingNotice.remove();
                                 
                                 const inlineNotice = document.createElement('div');
                                 inlineNotice.id = 'voz-inline-notice';
-                                inlineNotice.className = 'mb-3 px-4 py-2.5 bg-blue-900 text-blue-200 rounded-xl border border-blue-700 flex justify-between items-center text-sm font-medium shadow-sm';
-                                inlineNotice.innerHTML = `<span>📍 Bạn đã quay lại đúng vị trí bài viết #${lastRead} mà bạn đang đọc lần trước!</span><button class="text-blue-600 dark:text-blue-400 hover:opacity-80 ml-4 font-bold text-lg" onclick="this.parentElement.remove()" title="Đóng">&times;</button>`;
+                                inlineNotice.className = `mb-3 px-4 py-2.5 rounded-2xl border flex justify-between items-center text-sm font-medium shadow-sm transition ${this.theme === 'glass-light' ? 'bg-blue-500/10 text-blue-700 border-blue-500/20' : 'bg-blue-500/10 text-blue-300 border-blue-500/20'}`;
+                                inlineNotice.innerHTML = `<span>📍 Bạn đã quay lại đúng vị trí bài viết #${lastRead} mà bạn đang đọc lần trước!</span><button class="hover:opacity-80 ml-4 font-bold text-lg transition ${this.theme === 'glass-light' ? 'text-blue-600' : 'text-blue-400'}" onclick="this.parentElement.style.opacity='0'; setTimeout(()=>this.parentElement.remove(), 200)" title="Đóng">&times;</button>`;
                                 postEl.parentElement.insertBefore(inlineNotice, postEl);
+                                
+                                inlineNotice.scrollIntoView({ behavior: 'auto', block: 'center' });
                             } else if (attempts < 30) {
                                 attempts++;
                                 setTimeout(checkAndScroll, 100); // Poll every 100ms for up to 3 seconds
@@ -1313,11 +1632,43 @@
                                         action: () => this.navigateToThreadPage(pageObj.url, true)
                                     };
                                 } else {
-                                    this.vozThreadNotice = {
-                                        text: `📍 Lần trước bạn đã đọc đến bài #${lastRead}.`,
-                                        actionText: 'Ẩn',
-                                        action: () => { this.vozThreadNotice = null; }
-                                    };
+                                    // Post not found and no matching page in pagination — construct page URL
+                                    const targetPage = Math.ceil(Number(lastRead) / 20);
+                                    const currentPage = this.overlayPagination ? this.overlayPagination.currentPage : 1;
+                                    if (targetPage > 1 && targetPage !== currentPage) {
+                                        // Build the target page URL from the thread URL
+                                        const baseThreadUrl = (this.overlayArticle.originalLink || this.overlayArticle.link || url).split(/[?#]/)[0].replace(/\/page-\d+$/, '').replace(/\/$/, '');
+                                        const targetPageUrl = baseThreadUrl + '/page-' + targetPage;
+                                        this.vozThreadNotice = {
+                                            text: `📍 Lần trước bạn đã đọc đến bài #${lastRead}.`,
+                                            actionText: 'Tới bài',
+                                            action: () => this.navigateToThreadPage(targetPageUrl, true)
+                                        };
+                                    } else {
+                                        // Same page — try to scroll to closest post
+                                        this.vozThreadNotice = {
+                                            text: `📍 Lần trước bạn đã đọc đến bài #${lastRead}.`,
+                                            actionText: 'Tới bài',
+                                            action: () => {
+                                                const exactPost = document.getElementById('voz-post-' + lastRead);
+                                                if (exactPost) {
+                                                    exactPost.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                                } else {
+                                                    let closest = null;
+                                                    let minDiff = Infinity;
+                                                    document.querySelectorAll('[id^="voz-post-"]').forEach(el => {
+                                                        const num = parseInt(el.id.replace('voz-post-', ''));
+                                                        if (!isNaN(num)) {
+                                                            const diff = Math.abs(num - Number(lastRead));
+                                                            if (diff < minDiff) { minDiff = diff; closest = el; }
+                                                        }
+                                                    });
+                                                    if (closest) closest.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                                }
+                                                this.vozThreadNotice = null;
+                                            }
+                                        };
+                                    }
                                 }
                             }
                         };
@@ -1327,7 +1678,8 @@
 
                 syncUserPreferenceDebounced(key, value) {
                     if (!this.syncPrefsTimer) this.syncPrefsTimer = {};
-                    if (String(this.userPreferences[key] ?? '') === String(value ?? '')) return;
+                    // Skip string comparison for objects/arrays to ensure they sync
+                    if (typeof value !== 'object' && String(this.userPreferences[key] ?? '') === String(value ?? '')) return;
                     clearTimeout(this.syncPrefsTimer[key]);
                     this.userPreferences[key] = value;
                     try { localStorage.setItem(key, value); } catch(e) {}
@@ -1751,6 +2103,7 @@
                             media.remove();
                             return;
                         }
+                        media.setAttribute('referrerpolicy', 'no-referrer');
                         const width = Number(media.getAttribute('width') || 0);
                         const height = Number(media.getAttribute('height') || 0);
                         if ((width && width <= 2) || (height && height <= 2)) media.remove();
@@ -1832,6 +2185,27 @@
                     );
                 },
 
+                getFilterFromHash() {
+                    const hash = window.location.hash.substring(1);
+                    if (hash) {
+                        const parts = hash.split('/');
+                        return { type: parts[0], value: parts.length > 1 ? parts.slice(1).join('/') : null };
+                    }
+                    return null;
+                },
+
+                handleHashChange() {
+                    const hashFilter = this.getFilterFromHash();
+                    if (hashFilter && (hashFilter.type !== this.selectedFilterType || hashFilter.value !== this.selectedFilterValue)) {
+                        this.selectedFilterType = hashFilter.type;
+                        this.selectedFilterValue = hashFilter.value;
+                        this.currentPage = 1;
+                        this.hasMore = false;
+                        this.articles = [];
+                        this.fetchData();
+                    }
+                },
+
                 formatLogTime(ts) {
                     const d = new Date(ts);
                     return d.toLocaleString('en-GB', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit', hour12: false });
@@ -1911,12 +2285,13 @@
                         : (articleOrLink?.originalLink || articleOrLink?.link || articleOrLink?.id);
                     if (!targetUrl || !Array.isArray(this.articles) || !this.articles.length) return;
 
-                    let currentIndex = this.articles.findIndex(a => (a.originalLink || a.link || a.id) === targetUrl || a.link === targetUrl);
+                    const sourceArray = this.displayedArticles || [];
+                    let currentIndex = sourceArray.findIndex(a => (a.originalLink || a.link || a.id) === targetUrl || a.link === targetUrl);
                     if (currentIndex === -1 && typeof articleOrLink === 'object' && articleOrLink?.link) {
-                        currentIndex = this.articles.findIndex(a => a.link === articleOrLink.link);
+                        currentIndex = sourceArray.findIndex(a => a.link === articleOrLink.link);
                     }
                     if (currentIndex !== -1) {
-                        const nextFive = this.articles.slice(currentIndex + 1, currentIndex + 6);
+                        const nextFive = sourceArray.slice(currentIndex + 1, currentIndex + 6);
                         if (nextFive.length > 0) {
                             this.prefetchArticlesList(nextFive, false);
                         }
@@ -1988,6 +2363,7 @@
                 },
 
                 async openArticleOverlay(article) {
+                    this.hideTooltip();
                     const requestId = 'article-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
                     const targetUrl = article.originalLink || article.link;
                     this.stopArticleSpeech();
@@ -2016,13 +2392,44 @@
                     this.markAsReadExplicit(article.link);
                     document.body.style.overflow = 'hidden';
 
-                    const currentIndex = (this.articles || []).findIndex(a => (a.originalLink || a.link || a.id) === targetUrl || a.link === article.link);
+                    // AI Summary: reset and fetch
+                    this.aiSummary = null;
+                    this.aiSummaryLoading = true;
+                    this.aiSummaryExpanded = false;
+                    this.aiSummaryError = null;
+                    this.vozSummaryProgress = null;
+                    if (this.aiSummaryPollTimer) clearInterval(this.aiSummaryPollTimer);
+                    this.aiSummaryPollTimer = null;
+                    if (this.isVozArticle(article) && article.vozSummary) {
+                        this.aiSummary = article.vozSummary;
+                        this.aiSummaryLoading = false;
+                    } else {
+                        this.aiSummary = { status: 'manual' }; // Default to manual state without checking cache
+                    }
+
+                    const sourceArray = this.displayedArticles || [];
+                    const currentIndex = sourceArray.findIndex(a => (a.originalLink || a.link || a.id) === targetUrl || a.link === article.link);
+                    
+                    const prefetchTargets = [];
+                    if (currentIndex !== -1) {
+                        for (let i = currentIndex + 1; i < Math.min(sourceArray.length, currentIndex + 6); i++) {
+                            const u = sourceArray[i]?.originalLink || sourceArray[i]?.link;
+                            if (u && u !== targetUrl) prefetchTargets.push(u);
+                        }
+                    }
+
                     this.prefetchNextAfter(article);
 
                     if (this.articleContentCache && this.articleContentCache.has(targetUrl)) {
                         const cachedData = this.articleContentCache.get(targetUrl);
                         cachedData.cached = true; // Frontend cache hit counts as cached
                         if (this.overlayRequestId !== requestId || !this.articleOverlayOpen) return;
+                        
+                        this.currentPrefetchQueue = prefetchTargets.map(u => ({ 
+                            url: u, 
+                            isCached: this.articleContentCache.has(u) 
+                        }));
+                        
                         this.applyOverlayArticleData(cachedData, article);
                         this.isLoadingOverlay = false;
                         return;
@@ -2048,6 +2455,9 @@
                             feedUrl: article.feedUrl || '',
                             feedIcon: article.feedIcon || ''
                         });
+                        if (prefetchTargets.length > 0) {
+                            params.set('prefetchTargets', JSON.stringify(prefetchTargets));
+                        }
                         const res = await fetch('/api/article-content?' + params.toString());
                         if (this.overlayRequestId !== requestId || !this.articleOverlayOpen) return;
                         if (res.ok) {
@@ -2056,6 +2466,7 @@
                             if (data.error) {
                                 this.overlayError = data.error;
                             } else {
+                                this.currentPrefetchQueue = data.prefetchQueue || [];
                                 this.applyOverlayArticleData(data, article);
                             }
                         } else {
@@ -2072,7 +2483,14 @@
                     }
                 },
 
-                closeArticleOverlay() {
+                handleArticleClick(e) {
+                const spoiler = e.target.closest('.bbCodeBlock--spoiler');
+                if (spoiler) {
+                    spoiler.classList.toggle('revealed');
+                }
+            },
+            
+            closeArticleOverlay() {
                     this.stopArticleSpeech();
                     if (this.vozScrollRaf) cancelAnimationFrame(this.vozScrollRaf);
                     this.vozScrollRaf = 0;
@@ -2099,17 +2517,263 @@
                     this.overlayProgress = { message: '' };
                     this.overlayArticle = null;
                     this.isLoadingOverlay = false;
+                    // AI Summary cleanup
+                    this.aiSummary = null;
+                    this.aiSummaryLoading = false;
+                    this.aiSummaryExpanded = false;
+                    this.aiSummaryError = null;
+                    this.vozSummaryProgress = null;
+                    if (this.aiSummaryPollTimer) clearInterval(this.aiSummaryPollTimer);
+                    this.aiSummaryPollTimer = null;
+                    // this.cancelVozSummary(); // Let it run in background if closed
                     document.body.style.overflow = '';
                 },
 
-                async openDebugModal(url) {
+                // ─── AI Summary Methods ────────────────────────────────
+                isVozArticle(article) {
+                    if (!article) return false;
+                    const url = article.originalLink || article.link || '';
+                    return url.includes('voz.vn');
+                },
+
+                async fetchAiSummary(url) {
+                    if (!url) return;
+                    this.aiSummaryLoading = true;
+                    try {
+                        // Prioritize this article
+                        fetch('/api/summary/prioritize', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ url })
+                        }).catch(() => {});
+
+                        const res = await fetch(`/api/summary?url=${encodeURIComponent(url)}`);
+                        if (!res.ok) { this.aiSummaryLoading = false; return; }
+                        const data = await res.json();
+
+                        if (data.status === 'ready') {
+                            this.aiSummary = data;
+                            this.aiSummaryLoading = false;
+                        } else if (data.status === 'voz_manual') {
+                            this.aiSummary = { status: 'voz_manual' };
+                            this.aiSummaryLoading = false;
+                        } else {
+                            // pending or generating — start polling
+                            this.aiSummary = data;
+                            this.pollAiSummary(url);
+                        }
+                    } catch (e) {
+                        this.aiSummaryLoading = false;
+                        this.aiSummaryError = e.message;
+                    }
+                },
+
+                pollAiSummary(url) {
+                    if (this.aiSummaryPollTimer) clearInterval(this.aiSummaryPollTimer);
+                    let attempts = 0;
+                    this.aiSummaryPollTimer = setInterval(async () => {
+                        attempts++;
+                        if (attempts > 60) { // Stop after ~3 minutes
+                            clearInterval(this.aiSummaryPollTimer);
+                            this.aiSummaryPollTimer = null;
+                            this.aiSummaryLoading = false;
+                            return;
+                        }
+                        try {
+                            const res = await fetch(`/api/summary?url=${encodeURIComponent(url)}`);
+                            if (!res.ok) return;
+                            const data = await res.json();
+                            if (data.status === 'ready') {
+                                this.aiSummary = data;
+                                this.aiSummaryLoading = false;
+                                clearInterval(this.aiSummaryPollTimer);
+                                this.aiSummaryPollTimer = null;
+                            } else {
+                                this.aiSummary = data;
+                            }
+                        } catch (e) {}
+                    }, 3000);
+                },
+
+                pollAiSummaryUpgrade(url) {
+                    if (this.aiSummaryUpgradePollTimer) clearInterval(this.aiSummaryUpgradePollTimer);
+                    let attempts = 0;
+                    this.aiSummaryUpgradePollTimer = setInterval(async () => {
+                        attempts++;
+                        if (attempts > 30) { // Stop after 90s
+                            clearInterval(this.aiSummaryUpgradePollTimer);
+                            this.aiSummaryUpgradePollTimer = null;
+                            return;
+                        }
+                        try {
+                            const res = await fetch(`/api/summary?url=${encodeURIComponent(url)}`);
+                            if (!res.ok) return;
+                            const data = await res.json();
+                            if (data.status === 'ready' && data.modelUsed === 'gemini-3.5-flash') {
+                                this.aiSummary = data;
+                                clearInterval(this.aiSummaryUpgradePollTimer);
+                                this.aiSummaryUpgradePollTimer = null;
+                            }
+                        } catch (e) {}
+                    }, 3000);
+                },
+
+                async submitSummaryFeedback(url, feedback) {
+                    if (!url) return;
+                    try {
+                        await fetch('/api/summary/feedback', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ url, feedback })
+                        });
+                        if (this.aiSummary) {
+                            this.aiSummary = { ...this.aiSummary, feedback };
+                        }
+                    } catch (e) {}
+                },
+
+                async fetchAiAnalysis(url) {
+                    if (!url || this.aiAnalysisLoading) return;
+                    this.aiAnalysisLoading = true;
+                    try {
+                        const res = await fetch('/api/summary/analysis', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ url })
+                        });
+                        const data = await res.json();
+                        if (data.success && data.analysis) {
+                            if (!this.aiSummary) this.aiSummary = {};
+                            this.aiSummary.analysis = data.analysis;
+                            this.aiSummary.analysisModel = data.analysisModel;
+                        }
+                    } catch (e) {
+                        console.error('Failed to fetch analysis:', e);
+                    } finally {
+                        this.aiAnalysisLoading = false;
+                    }
+                },
+                async generateVozSummary(url) {
+                    if (!url) return;
+                    this.vozSummaryProgress = { stage: 'starting', current: 0, total: null, message: 'Starting...' };
+                    this.aiSummary = null;
+
+                    const controller = new AbortController();
+                    this.vozSummaryController = controller;
+
+                    try {
+                        const res = await fetch('/api/summary/voz', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ url }),
+                            signal: controller.signal
+                        });
+
+                        const reader = res.body.getReader();
+                        const decoder = new TextDecoder();
+                        let buffer = '';
+
+                        while (true) {
+                            const { done, value } = await reader.read();
+                            if (done) break;
+                            buffer += decoder.decode(value, { stream: true });
+
+                            const lines = buffer.split('\n');
+                            buffer = lines.pop() || '';
+
+                            for (const line of lines) {
+                                if (line.startsWith('data: ')) {
+                                    try {
+                                        const event = JSON.parse(line.slice(6));
+                                        if (event.type === 'progress') {
+                                            this.vozSummaryProgress = event;
+                                        } else if (event.type === 'complete') {
+                                            this.aiSummary = event.summary;
+                                            this.vozSummaryProgress = null;
+                                            if (this.overlayArticle && (this.overlayArticle.link === url || this.overlayArticle.originalLink === url)) {
+                                                this.overlayArticle.vozSummary = event.summary;
+                                            }
+                                            // Also update in the main articles array
+                                            const article = this.articles.find(a => a.link === url || a.originalLink === url);
+                                            if (article) article.vozSummary = event.summary;
+                                        } else if (event.type === 'error') {
+                                            this.aiSummaryError = event.error;
+                                            this.vozSummaryProgress = null;
+                                        }
+                                    } catch (e) {}
+                                }
+                            }
+                        }
+                    } catch (e) {
+                        if (e.name !== 'AbortError') {
+                            this.aiSummaryError = e.message;
+                        }
+                        this.vozSummaryProgress = null;
+                    } finally {
+                        this.vozSummaryController = null;
+                    }
+                },
+
+                cancelVozSummary() {
+                    if (this.vozSummaryController) {
+                        this.vozSummaryController.abort();
+                        this.vozSummaryController = null;
+                    }
+                    this.vozSummaryProgress = null;
+                },
+
+                async generateSummary(url) {
+                    if (!url) return;
+                    if (this.isVozArticle(this.overlayArticle)) {
+                        return this.generateVozSummary(url);
+                    }
+                    try {
+                        // First, explicitly check if it's already in the cache
+                        const checkRes = await fetch('/api/summary?url=' + encodeURIComponent(url));
+                        if (checkRes.ok) {
+                            const data = await checkRes.json();
+                            if (data && data.status === 'ready') {
+                                this.aiSummary = data;
+                                return; // Already generated!
+                            }
+                        }
+
+                        await fetch('/api/summary/upgrade', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ url })
+                        });
+                        if (this.aiSummary) this.aiSummary.status = 'pending';
+                        this.fetchAiSummary(url); // Start polling
+
+                    } catch (e) {
+                        console.error('Failed to trigger summary:', e);
+                    }
+                },
+                formatText(text) {
+                    if (!text) return '';
+                    // Escape HTML first to prevent XSS
+                    const escaped = text.replace(/[&<>'"]/g, tag => ({
+                        '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+                    }[tag]));
+                    // Replace bold markdown with <b>
+                    const formatted = escaped.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
+                    return formatted;
+                },
+
+                async openDebugModal(articleOrUrl) {
+                    const url = typeof articleOrUrl === 'string' ? articleOrUrl : (articleOrUrl.originalLink || articleOrUrl.link);
+                    this.debugModalArticle = typeof articleOrUrl === 'object' ? articleOrUrl : this.articles.find(a => (a.originalLink || a.link) === url);
+                    
                     this.debugModalOpen = true;
                     this.isDebugging = true;
                     this.debugData = null;
+                    
                     try {
                         const res = await fetch(`/api/debug-article?url=${encodeURIComponent(url)}`);
                         if (res.ok) {
                             this.debugData = await res.json();
+                            this.debugData.prefetchQueue = this.currentPrefetchQueue || [];
                         } else {
                             this.debugData = { url, error: 'Server error during debug' };
                         }
@@ -2122,7 +2786,7 @@
 
                 proxyImageUrl(url) {
                     if (!url) return "";
-                    if (url.includes("baodautu.vn") || url.includes("media.baodautu.vn")) {
+                    if (url.includes("baodautu.vn") || url.includes("baoxaydung.com.vn") || url.includes("baoxaydung.vn")) {
                         return "/api/proxy-image?url=" + encodeURIComponent(url);
                     }
                     return url;

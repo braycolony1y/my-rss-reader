@@ -10,6 +10,17 @@ import { createHash } from 'crypto';
 import { createSmartNewsEngine, cleanStoredCluster } from './smart-news.js';
 import sourceRegistry from './src/sources/index.js';
 import GoogleDecoderPkg from 'google-news-url-decoder';
+import {
+    summaryQueue,
+    geminiKeyManager,
+    qwenKeyManager,
+    getSummaryFromCache,
+    writeSummaryToCache,
+    generateVozThreadSummary,
+    detectLanguage,
+    stripHtmlForSummary,
+    generateDeepAnalysis
+} from './summary-engine.js';
 const { GoogleDecoder } = GoogleDecoderPkg;
 const googleDecoder = new GoogleDecoder();
 
@@ -546,6 +557,9 @@ function parseOpenCliMarkdown(markdown, url) {
 }
 
 async function fetchViaOpenCli(url) {
+    if (url.match(/reddit\.com\/r\/.*\/comments\//)) {
+        return fetchRedditViaOpenCli(url);
+    }
     const executable = path.resolve('./node_modules/.bin/opencli');
     const { stdout } = await execFileAsync(executable, [
         'web', 'read', '--url', url,
@@ -564,6 +578,8 @@ async function fetchViaOpenCli(url) {
     }
     return parsed;
 }
+
+import { fetchRedditViaOpenCli } from './src/sources/reddit-fetcher.js';
 
 async function fetchViaJina(url) {
     const controller = new AbortController();
@@ -2545,6 +2561,11 @@ app.get('/health', (req, res) => {
     });
 });
 
+// Ping endpoint for keepalive
+app.post('/api/ping-active', (req, res) => {
+    res.json({ status: 'ok' });
+});
+
 const authMiddleware = (req, res, next) => {
     if (req.headers.cookie && req.headers.cookie.includes('auth=true')) {
         next();
@@ -3058,9 +3079,12 @@ app.get('/api/data', authMiddleware, async (req, res) => {
     const articleIsBlocked = article => articleContentFilterMatches(article, blockedKeywordEntries);
     const visibleArticles = allArticles.filter(article => !articleIsBlocked(article));
 
+    const readSet = new Set(readStates);
+    const hiddenSet = new Set(hiddenStates);
+
     const unreadCounts = { feeds: {}, categories: {}, total: 0 };
     visibleArticles.forEach(a => {
-        if (!readStates.includes(a.link) && !hiddenStates.includes(a.link)) {
+        if (!readSet.has(a.link) && !hiddenSet.has(a.link)) {
             unreadCounts.total++;
             unreadCounts.feeds[a.feedUrl] = (unreadCounts.feeds[a.feedUrl] || 0) + 1;
             let cat = a.feedCategory || 'Others';
@@ -3093,7 +3117,7 @@ app.get('/api/data', authMiddleware, async (req, res) => {
         }
         filteredArticles = smartClusters
             .map(article => cleanStoredCluster(article))
-            .filter(article => !hiddenStates.includes(article.link) && !articleIsBlocked(article));
+            .filter(article => !hiddenSet.has(article.link) && !articleIsBlocked(article));
         if (filterValue === 'news') {
             filteredArticles = filteredArticles.filter(article => ['news_vietnam', 'news_world'].includes(article.smartCategory));
         } else if (filterValue === 'finance') {
@@ -3126,9 +3150,9 @@ app.get('/api/data', authMiddleware, async (req, res) => {
             filteredArticles = filteredArticles.filter(article => article.smartCategory === filterValue);
         }
         if (hideRead) {
-            filteredArticles = filteredArticles.filter(article => !readStates.includes(article.link)).map(article => {
+            filteredArticles = filteredArticles.filter(article => !readSet.has(article.link)).map(article => {
                 if (!article.relatedArticles || !article.relatedArticles.length) return article;
-                const unreadRelated = article.relatedArticles.filter(r => !readStates.includes(r.link));
+                const unreadRelated = article.relatedArticles.filter(r => !readSet.has(r.link));
                 if (unreadRelated.length === article.relatedArticles.length) return article;
                 const sources = [...new Set([article.feedTitle, ...unreadRelated.map(r => r.feedTitle)].filter(Boolean))];
                 return {
@@ -3146,22 +3170,36 @@ app.get('/api/data', authMiddleware, async (req, res) => {
             (new Date(b.pubDate || 0).getTime()) - (new Date(a.pubDate || 0).getTime())
         );
     } else if (filterType === 'hidden') {
-        filteredArticles = filteredArticles.filter(a => hiddenStates.includes(a.link))
+        filteredArticles = filteredArticles.filter(a => hiddenSet.has(a.link))
             .sort((a, b) => hiddenStates.indexOf(b.link) - hiddenStates.indexOf(a.link));
     } else {
-        filteredArticles = filteredArticles.filter(a => !hiddenStates.includes(a.link));
+        if (['recent', 'saved', 'board'].includes(filterType)) {
+            const smartClustersRaw = await env.RSS_DATA.get('smartClusters', { type: 'json' }) || [];
+            const smartArticles = smartClustersRaw.map(c => cleanStoredCluster(c)).filter(a => a && !articleIsBlocked(a));
+            
+            const linkMap = new Map();
+            filteredArticles.forEach(a => linkMap.set(a.link, a));
+            smartArticles.forEach(a => linkMap.set(a.link, a));
+            filteredArticles = Array.from(linkMap.values());
+        }
+
+        filteredArticles = filteredArticles.filter(a => !hiddenSet.has(a.link));
         if (filterType === 'recent') {
             const oneWeekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
             filteredArticles = filteredArticles
-                .filter(a => readStates.includes(a.link) && (new Date(a.pubDate || 0).getTime() > oneWeekAgo))
+                .filter(a => readSet.has(a.link) && (new Date(a.pubDate || 0).getTime() > oneWeekAgo))
                 .sort((a, b) => readStates.indexOf(b.link) - readStates.indexOf(a.link));
         } else if (filterType === 'saved') {
             filteredArticles = filteredArticles.filter(a => savedStates.includes(a.link));
-            if (hideRead) filteredArticles = filteredArticles.filter(a => !readStates.includes(a.link));
+            if (hideRead) filteredArticles = filteredArticles.filter(a => !readSet.has(a.link));
             filteredArticles.sort((a, b) => savedStates.indexOf(b.link) - savedStates.indexOf(a.link));
         } else if (filterType === 'board') {
             filteredArticles = filteredArticles.filter(a => boardStates.includes(a.link));
-            if (hideRead) filteredArticles = filteredArticles.filter(a => !readStates.includes(a.link));
+            if (filterValue) {
+                const mappings = userPreferences.boardFolderMappings || {};
+                filteredArticles = filteredArticles.filter(a => mappings[a.link] === filterValue);
+            }
+            if (hideRead) filteredArticles = filteredArticles.filter(a => !readSet.has(a.link));
             filteredArticles.sort((a, b) => boardStates.indexOf(b.link) - boardStates.indexOf(a.link));
         } else if (filterType === 'category') {
             filteredArticles = filteredArticles.filter(a => a.feedCategory === filterValue || (filterValue === 'Others' && !a.feedCategory));
@@ -3191,7 +3229,6 @@ app.get('/api/data', authMiddleware, async (req, res) => {
                 : (a, b) => (b.replyCount || 0) - (a.replyCount || 0) || (b.viewCount || 0) - (a.viewCount || 0);
 
             // O(1) lookup sets for hidden/sticky exclusion
-            const hiddenSet = new Set(hiddenStates);
             const stickyIds = new Set(['.1216621/', '.641432/', '.617079/']);
             const isStickyLink = (link) => { for (const id of stickyIds) if (link.includes(id)) return true; return false; };
 
@@ -3230,7 +3267,7 @@ app.get('/api/data', authMiddleware, async (req, res) => {
         }
         
         if (hideRead && filterType !== 'recent' && !filterType.startsWith('hot_') && !filterType.startsWith('views_')) {
-            filteredArticles = filteredArticles.filter(a => !readStates.includes(a.link));
+            filteredArticles = filteredArticles.filter(a => !readSet.has(a.link));
         }
     }
 
@@ -4067,34 +4104,37 @@ app.post('/api/article-fetch-preference', authMiddleware, async (req, res) => {
 });
 
 function triggerVozNextPagePrefetch(nextUrl, depth = 1) {
-    if (!nextUrl || !nextUrl.includes('voz.vn') || depth > 2) return;
-    setTimeout(async () => {
-        try {
-            const cached = await getCachedArticle(nextUrl);
-            if (cached && cached.content) return;
-            console.log(`[VOZ PAGINATION PREFETCH] Background caching next page: ${nextUrl}`);
-            const strategyOrder = await rankArticleFetchStrategies('voz.vn');
-            for (const strategy of strategyOrder) {
-                try {
-                    const candidateHtml = await fetchArticleHtmlByStrategy(strategy, nextUrl);
-                    if (candidateHtml && isUsableArticlePage(candidateHtml)) {
-                        const result = await parseArticleHtmlContent(candidateHtml, nextUrl, strategy, [strategy], strategyOrder, {}, null);
-                        if (result && result.content) {
-                            result.cached = true;
-                            await cacheArticleResult(nextUrl, result);
-                            console.log(`[VOZ PAGINATION PREFETCH] Successfully cached ${nextUrl} via ${strategy} (${result.content.length} bytes)`);
-                            if (result.pagination && result.pagination.nextUrl && depth < 2) {
-                                triggerVozNextPagePrefetch(result.pagination.nextUrl, depth + 1);
+    if (!nextUrl || !nextUrl.includes('voz.vn') || depth > 2) return Promise.resolve();
+    return new Promise(resolve => {
+        setTimeout(async () => {
+            try {
+                const cached = await getCachedArticle(nextUrl);
+                if (cached && cached.content) { resolve(); return; }
+                console.log(`[VOZ PAGINATION PREFETCH] Background caching next page: ${nextUrl}`);
+                const strategyOrder = await rankArticleFetchStrategies('voz.vn');
+                for (const strategy of strategyOrder) {
+                    try {
+                        const candidateHtml = await fetchArticleHtmlByStrategy(strategy, nextUrl);
+                        if (candidateHtml && isUsableArticlePage(candidateHtml)) {
+                            const result = await parseArticleHtmlContent(candidateHtml, nextUrl, strategy, [strategy], strategyOrder, {}, null);
+                            if (result && result.content) {
+                                result.cached = true;
+                                await cacheArticleResult(nextUrl, result);
+                                console.log(`[VOZ PAGINATION PREFETCH] Successfully cached ${nextUrl} via ${strategy} (${result.content.length} bytes)`);
+                                if (result.pagination && result.pagination.nextUrl && depth < 2) {
+                                    triggerVozNextPagePrefetch(result.pagination.nextUrl, depth + 1);
+                                }
+                                break;
                             }
-                            break;
                         }
-                    }
-                } catch(e) {}
+                    } catch(e) {}
+                }
+            } catch (e) {
+                console.error(`[VOZ PAGINATION PREFETCH ERROR] ${nextUrl}: ${e.message}`);
             }
-        } catch (e) {
-            console.error(`[VOZ PAGINATION PREFETCH ERROR] ${nextUrl}: ${e.message}`);
-        }
-    }, 150);
+            resolve();
+        }, 150);
+    });
 }
 
 function triggerVozCurrentPageBackgroundUpdate(url, cachedArticle) {
@@ -4131,41 +4171,67 @@ function triggerVozCurrentPageBackgroundUpdate(url, cachedArticle) {
     }, 2000);
 }
 
-function triggerNextFiveArticlesPrefetch(currentUrl) {
-    setTimeout(async () => {
-        try {
-            const articles = await env.RSS_DATA.get('articles', { type: 'json' }) || [];
-            const smartClusters = await env.RSS_DATA.get('smartClusters', { type: 'json' }) || [];
-            const urlsToPrefetch = new Set();
+function enqueuePrefetchedSummary(url, articleData, priority) {
+    // Background summarization is completely disabled for all sources
+    return;
+}
 
-            // 1. Check if currentUrl is in smart clusters or has related articles
-            for (const cluster of smartClusters) {
-                const clusterUrl = cluster?.originalLink || cluster?.link;
-                if (clusterUrl === currentUrl || (cluster?.cluster && cluster.cluster.some(r => (r.originalLink || r.link) === currentUrl))) {
-                    if (cluster.cluster) {
-                        for (const rel of cluster.cluster) {
-                            const u = rel.originalLink || rel.link;
-                            if (u && u !== currentUrl && urlsToPrefetch.size < 5) urlsToPrefetch.add(u);
-                        }
-                    }
-                }
+let currentPrefetchRunId = 0;
+async function triggerNextFiveArticlesPrefetch(currentUrl, dryRun = false, prefetchTargets = null, waitPromise = null) {
+    const runId = ++currentPrefetchRunId;
+    const urlsToPrefetch = new Map();
+    try {
+        const articles = await env.RSS_DATA.get('articles', { type: 'json' }) || [];
+        
+        if (prefetchTargets && prefetchTargets.length > 0) {
+            for (const targetUrl of prefetchTargets) {
+                if (urlsToPrefetch.size < 5) urlsToPrefetch.set(targetUrl, {});
             }
-
-            // 2. Check next 5 in active articles list
+        } else {
+            // Check next 5 in active articles list (Fallback if not provided)
             const idx = articles.findIndex(a => (a.originalLink || a.link) === currentUrl);
             if (idx !== -1) {
                 for (let i = idx + 1; i < Math.min(articles.length, idx + 6); i++) {
-                    const u = articles[i]?.originalLink || articles[i]?.link;
-                    if (u && u !== currentUrl && urlsToPrefetch.size < 5) urlsToPrefetch.add(u);
+                    const art = articles[i];
+                    const u = art?.originalLink || art?.link;
+                    if (u && u !== currentUrl && urlsToPrefetch.size < 5) urlsToPrefetch.set(u, art);
                 }
             }
+        }
+    } catch (e) {}
 
-            if (urlsToPrefetch.size === 0) return;
+    const list = [];
+    for (const u of urlsToPrefetch.keys()) {
+        try {
+            const cached = await getCachedArticle(u);
+            list.push({ url: u, isCached: !!(cached && cached.content) });
+        } catch (e) {
+            list.push({ url: u, isCached: false });
+        }
+    }
+    
+    if (urlsToPrefetch.size === 0 || dryRun) return list;
+
+    setTimeout(async () => {
+        try {
             console.log(`[NEXT-5 PREFETCH] Triggered background prefetch for ${urlsToPrefetch.size} articles after reading ${currentUrl}`);
 
-            for (const targetUrl of urlsToPrefetch) {
+            for (const [targetUrl, art] of urlsToPrefetch.entries()) {
+                if (currentPrefetchRunId !== runId) {
+                    console.log(`[NEXT-5 PREFETCH] Aborting old prefetch queue for ${currentUrl} because a newer article was opened.`);
+                    return;
+                }
+                // Wait for any active foreground article requests to finish so we don't starve opencli/puppeteer
+                while (activeForegroundRequests > 0) {
+                    if (currentPrefetchRunId !== runId) return;
+                    await new Promise(r => setTimeout(r, 1000));
+                }
+
                 let cached = await getCachedArticle(targetUrl);
-                if (cached && cached.content) continue;
+                if (cached && cached.content) {
+                    enqueuePrefetchedSummary(targetUrl, art, 1);
+                    continue;
+                }
                 try {
                     const hostname = (() => { try { return new URL(targetUrl).hostname.toLowerCase(); } catch(e) { return ''; } })();
                     const strategyOrder = await rankArticleFetchStrategies(hostname);
@@ -4177,6 +4243,7 @@ function triggerNextFiveArticlesPrefetch(currentUrl) {
                                 if (parsedPayload && parsedPayload.content) {
                                     await cacheArticleResult(targetUrl, parsedPayload);
                                     console.log(`[NEXT-5 PREFETCH] Cached ready to serve: ${targetUrl}`);
+                                    enqueuePrefetchedSummary(targetUrl, art, 1);
                                     break;
                                 }
                             }
@@ -4189,6 +4256,7 @@ function triggerNextFiveArticlesPrefetch(currentUrl) {
             console.error(`[NEXT-5 PREFETCH ERROR] ${e.message}`);
         }
     }, 200);
+    return list;
 }
 
 app.post('/api/clear-article-cache', authMiddleware, async (req, res) => {
@@ -4224,10 +4292,15 @@ app.post('/api/clear-article-cache', authMiddleware, async (req, res) => {
 });
 
 // --- ARTICLE CONTENT EXTRACTION ENDPOINT ---
+let activeForegroundRequests = 0;
 app.get('/api/article-content', authMiddleware, async (req, res) => {
+    activeForegroundRequests++;
     const requestedUrl = req.query.url;
     if (!requestedUrl) return res.status(400).json({ error: 'URL required' });
     let url = requestedUrl;
+    let prefetchTargets = [];
+    try { if (req.query.prefetchTargets) prefetchTargets = JSON.parse(req.query.prefetchTargets); } catch(e) {}
+    
     const requestId = String(req.query.requestId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80);
     updateArticleFetchProgress(requestId, 'starting', 'Identifying source and loading its fetch history…');
 
@@ -4284,15 +4357,17 @@ app.get('/api/article-content', authMiddleware, async (req, res) => {
                 const availableStrategies = Object.keys(ARTICLE_FETCH_BASE_POINTS).filter(name => name !== 'vietserver' || Boolean(VIETSERVER_PROXY_BASE));
                 const methodPreferences = await getArticleFetchPreferences(hostname);
                 finishArticleFetchProgress(requestId, 'Article loaded from cache.', { method: 'cache', cached: true });
+                let prefetchPromise = null;
                 if (directCached.pagination?.nextUrl && (hostname === 'voz.vn' || hostname.endsWith('.voz.vn'))) {
-                    triggerVozNextPagePrefetch(directCached.pagination.nextUrl, 1);
+                    prefetchPromise = triggerVozNextPagePrefetch(directCached.pagination.nextUrl, 1);
                 }
                 if (hostname === 'voz.vn' || hostname.endsWith('.voz.vn')) {
                     triggerVozCurrentPageBackgroundUpdate(url, directCached);
                 }
-                triggerNextFiveArticlesPrefetch(url);
+                const prefetchQueue = await triggerNextFiveArticlesPrefetch(url, false, prefetchTargets, prefetchPromise);
                 return res.json({
                     url,
+                    prefetchQueue,
                     ...directCached,
                     content: cleanArticleMarkup(directCached.content),
                     title: normalizeArticleTitle(directCached.title),
@@ -4326,7 +4401,14 @@ app.get('/api/article-content', authMiddleware, async (req, res) => {
         let html = '';
         let htmlStrategy = '';
         const attemptedStrategies = new Set();
-        const rankedStrategies = await rankArticleFetchStrategies(hostname);
+        let rankedStrategies = await rankArticleFetchStrategies(hostname);
+        
+        // Fast-track Reddit to opencli to avoid wasting time on HTTP proxies that will fail
+        const isReddit = hostname === 'reddit.com' || hostname === 'www.reddit.com' || hostname === 'old.reddit.com';
+        if (isReddit) {
+            rankedStrategies = ['opencli'];
+        }
+        
         const strategyOrder = ((requestedStrategy && requestedStrategy !== 'refresh') ? [requestedStrategy] : rankedStrategies)
             .filter(strategy => !excludedStrategies.has(strategy));
         const strategyLabels = {
@@ -4335,7 +4417,7 @@ app.get('/api/article-content', authMiddleware, async (req, res) => {
             vietserver: 'Vietnam reader proxy',
             allorigins: 'backup reader proxy',
             jina: 'text reader backup',
-            opencli: 'browser reader backup'
+            opencli: isReddit ? 'Reddit API bridge' : 'browser reader backup'
         };
         updateArticleFetchProgress(requestId, 'ranking', 'Choosing the best reader method for this source…', {
             methods: strategyOrder.length
@@ -4362,7 +4444,7 @@ app.get('/api/article-content', authMiddleware, async (req, res) => {
                         methodPreferences
                     };
                     await cacheArticleResult(url, payload);
-                    triggerNextFiveArticlesPrefetch(url);
+                    payload.prefetchQueue = await triggerNextFiveArticlesPrefetch(url, false, prefetchTargets);
                     return res.json(payload);
                 }
 
@@ -4378,27 +4460,16 @@ app.get('/api/article-content', authMiddleware, async (req, res) => {
                         availableStrategies,
                         methodPreferences
                     };
+                    let prefetchPromise = null;
                     if (payload.pagination?.nextUrl && (hostname === 'voz.vn' || hostname.endsWith('.voz.vn'))) {
-                        triggerVozNextPagePrefetch(payload.pagination.nextUrl, 1);
+                        prefetchPromise = triggerVozNextPagePrefetch(payload.pagination.nextUrl, 1);
                     }
                     await cacheArticleResult(url, payload);
-                    triggerNextFiveArticlesPrefetch(url);
+                    payload.prefetchQueue = await triggerNextFiveArticlesPrefetch(url, false, prefetchTargets, prefetchPromise);
                     return res.json(payload);
                 }
 
                 const candidateHtml = await fetchArticleHtmlByStrategy(strategy, url);
-                if (hostname === 'voz.vn' || hostname.endsWith('.voz.vn')) {
-                    if (candidateHtml.includes('Oops! We ran into some problems.') && candidateHtml.includes('The requested thread could not be found.')) {
-                        let articles = await env.RSS_DATA.get('articles', { type: 'json' }) || [];
-                        const articlesBefore = articles.length;
-                        articles = articles.filter(a => !(a.link === url || a.url === url || (a.link && a.link.split('?')[0].replace(/\/unread\/?$/, '') === url.split('?')[0].replace(/\/unread\/?$/, ''))));
-                        if (articles.length < articlesBefore) {
-                            await env.RSS_DATA.put('articles', JSON.stringify(articles));
-                            console.log(`[VOZ] Removed deleted thread: ${url}`);
-                        }
-                        return res.json({ error: 'Thread deleted', url });
-                    }
-                }
 
                 if (!isUsableArticlePage(candidateHtml)) throw new Error('Fetched page did not contain usable article HTML');
                 html = candidateHtml;
@@ -4429,14 +4500,17 @@ app.get('/api/article-content', authMiddleware, async (req, res) => {
             partial: !extractionSucceeded
         });
         if (extractionSucceeded) await cacheArticleResult(url, result);
+        let prefetchPromise = null;
         if (result.pagination?.nextUrl && (hostname === 'voz.vn' || hostname.endsWith('.voz.vn'))) {
-            triggerVozNextPagePrefetch(result.pagination.nextUrl, 1);
+            prefetchPromise = triggerVozNextPagePrefetch(result.pagination.nextUrl, 1);
         }
-        triggerNextFiveArticlesPrefetch(url);
+        result.prefetchQueue = await triggerNextFiveArticlesPrefetch(url, false, prefetchTargets, prefetchPromise);
         res.json(result);
     } catch (e) {
         finishArticleFetchProgress(requestId, 'Article loading failed.', { failed: true });
         res.json({ error: e.message, url });
+    } finally {
+        activeForegroundRequests = Math.max(0, activeForegroundRequests - 1);
     }
 });
 
@@ -4945,6 +5019,20 @@ app.post('/api/categories/reorder', authMiddleware, async (req, res) => {
     }
 });
 
+app.get('/api/user-states', authMiddleware, async (req, res) => {
+    try {
+        const prefs = await env.RSS_DATA.get('userPreferences', { type: 'json' }) || {};
+        res.json({
+            readStates: prefs.readStates || [],
+            savedStates: prefs.savedStates || [],
+            boardStates: prefs.boardStates || [],
+            hiddenStates: prefs.hiddenStates || []
+        });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 app.post('/api/user-preferences', authMiddleware, async (req, res) => {
     try {
         const { key, value } = req.body;
@@ -4956,6 +5044,202 @@ app.post('/api/user-preferences', authMiddleware, async (req, res) => {
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
+});
+
+// AI Summary Routes
+app.get('/api/summary', authMiddleware, async (req, res) => {
+    let url = req.query.url;
+    if (!url) return res.status(400).json({ error: 'URL required' });
+    
+    async function decodeGoogleNews(url) {
+        if (url && typeof url === 'string' && url.includes('news.google.com/rss/articles/')) {
+            try { return await googleDecoder.decode(url); } catch (e) { }
+        }
+        return url;
+    }
+    url = await decodeGoogleNews(url);
+    
+    try {
+        const summary = await getSummaryFromCache(url);
+        if (summary && summary.status === 'ready') {
+            return res.json(summary);
+        }
+        if (summary && summary.status === 'generating') {
+            const jobStatus = summaryQueue.getJobStatus(url);
+            return res.json(jobStatus || { status: 'generating' });
+        }
+        const isVoz = url.includes('voz.vn');
+        if (isVoz) return res.json({ status: 'voz_manual' });
+
+        const jobStatus = summaryQueue.getJobStatus(url);
+        if (jobStatus) {
+            return res.json(jobStatus);
+        }
+        return res.json({ status: 'manual' });
+    } catch (e) {
+        console.error('[SUMMARY] Failed to fetch summary:', e);
+        res.status(500).json({ error: 'Failed to fetch summary' });
+    }
+});
+
+app.post('/api/summary/prioritize', authMiddleware, async (req, res) => {
+    let url = req.body?.url;
+    if (!url) return res.status(400).json({ error: 'URL required' });
+    
+    async function decodeGoogleNews(url) {
+        if (url && typeof url === 'string' && url.includes('news.google.com/rss/articles/')) {
+            try { return await googleDecoder.decode(url); } catch (e) { }
+        }
+        return url;
+    }
+    url = await decodeGoogleNews(url);
+
+    summaryQueue.prioritize(url);
+    res.json({ ok: true });
+});
+
+app.post('/api/summary/voz', authMiddleware, async (req, res) => {
+    let url = req.body?.url;
+    if (!url) return res.status(400).json({ error: 'URL required' });
+    
+    // Set headers for Server-Sent Events
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+
+    const controller = new AbortController();
+    
+    // If client disconnects (e.g., closes article), abort processing
+    res.on('close', () => {
+        controller.abort();
+    });
+
+    const sendEvent = (event) => {
+        res.write(`data: ${JSON.stringify(event)}\n\n`);
+    };
+
+    const fetchPage = async (pageUrl) => {
+        // Use proxy to fetch Voz pages, pass BROWSER_HEADERS to reduce WAF blocks
+        const proxyUrl = "https://rss-proxy.k1d.workers.dev/?url=" + encodeURIComponent(pageUrl);
+        let fetchRes = await fetch(proxyUrl, { 
+            headers: { ...BROWSER_HEADERS, 'Connection': 'close' }, 
+            signal: controller.signal 
+        });
+        
+        let content = '';
+        if (fetchRes.ok) {
+            content = await fetchRes.text();
+        }
+
+        if (!fetchRes.ok || content.includes('<title>Just a moment...</title>') || content.includes('Cloudflare')) {
+            console.log(`[VOZ SUMMARY] CF Proxy failed/blocked for ${pageUrl}. Falling back to Vietserver proxy...`);
+            content = await fetchViaVietserver(pageUrl);
+        }
+
+        let pagination = null;
+        if (content) {
+            const nextMatch = content.match(/<a[^>]+href=["']([^"']+)["'][^>]*class=["'][^"']*pageNav-jump--next[^"']*["']/i);
+            const nextUrl = nextMatch ? "https://voz.vn" + nextMatch[1].replace(/^https:\/\/voz\.vn/, '') : null;
+            
+            const allPages = [...content.matchAll(/href=["'][^"']+page-(\d+)["']/gi)].map(m => parseInt(m[1]));
+            const totalPages = allPages.length > 0 ? Math.max(1, ...allPages) : 1;
+            
+            if (totalPages > 1 || nextUrl) {
+                pagination = { totalPages, nextUrl };
+            }
+        }
+        
+        console.log(`[VOZ SUMMARY DEBUG] fetchRes.ok: ${fetchRes.ok}, fetchRes.status: ${fetchRes.status}, content length: ${content ? content.length : 0}`);
+        return { content, pagination };
+    };
+
+    try {
+        const summary = await generateVozThreadSummary(
+            url, 
+            fetchPage, 
+            (progress) => sendEvent({ type: 'progress', ...progress }),
+            controller.signal
+        );
+
+        let articles = await env.RSS_DATA.get('articles', { type: 'json' }) || [];
+        let updated = false;
+        for (let i = 0; i < articles.length; i++) {
+            if (articles[i].link === url || articles[i].url === url || (articles[i].link && articles[i].link.split('?')[0].replace(/\/unread\/?$/, '') === url.split('?')[0].replace(/\/unread\/?$/, ''))) {
+                articles[i].vozSummary = summary;
+                updated = true;
+            }
+        }
+        if (updated) {
+            await env.RSS_DATA.put('articles', JSON.stringify(articles));
+        }
+
+        sendEvent({ type: 'complete', summary });
+        res.end();
+    } catch (e) {
+        if (e.name === 'AbortError' || e.message === 'Cancelled') {
+            res.end(); // Graceful exit on cancellation
+        } else {
+            sendEvent({ type: 'error', error: e.message });
+            res.end();
+        }
+    }
+});
+
+app.post('/api/summary/feedback', authMiddleware, async (req, res) => {
+    let { url, feedback } = req.body;
+    if (!url) return res.status(400).json({ error: 'URL required' });
+    
+    async function decodeGoogleNews(url) {
+        if (url && typeof url === 'string' && url.includes('news.google.com/rss/articles/')) {
+            try { return await googleDecoder.decode(url); } catch (e) { }
+        }
+        return url;
+    }
+    url = await decodeGoogleNews(url);
+
+    try {
+        const summary = await getSummaryFromCache(url);
+        if (summary) {
+            summary.feedback = feedback;
+            await writeSummaryToCache(url, summary);
+            return res.json({ ok: true });
+        }
+        res.status(404).json({ error: 'Summary not found' });
+    } catch (e) {
+        res.status(500).json({ error: 'Failed to update feedback' });
+    }
+});
+
+app.post('/api/summary/analysis', authMiddleware, async (req, res) => {
+    let url = req.body?.url;
+    if (!url) return res.status(400).json({ error: 'URL required' });
+    
+    async function decodeGoogleNews(url) {
+        if (url && typeof url === 'string' && url.includes('news.google.com/rss/articles/')) {
+            try { return await googleDecoder.decode(url); } catch (e) { }
+        }
+        return url;
+    }
+    url = await decodeGoogleNews(url);
+    
+    try {
+        const result = await generateDeepAnalysis(url);
+        res.json({ success: true, analysis: result.text, analysisModel: result.model });
+    } catch (e) {
+        console.error('[SUMMARY] Failed to generate deep analysis:', e);
+        res.status(500).json({ error: e.message || 'Failed to generate deep analysis' });
+    }
+});
+
+app.get('/api/summary/debug', authMiddleware, (req, res) => {
+    const geminiStats = geminiKeyManager.getDebugStats();
+    const qwenStats = qwenKeyManager.getDebugStats();
+    res.json({
+        queue: summaryQueue.getStatus(),
+        gemini: geminiStats,
+        qwen: qwenStats
+    });
 });
 
 app.post('/api/toggle', authMiddleware, async (req, res) => {
@@ -5139,7 +5423,10 @@ async function runUniversalTabPrefetch(env) {
             if (!cached && googleNewsUrlCache && googleNewsUrlCache[url]?.resolvedUrl) {
                 cached = await getCachedArticle(googleNewsUrlCache[url].resolvedUrl);
             }
-            if (cached && cached.content) continue; // Already saved on disk, ready to serve!
+            if (cached && cached.content) {
+                enqueuePrefetchedSummary(url, art, 2);
+                continue; // Already saved on disk, ready to serve!
+            }
 
             try {
                 const hostname = (() => { try { return new URL(url).hostname.toLowerCase(); } catch(e) { return ''; } })();
@@ -5162,6 +5449,7 @@ async function runUniversalTabPrefetch(env) {
                         parsedPayload.title = normalizeArticleTitle(parsedPayload.title || art.title || '');
                         await cacheArticleResult(url, parsedPayload);
                         prefetchedCount++;
+                        enqueuePrefetchedSummary(url, art, 2);
                         await new Promise(r => setTimeout(r, 600));
                     }
                 }
@@ -5244,6 +5532,7 @@ if (isMainModule) {
         if (articleCacheCleanupTimer.unref) articleCacheCleanupTimer.unref();
         smartNews.start();
         startSequentialSyncLoop();
+        setTimeout(() => summaryQueue.start(), 15000); // Start summary queue after initial boot
         setTimeout(() => runUniversalTabPrefetch(env), 8000);
         const prefetchTimer = setInterval(() => runUniversalTabPrefetch(env), 30 * 60 * 1000);
         if (prefetchTimer.unref) prefetchTimer.unref();

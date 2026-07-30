@@ -5,13 +5,13 @@ export default class TuoitreSource {
 
     parseArticleHtmlContent(html, url, result, utils) {
         let articleHtml = '';
-        const articleBodyMatch = html.match(/<div\b[^>]*class=["'][^"']*detail-cmain[^"']*["'][^>]*>([\s\S]*?)(?:<div\b[^>]*class=["'][^"']*readmore-body-box[^"']*["']|<div\b[^>]*id=["']tuoitre-tag-detail)/i) ||
-                                 html.match(/<div\b[^>]*class=["'][^"']*detail-content[^"']*["'][^>]*>([\s\S]*?)(?:<div\b[^>]*class=["'][^"']*readmore-body-box[^"']*["']|<div\b[^>]*id=["']tuoitre-tag-detail)/i);
+        const articleBodyMatch = html.match(/<div\b[^>]*class=["'][^"']*detail-cmain[^"']*["'][^>]*>([\s\S]*?)(?:<div\b[^>]*class=["'][^"']*readmore-body-box[^"']*["']|<div\b[^>]*id=["']tuoitre-tag-detail|<div\b[^>]*data-check-position=["']body_end["'])/i) ||
+                                 html.match(/<div\b[^>]*class=["'][^"']*detail-content[^"']*["'][^>]*>([\s\S]*?)(?:<div\b[^>]*class=["'][^"']*readmore-body-box[^"']*["']|<div\b[^>]*id=["']tuoitre-tag-detail|<div\b[^>]*data-check-position=["']body_end["'])/i);
         
         if (articleBodyMatch) {
             articleHtml = articleBodyMatch[1];
         } else {
-            const match = html.match(/<div\b[^>]*class=["'][^"']*detail-content[^"']*["'][^>]*>([\s\S]*?)(?:<div\b[^>]*class=["']tags[^"']*["']|<div\b[^>]*class=["']footer-content)/i);
+            const match = html.match(/<div\b[^>]*class=["'][^"']*detail-content[^"']*["'][^>]*>([\s\S]*?)(?:<div\b[^>]*class=["']tags[^"']*["']|<div\b[^>]*class=["']footer-content|<div\b[^>]*data-check-position=["']body_end["'])/i);
             articleHtml = match ? match[1] : html;
         }
 
@@ -24,7 +24,7 @@ export default class TuoitreSource {
             let absUrl = href;
             try { absUrl = href.startsWith('/') ? new URL(href, url).href : href; } catch(e) {}
             let mediaHtml = '';
-            if (img) mediaHtml = img.toLowerCase().endsWith('.mp4') ? `<video src="${img}" class="embedded-suggested-image" autoplay muted loop playsinline></video>` : `<img src="${img}" class="embedded-suggested-image" alt="">`;
+            if (img) mediaHtml = img.toLowerCase().endsWith('.mp4') ? `<video src="${img}" class="embedded-suggested-image"  muted loop playsinline></video>` : `<img src="${img}" class="embedded-suggested-image" alt="">`;
             return `<div class="embedded-suggested-card"><a href="${absUrl}" target="_blank" class="embedded-suggested-overlay"></a>${mediaHtml}<div class="embedded-suggested-content"><div class="embedded-suggested-title">${title}</div>${desc ? `<div class="embedded-suggested-summary">${desc}</div>` : ''}</div></div>`;
         };
 
@@ -55,6 +55,23 @@ export default class TuoitreSource {
             if (urlMatch && titleMatch) {
                 const img = (inner.match(/<source\b[^>]*(?:data-src|src)=["']([^"']+)["']/i) || inner.match(/<img\b[^>]*src=["']([^"']+)["']/i) || inner.match(/<video\b[^>]*poster=["']([^"']+)["']/i) || [])[1] || '';
                 addItem(urlMatch[1], titleMatch[1].trim(), img, descMatch ? descMatch[1].replace(/<[^>]+>/g, '').trim() : '', true);
+            }
+            return '';
+        });
+
+        // Format VideoStream
+        articleHtml = articleHtml.replace(/<div\b[^>]*type=["']VideoStream["'][^>]*>([\s\S]*?)<\/div>\s*<\/div>/gi, (m, inner) => {
+            const vidMatch = m.match(/data-vid=["']([^"']+)["']/i);
+            const thumbMatch = m.match(/data-thumb=["']([^"']+)["']/i);
+            const captionMatch = inner.match(/<div\b[^>]*class=["'][^"']*VideoCMS_Caption[^"']*["'][^>]*>([\s\S]*?)<\/div>/i);
+            let captionText = '';
+            if (captionMatch) captionText = captionMatch[1].replace(/<[^>]+>/g, '').trim();
+
+            if (vidMatch) {
+                let vidUrl = vidMatch[1];
+                if (!vidUrl.startsWith('http')) vidUrl = 'https://' + vidUrl;
+                let posterAttr = thumbMatch ? ` poster="${thumbMatch[1]}"` : '';
+                return `<figure class="my-6"><video src="${vidUrl}"${posterAttr} controls class="w-full rounded-2xl bg-black" playsinline></video>${captionText ? `<figcaption class="mt-2 text-center text-sm text-gray-500 italic">${captionText}</figcaption>` : ''}</figure>`;
             }
             return '';
         });
@@ -178,12 +195,45 @@ export default class TuoitreSource {
             articleHtml = `<p class="font-bold text-xl mb-6 text-gray-900 dark:text-gray-100 leading-relaxed">${sapoMatch[1].trim()}</p>` + articleHtml;
         }
 
+        // Extract Dòng sự kiện (Event Stream) and append it to the bottom as a distinct liquid glass component
+        const historyMatch = html.match(/<div\b[^>]*class=["'][^"']*detail__history[^"']*["'][^>]*>([\s\S]*?)<\/(?:div|div\s+class=["']view-more)/i);
+        let eventHtmlBlock = '';
+        if (historyMatch) {
+            const titleBoxMatch = historyMatch[1].match(/<h2\b[^>]*class=["']title-box["'][^>]*>([\s\S]*?)<\/h2>/i);
+            if (titleBoxMatch) {
+                const aMatch = titleBoxMatch[1].match(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/i);
+                if (aMatch) {
+                    const href = aMatch[1].startsWith('/') ? 'https://tuoitre.vn' + aMatch[1] : aMatch[1];
+                    const titleText = aMatch[2].replace(/<[^>]+>/g, '').trim();
+                    eventHtmlBlock = `
+                    <div class="not-prose my-8 overflow-hidden rounded-2xl border border-gray-200/60 dark:border-white/10 bg-white/50 dark:bg-white/5 backdrop-blur-xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-none transition-all hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)]">
+                        <a href="${href}" target="_blank" class="flex items-center gap-4 p-5 md:p-6 no-underline text-gray-800 dark:text-gray-200 group">
+                            <div class="shrink-0 flex items-center justify-center w-12 h-12 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition-transform duration-300">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <div class="text-xs font-bold uppercase tracking-wider text-emerald-600/80 dark:text-emerald-400/80 mb-1">Dòng sự kiện</div>
+                                <div class="font-bold text-lg leading-tight truncate group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">${titleText}</div>
+                            </div>
+                            <div class="shrink-0 flex items-center justify-center w-8 h-8 rounded-full bg-gray-100 dark:bg-white/10 group-hover:bg-emerald-500/10 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                            </div>
+                        </a>
+                    </div>`;
+                }
+            }
+        }
+
         if (allRelatedItems.length > 0) {
             let itemsHtml = '';
             for (const item of allRelatedItems) {
                 itemsHtml += createCardHtml(item.href, item.title, item.img, item.desc);
             }
-            articleHtml += createSuggestedHtml('BÀI VIẾT LIÊN QUAN / SỰ KIỆN', itemsHtml);
+            articleHtml += createSuggestedHtml('BÀI VIẾT LIÊN QUAN', itemsHtml);
+        }
+
+        if (eventHtmlBlock) {
+            articleHtml += eventHtmlBlock;
         }
 
         return articleHtml;

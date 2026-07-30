@@ -1,11 +1,10 @@
-import { extractArticle } from '@extractus/article-extractor';
+import fs from 'fs';
+import CafeFSource from './src/sources/CafeFSource.js';
 
-const targetUrl = 'https://cafef.vn/can-canh-trai-lon-o-thanh-hoa-noi-xay-ra-vu-tai-nan-khien-5-nguoi-chet-188260719231615269.chn';
-const CF_PROXY_BASE = 'https://rss-proxy.k1d.workers.dev/?url=';
-
-(async () => {
-    const res = await fetch(CF_PROXY_BASE + encodeURIComponent(targetUrl));
+async function test() {
+    const url = 'https://cafef.vn/hon-3400-vien-kim-cuong-nhap-lau-duoc-dua-vao-he-thong-ban-le-sjc-188260722155540365.chn';
+    const res = await fetch(url);
     const html = await res.text();
-    const result = await extractArticle(html, targetUrl);
-    console.log(result.content.substring(0, 1000));
-})();
+    fs.writeFileSync('test_cafef_raw.html', html);
+}
+test();

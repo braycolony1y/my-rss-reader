@@ -1,7 +1,17 @@
-(async () => {
-    const CF_PROXY_BASE = 'https://rss-proxy.k1d.workers.dev/?url=';
-    const targetUrl = 'https://cafef.vn/can-canh-trai-lon-o-thanh-hoa-noi-xay-ra-vu-tai-nan-khien-5-nguoi-chet-188260719231615269.chn';
-    const res = await fetch(CF_PROXY_BASE + encodeURIComponent(targetUrl));
+const { JSDOM } = require('jsdom');
+const targetUrl = 'https://cafef.vn/hon-3400-vien-kim-cuong-nhap-lau-duoc-dua-vao-he-thong-ban-le-sjc-188260722155540365.chn';
+
+async function run() {
+    const res = await fetch(targetUrl);
     const html = await res.text();
-    require('fs').writeFileSync('cafef_proxy.html', html);
-})();
+    const dom = new JSDOM(html);
+    const doc = dom.window.document;
+    const body = doc.querySelector('.detail-content') || doc.body;
+    
+    // Find potential spam containers
+    const spam = body.querySelectorAll('.tindnd, .tinlienquan, .related-news, .chisochungkhoan, .tintucsukien, [data-marked-zoneid], .VCSortableInPreviewMode[type="RelatedNews"]');
+    spam.forEach(node => {
+        console.log("Found spam node:", node.className, node.getAttribute('data-marked-zoneid'));
+    });
+}
+run();

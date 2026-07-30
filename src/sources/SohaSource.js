@@ -34,7 +34,7 @@ export default class SohaSource {
                 const poster = thumbMatch ? ` poster="${thumbMatch[1]}"` : '';
                 return `
                 <div class="video-container my-4">
-                    <video controls autoplay loop${poster} class="w-full rounded-lg shadow-lg" style="max-width: 100%;">
+                    <video controls  loop${poster} class="w-full rounded-lg shadow-lg" style="max-width: 100%;">
                         <source src="${vidSrc}" type="video/mp4">
                         Trình duyệt của bạn không hỗ trợ thẻ video.
                     </video>

@@ -52,7 +52,6 @@ export default class BBCSource {
             }
         });
 
-        // Remove any remaining unwanted elements like social share, etc.
         const removeSelectors = [
             '[data-component="share-panel"]',
             '[data-component="byline-block"]',
@@ -62,6 +61,14 @@ export default class BBCSource {
         ];
         removeSelectors.forEach(sel => {
             article.querySelectorAll(sel).forEach(el => el.remove());
+        });
+
+        // Remove "Được đăng" and "Thời gian đọc" divs
+        article.querySelectorAll('div, time').forEach(el => {
+            const text = el.textContent.trim().toLowerCase();
+            if (text.startsWith('được đăng') || text.startsWith('thời gian đọc')) {
+                el.remove();
+            }
         });
 
         // Extract the title
@@ -104,7 +111,7 @@ export default class BBCSource {
                 </div>`;
             }
             articleHtml += `<div class="mt-8 border-t border-gray-200 dark:border-gray-700 pt-6">
-                <h3 class="text-xl font-black text-gray-900 dark:text-gray-100 mb-4 tracking-tight">Bài viết liên quan / Xem thêm</h3>
+                <h3 class="text-xl font-black text-gray-900 dark:text-gray-100 mb-4 tracking-tight">Đọc nhiều nhất</h3>
                 ${itemsHtml}
             </div>`;
         }

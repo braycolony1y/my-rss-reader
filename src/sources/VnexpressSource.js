@@ -74,7 +74,7 @@ export default class VnexpressSource {
             const poster = videoData.thumbnailUrl ? ` poster="${videoData.thumbnailUrl}"` : '';
             videoHtml = `
                 <div class="video-container my-4">
-                    <video controls autoplay loop${poster} class="w-full rounded-lg shadow-lg" style="max-width: 100%;">
+                    <video controls  loop${poster} class="w-full rounded-lg shadow-lg" style="max-width: 100%;">
                         <source src="${videoData.contentUrl}" type="application/x-mpegURL">
                         <source src="${videoData.contentUrl}" type="application/vnd.apple.mpegurl">
                         Trình duyệt của bạn không hỗ trợ thẻ video.

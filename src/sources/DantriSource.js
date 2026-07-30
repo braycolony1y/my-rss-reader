@@ -21,7 +21,7 @@ export default class DantriSource {
                     const videoHtml = `
                         ${title ? `<h1 class="article-title font-bold text-2xl mb-4">${title}</h1>` : ''}
                         <div class="video-container my-4">
-                            <video controls autoplay loop${poster} class="w-full rounded-lg shadow-lg" style="max-width: 100%;">
+                            <video controls  loop${poster} class="w-full rounded-lg shadow-lg" style="max-width: 100%;">
                                 <source src="${m3u8Url}" type="application/x-mpegURL">
                                 <source src="${m3u8Url}" type="application/vnd.apple.mpegurl">
                                 Trình duyệt của bạn không hỗ trợ thẻ video.
@@ -40,6 +40,10 @@ export default class DantriSource {
             const imgMatch = html.match(/<meta\b[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i);
             if (imgMatch) {
                 result.image = imgMatch[1];
+            }
+            const authorMatch = html.match(/<a[^>]*rel=["']author["'][^>]*>([^<]+)<\/a>/i);
+            if (authorMatch) {
+                result.author = authorMatch[1].trim();
             }
         }
 
