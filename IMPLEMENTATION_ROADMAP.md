@@ -334,4 +334,10 @@ Phase 3 and Phase 4 combined deliver only the remaining 5%, at 10× the engineer
 - **Notes:** Added `putMany` and batched smart sync tail-end writes.
 - **Measured Results:** 6x write amplification eliminated (45 MB to 7.5 MB disk writes per sync).
 
-**Progress:** 13.3% (4/30)
+- **ID:** H-5
+- **Implementation Date:** 2026-07-30
+- **Files Changed:** `server.js`
+- **Notes:** Wrapped json cache returns in `structuredClone`.
+- **Measured Results:** Prevents accidental memory corruption bugs.
+
+**Progress:** 16.6% (5/30)

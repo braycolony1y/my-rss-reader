@@ -109,15 +109,16 @@ These areas were examined and found to have no significant performance concerns:
 1. C-1: `/api/data` O(n×m) state array scans (includes M-6)
 2. H-7: `markAllAsRead` N-request fan-out
 3. C-3: Deduplication O(n²) `.find()` in loop
+4. M-8: 6× `db.put()` at end of smart sync
 
 ## Remaining Implementations
-27 findings remain (C-2, C-4, H-1 to H-6, H-8, H-9, M-1 to M-12 excluding M-6 and M-8, wait actually M-8 is not done yet, let's list 27).
+26 findings remain (C-2, C-4, H-1 to H-6, H-8, H-9, M-1 to M-12 excluding M-6 and M-8, L-1 to L-5).
 
 ## Current Progress %
-10.0% (3/30)
+13.3% (4/30)
 
 ## Last Completed Finding
-C-3
+M-8
 
 ## Blockers
 None
