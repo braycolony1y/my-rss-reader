@@ -1068,27 +1068,38 @@
 
                     // If already in client-side cache, skip
                     if (this.articleContentCache && this.articleContentCache.has(url)) return;
-                    // Eagerly prefetch this specific article with high priority
-                    if (!this.articleContentCache) this.articleContentCache = new Map();
-                    // Fire a direct fetch immediately (bypasses queue)
-                    fetch('/api/article-content?' + new URLSearchParams({
-                        url,
-                        title: article.title || '',
-                        feedTitle: article.feedTitle || '',
-                        feedUrl: article.feedUrl || '',
-                        feedIcon: article.feedIcon || '',
-                        prefetch: '1',
-                        _t: Date.now().toString()
-                    }).toString()).then(res => res.ok ? res.json() : null).then(data => {
-                        if (data && !data.error && data.content) {
-                            if (!this.articleContentCache) this.articleContentCache = new Map();
-                            this.articleContentCache.set(url, data);
-                            if (this.articleContentCache.size > 80) {
-                                const firstKey = this.articleContentCache.keys().next().value;
-                                this.articleContentCache.delete(firstKey);
+                    
+                    if (!this.hoverPrefetchTimeouts) this.hoverPrefetchTimeouts = {};
+                    if (this.hoverPrefetchTimeouts[url]) clearTimeout(this.hoverPrefetchTimeouts[url]);
+                    
+                    this.hoverPrefetchTimeouts[url] = setTimeout(() => {
+                        if (this.hoveredArticleUrl !== url) return;
+                        if ((this.activeHoverPrefetches || 0) >= 2) return; // Cap at 2 concurrent
+                        
+                        this.activeHoverPrefetches = (this.activeHoverPrefetches || 0) + 1;
+                        if (!this.articleContentCache) this.articleContentCache = new Map();
+                        
+                        fetch('/api/article-content?' + new URLSearchParams({
+                            url,
+                            title: article.title || '',
+                            feedTitle: article.feedTitle || '',
+                            feedUrl: article.feedUrl || '',
+                            feedIcon: article.feedIcon || '',
+                            prefetch: '1',
+                            _t: Date.now().toString()
+                        }).toString()).then(res => res.ok ? res.json() : null).then(data => {
+                            if (data && !data.error && data.content) {
+                                if (!this.articleContentCache) this.articleContentCache = new Map();
+                                this.articleContentCache.set(url, data);
+                                if (this.articleContentCache.size > 80) {
+                                    const firstKey = this.articleContentCache.keys().next().value;
+                                    this.articleContentCache.delete(firstKey);
+                                }
                             }
-                        }
-                    }).catch(() => {});
+                        }).catch(() => {}).finally(() => {
+                            this.activeHoverPrefetches = (this.activeHoverPrefetches || 1) - 1;
+                        });
+                    }, 400);
                 },
 
                 handleCardHoverOut(article) {
@@ -1099,6 +1110,10 @@
                     if (this.hoverTimeouts[url]) {
                         clearTimeout(this.hoverTimeouts[url]);
                         delete this.hoverTimeouts[url];
+                    }
+                    if (this.hoverPrefetchTimeouts && this.hoverPrefetchTimeouts[url]) {
+                        clearTimeout(this.hoverPrefetchTimeouts[url]);
+                        delete this.hoverPrefetchTimeouts[url];
                     }
                 },
 
