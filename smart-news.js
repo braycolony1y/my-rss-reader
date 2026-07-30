@@ -1583,7 +1583,7 @@ export function createSmartNewsEngine({ db, helpers, headers = {} }) {
             return { ok: false, ...failed };
         } finally {
             running = false;
-            if (_embeddingCache && _embeddingCache.size > 2000) _embeddingCache.clear();
+            if (_embeddingCache && _embeddingCache.size > 5000) _embeddingCache.clear();
             if (global.gc) global.gc();
         }
     }

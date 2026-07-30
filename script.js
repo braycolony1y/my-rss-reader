@@ -1500,9 +1500,10 @@
                 stripHtml(html) {
                     if (!html) return '';
                     let text = html.replace(/<[^>]*>?/gm, '');
+                    if (!this._decodeTextArea) this._decodeTextArea = document.createElement('textarea');
                     for (let pass = 0; pass < 3; pass++) {
-                        const doc = new DOMParser().parseFromString(text, 'text/html');
-                        const decoded = doc.body.textContent || '';
+                        this._decodeTextArea.innerHTML = text;
+                        const decoded = this._decodeTextArea.value;
                         if (decoded === text) break;
                         text = decoded;
                     }

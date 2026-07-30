@@ -121,15 +121,16 @@ These areas were examined and found to have no significant performance concerns:
 13. H-4: Cache `content-filter-preview`
 14. H-6: Concurrent Gemini per-category calls
 15. H-8: Move `beautifyArticleHtml` to server side
+16. M-3: Replace `googleNewsUrlCache` with LRU Map
 
 ## Remaining Implementations
-15 findings remain (M-1 to M-12 excluding M-6, M-8 and M-10, L-1 to L-5).
+14 findings remain (M-1 to M-12 excluding M-3, M-6, M-8 and M-10, L-1 to L-5).
 
 ## Current Progress %
-50.0% (15/30)
+53.3% (16/30)
 
 ## Last Completed Finding
-H-8
+M-3
 
 ## Blockers
 None

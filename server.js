@@ -1081,6 +1081,7 @@ const fetchHistory = [];     // { timestamp, feedUrl, feedTitle, status, details
 function pruneOldEntries(arr) {
     const cutoff = Date.now() - MAX_LOG_AGE_MS;
     while (arr.length > 0 && arr[0].timestamp < cutoff) arr.shift();
+    if (arr.length > 5000) arr.splice(0, arr.length - 3000);
 }
 
 // Intercept console.log/error to capture into the ring buffer
