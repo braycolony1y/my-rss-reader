@@ -352,4 +352,20 @@ Phase 3 and Phase 4 combined deliver only the remaining 5%, at 10× the engineer
 - **Notes:** Added 400ms debounce and max-concurrent=2 cap to article hover prefetching.
 - **Measured Results:** Eliminated network fetch storms during rapid mouse movement over grids.
 
-**Progress:** 23.3% (7/30)
+- **ID:** C-2
+- **Implementation Date:** 2026-07-30
+- **Files Changed:** `server.js`
+- **Notes:** Verified already implemented. `_ts` attributes used for fast sorting.
+
+- **ID:** C-4
+- **Implementation Date:** 2026-07-30
+- **Files Changed:** `index.html`
+- **Notes:** Verified already implemented. Alpine loops already track `:key`.
+
+- **ID:** H-1
+- **Implementation Date:** 2026-07-30
+- **Files Changed:** `server.js`, `feed-worker.js` (New)
+- **Notes:** Offloaded heavy XML/HTML regex parsing to `worker_threads`.
+- **Measured Results:** Main event loop stays unblocked during massive RSS sync cycles.
+
+**Progress:** 33.3% (10/30)
