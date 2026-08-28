@@ -21,7 +21,7 @@ export default class DantriSource {
                     const videoHtml = `
                         ${title ? `<h1 class="article-title font-bold text-2xl mb-4">${title}</h1>` : ''}
                         <div class="video-container my-4">
-                            <video controls autoplay loop${poster} class="w-full rounded-lg shadow-lg" style="max-width: 100%;">
+                            <video controls  loop${poster} class="w-full rounded-lg shadow-lg" style="max-width: 100%;">
                                 <source src="${m3u8Url}" type="application/x-mpegURL">
                                 <source src="${m3u8Url}" type="application/vnd.apple.mpegurl">
                                 Trình duyệt của bạn không hỗ trợ thẻ video.
@@ -40,6 +40,10 @@ export default class DantriSource {
             const imgMatch = html.match(/<meta\b[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i);
             if (imgMatch) {
                 result.image = imgMatch[1];
+            }
+            const authorMatch = html.match(/<a[^>]*rel=["']author["'][^>]*>([^<]+)<\/a>/i);
+            if (authorMatch) {
+                result.author = authorMatch[1].trim();
             }
         }
 
@@ -90,8 +94,46 @@ export default class DantriSource {
                                             .replace(/\bdata-original\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/i, '')
                                             .replace(/\bdata-lazy-src\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/i, '')
                                             .replace(/\bdata-srcset\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/i, '')
-                                            .replace(/\bsrcset\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/i, '');
-                    return `<img src="${realSrc}" onerror="this.onerror=null; this.src='/api/proxy-image?url=${encodeURIComponent(realSrc)}';" ${cleanedAttrs}>`;
+                                            .replace(/\bsrcset\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/i, '')
+                                            .replace(/\bonerror\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/i, '')
+                                            .replace(/\breferrerpolicy\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/i, '');
+                    return `<img src="${realSrc}" referrerpolicy="no-referrer" onerror="this.onerror=null; this.src='/api/proxy-image?url=${encodeURIComponent(realSrc)}';" ${cleanedAttrs}>`;
+                }
+                return match;
+            });
+
+            // Fix videos
+            articleHtml = articleHtml.replace(/<video\b((?:[^>"']|"[^"]*"|'[^']*')*?)>/gi, (match, attrs) => {
+                const dataSrcMatch = attrs.match(/data-src=["']([^"']+)["']/i);
+                const srcMatch = attrs.match(/\bsrc=["']([^"']+)["']/i);
+                let realSrc = (dataSrcMatch && dataSrcMatch[1]) || (srcMatch && srcMatch[1]);
+                if (realSrc) {
+                    const mediaSlug = realSrc
+                        .split(/[?#]/)[0]
+                        .split('/')
+                        .pop()
+                        ?.replace(/\.mp4$/i, '');
+                    const structuredVideo = (result?.videos || []).find(video =>
+                        video?.url && mediaSlug && video.url.includes('/' + mediaSlug + '/')
+                    ) || ((result?.videos || []).length === 1 ? result.videos[0] : null);
+
+                    if (structuredVideo?.url) {
+                        // Dantri's inline data-src points at a legacy MP4 path
+                        // that can return 404. VideoObject.contentUrl is the
+                        // authoritative, CORS-enabled HLS stream.
+                        realSrc = structuredVideo.url;
+                    } else if (realSrc.startsWith('/') && /\.mp4(?:$|[?#])/i.test(realSrc)) {
+                        realSrc = 'https://vcdn.dantri.com.vn/vod' + realSrc
+                            .replace(/\.mp4([?#].*)?$/i, '/playlist.m3u8$1');
+                    } else if (realSrc.startsWith('/')) {
+                        realSrc = 'https://vcdn.dantri.com.vn' + realSrc;
+                    }
+                    let cleanedAttrs = attrs.replace(/\bsrc\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/i, '')
+                                            .replace(/\bdata-src\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/i, '');
+                    if (!cleanedAttrs.includes('controls')) cleanedAttrs += ' controls';
+                    if (!/\bplaysinline\b/i.test(cleanedAttrs)) cleanedAttrs += ' playsinline';
+                    if (!/\bpreload\s*=/i.test(cleanedAttrs)) cleanedAttrs += ' preload="metadata"';
+                    return `<video src="${realSrc}" ${cleanedAttrs}></video>`;
                 }
                 return match;
             });

@@ -1,17 +1,111 @@
 import express from 'express';
+import { fileURLToPath } from 'url';
 import cron from 'node-cron';
 import fs from 'fs/promises';
+import { Worker, isMainThread } from 'worker_threads';
+function fnv1a(str) {
+    let hash = 2166136261;
+    for (let i = 0; i < str.length; i++) {
+        hash ^= str.charCodeAt(i);
+        hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
+    }
+    return (hash >>> 0).toString(16);
+}
+import * as cheerio from 'cheerio/slim';
+import { createTrackedFetch, discardResponseBody } from './src/fetch-response.js';
+const workerPath = new URL('./feed-worker.js', import.meta.url);
+let parserWorker = null;
+let parserRequestId = 0;
+const parserRequests = new Map();
+
+function ensureParserWorker() {
+    if (parserWorker) return parserWorker;
+    const worker = new Worker(workerPath);
+    parserWorker = worker;
+    if (worker.unref) worker.unref();
+
+    worker.on('message', message => {
+        const pending = parserRequests.get(message.id);
+        if (!pending) return;
+        parserRequests.delete(message.id);
+        if (message.success) pending.resolve(message.data);
+        else pending.reject(new Error(message.error));
+    });
+
+    const failWorker = error => {
+        if (parserWorker !== worker) return;
+        parserWorker = null;
+        for (const pending of parserRequests.values()) pending.reject(error);
+        parserRequests.clear();
+    };
+    worker.on('error', failWorker);
+    worker.on('exit', code => {
+        if (code !== 0) failWorker(new Error(`Parser worker stopped with exit code ${code}`));
+        else if (parserWorker === worker) parserWorker = null;
+    });
+    return worker;
+}
+
+function runParserWorker(type, data) {
+    return new Promise((resolve, reject) => {
+        const id = ++parserRequestId;
+        parserRequests.set(id, { resolve, reject });
+        try {
+            ensureParserWorker().postMessage({ id, type, data });
+        } catch (error) {
+            parserRequests.delete(id);
+            reject(error);
+        }
+    });
+}
 import { readFileSync, unlinkSync } from 'fs';
 import path from 'path';
 import dotenv from 'dotenv';
-import { execSync, execFile } from 'child_process';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { createHash } from 'crypto';
-import { createSmartNewsEngine, cleanStoredCluster } from './smart-news.js';
+import { createSmartNewsEngine, cleanStoredCluster, calculateHotness, startSmartSyncLoop, scheduleMonthlySourceEvaluation, setClusteringModel } from './smart-news.js';
 import sourceRegistry from './src/sources/index.js';
 import GoogleDecoderPkg from 'google-news-url-decoder';
+import { decodeHTMLEntities, normalizeArticleTitle, fastParseRSS } from './feed-parsers.js';
+import { normalizeArticleMediaMarkup } from './article-media.js';
+import { isDeletedVozThreadPayload, isUnsafeVozThreadPayload, isVozThreadUrl } from './src/voz-thread-state.js';
+import {
+    deletedSourceKind,
+    deletedSourceTitle,
+    isDeletedArticlePayload,
+    normalizeArticleSourceUrl
+} from './src/article-source-state.js';
+import {
+    summaryQueue,
+    geminiKeyManager,
+    qwenKeyManager,
+    getSummaryFromCache,
+    writeSummaryToCache,
+    generateVozThreadSummary,
+    detectLanguage,
+    stripHtmlForSummary,
+    generateDeepAnalysis
+} from './summary-engine.js';
 const { GoogleDecoder } = GoogleDecoderPkg;
 const googleDecoder = new GoogleDecoder();
+
+const deletedVozThreads = new Set();
+const vozBackgroundUpdatesInFlight = new Set();
+const vozBackgroundLastCheck = new Map();
+const VOZ_BACKGROUND_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
+async function decodeGoogleNews(url) {
+    if (url && typeof url === 'string' && url.includes('news.google.com/rss/articles/')) {
+        try { 
+            const result = await googleDecoder.decode(url);
+            if (result && result.decoded_url) {
+                return result.decoded_url;
+            }
+        } catch (e) { }
+    }
+    return url;
+}
+
 
 dotenv.config();
 // Keep the Gemini credential separate from the rest of the application config.
@@ -41,44 +135,102 @@ async function fetchViaVietserver(url) {
     const res = await fetch(fetchUrl, {
         headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
     });
-    if (!res.ok) throw new Error(`Vietserver proxy returned HTTP ${res.status}`);
-    return await res.text();
+    if (!res.ok && res.status !== 404 && res.status !== 403 && res.status !== 410) throw new Error(`Vietserver proxy returned HTTP ${res.status}`);
+    const body = await res.text();
+    return (res.status === 404 || res.status === 410)
+        ? `<!-- RSS_SOURCE_HTTP_STATUS:${res.status} -->${body}`
+        : body;
 }
 
 const JINA_READER_BASE = 'https://r.jina.ai/';
 const ARTICLE_CACHE_DIR = './article_cache';
 const ARTICLE_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;// NOTE: If you change anything about how articles are parsed, fetched, or sanitized (such as improving image extraction, video embeds, etc), you MUST bump this version to force a re-fetch of existing cached articles.
-const ARTICLE_CACHE_VERSION = 17;
+// Normal reads expire after seven days, but the underlying last-known-good
+// file remains available longer in case the publisher later removes the page.
+const ARTICLE_CACHE_LAST_KNOWN_TTL_MS = 90 * 24 * 60 * 60 * 1000;
+const ARTICLE_CACHE_VERSION = 28;
 const execFileAsync = promisify(execFile);
 
+let _articleCacheIndex = null;
+
+function articleCacheBasename(url) {
+    const canonicalUrl = normalizeArticleSourceUrl(url).replace(/\/unread\/?(?:[?#].*)?$/i, '');
+    return fnv1a(canonicalUrl) + '.json';
+}
+
 function articleCacheFilename(url) {
-    const canonicalUrl = String(url).replace(/\/unread\/?(?:[?#].*)?$/i, '');
-    return path.join(ARTICLE_CACHE_DIR, createHash('sha256').update(canonicalUrl).digest('hex') + '.json');
+    return path.join(ARTICLE_CACHE_DIR, articleCacheBasename(url));
+}
+
+async function _initArticleCacheIndex() {
+    if (_articleCacheIndex !== null) return;
+    _articleCacheIndex = new Map();
+    try {
+        await fs.mkdir(ARTICLE_CACHE_DIR, { recursive: true });
+        const files = await fs.readdir(ARTICLE_CACHE_DIR);
+        for (const name of files) {
+            if (!name.endsWith('.json')) continue;
+            try {
+                // Regex extraction is much faster than JSON.parse for large HTML blobs
+                const content = await fs.readFile(path.join(ARTICLE_CACHE_DIR, name), 'utf-8');
+                const versionMatch = content.match(/"version":\s*(\d+)/);
+                const cachedAtMatch = content.match(/"cachedAt":\s*(\d+)/);
+                const urlMatch = content.match(/"url":\s*"([^"\\]*(?:\\.[^"\\]*)*)"/);
+                const sourceDeletedMatch = content.match(/"sourceDeleted":\s*true/);
+                _articleCacheIndex.set(name, {
+                    version: versionMatch ? parseInt(versionMatch[1]) : 0,
+                    cachedAt: cachedAtMatch ? parseInt(cachedAtMatch[1]) : 0,
+                    url: urlMatch ? JSON.parse(`"${urlMatch[1]}"`) : null,
+                    sourceDeleted: Boolean(sourceDeletedMatch)
+                });
+            } catch (e) {
+                _articleCacheIndex.set(name, { version: 0, cachedAt: 0, url: null });
+            }
+        }
+    } catch (e) {
+        console.error('[ARTICLE CACHE] Failed to init index:', e.message);
+    }
 }
 
 async function getCachedArticle(url) {
-    const filename = articleCacheFilename(url);
+    const name = articleCacheBasename(url);
+    const filename = path.join(ARTICLE_CACHE_DIR, name);
     try {
         const cached = JSON.parse(await fs.readFile(filename, 'utf-8'));
         const isExpired = Date.now() - cached.cachedAt >= ARTICLE_CACHE_TTL_MS;
-        if (cached.version !== ARTICLE_CACHE_VERSION || !cached.cachedAt || !cached.result?.content) {
+        if (!cached.cachedAt || !cached.result?.content) {
             await fs.unlink(filename).catch(() => {});
+            if (_articleCacheIndex !== null) _articleCacheIndex.delete(name);
             return null;
         }
-        if (isExpired) {
-            // Check if protected
-            let isProtected = false;
-            try {
-                const data = JSON.parse(readFileSync('./user_settings.json', 'utf8'));
-                if (data.readLater && data.readLater.some(i => i.link === url || i.link === url.split('?')[0])) isProtected = true;
-                if (data.boards) {
-                    for (const b of Object.values(data.boards)) {
-                        if (b && b.some(i => i.link === url || i.link === url.split('?')[0])) isProtected = true;
-                    }
-                }
-            } catch (e) {}
+        if (isUnsafeVozThreadPayload(url, cached.result) && cached.result?.sourceDeleted !== true) {
+            console.warn(`[ARTICLE CACHE] Ignoring VOZ error payload for ${url}`);
+            return null;
+        }
+        if (isExpired || cached.version !== ARTICLE_CACHE_VERSION) {
+            // Saved and board entries are intentional archives. Read their
+            // current database-backed state and compare canonical URLs.
+            let isProtected = cached.result?.sourceDeleted === true;
             if (!isProtected) {
-                await fs.unlink(filename).catch(() => {});
+                isProtected = true;
+                try {
+                    const [savedStates, boardStates] = await Promise.all([
+                        env.RSS_DATA.get('savedStates', { type: 'json' }),
+                        env.RSS_DATA.get('boardStates', { type: 'json' })
+                    ]);
+                    const normalizedUrl = normalizeStateUrl(url);
+                    isProtected = [...(savedStates || []), ...(boardStates || [])]
+                        .some(item => normalizeStateUrl(item) === normalizedUrl);
+                } catch (error) {
+                    // Fail closed: a transient state-read error must never erase
+                    // the only archived copy of an article.
+                    console.warn('[ARTICLE CACHE] Could not verify archive protection:', error.message);
+                }
+            }
+            if (!isProtected) {
+                // Keep the stale file as last-known-good until a replacement
+                // has been fetched and validated. A terminal 404/410 response
+                // can then preserve this copy instead of losing the article.
                 return null;
             }
         }
@@ -88,45 +240,91 @@ async function getCachedArticle(url) {
     }
 }
 
+async function getLastKnownCachedArticle(url) {
+    try {
+        const cached = JSON.parse(await fs.readFile(articleCacheFilename(url), 'utf-8'));
+        const result = cached?.result;
+        if (!result?.content) return null;
+        if (isUnsafeVozThreadPayload(url, result) && result.sourceDeleted !== true) return null;
+        return result;
+    } catch (error) {
+        return null;
+    }
+}
+
 async function cacheArticleResult(url, result) {
-    if (!result?.content) return;
+    if (!result?.content) return false;
+    if (isUnsafeVozThreadPayload(url, result) && result.sourceDeleted !== true) {
+        console.warn(`[ARTICLE CACHE] Refusing to overwrite ${url} with a VOZ error page.`);
+        return false;
+    }
     try {
         await fs.mkdir(ARTICLE_CACHE_DIR, { recursive: true });
-        await _writeJsonAtomic(articleCacheFilename(url), { version: ARTICLE_CACHE_VERSION, cachedAt: Date.now(), url, result });
+        const name = articleCacheBasename(url);
+        const filename = path.join(ARTICLE_CACHE_DIR, name);
+        try {
+            const existing = JSON.parse(await fs.readFile(filename, 'utf-8'))?.result;
+            if (existing?.sourceDeleted === true && result.sourceDeleted !== true) {
+                console.warn(`[ARTICLE CACHE] Refusing to overwrite confirmed deleted-source snapshot for ${url}.`);
+                return false;
+            }
+            if (isVozThreadUrl(url)) {
+                const existingPostCount = (existing?.content?.match(/class=["']voz-post["']/gi) || []).length;
+                const incomingPostCount = (result.content.match(/class=["']voz-post["']/gi) || []).length;
+                if (existingPostCount > 0 && incomingPostCount === 0) {
+                    console.warn(`[ARTICLE CACHE] Refusing VOZ quality downgrade for ${url}: ${existingPostCount} posts -> 0 posts.`);
+                    return false;
+                }
+            }
+        } catch (error) {
+            // No previous cache (or an unreadable one): the validated
+            // incoming payload may establish the initial entry.
+        }
+        await _writeJsonAtomic(filename, { version: ARTICLE_CACHE_VERSION, cachedAt: Date.now(), url, result });
+        if (_articleCacheIndex !== null) {
+            _articleCacheIndex.set(name, {
+                version: ARTICLE_CACHE_VERSION,
+                cachedAt: Date.now(),
+                url,
+                sourceDeleted: result.sourceDeleted === true
+            });
+        }
+        return true;
     } catch (error) {
         console.error('[ARTICLE CACHE] Could not save article:', error.message);
+        return false;
     }
 }
 
 async function deleteCachedArticle(url) {
-    await fs.unlink(articleCacheFilename(url)).catch(() => {});
+    const name = articleCacheBasename(url);
+    await fs.unlink(path.join(ARTICLE_CACHE_DIR, name)).catch(() => {});
+    if (_articleCacheIndex !== null) _articleCacheIndex.delete(name);
 }
 
 async function cleanupArticleCache() {
     try {
+        await _initArticleCacheIndex();
+
         const savedStatesForPruning = await env.RSS_DATA.get('savedStates', { type: 'json' }) || [];
         const boardStatesForPruning = await env.RSS_DATA.get('boardStates', { type: 'json' }) || [];
-        const protectedUrls = new Set([...savedStatesForPruning, ...boardStatesForPruning]);
+        const protectedUrls = new Set(
+            [...savedStatesForPruning, ...boardStatesForPruning].map(normalizeStateUrl).filter(Boolean)
+        );
 
-        await fs.mkdir(ARTICLE_CACHE_DIR, { recursive: true });
-        const files = await fs.readdir(ARTICLE_CACHE_DIR);
         let removed = 0;
-        for (const name of files) {
-            if (!name.endsWith('.json')) continue;
+        for (const [name, meta] of _articleCacheIndex.entries()) {
             const filename = path.join(ARTICLE_CACHE_DIR, name);
-            try {
-                const cached = JSON.parse(await fs.readFile(filename, 'utf-8'));
-                if (cached.version !== ARTICLE_CACHE_VERSION || !cached.cachedAt || Date.now() - cached.cachedAt >= ARTICLE_CACHE_TTL_MS) {
-                    if (cached.url && (protectedUrls.has(cached.url) || protectedUrls.has(cached.url.split('?')[0]))) {
-                        // Protected, do not delete
-                    } else {
-                        await fs.unlink(filename);
-                        removed++;
-                    }
+            const isLastKnownExpired = Date.now() - meta.cachedAt >= ARTICLE_CACHE_LAST_KNOWN_TTL_MS;
+            
+            if (!meta.cachedAt || isLastKnownExpired) {
+                if (meta.sourceDeleted || (meta.url && protectedUrls.has(normalizeStateUrl(meta.url)))) {
+                    // Protected, do not delete
+                } else {
+                    await fs.unlink(filename).catch(() => {});
+                    _articleCacheIndex.delete(name);
+                    removed++;
                 }
-            } catch (e) {
-                await fs.unlink(filename).catch(() => {});
-                removed++;
             }
         }
         if (removed) console.log(`[ARTICLE CACHE] Removed ${removed} expired or invalid entries.`);
@@ -173,7 +371,7 @@ function renderJinaInline(text = '') {
     });
     rendered = rendered.replace(/<video\b[^>]*\bsrc=(['"])([^'"]+)\1[^>]*>[\s\S]*?<\/video>/gi, (match, quote, videoUrl) => {
         const safeVideo = safeHttpUrl(decodeHTMLEntities(videoUrl));
-        if (!safeVideo || !/\.(?:mp4|webm|ogg)(?:$|[?#])/i.test(safeVideo)) return '';
+        if (!safeVideo || !/\.(?:m3u8|mp4|webm|ogg)(?:$|[?#])/i.test(safeVideo)) return '';
         return stash('<video controls playsinline preload="metadata" src="' + escapeHtml(safeVideo) + '">Video playback is not supported by this browser.</video>');
     });
     rendered = rendered.replace(/\[!\[([^\]]*)\]\((https?:\/\/[^)\s]+)(?:\s+"[^"]*")?\)\]\((https?:\/\/[^)\s]+)(?:\s+"[^"]*")?\)/g, (match, alt, imageUrl, linkUrl) => {
@@ -185,6 +383,11 @@ function renderJinaInline(text = '') {
         const safeImage = safeHttpUrl(imageUrl);
         if (!safeImage) return alt;
         return stash('<img src="' + escapeHtml(safeImage) + '" alt="' + escapeHtml(alt) + '">');
+    });
+    rendered = rendered.replace(/\[(?:Video|Clip)\s+\d+\]\((https?:\/\/[^)\s]+\.(?:m3u8|mp4|webm|ogg)(?:[?#][^)\s]*)?)(?:\s+"[^"]*")?\)/gi, (match, videoUrl) => {
+        const safeVideo = safeHttpUrl(videoUrl);
+        if (!safeVideo) return '';
+        return stash('<video controls playsinline preload="metadata" src="' + escapeHtml(safeVideo) + '">Video playback is not supported by this browser.</video>');
     });
     rendered = rendered.replace(/\[([^\]]*)\]\((https?:\/\/[^)\s]+\.(?:mp3|m4a|aac|ogg|oga|wav|flac)(?:[?#][^)\s]*)?)(?:\s+"[^"]*")?\)/gi, (match, label, audioUrl) => {
         const safeAudio = safeHttpUrl(audioUrl);
@@ -323,7 +526,10 @@ function trimJinaArticleMarkdown(markdown = '') {
         .filter(line => !/\]\(\s*(?:javascript:|mailto:)/i.test(line))
         .filter(line => !/!\[[^\]]*\]\(https?:\/\/[^)]*(?:cmsads|admicro|doubleclick|googlesyndication|adservice)[^)]*\)/i.test(line))
         .filter(line => !/^\s*(?:Audio|Video|Ảnh|Photo|Tập|Ep)\s*\d+(?:\s+Shorts)?\s*$/i.test(line))
-        .filter(line => !/^\s*\[(?:Video|Audio|Tập|Ep)\s+\d+\]\([^)]+\)\s*$/iu.test(line))
+        .filter(line => {
+            const mediaControl = line.match(/^\s*\[(?:Video|Audio|Tập|Ep)\s+\d+\]\(([^)]+)\)\s*$/iu);
+            return !mediaControl || /\.(?:m3u8|mp4|webm|ogg|mp3|m4a|aac|oga|wav|flac)(?:$|[?#])/i.test(mediaControl[1]);
+        })
         .filter(line => !/^\s*(?:Nghe đọc bài|Listen to article|Tắt bật tiếng|Bật tắt tiếng|Tự động phát sau|Giọng đọc)\s*$/iu.test(line))
         .filter(line => !/^\s*\d{1,2}:\d{2}\s*$/i.test(line))
         .filter(line => !/^\s*(?:0\.25x|0\.5x|0\.75x|1x|1\.00x|1\.25x|1\.5x|1\.75x|2x|2\.0x|Normal|1x\s+Normal|Quality|Playback\s+speed)\s*$/i.test(line))
@@ -364,7 +570,7 @@ function trimJinaArticleMarkdown(markdown = '') {
     while (blocks.length > 1) {
         const last = blocks[blocks.length - 1].trim();
         const linkedImage = /\[!\[[^\]]*\]\(https?:\/\/[^)]+\)\]\(https?:\/\/[^)]+\)/i.test(last);
-        const linkedHeadline = /\[[^\]]{8,}\]\(https?:\/\/[^)]+\)/i.test(last.replace(/\[!\[[\s\S]*?\)\]\([\s\S]*?\)/g, ''));
+        const linkedHeadline = /\[[^\]]{8,}\]\(https?:\/\/[^)]+\)/i.test(last.replace(/\[!\[[\s\S]{0,500}?\]\]\([\s\S]{0,500}?\)/g, ''));
         const hasRecommendationMarker = /^(?:#{1,4}\s*)?(?:Tin liên quan|Đề xuất|Box tin|Xem thêm|Đọc thêm|Bài liên quan|Cùng chuyên mục)/iu.test(last) || /(?:^|\n)(?:Trở lại|Quay lại)\s+[\p{L}\s]+/iu.test(last);
         const endsWithCommentCount = /\.\d{1,4}$/.test(last);
         const isTrailingRecommendationBlock = (/^(!\[[^\]]*\]\(https?:\/\/[^)]+\)|\bImage\s+\d+:[\s\S]*)/i.test(last) || hasRecommendationMarker || endsWithCommentCount) && blocks.length >= 2 && last.length < 700;
@@ -465,6 +671,21 @@ function stripJinaLeadingNavigation(markdown = '', title = '') {
 }
 
 function parseJinaReaderText(text, url) {
+    if (isDeletedArticlePayload(url, text)) {
+        const kind = deletedSourceKind(url);
+        return {
+            title: deletedSourceTitle(url),
+            author: '',
+            date: '',
+            image: '',
+            siteName: new URL(url).hostname.replace(/^www\./, ''),
+            content: '',
+            readerType: `deleted-${kind}`,
+            source: 'jina-reader',
+            isDeletedSource: true,
+            isDeletedThread: kind === 'thread'
+        };
+    }
     const titleMatch = String(text).match(/^Title:\s*(.+)$/m);
     const dateMatch = String(text).match(/^Published Time:\s*(.+)$/m);
     const marker = 'Markdown Content:';
@@ -500,7 +721,7 @@ function parseJinaReaderText(text, url) {
 
     const allImages = [...markdown.matchAll(/!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/g)].map(m => m[1]);
     const validImage = allImages.find(img => !isInvalidImage(img) && !img.includes('avplayer.com')) || allImages.find(img => !isInvalidImage(img)) || '';
-    let content = cleanArticleMarkup(jinaMarkdownToHtml(markdown));
+    let content = normalizeArticleMediaMarkup(cleanArticleMarkup(jinaMarkdownToHtml(markdown)), url);
     if (title) {
         const escapedTitle = escapeHtml(title).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         content = content.replace(new RegExp('^<h[1-3]>' + escapedTitle + '<\\/h[1-3]>', 'i'), '');
@@ -518,6 +739,21 @@ function parseJinaReaderText(text, url) {
 }
 
 function parseOpenCliMarkdown(markdown, url) {
+    if (isDeletedArticlePayload(url, markdown)) {
+        const kind = deletedSourceKind(url);
+        return {
+            title: deletedSourceTitle(url),
+            author: '',
+            date: '',
+            image: '',
+            siteName: new URL(url).hostname.replace(/^www\./, ''),
+            content: '',
+            readerType: `deleted-${kind}`,
+            source: 'opencli',
+            isDeletedSource: true,
+            isDeletedThread: kind === 'thread'
+        };
+    }
     let source = String(markdown || '')
         .replace(/^\s*>\s*原文链接:\s*https?:\/\/[^\n]+\n?/im, '')
         .replace(/^\s*---\s*$/m, '')
@@ -530,7 +766,7 @@ function parseOpenCliMarkdown(markdown, url) {
     }
     const trimmed = trimJinaArticleMarkdown(source);
     source = trimmed.markdown;
-    const content = cleanArticleMarkup(jinaMarkdownToHtml(source));
+    const content = normalizeArticleMediaMarkup(cleanArticleMarkup(jinaMarkdownToHtml(source)), url);
     const allImages = [...source.matchAll(/!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/g)].map(m => m[1]);
     const validImage = allImages.find(img => !isInvalidImage(img) && !img.includes('avplayer.com')) || allImages.find(img => !isInvalidImage(img)) || '';
     return {
@@ -546,6 +782,9 @@ function parseOpenCliMarkdown(markdown, url) {
 }
 
 async function fetchViaOpenCli(url) {
+    if (url.match(/reddit\.com\/r\/.*\/comments\//)) {
+        return fetchRedditViaOpenCli(url);
+    }
     const executable = path.resolve('./node_modules/.bin/opencli');
     const { stdout } = await execFileAsync(executable, [
         'web', 'read', '--url', url,
@@ -558,12 +797,15 @@ async function fetchViaOpenCli(url) {
         maxBuffer: 12 * 1024 * 1024
     });
     const parsed = parseOpenCliMarkdown(stdout, url);
+    if (parsed.isDeletedSource) return parsed;
     const textLength = parsed.content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().length;
     if (textLength < 200 && !/<(?:img|video|audio)\b/i.test(parsed.content)) {
         throw new Error('OpenCLI returned too little article content');
     }
     return parsed;
 }
+
+import { fetchRedditViaOpenCli } from './src/sources/reddit-fetcher.js';
 
 async function fetchViaJina(url) {
     const controller = new AbortController();
@@ -574,8 +816,29 @@ async function fetchViaJina(url) {
             signal: controller.signal,
             headers: { Accept: 'text/plain' }
         });
-        if (!response.ok) throw new Error('Jina Reader returned HTTP ' + response.status);
+        if (response.status === 404 || response.status === 410) {
+            await discardResponseBody(response);
+            const kind = deletedSourceKind(url);
+            return {
+                title: deletedSourceTitle(url),
+                author: '',
+                date: '',
+                image: '',
+                siteName: new URL(url).hostname.replace(/^www\./, ''),
+                content: '',
+                readerType: `deleted-${kind}`,
+                source: 'jina-reader',
+                isDeletedSource: true,
+                isDeletedThread: kind === 'thread'
+            };
+        }
+        if (!response.ok) {
+            await discardResponseBody(response);
+            throw new Error('Jina Reader returned HTTP ' + response.status);
+        }
         const parsed = parseJinaReaderText(await response.text(), url);
+        if (parsed.isDeletedSource) return parsed;
+        if (isUnsafeVozThreadPayload(url, parsed)) throw new Error('Jina Reader returned a VOZ error page');
         const textLength = parsed.content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().length;
         const hasMedia = /<(?:img|video|audio)\b/i.test(parsed.content);
         const minimumLength = parsed.readerType === 'forum-post' ? 40 : 200;
@@ -587,6 +850,11 @@ async function fetchViaJina(url) {
 }
 
 const app = express();
+let lastHttpActivityAt = Date.now();
+app.use((req, res, next) => {
+    lastHttpActivityAt = Date.now();
+    next();
+});
 app.use(express.json());
 app.use('/public', express.static('public'));
 app.use('/api', (req, res, next) => {
@@ -599,6 +867,7 @@ const PORT = process.env.PORT || 3000;
 const DB_FILE = './database.json';
 const SMART_DB_FILE = './smart-data.json';
 const SMART_KEYS = new Set(['smartClusters', 'smartRawArticles', 'smartCandidateLinks', 'smartCandidateSignature', 'smartAiConfig', 'smartClusterVersion', 'smartStatus']);
+const NON_PERSISTED_DB_KEYS = new Set(['smartEmbeddings']);
 const DB_WRITER_LOCK_FILE = './database.writer.lock';
 const DB_BACKUP_DIR = './db_backups';
 const MAX_RECOVERY_SNAPSHOTS = 12;
@@ -626,7 +895,7 @@ async function acquireDatabaseWriterLock() {
     throw new Error('Could not acquire the database writer lock');
 }
 
-const databaseWriterLock = !process.env.SKIP_DB_LOCK ? await acquireDatabaseWriterLock() : null;
+const databaseWriterLock = (!process.env.SKIP_DB_LOCK && isMainThread) ? await acquireDatabaseWriterLock() : null;
 process.on('exit', () => {
     try {
         const owner = JSON.parse(readFileSync(DB_WRITER_LOCK_FILE, 'utf-8'));
@@ -671,8 +940,7 @@ function _validateDatabaseSnapshot(snapshot, requireCriticalKeys = true) {
             if (requireCriticalKeys) return { ok: false, reason: `Missing ${key}` };
             continue;
         }
-        const val = snapshot[key];
-        if (!val || (typeof val !== 'string' && !Array.isArray(val))) return { ok: false, reason: `${key} is not a valid array or string` };
+        if (!_parseStoredArray(snapshot, key)) return { ok: false, reason: `${key} is not a valid array` };
     }
     return { ok: true };
 }
@@ -718,6 +986,23 @@ async function _recoverySnapshotFiles() {
 
 async function _loadDBFromDisk() {
     let mainSnapshot = await _readValidSnapshot(DB_FILE);
+    let backupSnapshot = null;
+    if (mainSnapshot) {
+        backupSnapshot = await _readValidSnapshot(DB_FILE + '.backup');
+        if (backupSnapshot) {
+            const mainFeeds = _parseStoredArray(mainSnapshot, 'feeds') || [];
+            const mainArticles = _parseStoredArray(mainSnapshot, 'articles') || [];
+            const backupFeeds = _parseStoredArray(backupSnapshot, 'feeds') || [];
+            const backupArticles = _parseStoredArray(backupSnapshot, 'articles') || [];
+            const suspiciousFeedLoss = backupFeeds.length > 0 && mainFeeds.length < Math.ceil(backupFeeds.length * 0.1);
+            const suspiciousArticleLoss = backupArticles.length > 0 && mainArticles.length < Math.ceil(backupArticles.length * 0.1);
+            if (suspiciousFeedLoss || suspiciousArticleLoss) {
+                console.error('[DB SAFETY] Main database shows destructive content loss; restoring the previous backup.');
+                mainSnapshot = backupSnapshot;
+                await _writeJsonAtomic(DB_FILE, backupSnapshot);
+            }
+        }
+    }
     if (!mainSnapshot) {
         const filenames = [DB_FILE + '.backup', ...await _recoverySnapshotFiles()];
         for (const filename of filenames) {
@@ -734,9 +1019,24 @@ async function _loadDBFromDisk() {
         console.log('[DB INFO] No valid database found. Starting a new database.');
         mainSnapshot = { articles: '[]', feeds: '[]' };
     }
+    let removedLegacyEmbeddingCache = false;
+    for (const snapshot of [mainSnapshot, backupSnapshot]) {
+        if (snapshot && Object.hasOwn(snapshot, 'smartEmbeddings')) {
+            delete snapshot.smartEmbeddings;
+            removedLegacyEmbeddingCache = true;
+        }
+    }
+    if (removedLegacyEmbeddingCache) {
+        console.log('[DB MIGRATION] Removing the legacy embedding cache from the main database...');
+        await _writeJsonAtomic(DB_FILE, mainSnapshot);
+        if (backupSnapshot) {
+            await _writeJsonAtomic(DB_FILE + '.backup', backupSnapshot);
+        }
+    }
     try {
         const smartSnapshot = JSON.parse(await fs.readFile(SMART_DB_FILE, 'utf-8'));
         if (smartSnapshot && typeof smartSnapshot === 'object') {
+            for (const key of NON_PERSISTED_DB_KEYS) delete smartSnapshot[key];
             Object.assign(mainSnapshot, smartSnapshot);
         }
     } catch (e) {
@@ -765,8 +1065,9 @@ async function _loadDBFromDisk() {
 }
 
 async function _createRecoverySnapshot(snapshot) {
+    if (Date.now() - _lastRecoverySnapshotAt < RECOVERY_SNAPSHOT_INTERVAL_MS) return;
     const validation = _validateDatabaseSnapshot(snapshot, true);
-    if (!validation.ok || Date.now() - _lastRecoverySnapshotAt < RECOVERY_SNAPSHOT_INTERVAL_MS) return;
+    if (!validation.ok) return;
     await fs.mkdir(DB_BACKUP_DIR, { recursive: true });
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
     await _writeJsonAtomic(path.join(DB_BACKUP_DIR, `database-${stamp}.json`), snapshot);
@@ -777,8 +1078,14 @@ async function _createRecoverySnapshot(snapshot) {
     }
 }
 
-async function _persistToDisk(data, previousData, updatedKey = null) {
-    if (updatedKey && SMART_KEYS.has(updatedKey)) {
+async function _persistToDisk(data, previousData, updatedKeys = null) {
+    const changedKeys = Array.isArray(updatedKeys)
+        ? updatedKeys
+        : (updatedKeys ? [updatedKeys] : []);
+    const smartChanged = changedKeys.some(key => SMART_KEYS.has(key));
+    const mainChanged = changedKeys.length === 0 || changedKeys.some(key => !SMART_KEYS.has(key));
+
+    if (smartChanged) {
         const smartData = {};
         for (const k of SMART_KEYS) if (k in data && data[k] !== undefined) smartData[k] = data[k];
         if (previousData) {
@@ -789,18 +1096,18 @@ async function _persistToDisk(data, previousData, updatedKey = null) {
             }
         }
         await _writeJsonAtomic(SMART_DB_FILE, smartData);
-        return;
+        if (!mainChanged) return;
     }
 
     const mainData = {};
-    for (const k in data) if (!SMART_KEYS.has(k) && data[k] !== undefined) mainData[k] = data[k];
+    for (const k in data) if (!SMART_KEYS.has(k) && !NON_PERSISTED_DB_KEYS.has(k) && data[k] !== undefined) mainData[k] = data[k];
 
     const validation = _validateDatabaseSnapshot(mainData, true);
     if (!validation.ok) throw new Error(`Refusing unsafe database write: ${validation.reason}`);
 
     if (previousData) {
         const prevMainData = {};
-        for (const k in previousData) if (!SMART_KEYS.has(k) && previousData[k] !== undefined) prevMainData[k] = previousData[k];
+        for (const k in previousData) if (!SMART_KEYS.has(k) && !NON_PERSISTED_DB_KEYS.has(k) && previousData[k] !== undefined) prevMainData[k] = previousData[k];
         if (_validateDatabaseSnapshot(prevMainData, true).ok) {
             await _writeJsonAtomic(DB_FILE + '.backup', prevMainData);
             await _createRecoverySnapshot(prevMainData).catch(error => {
@@ -846,10 +1153,12 @@ const env = {
             let val = _dbCache[key];
             if (!val) return null;
             if (opts && opts.type === 'json' && typeof val === 'string') {
-                if (_jsonParsedCache[key]?.raw === val) return _jsonParsedCache[key].parsed;
+                if (_jsonParsedCache[key]?.raw === val) {
+                    return opts.shared ? _jsonParsedCache[key].parsed : structuredClone(_jsonParsedCache[key].parsed);
+                }
                 const parsed = JSON.parse(val);
                 _jsonParsedCache[key] = { raw: val, parsed };
-                return parsed;
+                return opts.shared ? parsed : structuredClone(parsed);
             }
             return val;
         },
@@ -885,6 +1194,47 @@ const env = {
             _dbCache = next;
             try {
                 await _persistToDisk(next, previous, key);
+            } catch (err) {
+                _dbCache = previous; // rollback on failure
+                throw err;
+            }
+        }),
+        putMany: (keyValuePairs, options = {}) => withDbLock(async () => {
+            if (!_dbCache) _dbCache = await _loadDBFromDisk();
+            const previous = _dbCache;
+            let next = { ...previous };
+            
+            for (const [key, value] of Object.entries(keyValuePairs)) {
+                delete _jsonParsedCache[key];
+                next[key] = value;
+                
+                if (['feeds', 'articles', 'smartRawArticles', 'smartClusters', 'blockedArticleKeywords'].includes(key)) {
+                    const oldItems = _parseStoredArray(previous, key) || [];
+                    const newItems = _parseStoredArray(next, key);
+                    if (!newItems) throw new Error(`[DB SAFETY] ${key} write is not a valid array`);
+                    if (oldItems.length > 0 && newItems.length === 0) {
+                        throw new Error(`[DB SAFETY] Refusing to wipe ${oldItems.length} ${key}`);
+                    }
+                    const destructiveDrop = oldItems.length >= 20 && newItems.length < Math.ceil(oldItems.length * 0.1);
+                    if (destructiveDrop && !options.allowLargeReduction) {
+                        throw new Error(`[DB SAFETY] Refusing unexpected ${key} reduction from ${oldItems.length} to ${newItems.length}`);
+                    }
+                }
+                
+                if (key === 'feeds') {
+                    const oldFeeds = _parseStoredArray(previous, key) || [];
+                    const newFeeds = _parseStoredArray(next, key) || [];
+                    const destructiveDrop = oldFeeds.length >= 3 && newFeeds.length < Math.ceil(oldFeeds.length * 0.5);
+                    if (destructiveDrop && !options.allowLargeReduction) {
+                        throw new Error(`[DB SAFETY] Refusing unexpected feed reduction from ${oldFeeds.length} to ${newFeeds.length}`);
+                    }
+                    await _backupFeeds(JSON.stringify(newFeeds), oldFeeds.length ? JSON.stringify(oldFeeds) : null);
+                }
+            }
+            
+            _dbCache = next;
+            try {
+                await _persistToDisk(next, previous, Object.keys(keyValuePairs));
             } catch (err) {
                 _dbCache = previous; // rollback on failure
                 throw err;
@@ -939,8 +1289,12 @@ async function fetchWithCookies(targetUrl, timeoutMs = 8000, maxRedirects = 5) {
             }
             currentUrl = res.headers.get('location') || currentUrl;
             if (!currentUrl.startsWith('http')) currentUrl = new URL(currentUrl, targetUrl).href;
-        } else if (res.ok) {
-            return await res.text();
+            await discardResponseBody(res);
+        } else if (res.ok || res.status === 404 || res.status === 403 || res.status === 410) {
+            const body = await res.text();
+            return (res.status === 404 || res.status === 410)
+                ? `<!-- RSS_SOURCE_HTTP_STATUS:${res.status} -->${body}`
+                : body;
         } else {
             let errorBody = '';
             try {
@@ -964,6 +1318,7 @@ const fetchHistory = [];     // { timestamp, feedUrl, feedTitle, status, details
 function pruneOldEntries(arr) {
     const cutoff = Date.now() - MAX_LOG_AGE_MS;
     while (arr.length > 0 && arr[0].timestamp < cutoff) arr.shift();
+    if (arr.length > 5000) arr.splice(0, arr.length - 3000);
 }
 
 // Intercept console.log/error to capture into the ring buffer
@@ -1025,110 +1380,6 @@ function finishManualSyncProgress(requestId, message, extra = {}) {
     if (cleanup.unref) cleanup.unref();
 }
 
-function decodeHTMLEntities(text) {
-    if (!text) return '';
-    return text.replace(/&#(\d+);/g, (match, dec) => String.fromCharCode(dec))
-        .replace(/&#x([a-fA-F0-9]+);/g, (match, hex) => String.fromCharCode(parseInt(hex, 16)))
-        .replace(/&quot;/ig, '"')
-        .replace(/&apos;/ig, "'")
-        .replace(/&lt;/ig, '<')
-        .replace(/&gt;/ig, '>')
-        .replace(/&amp;/ig, '&')
-        .replace(/&nbsp;/ig, ' ')
-        .replace(/&rsquo;/ig, '’')
-        .replace(/&lsquo;/ig, '‘')
-        .replace(/&rdquo;/ig, '”')
-        .replace(/&ldquo;/ig, '“')
-        .replace(/&mdash;/ig, '—')
-        .replace(/&ndash;/ig, '–');
-}
-
-function normalizeArticleTitle(value) {
-    let title = String(value || '').trim();
-    // Some feeds escape entities more than once (for example &amp;#039;).
-    // Decode repeatedly, then remove feed-provided Markdown emphasis wrappers.
-    for (let pass = 0; pass < 3; pass++) {
-        const decoded = decodeHTMLEntities(title);
-        if (decoded === title) break;
-        title = decoded;
-    }
-    return title.replace(/^\*\*([\s\S]*?)\*\*$/, '$1').trim();
-}
-
-function fastParseRSS(xml) {
-    const items = [];
-    const itemRegex = /<(item|entry)[^>]*>([\s\S]*?)<\/\1>/gi;
-    let match;
-    let count = 0;
-
-    let feedTitle = null;
-    const headerMatch = xml.split(/<(item|entry)/i)[0];
-    if (headerMatch) {
-        const titleMatch = headerMatch.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-        if (titleMatch) {
-            feedTitle = decodeHTMLEntities(titleMatch[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/gi, '$1').trim());
-        }
-    }
-
-    while ((match = itemRegex.exec(xml)) !== null && count < 20) {
-        const block = match[2];
-
-        const getTag = (tag) => {
-            const reg = new RegExp(`<(${tag})\\b[^>]*>([\\s\\S]*?)<\\/\\1>`, 'i');
-            const m = block.match(reg);
-            if (m) return m[2].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/gi, '$1').trim();
-
-            const nsReg = new RegExp(`<([a-z0-9]+:${tag})\\b[^>]*>([\\s\\S]*?)<\\/\\1>`, 'i');
-            const nsM = block.match(nsReg);
-            if (nsM) return nsM[2].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/gi, '$1').trim();
-
-            return null;
-        };
-
-        const rawTitle = getTag('title');
-        const title = rawTitle ? normalizeArticleTitle(rawTitle) : 'Untitled Article';
-
-        let link = getTag('link');
-        if (!link || link.includes('<')) {
-            const linkMatch = block.match(/<link[^>]+href=["']([^"']+)["']/i);
-            if (linkMatch) link = linkMatch[1];
-        }
-        if (link && link.startsWith('<![CDATA[')) {
-            link = link.replace(/^<!\[CDATA\[/i, '').replace(/\]\]>$/, '').trim();
-        }
-
-        const pubDate = getTag('pubDate') || getTag('updated') || getTag('published') || new Date().toISOString();
-        let rawContent = getTag('content:encoded') || getTag('content') || getTag('description') || getTag('summary') || '';
-
-        let imageUrl = null;
-        const encMatch = block.match(/<enclosure[^>]+url=["']([^"']+)["'][^>]*type=["']image\//i);
-        if (encMatch) imageUrl = encMatch[1];
-
-        if (!imageUrl) {
-            const mediaMatch = block.match(/<(?:media:content|media:thumbnail)[^>]+url=["']([^"']+)["']/i);
-            if (mediaMatch) imageUrl = mediaMatch[1];
-        }
-
-        // Extract image from raw content HTML BEFORE stripping tags
-        if (!imageUrl) {
-            const imgMatch = rawContent.match(/<img[^>]+src=["']([^"']+)["']/i);
-            if (imgMatch) imageUrl = imgMatch[1];
-        }
-
-        let content = decodeHTMLEntities(rawContent.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim());
-
-        let replyCount = 0;
-        const slashComments = getTag('slash:comments');
-        if (slashComments) replyCount = parseInt(slashComments) || 0;
-
-        if (link) {
-            items.push({ title, link, pubDate, content, imageUrl, replyCount });
-            count++;
-        }
-    }
-    return { items, feedTitle };
-}
-
 function parseMorningstar(html) {
     console.log(`\n[MORNINGSTAR DEBUG] Extracting data from Nuxt payload...`);
     const items = [];
@@ -1188,7 +1439,7 @@ function parseMorningstar(html) {
 
     if (items.length === 0) {
         console.log(`[MORNINGSTAR DEBUG] Falling back to HTML regex extraction...`);
-        const articleRegex = /<a\s+href=["']([^"']+)["'][^>]*mdc-basic-feed-item__mdc[^>]*>([\s\S]*?)<\/a>/gi;
+        const articleRegex = /<a\s+href=["']([^"']+)["'][^>]*mdc-basic-feed-item__mdc[^>]*>([\s\S]{0,5000}?)<\/a>/gi;
         let match;
         while ((match = articleRegex.exec(html)) !== null && matchCount < 20) {
             let link = match[1];
@@ -1201,13 +1452,13 @@ function parseMorningstar(html) {
             }
 
             const contentBlock = match[2];
-            const titleMatch = contentBlock.match(/<h[234][^>]*>.*?<span itemprop=["']name["']>([\s\S]*?)<\/span>/i) || contentBlock.match(/<h[234][^>]*>([\s\S]*?)<\/h[234]>/i);
+            const titleMatch = contentBlock.match(/<h[234][^>]*>.{0,200}?<span itemprop=["']name["']>([\s\S]{0,500}?)<\/span>/i) || contentBlock.match(/<h[234][^>]*>([\s\S]{0,500}?)<\/h[234]>/i);
             let title = titleMatch ? titleMatch[1].replace(/<[^>]+>/g, '').trim() : 'No Title';
 
             const imgMatch = contentBlock.match(/<img[^>]*src=["']([^"']+)["'][^>]*mdc-basic-feed-item__image__mdc/i) || contentBlock.match(/<img[^>]*src=["']([^"']+)["']/i);
             let imageUrl = imgMatch ? imgMatch[1] : null;
 
-            const bodyMatch = contentBlock.match(/<div[^>]*class=["'][^"']*mdc-basic-feed-item__body__mdc[^"']*["'][^>]*>([\s\S]*?)<\/div>/i);
+            const bodyMatch = contentBlock.match(/<div[^>]*class=["'][^"']*mdc-basic-feed-item__body__mdc[^"']*["'][^>]*>([\s\S]{0,2000}?)<\/div>/i);
             let body = bodyMatch ? bodyMatch[1].replace(/<[^>]+>/g, '').trim() : decodeHTMLEntities(title);
             if (!body) body = decodeHTMLEntities(title);
 
@@ -1230,7 +1481,7 @@ function parseMorningstar(html) {
         const seenLinks = new Set();
         
         // Match Markdown links: e.g., [![Img](imgUrl) ### Title...](linkUrl) or [Title...](linkUrl)
-        const mdRegex = /\[(?:!\[[^\]]*\]\(([^)]+)\)\s*)?(?:#{1,4}\s*)?([^\]]+)\]\((https?:\/\/(?:www\.|global\.)?morningstar\.[^)]+|\/[^)]+)\)/gi;
+        const mdRegex = /\[(?:!\[[^\]]*\]\(([^)]+)\)\s*)?(?:#{1,4}\s*)?([^\]]{1,250})\]\((https?:\/\/(?:www\.|global\.)?morningstar\.[^)]+|\/[^)]+)\)/gi;
         let match;
         while ((match = mdRegex.exec(html)) !== null && items.length < 20) {
             let imageUrl = match[1] || null;
@@ -1268,7 +1519,7 @@ function parseMorningstar(html) {
 
         // If Markdown didn't yield items, match general HTML article links
         if (items.length === 0) {
-            const htmlLinkRegex = /<a[^>]+href=["'](https?:\/\/(?:www\.|global\.)?morningstar\.[^"']+|\/[^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+            const htmlLinkRegex = /<a[^>]+href=["'](https?:\/\/(?:www\.|global\.)?morningstar\.[^"']+|\/[^"']+)["'][^>]*>([\s\S]{0,2000}?)<\/a>/gi;
             while ((match = htmlLinkRegex.exec(html)) !== null && items.length < 20) {
                 let link = match[1].split('?')[0].split('#')[0];
                 if (link.startsWith('/')) link = 'https://www.morningstar.com' + link;
@@ -1328,7 +1579,7 @@ async function scrapeVozViews(forumUrl) {
                 const html = await res.text();
 
                 // Split into individual thread blocks using the structItem divs
-                const blockRegex = /<div class="structItem[^"]*js-threadListItem-(\d+)"[\s\S]*?(?=<div class="structItem[^"]*js-threadListItem-|$)/g;
+                const blockRegex = /<div class="structItem[^"]*js-threadListItem-(\d+)"[\s\S]{0,5000}?(?=<div class="structItem[^"]*js-threadListItem-|$)/g;
                 let blockMatch;
                 while ((blockMatch = blockRegex.exec(html)) !== null) {
                     const threadId = blockMatch[1];
@@ -1342,7 +1593,7 @@ async function scrapeVozViews(forumUrl) {
                     // Extract createDate from <time> tag
                     const timeMatch = block.match(/<time[^>]*datetime="([^"]+)"/);
                     // Extract replies (first <dd>) and views (second <dd> in structItem-minor)
-                    const statsMatch = block.match(/<dl class="pairs pairs--justified">[\s\S]*?<dd>([\d,KBM]+)<\/dd>[\s\S]*?<dl class="pairs pairs--justified structItem-minor">[\s\S]*?<dd>([\d,KBM]+)<\/dd>/);
+                    const statsMatch = block.match(/<dl class="pairs pairs--justified">[\s\S]{0,500}?<dd>([\d,KBM]+)<\/dd>[\s\S]{0,500}?<dl class="pairs pairs--justified structItem-minor">[\s\S]{0,500}?<dd>([\d,KBM]+)<\/dd>/);
 
                     if (timeMatch && statsMatch) {
                         threadMap.set(threadId, {
@@ -1373,7 +1624,7 @@ async function scrapeVozViews(forumUrl) {
 function parseUOBVN(html) {
     const items = [];
     try {
-        const cardRegex = /<div class="card [^>]*>[\s\S]*?<img[^>]*class="[^"]*card-img-top[^"]*"[^>]*src=["']([^"']+)["'][^>]*>[\s\S]*?<h4 class="card-title[^>]*>([\s\S]*?)<\/h4>[\s\S]*?<p class="paragraph">([\s\S]*?)<\/p>[\s\S]*?<a href=["']([^"']+)["'][^>]*class="dtm-button"/gi;
+        const cardRegex = /<div class="card [^>]*>[\s\S]{0,1000}?<img[^>]*class="[^"]*card-img-top[^"]*"[^>]*src=["']([^"']+)["'][^>]*>[\s\S]{0,1000}?<h4 class="card-title[^>]*>([\s\S]{0,500}?)<\/h4>[\s\S]{0,1000}?<p class="paragraph">([\s\S]{0,2000}?)<\/p>[\s\S]{0,1000}?<a href=["']([^"']+)["'][^>]*class="dtm-button"/gi;
         let match;
         while ((match = cardRegex.exec(html)) !== null) {
             let imageUrl = match[1];
@@ -1523,7 +1774,7 @@ function parseBaoMoi(html) {
     let count = 0;
     let matchCount = 0;
 
-    const articleRegex = /"title":"([^"\\]*(?:\\.[^"\\]*)*)".*?"redirectUrl":"(\/[^"]+\.epi[^"]*)".*?"thumb":"(https:\/\/[^"]+)"/gi;
+    const articleRegex = /"title":"([^"\\]*(?:\\.[^"\\]*)*)".{0,1000}?"redirectUrl":"(\/[^"]+\.epi[^"]*)".{0,1000}?"thumb":"(https:\/\/[^"]+)"/gi;
 
     let match;
     while ((match = articleRegex.exec(html)) !== null) {
@@ -1563,13 +1814,14 @@ function parseBaoMoi(html) {
 
 function cleanUrl(url) {
     if (!url) return '';
+    const normalizedUrl = normalizeArticleSourceUrl(url);
     try {
-        let u = new URL(url);
+        let u = new URL(normalizedUrl);
         
-        let sourceHandler = sourceRegistry.getHandler(url);
+        let sourceHandler = sourceRegistry.getHandler(normalizedUrl);
         if (sourceHandler && sourceHandler.cleanUrl) {
             let handledUrl = sourceHandler.cleanUrl(u);
-            if (handledUrl) return handledUrl;
+            if (handledUrl) return normalizeArticleSourceUrl(handledUrl);
         }
 
         let params = new URLSearchParams(u.search);
@@ -1579,9 +1831,9 @@ function cleanUrl(url) {
         }
         keysToDelete.forEach(k => params.delete(k));
         u.search = params.toString();
-        return u.toString();
+        return normalizeArticleSourceUrl(u.toString());
     } catch (e) {
-        return url.split('?utm_')[0];
+        return normalizedUrl.split('?utm_')[0];
     }
 }
 
@@ -1670,34 +1922,38 @@ function extractImageFromHtml(html, baseUrl) {
 }
 
 async function getBestImage(targetUrl, fetchFn, rssFallback = null) {
+    const trackedFetch = createTrackedFetch(fetchFn);
     try {
+        try {
+            let sourceHandler = sourceRegistry.getHandler(targetUrl);
+            if (sourceHandler && sourceHandler.getBestImage) {
+                let handledImg = await sourceHandler.getBestImage(targetUrl, trackedFetch.fetch, rssFallback, { extractImageFromHtml, fetchWithCookies, isInvalidImage, CF_PROXY_BASE });
+                if (handledImg === 'NO_FALLBACK') return null;
+                if (handledImg) return handledImg;
+            }
 
-        let sourceHandler = sourceRegistry.getHandler(targetUrl);
-        if (sourceHandler && sourceHandler.getBestImage) {
-            let handledImg = await sourceHandler.getBestImage(targetUrl, fetchFn, rssFallback, { extractImageFromHtml, fetchWithCookies, isInvalidImage, CF_PROXY_BASE });
-            if (handledImg === 'NO_FALLBACK') return null;
-            if (handledImg) return handledImg;
-        }
+            let fetchUrl = CF_PROXY_BASE + encodeURIComponent(targetUrl);
+            const res = await trackedFetch.fetch(fetchUrl);
+            if (!res.ok) {
+                if (rssFallback && !isInvalidImage(rssFallback)) return rssFallback;
+                return null;
+            }
+            let html = await res.text();
+            let scopeHtml = html;
 
-        let fetchUrl = CF_PROXY_BASE + encodeURIComponent(targetUrl);
-        const res = await fetchFn(fetchUrl);
-        if (!res.ok) {
+
+            let img = extractImageFromHtml(scopeHtml, targetUrl);
+            if (img) return img.startsWith('/') ? new URL(img, targetUrl).href : img;
+
+        } catch (e) {
             if (rssFallback && !isInvalidImage(rssFallback)) return rssFallback;
-            return null;
         }
-        let html = await res.text();
-        let scopeHtml = html;
 
-
-        let img = extractImageFromHtml(scopeHtml, targetUrl);
-        if (img) return img.startsWith('/') ? new URL(img, targetUrl).href : img;
-
-    } catch (e) {
         if (rssFallback && !isInvalidImage(rssFallback)) return rssFallback;
+        return null;
+    } finally {
+        await trackedFetch.discardUnread();
     }
-
-    if (rssFallback && !isInvalidImage(rssFallback)) return rssFallback;
-    return null;
 }
 
 async function fetchPdfCreationDate(url) {
@@ -1790,8 +2046,10 @@ async function syncFeeds(env, targetFeedUrl = null, onProgress = null, targetCat
     let syncLogs = [];
     let feedsToSync = targetFeedUrl ? feeds.filter(f => f.url === targetFeedUrl) : targetCategory ? feeds.filter(f => (f.category || 'Others') === targetCategory) : feeds;
 
-    for (let feedIndex = 0; feedIndex < feedsToSync.length; feedIndex++) {
-        const feed = feedsToSync[feedIndex];
+    const CONCURRENCY_LIMIT = 5;
+    const activePromises = new Set();
+
+    const processOneFeed = async (feed, feedIndex) => {
         if (onProgress) onProgress({
             stage: 'feeds',
             message: `Refreshing ${feed.title || new URL(feed.url).hostname}…`,
@@ -1804,7 +2062,7 @@ async function syncFeeds(env, targetFeedUrl = null, onProgress = null, targetCat
             if (!global.lastFetchTimeByUrl) global.lastFetchTimeByUrl = {};
             const lastFetch = global.lastFetchTimeByUrl[feed.url] || 0;
             if (now - lastFetch < 86400000 - 30000) {
-                continue;
+                return;
             }
         }
 
@@ -1841,6 +2099,7 @@ async function syncFeeds(env, targetFeedUrl = null, onProgress = null, targetCat
                         }
                     } else {
                         console.log(`[MORNINGSTAR DEBUG] ⚠️ Direct fetch HTTP ${directRes.status}`);
+                        await discardResponseBody(directRes);
                     }
                 } catch (e) {
                     console.log(`[MORNINGSTAR DEBUG] ⚠️ Direct fetch error: ${e.message}`);
@@ -1862,6 +2121,7 @@ async function syncFeeds(env, targetFeedUrl = null, onProgress = null, targetCat
                             }
                         } else {
                             console.log(`[MORNINGSTAR DEBUG] ⚠️ CF Proxy HTTP ${cfRes.status}`);
+                            await discardResponseBody(cfRes);
                         }
                     } catch (e) {
                         console.log(`[MORNINGSTAR DEBUG] ⚠️ CF Proxy error: ${e.message}`);
@@ -1908,6 +2168,7 @@ async function syncFeeds(env, targetFeedUrl = null, onProgress = null, targetCat
                             }
                         } else {
                             console.log(`[MORNINGSTAR DEBUG] ⚠️ Jina Reader HTTP ${jinaRes.status}`);
+                            await discardResponseBody(jinaRes);
                         }
                     } catch (e) {
                         console.log(`[MORNINGSTAR DEBUG] ⚠️ Jina Reader error: ${e.message}`);
@@ -1918,10 +2179,16 @@ async function syncFeeds(env, targetFeedUrl = null, onProgress = null, targetCat
                 if (!msHtml) {
                     try {
                         console.log(`[MORNINGSTAR DEBUG] Method 5: OpenCLI web read...`);
-                        const cliOutput = execSync(
-                            `opencli web read --url ${JSON.stringify(feed.url)} --stdout --wait 5`,
-                            { timeout: 30000, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }
-                        );
+                        const { stdout: cliOutput } = await execFileAsync(path.resolve('./node_modules/.bin/opencli'), [
+                            'web', 'read', '--url', feed.url,
+                            '--stdout', 'true',
+                            '--download-images', 'false',
+                            '--wait', '5',
+                            '--window', 'background'
+                        ], {
+                            timeout: 30000,
+                            maxBuffer: 12 * 1024 * 1024
+                        });
                         if (cliOutput && cliOutput.length > 500) {
                             msHtml = cliOutput;
                             msMethod = 'opencli';
@@ -1941,7 +2208,7 @@ async function syncFeeds(env, targetFeedUrl = null, onProgress = null, targetCat
                     console.error(`[MORNINGSTAR DEBUG] 🔴 ALL 5 fetch methods failed for ${feed.url}`);
                     syncLogs.push({ Feed: feed.title || feed.url, Issue: 'All fetch methods failed (direct, CF proxy, Vietserver, Jina, OpenCLI)' });
                     recordFetch(feed.url, feed.title || feed.url, 'error', 'All 5 fetch methods failed', Date.now() - feedFetchStart, { errorType: 'all-methods-failed' });
-                    continue;
+                    return;
                 }
             } else if (feed.url.includes('techcombank.com')) {
                 // Techcombank loads data via GraphQL
@@ -1964,9 +2231,11 @@ async function syncFeeds(env, targetFeedUrl = null, onProgress = null, targetCat
                 // If blocked by Cloudflare or WAF, fallback to our proxy
                 if (response.status === 403 || response.status === 401 || response.status === 406) {
                     console.log(`[FETCH DEBUG] WAF Blocked Request (${response.status}) for ${fetchUrl}. Falling back to CF proxy...`);
+                    await discardResponseBody(response);
                     response = await fetch(CF_PROXY_BASE + encodeURIComponent(fetchUrl), { headers: BROWSER_HEADERS });
                     if (!response.ok) {
                         console.log("[PROXY DEBUG] CF proxy failed for feed " + fetchUrl + ", trying Vietserver...");
+                        await discardResponseBody(response);
                         try {
                             const vsHtml = await fetchViaVietserver(fetchUrl);
                             response = new Response(vsHtml, { status: 200, headers: { 'Content-Type': 'application/xml' } });
@@ -1978,7 +2247,8 @@ async function syncFeeds(env, targetFeedUrl = null, onProgress = null, targetCat
             if (!response.ok && response.status !== 202) {
                 syncLogs.push({ Feed: feed.title || feed.url, Issue: `HTTP Error ${response.status}` });
                 recordFetch(feed.url, feed.title || feed.url, 'error', `HTTP ${response.status}`, Date.now() - feedFetchStart, { httpStatus: response.status, errorType: 'http' });
-                continue;
+                await discardResponseBody(response);
+                return;
             }
 
             const xmlData = await response.text();
@@ -1998,16 +2268,21 @@ async function syncFeeds(env, targetFeedUrl = null, onProgress = null, targetCat
                             }
                             const controller = new AbortController();
                             const timeoutId = setTimeout(() => controller.abort(), 6000);
-                            const res = await fetch(fetchUrl, {
-                                method: 'GET',
-                                headers: BROWSER_HEADERS,
-                                redirect: 'follow',
-                                signal: controller.signal
-                            });
-                            clearTimeout(timeoutId);
+                            let res;
+                            try {
+                                res = await fetch(fetchUrl, {
+                                    method: 'GET',
+                                    headers: BROWSER_HEADERS,
+                                    redirect: 'follow',
+                                    signal: controller.signal
+                                });
+                            } finally {
+                                clearTimeout(timeoutId);
+                            }
 
                             if (res.url && !res.url.includes('baomoi.com')) {
                                 item.link = res.url;
+                                await discardResponseBody(res);
                             } else {
                                 const html = await res.text();
                                 let finalUrl = null;
@@ -2060,12 +2335,17 @@ async function syncFeeds(env, targetFeedUrl = null, onProgress = null, targetCat
                                         try {
                                             const proxyController = new AbortController();
                                             const proxyTimeout = setTimeout(() => proxyController.abort(), 8000);
-                                            const proxyRes = await fetch(CF_PROXY_BASE + encodeURIComponent(item.link), {
-                                                signal: proxyController.signal
-                                            });
-                                            clearTimeout(proxyTimeout);
+                                            let proxyRes;
+                                            try {
+                                                proxyRes = await fetch(CF_PROXY_BASE + encodeURIComponent(item.link), {
+                                                    signal: proxyController.signal
+                                                });
+                                            } finally {
+                                                clearTimeout(proxyTimeout);
+                                            }
                                             if (proxyRes.ok) targetHtml = await proxyRes.text();
                                             else {
+                                                await discardResponseBody(proxyRes);
                                                 console.log("[PROXY DEBUG] CF proxy failed for " + item.link + ", trying Vietserver...");
                                                 targetHtml = await fetchViaVietserver(item.link);
                                             }
@@ -2254,7 +2534,7 @@ async function syncFeeds(env, targetFeedUrl = null, onProgress = null, targetCat
                 } catch (parseErr) {
                     syncLogs.push({ Feed: feed.title || feed.url, Issue: `Báo Mới Scraper crashed: ${parseErr.message}` });
                     recordFetch(feed.url, feed.title || feed.url, 'error', `Scraper crash: ${parseErr.message}`, Date.now() - feedFetchStart, { errorType: 'scraper' });
-                    continue;
+                    return;
                 }
             } else if (feed.url.includes('morningstar.com')) {
                 console.log(`[MORNINGSTAR DEBUG] Intercepted Request to: ${feed.url} | HTTP Status: ${response.status}`);
@@ -2272,14 +2552,14 @@ async function syncFeeds(env, targetFeedUrl = null, onProgress = null, targetCat
                 if (xmlData.trim().toLowerCase().startsWith('<!doctype html') || xmlData.trim().toLowerCase().startsWith('<html')) {
                     syncLogs.push({ Feed: feed.title || feed.url, Issue: 'Received HTML instead of XML.' });
                     recordFetch(feed.url, feed.title || feed.url, 'error', 'Received HTML instead of XML', Date.now() - feedFetchStart, { errorType: 'format' });
-                    continue;
+                    return;
                 }
                 try {
-                    feedData = fastParseRSS(xmlData);
+                    feedData = await runParserWorker('fastParseRSS', xmlData);
                 } catch (parseErr) {
                     syncLogs.push({ Feed: feed.title || feed.url, Issue: `XML Parser crashed: ${parseErr.message}` });
                     recordFetch(feed.url, feed.title || feed.url, 'error', `XML parse: ${parseErr.message}`, Date.now() - feedFetchStart, { errorType: 'parse' });
-                    continue;
+                    return;
                 }
             }
 
@@ -2351,9 +2631,8 @@ async function syncFeeds(env, targetFeedUrl = null, onProgress = null, targetCat
                     let finalIcon = item.customIcon || feed.icon;
 
                     let normalizedPubDate = new Date().toISOString();
-                    if (historyDateMap.has(safeLink)) {
-                        normalizedPubDate = historyDateMap.get(safeLink);
-                    } else if (item.pubDate) {
+                    let parsedNewDate = null;
+                    if (item.pubDate) {
                         let parsedDate = new Date(item.pubDate);
                         if (!isNaN(parsedDate.getTime())) {
                             // If it's more than 5 mins in the future, it might be a Vietnamese local time parsed as UTC
@@ -2362,9 +2641,19 @@ async function syncFeeds(env, targetFeedUrl = null, onProgress = null, targetCat
                             }
                             // Allow slight future tolerance (1 hour) for server clock drift
                             if (parsedDate.getTime() <= Date.now() + 60 * 60 * 1000) {
-                                normalizedPubDate = parsedDate.toISOString();
+                                parsedNewDate = parsedDate.toISOString();
                             }
                         }
+                    }
+
+                    if (historyDateMap.has(safeLink)) {
+                        normalizedPubDate = historyDateMap.get(safeLink);
+                        // For forums like Voz, bump the thread if there's a new reply (pubDate is newer)
+                        if (isVoz && parsedNewDate && parsedNewDate > normalizedPubDate) {
+                            normalizedPubDate = parsedNewDate;
+                        }
+                    } else if (parsedNewDate) {
+                        normalizedPubDate = parsedNewDate;
                     }
 
                     // Backup: Use title as timeline for Macroeconomics
@@ -2433,7 +2722,19 @@ async function syncFeeds(env, targetFeedUrl = null, onProgress = null, targetCat
             syncLogs.push({ Feed: feed.title || feed.url, Issue: `Network Crash: ${err.message}` });
             recordFetch(feed.url, feed.title || feed.url, 'error', `Network: ${err.message}`, Date.now() - feedFetchStart, { errorType: 'network' });
         }
+    };
+
+    for (let feedIndex = 0; feedIndex < feedsToSync.length; feedIndex++) {
+        const feed = feedsToSync[feedIndex];
+        const p = processOneFeed(feed, feedIndex).finally(() => activePromises.delete(p));
+        activePromises.add(p);
+        
+        if (activePromises.size >= CONCURRENCY_LIMIT) {
+            await Promise.race(activePromises);
+        }
+        await new Promise(r => setTimeout(r, 500));
     }
+    await Promise.all(activePromises);
 
     let allArticles = [...newArticles, ...existingArticles];
 
@@ -2450,18 +2751,18 @@ async function syncFeeds(env, targetFeedUrl = null, onProgress = null, targetCat
     allArticles.sort((a, b) => b._ts - a._ts);
 
     const uniqueArticles = [];
-    const seenLinks = new Set();
-    const seenTitles = new Set();
+    const linkMap = new Map();
+    const titleMap = new Map();
     for (const article of allArticles) {
         const titleKey = `${article.feedUrl}|${article.title.toLowerCase()}`;
-        if (!seenLinks.has(article.link) && !seenTitles.has(titleKey)) {
-            seenLinks.add(article.link);
-            seenTitles.add(titleKey);
+        if (!linkMap.has(article.link) && !titleMap.has(titleKey)) {
+            linkMap.set(article.link, article);
+            titleMap.set(titleKey, article);
             delete article._ts;
             uniqueArticles.push(article);
         } else {
             // Keep the maximum view/reply count and createDate even if we skip the duplicate
-            const existing = uniqueArticles.find(a => a.link === article.link || `${a.feedUrl}|${a.title.toLowerCase()}` === titleKey);
+            const existing = linkMap.get(article.link) || titleMap.get(titleKey);
             if (existing) {
                 if (article.replyCount > (existing.replyCount || 0)) existing.replyCount = article.replyCount;
                 if (article.viewCount > (existing.viewCount || 0)) existing.viewCount = article.viewCount;
@@ -2475,9 +2776,15 @@ async function syncFeeds(env, targetFeedUrl = null, onProgress = null, targetCat
     const savedStatesForPruning = await env.RSS_DATA.get('savedStates', { type: 'json' }) || [];
     const boardStatesForPruning = await env.RSS_DATA.get('boardStates', { type: 'json' }) || [];
     const readStatesForPruning = await env.RSS_DATA.get('readStates', { type: 'json' }) || [];
+    const archivedUrlsForPruning = new Set(
+        [...savedStatesForPruning, ...boardStatesForPruning].map(normalizeStateUrl).filter(Boolean)
+    );
+    const readUrlsForPruning = new Set(readStatesForPruning.map(normalizeStateUrl).filter(Boolean));
     
     const latestArticles = uniqueArticles.filter(article => {
-        if (savedStatesForPruning.includes(article.link) || boardStatesForPruning.includes(article.link) || readStatesForPruning.includes(article.link)) {
+        const normalizedLink = normalizeStateUrl(article.link);
+        if (archivedUrlsForPruning.has(normalizedLink)) return true;
+        if (readUrlsForPruning.has(normalizedLink)) {
             const ageMs = Date.now() - (new Date(article.pubDate || 0).getTime() || 0);
             if (ageMs < 7 * 24 * 60 * 60 * 1000) return true;
         }
@@ -2490,36 +2797,54 @@ async function syncFeeds(env, targetFeedUrl = null, onProgress = null, targetCat
         return false;
     });
 
-    await env.RSS_DATA.put('articles', JSON.stringify(latestArticles));
+    const pendingDatabaseUpdates = {
+        articles: JSON.stringify(latestArticles)
+    };
     // State lists tied to the live feed should not retain links after the
     // article itself is rotated out. Read Later and Boards are intentional
     // archives, so they are deliberately never pruned here.
     try {
         const smartClusters = await env.RSS_DATA.get('smartClusters', { type: 'json' }) || [];
-        const retainedLinks = new Set(latestArticles.map(article => article.link));
+        const smartRawArticles = await env.RSS_DATA.get('smartRawArticles', { type: 'json' }) || [];
+        const retainedLinks = new Set(latestArticles.map(article => normalizeStateUrl(article.link)));
+        
+        for (const article of smartRawArticles) {
+            if (article.link) retainedLinks.add(normalizeStateUrl(article.link));
+        }
+        
         for (const cluster of smartClusters) {
-            if (cluster.link) retainedLinks.add(cluster.link);
+            if (cluster.link) retainedLinks.add(normalizeStateUrl(cluster.link));
             for (const related of cluster.relatedArticles || []) {
-                if (related.link) retainedLinks.add(related.link);
+                if (related.link) retainedLinks.add(normalizeStateUrl(related.link));
             }
         }
         for (const listName of ['readStates', 'hiddenStates']) {
             const state = await env.RSS_DATA.get(listName, { type: 'json' }) || [];
-            const pruned = state.filter(link => retainedLinks.has(link));
-            if (pruned.length !== state.length) await env.RSS_DATA.put(listName, JSON.stringify(pruned));
+            const pruned = state.filter(link => retainedLinks.has(normalizeStateUrl(link)));
+            if (pruned.length !== state.length) pendingDatabaseUpdates[listName] = JSON.stringify(pruned);
         }
     } catch (error) {
         console.error('[STATE CLEANUP] Could not prune stale feed state:', error.message);
     }
-    if (!targetFeedUrl) await env.RSS_DATA.put('feeds', JSON.stringify(feeds));
+    if (!targetFeedUrl) {
+        pendingDatabaseUpdates.feeds = JSON.stringify(feeds);
+        const prefetchTargets = await computeUniversalPrefetchList(env, latestArticles);
+        if (Array.isArray(prefetchTargets)) {
+            pendingDatabaseUpdates.universalPrefetchTargets = JSON.stringify(prefetchTargets);
+        }
+    }
+
+    await env.RSS_DATA.putMany(pendingDatabaseUpdates);
 
     return { success: true, logs: syncLogs };
 }
 
 const smartNews = createSmartNewsEngine({
     db: env.RSS_DATA,
-    helpers: { fastParseRSS },
-    headers: BROWSER_HEADERS
+    helpers: { fastParseRSS, waitForHttpIdle },
+    headers: BROWSER_HEADERS,
+    geminiKeyManager,
+    qwenKeyManager
 });
 
 // ============================================================================
@@ -2543,6 +2868,11 @@ app.get('/health', (req, res) => {
         lastSyncCompletedAt: lastSyncCompletedAt ? new Date(lastSyncCompletedAt).toISOString() : null,
         feedCount: fetchHistory.length > 0 ? new Set(fetchHistory.map(h => h.feedUrl)).size : 'unknown'
     });
+});
+
+// Ping endpoint for keepalive
+app.post('/api/ping-active', (req, res) => {
+    res.json({ status: 'ok' });
 });
 
 const authMiddleware = (req, res, next) => {
@@ -2680,6 +3010,8 @@ app.post('/api/content-filter-settings', authMiddleware, async (req, res) => {
     res.json({ ok: true, keywords });
 });
 
+let _contentFilterPreviewCache = null;
+
 app.post('/api/content-filter-preview', authMiddleware, async (req, res) => {
     const keywordEntries = normalizeBlockedKeywordEntries(req.body?.keywords);
     const requestedKeyword = normalizeBlockedKeywordEntries([req.body?.selectedKeyword])[0];
@@ -2687,59 +3019,69 @@ app.post('/api/content-filter-preview', authMiddleware, async (req, res) => {
     const limit = Math.min(100, Math.max(1, Math.floor(Number(req.body?.limit) || 50)));
     if (!keywordEntries.length) return res.json({ total: 0, overallTotal: 0, offset, limit, selectedKeyword: '', keywordTotals: [], matches: [] });
 
-    const articles = await env.RSS_DATA.get('articles', { type: 'json' }) || [];
-    const smartClusters = (await env.RSS_DATA.get('smartClusters', { type: 'json' }) || []).map(article => cleanStoredCluster(article));
-    const candidates = [
-        ...articles.map(article => ({ article, surface: 'Feed' })),
-        ...smartClusters.map(article => ({ article, surface: 'Smart' }))
-    ];
-    const affected = [];
-    const byLink = new Map();
-    const bySignature = new Map();
-    for (const candidate of candidates) {
-        const details = articleContentFilterMatches(candidate.article, keywordEntries, true);
-        if (!details.length) continue;
-        const article = candidate.article;
-        const title = normalizeArticleTitle(article.title) || 'Untitled article';
-        const feedTitle = article.feedTitle || article.siteName || article.sourceName || (candidate.surface === 'Smart' ? 'Smart Briefing' : 'Unknown source');
-        const pubDate = article.pubDate || article.date || article.createDate || '';
-        const linkKey = contentFilterPreviewLinkKey(article.link || '');
-        const timeKey = Number.isFinite(Date.parse(pubDate)) ? Math.floor(Date.parse(pubDate) / 60000) : '';
-        const signature = [normalizeBlockedText(title), normalizeBlockedText(feedTitle), timeKey].join('|');
-        let record = (linkKey && byLink.get(linkKey)) || bySignature.get(signature);
-        if (!record) {
-            record = {
-                id: 'affected:' + (article.clusterId || linkKey || signature || affected.length),
-                surfaces: [],
-                title,
-                link: safeHttpUrl(article.link || ''),
-                feedTitle,
-                feedIcon: safeHttpUrl(article.feedIcon || article.icon || ''),
-                category: article.feedCategory || article.smartCategory || '',
-                pubDate,
-                rawMatches: []
-            };
-            affected.push(record);
+    const cacheKey = JSON.stringify(keywordEntries.map(k => k.normalized).sort());
+    const now = Date.now();
+    let cacheEntry = _contentFilterPreviewCache && _contentFilterPreviewCache.key === cacheKey ? _contentFilterPreviewCache : null;
+
+    if (!cacheEntry || now - cacheEntry.timestamp > 30000) {
+        const articles = await env.RSS_DATA.get('articles', { type: 'json' }) || [];
+        const smartClusters = (await env.RSS_DATA.get('smartClusters', { type: 'json' }) || []).map(article => cleanStoredCluster(article));
+        const candidates = [
+            ...articles.map(article => ({ article, surface: 'Feed' })),
+            ...smartClusters.map(article => ({ article, surface: 'Smart' }))
+        ];
+        const affected = [];
+        const byLink = new Map();
+        const bySignature = new Map();
+        for (const candidate of candidates) {
+            const details = articleContentFilterMatches(candidate.article, keywordEntries, true);
+            if (!details.length) continue;
+            const article = candidate.article;
+            const title = normalizeArticleTitle(article.title) || 'Untitled article';
+            const feedTitle = article.feedTitle || article.siteName || article.sourceName || (candidate.surface === 'Smart' ? 'Smart Briefing' : 'Unknown source');
+            const pubDate = article.pubDate || article.date || article.createDate || '';
+            const linkKey = contentFilterPreviewLinkKey(article.link || '');
+            const timeKey = Number.isFinite(Date.parse(pubDate)) ? Math.floor(Date.parse(pubDate) / 60000) : '';
+            const signature = [normalizeBlockedText(title), normalizeBlockedText(feedTitle), timeKey].join('|');
+            let record = (linkKey && byLink.get(linkKey)) || bySignature.get(signature);
+            if (!record) {
+                record = {
+                    id: 'affected:' + (article.clusterId || linkKey || signature || affected.length),
+                    surfaces: [],
+                    title,
+                    link: safeHttpUrl(article.link || ''),
+                    feedTitle,
+                    feedIcon: safeHttpUrl(article.feedIcon || article.icon || ''),
+                    category: article.feedCategory || article.smartCategory || '',
+                    pubDate,
+                    rawMatches: []
+                };
+                affected.push(record);
+            }
+            if (!record.surfaces.includes(candidate.surface)) record.surfaces.push(candidate.surface);
+            record.rawMatches.push(...details);
+            if (linkKey) byLink.set(linkKey, record);
+            bySignature.set(signature, record);
         }
-        if (!record.surfaces.includes(candidate.surface)) record.surfaces.push(candidate.surface);
-        record.rawMatches.push(...details);
-        if (linkKey) byLink.set(linkKey, record);
-        bySignature.set(signature, record);
-    }
-    affected.forEach(record => {
-        record.matches = combineContentFilterMatchDetails(record.rawMatches);
-        delete record.rawMatches;
-    });
-    affected.sort((a, b) => (Date.parse(b.pubDate) || 0) - (Date.parse(a.pubDate) || 0));
-    const groups = new Map(keywordEntries.map(entry => [entry.normalized, { keyword: entry.keyword, matches: [] }]));
-    for (const record of affected) {
-        for (const detail of record.matches) {
-            const key = normalizeBlockedText(detail.keyword);
-            const group = groups.get(key);
-            if (!group) continue;
-            group.matches.push({ ...record, id: record.id + ':' + key, matches: [detail] });
+        affected.forEach(record => {
+            record.matches = combineContentFilterMatchDetails(record.rawMatches);
+            delete record.rawMatches;
+        });
+        affected.sort((a, b) => (Date.parse(b.pubDate) || 0) - (Date.parse(a.pubDate) || 0));
+        const groups = new Map(keywordEntries.map(entry => [entry.normalized, { keyword: entry.keyword, matches: [] }]));
+        for (const record of affected) {
+            for (const detail of record.matches) {
+                const key = normalizeBlockedText(detail.keyword);
+                const group = groups.get(key);
+                if (!group) continue;
+                group.matches.push({ ...record, id: record.id + ':' + key, matches: [detail] });
+            }
         }
+        cacheEntry = { key: cacheKey, timestamp: now, affected, groups };
+        _contentFilterPreviewCache = cacheEntry;
     }
+
+    const { affected, groups } = cacheEntry;
     const selectedKey = requestedKeyword && groups.has(requestedKeyword.normalized)
         ? requestedKeyword.normalized
         : keywordEntries[keywordEntries.length - 1].normalized;
@@ -2851,7 +3193,10 @@ function isGoogleNewsArticleUrl(value) {
 }
 
 async function ensureGoogleNewsUrlCache() {
-    if (!googleNewsUrlCache) googleNewsUrlCache = await env.RSS_DATA.get('googleNewsUrlCache', { type: 'json' }) || {};
+    if (!googleNewsUrlCache) {
+        const obj = await env.RSS_DATA.get('googleNewsUrlCache', { type: 'json' }) || {};
+        googleNewsUrlCache = new Map(Object.entries(obj));
+    }
     return googleNewsUrlCache;
 }
 
@@ -2860,11 +3205,9 @@ function scheduleGoogleNewsUrlCacheSave() {
     googleNewsUrlCacheSaveTimer = setTimeout(async () => {
         googleNewsUrlCacheSaveTimer = null;
         try {
-            const entries = Object.entries(googleNewsUrlCache || {})
-                .sort((a, b) => Number(b[1]?.cachedAt || 0) - Number(a[1]?.cachedAt || 0))
-                .slice(0, 3000);
-            googleNewsUrlCache = Object.fromEntries(entries);
-            await env.RSS_DATA.put('googleNewsUrlCache', JSON.stringify(googleNewsUrlCache));
+            if (!googleNewsUrlCache) return;
+            const obj = Object.fromEntries(googleNewsUrlCache);
+            await env.RSS_DATA.put('googleNewsUrlCache', JSON.stringify(obj));
         } catch (error) {
             console.error('[GOOGLE NEWS] Could not persist destination cache:', error.message);
         }
@@ -2971,10 +3314,15 @@ async function resolveGoogleNewsViaPublisherSearch(hints = {}) {
 }
 
 async function resolveGoogleNewsUrl(sourceUrl, hints = {}, options = {}) {
-    const original = safeHttpUrl(sourceUrl);
+    const original = safeHttpUrl(normalizeArticleSourceUrl(sourceUrl));
     if (!original || !isGoogleNewsArticleUrl(original)) return original || sourceUrl;
     const cache = await ensureGoogleNewsUrlCache();
-    const cached = cache[original];
+    let cached = cache.get(original);
+    if (cached) {
+        // LRU bump
+        cache.delete(original);
+        cache.set(original, cached);
+    }
     const ttl = cached?.resolvedUrl ? GOOGLE_NEWS_URL_CACHE_TTL_MS : GOOGLE_NEWS_URL_FAILURE_TTL_MS;
     if (cached?.cachedAt && Date.now() - cached.cachedAt < ttl && (cached.resolvedUrl || !options.force)) return cached.resolvedUrl || original;
     if (googleNewsUrlPending.has(original)) {
@@ -2991,9 +3339,26 @@ async function resolveGoogleNewsUrl(sourceUrl, hints = {}, options = {}) {
         let resolvedUrl = '';
         let resolutionError = '';
         try {
-            resolvedUrl = await scheduleGoogleNewsLookup(() => decodeGoogleNewsArticleUrl(original));
+            const result = await googleDecoder.decode(original);
+            if (result && result.decoded_url) {
+                resolvedUrl = result.decoded_url;
+            }
         } catch (error) {
             resolutionError = error.message;
+        }
+        if (!resolvedUrl) {
+            try {
+                resolvedUrl = await decodeGoogleNewsArticleUrl(original);
+            } catch (error) {
+                resolutionError += (resolutionError ? '; ' : '') + error.message;
+            }
+        }
+        if (!resolvedUrl) {
+            try {
+                resolvedUrl = await decodeGoogleNewsOriginalUrl(original, hints);
+            } catch (error) {
+                resolutionError += (resolutionError ? '; ' : '') + error.message;
+            }
         }
         if (!resolvedUrl) {
             try {
@@ -3003,7 +3368,8 @@ async function resolveGoogleNewsUrl(sourceUrl, hints = {}, options = {}) {
             }
         }
         if (!resolvedUrl && resolutionError) console.error('[GOOGLE NEWS] Destination resolution failed:', resolutionError);
-        cache[original] = { resolvedUrl, cachedAt: Date.now(), error: resolvedUrl ? '' : resolutionError };
+        cache.set(original, { resolvedUrl, cachedAt: Date.now(), error: resolvedUrl ? '' : resolutionError });
+        if (cache.size > 3000) cache.delete(cache.keys().next().value);
         scheduleGoogleNewsUrlCacheSave();
         return resolvedUrl || original;
     })().finally(() => googleNewsUrlPending.delete(original));
@@ -3027,8 +3393,21 @@ async function mapWithConcurrency(items, concurrency, mapper) {
     return result;
 }
 
+function normalizeStateUrl(url) {
+    if (!url) return '';
+    let u = normalizeArticleSourceUrl(url);
+    if (u.includes('voz.vn/t/')) {
+        u = u
+            .replace(/[?#].*$/, '')
+            .replace(/\/(?:unread|latest|page-\d+|post-\d+)\/?$/i, '')
+            .replace(/\/$/, '');
+    }
+    return u.replace(/\/+$/, '');
+}
 async function prepareArticleForClient(article, isSubItem = false) {
     const prepared = { ...article, title: normalizeArticleTitle(article.title) };
+    prepared.link = normalizeArticleSourceUrl(prepared.link);
+    if (prepared.originalLink) prepared.originalLink = normalizeArticleSourceUrl(prepared.originalLink);
     if (isGoogleNewsArticleUrl(prepared.link)) {
         prepared.originalLink = prepared.link;
         prepared.link = await resolveGoogleNewsUrl(prepared.link, prepared, { backgroundResolve: true, isSubItem });
@@ -3037,15 +3416,212 @@ async function prepareArticleForClient(article, isSubItem = false) {
     if (safeHttpUrl(prepared.link) && (!prepared.feedIcon || /icons\.duckduckgo\.com\/ip3\//i.test(prepared.feedIcon))) {
         prepared.feedIcon = publisherIcon(prepared.link);
     }
+    
+    if (!prepared.originalLink) prepared.originalLink = prepared.link;
+    prepared.link = normalizeStateUrl(prepared.link);
+
     if (Array.isArray(prepared.relatedArticles)) {
         prepared.relatedArticles = await mapWithConcurrency(prepared.relatedArticles, 4, a => prepareArticleForClient(a, true));
     }
     return prepared;
 }
 
+class NormalizedSet extends Set {
+    constructor(iterable) {
+        super(iterable ? iterable.map(normalizeStateUrl) : []);
+    }
+    has(val) { return super.has(normalizeStateUrl(val)); }
+}
+
+class NormalizedMap extends Map {
+    constructor(iterable) {
+        super(iterable ? iterable.map(([key, value]) => [normalizeStateUrl(key), value]) : []);
+    }
+    get(key) { return super.get(normalizeStateUrl(key)); }
+}
+
+const smartApiViewCache = new Map();
+let latestSmartApiVersion = '';
+
+function isInvestingSmartArticle(article) {
+    if (!article) return false;
+    const text = [
+        article.link,
+        article.feedUrl,
+        article.url,
+        article.feedTitle,
+        article.sourceName,
+        article.source,
+        ...(Array.isArray(article.sources) ? article.sources : [])
+    ].filter(Boolean).join(' ').toLowerCase();
+    return text.includes('investing.com');
+}
+
+function smartArticleMatchesSection(article, filterValue) {
+    if (!filterValue) return true;
+    if (filterValue === 'news') return ['news_vietnam', 'news_world'].includes(article.smartCategory);
+    if (filterValue === 'finance') return ['finance_vietnam', 'finance_global'].includes(article.smartCategory);
+    if (filterValue === 'tech') return article.smartCategory === 'tech' && !isInvestingSmartArticle(article);
+    return article.smartCategory === filterValue;
+}
+
+function buildSmartApiView(rawClusters, filterValue) {
+    const clusters = [];
+    for (const storedArticle of rawClusters) {
+        const cleaned = cleanStoredCluster(storedArticle);
+        if (!cleaned || !smartArticleMatchesSection(cleaned, filterValue)) continue;
+
+        let article = cleaned;
+        if (filterValue === 'tech' && Array.isArray(cleaned.relatedArticles)) {
+            const cleanRelated = cleaned.relatedArticles.filter(related => !isInvestingSmartArticle(related));
+            if (cleanRelated.length !== cleaned.relatedArticles.length) {
+                const sources = [...new Set([cleaned.feedTitle, ...cleanRelated.map(related => related.feedTitle)].filter(Boolean))];
+                article = {
+                    ...cleaned,
+                    relatedArticles: cleanRelated,
+                    clusterCount: cleanRelated.length + 1,
+                    sourceCount: sources.length,
+                    sources
+                };
+            }
+        }
+
+        const clusterArticles = [article, ...(Array.isArray(article.relatedArticles) ? article.relatedArticles : [])];
+        clusters.push({ ...article, hotness: calculateHotness(clusterArticles) });
+    }
+
+    clusters.sort((left, right) =>
+        (right.hotness || 0) - (left.hotness || 0) ||
+        (right.sourceWeight || 1) - (left.sourceWeight || 1) ||
+        (new Date(right.pubDate || 0).getTime()) - (new Date(left.pubDate || 0).getTime())
+    );
+    return clusters;
+}
+
+async function serveSmartData(req, res) {
+    const startedAt = Date.now();
+    const filterValue = req.query.filterValue || '';
+    const hideRead = req.query.hideRead === 'true';
+    const searchQuery = req.query.searchQuery ? req.query.searchQuery.toLowerCase() : '';
+
+    const [
+        feeds,
+        readStates,
+        savedStates,
+        boardStates,
+        hiddenStates,
+        categoryOrder,
+        userPreferences,
+        blockedKeywords
+    ] = await Promise.all([
+        env.RSS_DATA.get('feeds', { type: 'json' }),
+        env.RSS_DATA.get('readStates', { type: 'json' }),
+        env.RSS_DATA.get('savedStates', { type: 'json' }),
+        env.RSS_DATA.get('boardStates', { type: 'json' }),
+        env.RSS_DATA.get('hiddenStates', { type: 'json' }),
+        env.RSS_DATA.get('categoryOrder', { type: 'json' }),
+        env.RSS_DATA.get('userPreferences', { type: 'json' }),
+        env.RSS_DATA.get('blockedArticleKeywords', { type: 'json' })
+    ]);
+
+    let smartClusterVersion = await env.RSS_DATA.get('smartClusterVersion') || '';
+    const requestedVersion = req.query.smartVersion || '';
+    let rawClusters;
+    if (requestedVersion && _smartClustersHistory[requestedVersion]) {
+        rawClusters = _smartClustersHistory[requestedVersion];
+        smartClusterVersion = requestedVersion;
+    } else {
+        rawClusters = await env.RSS_DATA.get('smartClusters', { type: 'json', shared: true }) || [];
+        if (smartClusterVersion) {
+            _smartClustersHistory[smartClusterVersion] = rawClusters;
+            const historyKeys = Object.keys(_smartClustersHistory);
+            if (historyKeys.length > 6) delete _smartClustersHistory[historyKeys[0]];
+        }
+    }
+
+    if (!requestedVersion && smartClusterVersion !== latestSmartApiVersion) {
+        smartApiViewCache.clear();
+        latestSmartApiVersion = smartClusterVersion;
+    }
+
+    const cacheKey = `${smartClusterVersion}:${filterValue}`;
+    let filteredArticles = smartApiViewCache.get(cacheKey);
+    const cacheHit = Boolean(filteredArticles);
+    if (!filteredArticles) {
+        filteredArticles = buildSmartApiView(rawClusters, filterValue);
+        smartApiViewCache.set(cacheKey, filteredArticles);
+        while (smartApiViewCache.size > 7) smartApiViewCache.delete(smartApiViewCache.keys().next().value);
+    }
+
+    const readSet = new NormalizedSet(readStates || []);
+    const hiddenSet = new NormalizedSet(hiddenStates || []);
+    const blockedKeywordEntries = normalizeBlockedKeywordEntries(blockedKeywords || []);
+    const matchesSearch = value => String(value || '').toLowerCase().includes(searchQuery);
+
+    filteredArticles = filteredArticles.filter(article => {
+        if (hiddenSet.has(article.link) || articleContentFilterMatches(article, blockedKeywordEntries)) return false;
+        if (hideRead && readSet.has(article.link)) return false;
+        if (!searchQuery) return true;
+        return matchesSearch(article.title) ||
+            matchesSearch(article.feedTitle) ||
+            matchesSearch(article.content) ||
+            (Array.isArray(article.relatedArticles) && article.relatedArticles.some(related =>
+                matchesSearch(related.title) || matchesSearch(related.feedTitle)
+            ));
+    });
+
+    if (hideRead) {
+        filteredArticles = filteredArticles.map(article => {
+            if (!Array.isArray(article.relatedArticles) || !article.relatedArticles.length) return article;
+            const unreadRelated = article.relatedArticles.filter(related => !readSet.has(related.link));
+            if (unreadRelated.length === article.relatedArticles.length) return article;
+            const sources = [...new Set([article.feedTitle, ...unreadRelated.map(related => related.feedTitle)].filter(Boolean))];
+            return {
+                ...article,
+                relatedArticles: unreadRelated,
+                clusterCount: unreadRelated.length + 1,
+                sourceCount: sources.length,
+                sources
+            };
+        });
+    }
+
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 40;
+    const startIndex = (page - 1) * limit;
+    const endIndex = page * limit;
+    const paginatedArticles = await mapWithConcurrency(
+        filteredArticles.slice(startIndex, endIndex),
+        6,
+        article => prepareArticleForClient(article)
+    );
+
+    res.setHeader('Server-Timing', `smart-data;dur=${Date.now() - startedAt}`);
+    res.setHeader('X-Smart-View-Cache', cacheHit ? 'hit' : 'miss');
+    res.json({
+        feeds: feeds || [],
+        articles: paginatedArticles,
+        readStates: readStates || [],
+        savedStates: savedStates || [],
+        boardStates: boardStates || [],
+        hiddenStates: hiddenStates || [],
+        categoryOrder: categoryOrder || [],
+        userPreferences: userPreferences || {},
+        hasMore: endIndex < filteredArticles.length,
+        currentPage: page,
+        smartClusterVersion
+    });
+}
+
 app.get('/api/data', authMiddleware, async (req, res) => {
+    const filterType = req.query.filterType || 'today';
+    if (filterType === 'smart') return serveSmartData(req, res);
+
     let feeds = await env.RSS_DATA.get('feeds', { type: 'json' }) || [];
-    let allArticles = await env.RSS_DATA.get('articles', { type: 'json' }) || [];
+    // This route treats the article snapshot as immutable and derives new
+    // filtered arrays from it, so avoid cloning the full multi-megabyte list
+    // on every tab click.
+    let allArticles = await env.RSS_DATA.get('articles', { type: 'json', shared: true }) || [];
     const readStates = await env.RSS_DATA.get('readStates', { type: 'json' }) || [];
     const savedStates = await env.RSS_DATA.get('savedStates', { type: 'json' }) || [];
     const boardStates = await env.RSS_DATA.get('boardStates', { type: 'json' }) || [];
@@ -3058,9 +3634,19 @@ app.get('/api/data', authMiddleware, async (req, res) => {
     const articleIsBlocked = article => articleContentFilterMatches(article, blockedKeywordEntries);
     const visibleArticles = allArticles.filter(article => !articleIsBlocked(article));
 
+    const readSet = new NormalizedSet(readStates);
+    const savedSet = new NormalizedSet(savedStates);
+    const boardSet = new NormalizedSet(boardStates);
+    const hiddenSet = new NormalizedSet(hiddenStates);
+
+    const readIndex = new NormalizedMap(readStates.map((link, i) => [link, i]));
+    const savedIndex = new NormalizedMap(savedStates.map((link, i) => [link, i]));
+    const boardIndex = new NormalizedMap(boardStates.map((link, i) => [link, i]));
+    const hiddenIndex = new NormalizedMap(hiddenStates.map((link, i) => [link, i]));
+
     const unreadCounts = { feeds: {}, categories: {}, total: 0 };
     visibleArticles.forEach(a => {
-        if (!readStates.includes(a.link) && !hiddenStates.includes(a.link)) {
+        if (!readSet.has(a.link) && !hiddenSet.has(a.link)) {
             unreadCounts.total++;
             unreadCounts.feeds[a.feedUrl] = (unreadCounts.feeds[a.feedUrl] || 0) + 1;
             let cat = a.feedCategory || 'Others';
@@ -3068,7 +3654,6 @@ app.get('/api/data', authMiddleware, async (req, res) => {
         }
     });
 
-    const filterType = req.query.filterType || 'today';
     const filterValue = req.query.filterValue || '';
     const hideRead = req.query.hideRead === 'true';
     const searchQuery = req.query.searchQuery ? req.query.searchQuery.toLowerCase() : '';
@@ -3092,8 +3677,14 @@ app.get('/api/data', authMiddleware, async (req, res) => {
             }
         }
         filteredArticles = smartClusters
-            .map(article => cleanStoredCluster(article))
-            .filter(article => !hiddenStates.includes(article.link) && !articleIsBlocked(article));
+            .map(article => {
+                const cleaned = cleanStoredCluster(article);
+                // Recalculate hotness live using the current formula
+                const allArticles = [cleaned, ...(Array.isArray(cleaned.relatedArticles) ? cleaned.relatedArticles : [])];
+                cleaned.hotness = calculateHotness(allArticles);
+                return cleaned;
+            })
+            .filter(article => !hiddenSet.has(article.link) && !articleIsBlocked(article));
         if (filterValue === 'news') {
             filteredArticles = filteredArticles.filter(article => ['news_vietnam', 'news_world'].includes(article.smartCategory));
         } else if (filterValue === 'finance') {
@@ -3126,9 +3717,9 @@ app.get('/api/data', authMiddleware, async (req, res) => {
             filteredArticles = filteredArticles.filter(article => article.smartCategory === filterValue);
         }
         if (hideRead) {
-            filteredArticles = filteredArticles.filter(article => !readStates.includes(article.link)).map(article => {
+            filteredArticles = filteredArticles.filter(article => !readSet.has(article.link)).map(article => {
                 if (!article.relatedArticles || !article.relatedArticles.length) return article;
-                const unreadRelated = article.relatedArticles.filter(r => !readStates.includes(r.link));
+                const unreadRelated = article.relatedArticles.filter(r => !readSet.has(r.link));
                 if (unreadRelated.length === article.relatedArticles.length) return article;
                 const sources = [...new Set([article.feedTitle, ...unreadRelated.map(r => r.feedTitle)].filter(Boolean))];
                 return {
@@ -3146,23 +3737,43 @@ app.get('/api/data', authMiddleware, async (req, res) => {
             (new Date(b.pubDate || 0).getTime()) - (new Date(a.pubDate || 0).getTime())
         );
     } else if (filterType === 'hidden') {
-        filteredArticles = filteredArticles.filter(a => hiddenStates.includes(a.link))
-            .sort((a, b) => hiddenStates.indexOf(b.link) - hiddenStates.indexOf(a.link));
+        filteredArticles = filteredArticles.filter(a => hiddenSet.has(a.link))
+            .sort((a, b) => hiddenIndex.get(b.link) - hiddenIndex.get(a.link));
     } else {
-        filteredArticles = filteredArticles.filter(a => !hiddenStates.includes(a.link));
+        if (['recent', 'saved', 'board'].includes(filterType)) {
+            const smartClustersRaw = await env.RSS_DATA.get('smartClusters', { type: 'json' }) || [];
+            const smartArticles = smartClustersRaw.map(c => cleanStoredCluster(c)).filter(a => a && !articleIsBlocked(a));
+            
+            const linkMap = new Map();
+            filteredArticles.forEach(a => linkMap.set(a.link, a));
+            
+            const smartRawArticles = await env.RSS_DATA.get('smartRawArticles', { type: 'json' }) || [];
+            smartRawArticles.forEach(a => {
+                if (!articleIsBlocked(a)) linkMap.set(a.link, a);
+            });
+            
+            smartArticles.forEach(a => linkMap.set(a.link, a));
+            filteredArticles = Array.from(linkMap.values());
+        }
+
+        filteredArticles = filteredArticles.filter(a => !hiddenSet.has(a.link));
         if (filterType === 'recent') {
             const oneWeekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
             filteredArticles = filteredArticles
-                .filter(a => readStates.includes(a.link) && (new Date(a.pubDate || 0).getTime() > oneWeekAgo))
-                .sort((a, b) => readStates.indexOf(b.link) - readStates.indexOf(a.link));
+                .filter(a => readSet.has(a.link) && (new Date(a.pubDate || 0).getTime() > oneWeekAgo))
+                .sort((a, b) => readIndex.get(b.link) - readIndex.get(a.link));
         } else if (filterType === 'saved') {
-            filteredArticles = filteredArticles.filter(a => savedStates.includes(a.link));
-            if (hideRead) filteredArticles = filteredArticles.filter(a => !readStates.includes(a.link));
-            filteredArticles.sort((a, b) => savedStates.indexOf(b.link) - savedStates.indexOf(a.link));
+            filteredArticles = filteredArticles.filter(a => savedSet.has(a.link));
+            if (hideRead) filteredArticles = filteredArticles.filter(a => !readSet.has(a.link));
+            filteredArticles.sort((a, b) => savedIndex.get(b.link) - savedIndex.get(a.link));
         } else if (filterType === 'board') {
-            filteredArticles = filteredArticles.filter(a => boardStates.includes(a.link));
-            if (hideRead) filteredArticles = filteredArticles.filter(a => !readStates.includes(a.link));
-            filteredArticles.sort((a, b) => boardStates.indexOf(b.link) - boardStates.indexOf(a.link));
+            filteredArticles = filteredArticles.filter(a => boardSet.has(a.link));
+            if (filterValue) {
+                const mappings = userPreferences.boardFolderMappings || {};
+                filteredArticles = filteredArticles.filter(a => mappings[a.link] === filterValue);
+            }
+            if (hideRead) filteredArticles = filteredArticles.filter(a => !readSet.has(a.link));
+            filteredArticles.sort((a, b) => boardIndex.get(b.link) - boardIndex.get(a.link));
         } else if (filterType === 'category') {
             filteredArticles = filteredArticles.filter(a => a.feedCategory === filterValue || (filterValue === 'Others' && !a.feedCategory));
         } else if (filterType === 'feed') {
@@ -3191,7 +3802,6 @@ app.get('/api/data', authMiddleware, async (req, res) => {
                 : (a, b) => (b.replyCount || 0) - (a.replyCount || 0) || (b.viewCount || 0) - (a.viewCount || 0);
 
             // O(1) lookup sets for hidden/sticky exclusion
-            const hiddenSet = new Set(hiddenStates);
             const stickyIds = new Set(['.1216621/', '.641432/', '.617079/']);
             const isStickyLink = (link) => { for (const id of stickyIds) if (link.includes(id)) return true; return false; };
 
@@ -3230,7 +3840,7 @@ app.get('/api/data', authMiddleware, async (req, res) => {
         }
         
         if (hideRead && filterType !== 'recent' && !filterType.startsWith('hot_') && !filterType.startsWith('views_')) {
-            filteredArticles = filteredArticles.filter(a => !readStates.includes(a.link));
+            filteredArticles = filteredArticles.filter(a => !readSet.has(a.link));
         }
     }
 
@@ -3299,28 +3909,122 @@ app.get('/api/smart-status', authMiddleware, async (req, res) => {
     res.json(await smartNews.getStatus());
 });
 
+app.get('/api/smart-settings', authMiddleware, async (req, res) => {
+    res.json(await smartNews.getSettings());
+});
+
+app.post('/api/smart-settings', authMiddleware, async (req, res) => {
+    try {
+        const updated = await smartNews.updateSettings(req.body || {});
+        res.json({ ok: true, settings: updated });
+    } catch (error) {
+        res.status(400).json({ ok: false, error: error.message });
+    }
+});
+
 app.get('/api/gemini-key-status', authMiddleware, async (req, res) => {
-    const apiKey = process.env.GEMINI_API_KEY || '';
+    const activeKey = geminiKeyManager.getCurrentKeyObj();
+    const keyStats = geminiKeyManager.getDebugStats();
+    const qwenStats = qwenKeyManager.getDebugStats();
+    const apiKey = activeKey?.key || '';
     const model = process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite';
     const smartStatus = await smartNews.getStatus();
+    const rawProviderHealth = await env.RSS_DATA.get('smartAiProviderHealth', { type: 'json' }).catch(()=>null);
+    const providerHealth = rawProviderHealth || {};
+    const smartError = String(smartStatus.geminiError || '');
+    const smartHttpStatus = Number((smartError.match(/(?:Gemini|Qwen|Local AI) HTTP\s+(\d{3})/i) || [])[1]) || null;
+    const smartErrorSummary = smartHttpStatus === 429
+        ? 'An AI provider returned HTTP 429. The request pacer or Qwen fallback was used; the last successful snapshot is kept if both providers fail.'
+        : smartError.split('\n')[0].slice(0, 240);
+    const persistedKeyErrors = Array.isArray(smartStatus.geminiKeyErrors)
+        ? smartStatus.geminiKeyErrors.map(event => ({
+            key: Number(event.key) || 0,
+            httpStatus: Number(event.httpStatus) || null,
+            category: String(event.category || '').slice(0, 100),
+            provider: 'Gemini',
+            error: String(event.error || '').split('\n')[0].slice(0, 240),
+            at: event.at || ''
+        })).filter(event => event.key > 0)
+        : [];
+    const persistedQwenKeyErrors = Array.isArray(smartStatus.qwenKeyErrors)
+        ? smartStatus.qwenKeyErrors.map(event => ({
+            key: Number(event.key) || 0,
+            httpStatus: Number(event.httpStatus) || null,
+            category: String(event.category || '').slice(0, 100),
+            provider: 'Qwen',
+            error: String(event.error || '').split('\n')[0].slice(0, 240),
+            at: event.at || ''
+        })).filter(event => event.key > 0)
+        : [];
+    const persistedLocalErrors = Array.isArray(smartStatus.localErrors)
+        ? smartStatus.localErrors.map(event => ({
+            key: 0,
+            httpStatus: Number(event.httpStatus) || null,
+            category: String(event.category || '').slice(0, 100),
+            provider: 'Local AI',
+            model: String(event.model || smartStatus.localModel || '').slice(0, 80),
+            error: String(event.error || '').split('\n')[0].slice(0, 240),
+            at: event.at || ''
+        }))
+        : [];
+    const runtimeKeyErrors = (keyStats.keys || []).filter(key => key.lastError || key.lastHttpStatus).map(key => ({
+        key: Number(key.index) + 1,
+        httpStatus: Number(key.lastHttpStatus) || null,
+        category: 'current key state',
+        provider: 'Gemini',
+        error: String(key.lastError || '').split('\n')[0].slice(0, 240),
+        at: key.lastErrorAt || ''
+    })).concat((qwenStats.keys || []).filter(key => key.lastError || key.lastHttpStatus).map(key => ({
+        key: Number(key.index) + 1,
+        httpStatus: Number(key.lastHttpStatus) || null,
+        category: 'current key state',
+        provider: 'Qwen',
+        error: String(key.lastError || '').split('\n')[0].slice(0, 240),
+        at: key.lastErrorAt || ''
+    })));
+    const persistedAiKeyErrors = [...persistedLocalErrors, ...persistedKeyErrors, ...persistedQwenKeyErrors];
     const base = {
-        configured: Boolean(apiKey),
+        configured: keyStats.totalKeys > 0,
+        keyCount: keyStats.totalKeys,
+        activeKey: keyStats.totalKeys ? keyStats.activeKeyIndex + 1 : 0,
+        autoFailovers: keyStats.autoSwitchCount,
         model,
         checkedAt: new Date().toISOString(),
         usageUrl: 'https://aistudio.google.com/usage',
         exactRemainingAvailable: false,
         exactRemainingExplanation: 'Google exposes live RPM, TPM, RPD, tier, and remaining usage in the AI Studio project dashboard, not through a Gemini API key.',
+        providerHealth,
         lastSmartRun: {
             state: smartStatus.state || '',
+            startedAt: smartStatus.startedAt || '',
             completedAt: smartStatus.completedAt || '',
+            localConfigured: Boolean(smartStatus.localConfigured),
+            localUsed: Boolean(smartStatus.localUsed),
+            localModel: smartStatus.localModel || process.env.OLLAMA_SMART_MODEL || 'qwen3.5:4b',
             geminiUsed: Boolean(smartStatus.geminiUsed),
-            reviewedArticleCount: Number(smartStatus.geminiReviewedArticleCount) || 0,
-            eligibleArticleCount: Number(smartStatus.geminiEligibleArticleCount) || 0,
-            reason: smartStatus.geminiReason || '',
-            error: smartStatus.geminiError || ''
+            qwenUsed: Array.isArray(smartStatus.aiProviders) ? smartStatus.aiProviders.some(p => p.startsWith('qwen')) : Boolean(smartStatus.qwenUsed),
+            providers: Array.isArray(smartStatus.aiProviders) ? smartStatus.aiProviders : [],
+            providerOrder: Array.isArray(smartStatus.providerOrder) ? smartStatus.providerOrder : ['local', 'gemini', 'qwen'],
+            progress: smartStatus.progress || null,
+            qwenModel: smartStatus.qwenModel || process.env.QWEN_SMART_MODEL || 'qwen3.7-plus',
+            reviewedArticleCount: smartStatus.verificationStats ? Number(smartStatus.verificationStats.reviewedArticleCount) : (Number(smartStatus.geminiReviewedArticleCount) || 0),
+            eligibleArticleCount: Number(smartStatus.candidateCount) || Number(smartStatus.geminiEligibleArticleCount) || 0,
+            reason: smartStatus.reason || smartStatus.geminiReason || '',
+            error: smartErrorSummary,
+            httpStatus: smartHttpStatus,
+            keyErrors: persistedAiKeyErrors.length ? persistedAiKeyErrors : runtimeKeyErrors,
+            byCategory: smartStatus.geminiByCategory || {},
+            keptExistingClusters: Boolean(smartStatus.keptExistingClusters)
         }
     };
-    if (!apiKey) return res.json({ ...base, valid: false, state: 'not_configured' });
+    if (!keyStats.totalKeys) return res.json({ ...base, valid: false, state: 'not_configured', httpStatus: null });
+    if (!apiKey) return res.json({
+        ...base,
+        valid: true,
+        state: 'all_keys_cooling_down',
+        httpStatus: 429,
+        error: 'HTTP 429 · All configured Gemini keys are currently rate limited and cooling down.'
+    });
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10000);
@@ -3336,13 +4040,13 @@ app.get('/api/gemini-key-status', authMiddleware, async (req, res) => {
         });
         const payload = await response.json().catch(() => ({}));
         if (response.ok) {
-            return res.json({ ...base, valid: true, state: 'ready', validationTokens: Number(payload.totalTokens) || 0 });
+            return res.json({ ...base, valid: true, state: 'ready', httpStatus: response.status, testedKey: (activeKey?.index || 0) + 1, validationTokens: Number(payload.totalTokens) || 0 });
         }
         const message = String(payload?.error?.message || ('Gemini returned HTTP ' + response.status)).slice(0, 240);
-        if (response.status === 429) return res.json({ ...base, valid: true, state: 'quota_limited', error: message });
-        return res.json({ ...base, valid: false, state: response.status === 401 || response.status === 403 ? 'invalid_key' : 'error', error: message });
+        if (response.status === 429) return res.json({ ...base, valid: true, state: 'quota_limited', httpStatus: response.status, testedKey: (activeKey?.index || 0) + 1, error: message });
+        return res.json({ ...base, valid: false, state: response.status === 401 || response.status === 403 ? 'invalid_key' : 'error', httpStatus: response.status, testedKey: (activeKey?.index || 0) + 1, error: message });
     } catch (error) {
-        return res.json({ ...base, valid: false, state: 'unreachable', error: String(error.message || error).slice(0, 240) });
+        return res.json({ ...base, valid: false, state: 'unreachable', httpStatus: null, testedKey: (activeKey?.index || 0) + 1, error: String(error.message || error).slice(0, 240) });
     } finally {
         clearTimeout(timeout);
     }
@@ -3450,81 +4154,43 @@ app.get('/api/debug-article', authMiddleware, async (req, res) => {
 
     try {
         let html = '';
-
         let fetchMethod = '';
         const fetchAttempts = [];
-
-        // Attempt 1: Direct (with cookie persistence)
-        try {
-            html = await fetchWithCookies(url);
-            if (html) {
-                fetchMethod = 'direct';
-                fetchAttempts.push({ method: 'direct', status: 'ok', length: html.length });
-            } else {
-                fetchAttempts.push({ method: 'direct', status: 'empty', detail: 'Returned null/empty (non-ok or redirect loop)' });
-            }
-        } catch (e) {
-            fetchAttempts.push({ method: 'direct', status: 'error', detail: e.cause?.message || e.message });
-        }
-
-        // Attempt 2: CF Proxy
-        if (!html) {
+        const policy = await getArticleFetchPolicy(url, String(req.query.feedUrl || ''));
+        const htmlStrategies = policy.strategyOrder.filter(strategy =>
+            ['direct', 'cloudflare', 'vietserver', 'allorigins'].includes(strategy)
+        );
+        for (const strategy of htmlStrategies) {
             try {
-                const controller = new AbortController();
-                const timeout = setTimeout(() => controller.abort(), 8000);
-                const proxyRes = await fetch(CF_PROXY_BASE + encodeURIComponent(url), { signal: controller.signal });
-                clearTimeout(timeout);
-                if (proxyRes.ok) {
-                    html = await proxyRes.text();
-                    fetchMethod = 'cf-proxy';
-                    fetchAttempts.push({ method: 'cf-proxy', status: 'ok', length: html.length });
-                } else {
-                    let errBody = '';
-                    try { errBody = await proxyRes.text(); errBody = errBody.substring(0, 200).replace(/[\n\r\t]+/g, ' ').trim(); } catch (e) { }
-                    fetchAttempts.push({ method: 'cf-proxy', status: `http-${proxyRes.status}`, detail: `${proxyRes.statusText}${errBody ? ` | ${errBody}` : ''}` });
-                }
-            } catch (e) {
-                fetchAttempts.push({ method: 'cf-proxy', status: 'error', detail: e.cause?.message || e.message });
-            }
-        }
-
-        // Attempt 3: Vietserver Proxy
-        if (!html) {
-            try {
-                html = await fetchViaVietserver(url);
+                html = await fetchArticleHtmlByStrategy(strategy, url);
                 if (html) {
-                    fetchMethod = 'vietserver';
-                    fetchAttempts.push({ method: 'vietserver', status: 'ok', length: html.length });
-                }
-            } catch (e) {
-                fetchAttempts.push({ method: 'vietserver', status: 'error', detail: e.cause?.message || e.message });
-            }
-        }
-
-        // Attempt 4: AllOrigins
-        if (!html) {
-            try {
-                const controller = new AbortController();
-                const timeout = setTimeout(() => controller.abort(), 10000);
-                const allOriginsRes = await fetch('https://api.allorigins.win/raw?url=' + encodeURIComponent(url), { signal: controller.signal });
-                clearTimeout(timeout);
-                if (allOriginsRes.ok) {
-                    html = await allOriginsRes.text();
-                    fetchMethod = 'allorigins';
-                    fetchAttempts.push({ method: 'allorigins', status: 'ok', length: html.length });
+                    fetchMethod = strategy;
+                    fetchAttempts.push({ method: strategy, status: 'ok', length: html.length });
+                    break;
                 } else {
-                    let errBody = '';
-                    try { errBody = await allOriginsRes.text(); errBody = errBody.substring(0, 200).replace(/[\n\r\t]+/g, ' ').trim(); } catch (e) { }
-                    fetchAttempts.push({ method: 'allorigins', status: `http-${allOriginsRes.status}`, detail: `${allOriginsRes.statusText}${errBody ? ` | ${errBody}` : ''}` });
+                    fetchAttempts.push({ method: strategy, status: 'empty' });
                 }
             } catch (e) {
-                fetchAttempts.push({ method: 'allorigins', status: 'error', detail: e.cause?.message || e.message });
+                fetchAttempts.push({ method: strategy, status: 'error', detail: e.cause?.message || e.message });
             }
         }
 
-        if (!html) return res.json({ error: 'Failed to fetch page', url, fetchAttempts });
+        if (!html) return res.json({
+            error: policy.hasStrictConfiguredMethods && htmlStrategies.length === 0
+                ? 'The selected source methods do not provide raw HTML debugging.'
+                : 'Failed to fetch page',
+            url,
+            fetchAttempts,
+            availableStrategies: policy.availableStrategies
+        });
 
-        const result = { url, htmlLength: html.length };
+        const result = {
+            url,
+            htmlLength: html.length,
+            fetchMethod,
+            fetchAttempts,
+            availableStrategies: policy.availableStrategies
+        };
 
         // Meta tags
         const metaTags = html.match(/<meta[^>]+>/ig) || [];
@@ -3664,6 +4330,102 @@ async function rankArticleFetchStrategies(hostname) {
     });
 }
 
+function normalizedHostname(value) {
+    try {
+        return new URL(String(value)).hostname.toLowerCase().replace(/^www\./, '');
+    } catch (error) {
+        return '';
+    }
+}
+
+async function getConfiguredArticleFetchMethods(targetUrl, feedUrl = '') {
+    const feeds = await env.RSS_DATA.get('feeds', { type: 'json' }) || [];
+    const validMethods = methods => Array.isArray(methods)
+        ? [...new Set(methods.filter(method => method in ARTICLE_FETCH_BASE_POINTS))]
+        : [];
+
+    const policyForFeedUrl = candidateFeedUrl => {
+        if (!candidateFeedUrl) return null;
+        const exactFeed = feeds.find(feed => feed.url === candidateFeedUrl);
+        return exactFeed && Array.isArray(exactFeed.fetchMethods)
+            ? validMethods(exactFeed.fetchMethods)
+            : null;
+    };
+
+    if (feedUrl) {
+        const exactPolicy = policyForFeedUrl(feedUrl);
+        if (exactPolicy !== null) return exactPolicy;
+    }
+
+    // Requests created by saved boards or older clients may not carry the
+    // feed URL. Recover the source identity from the current article record
+    // before considering any host-level inference.
+    try {
+        const articles = await env.RSS_DATA.get('articles', { type: 'json' }) || [];
+        const targetIdentity = normalizeStateUrl(targetUrl);
+        const associatedFeedUrls = [...new Set(articles
+            .filter(article => [article?.link, article?.originalLink, article?.id]
+                .some(candidate => normalizeStateUrl(candidate) === targetIdentity))
+            .map(article => article?.feedUrl)
+            .filter(Boolean))];
+        if (associatedFeedUrls.length) {
+            const associatedPolicies = associatedFeedUrls
+                .map(policyForFeedUrl)
+                .filter(policy => policy !== null);
+            if (associatedPolicies.length === associatedFeedUrls.length) {
+                const signature = JSON.stringify(associatedPolicies[0]);
+                if (associatedPolicies.every(policy => JSON.stringify(policy) === signature)) {
+                    return associatedPolicies[0];
+                }
+            }
+        }
+    } catch (error) {
+        console.warn('[ARTICLE FETCH] Could not resolve source policy from article metadata:', error.message);
+    }
+
+    // Background jobs and board warmups do not carry feedUrl. If every feed
+    // on the same host has the same explicit policy, safely apply that policy
+    // to the article instead of falling back to the global adaptive list.
+    const targetHost = normalizedHostname(targetUrl);
+    if (!targetHost) return null;
+    const hostFeeds = feeds.filter(feed => normalizedHostname(feed.url) === targetHost);
+    if (!hostFeeds.length || hostFeeds.some(feed => !Array.isArray(feed.fetchMethods) || !feed.fetchMethods.length)) return null;
+    const hostPolicies = hostFeeds.map(feed => validMethods(feed.fetchMethods));
+    if (hostPolicies.some(methods => !methods.length)) return null;
+    const signature = JSON.stringify(hostPolicies[0]);
+    return hostPolicies.every(methods => JSON.stringify(methods) === signature)
+        ? hostPolicies[0]
+        : null;
+}
+
+async function getArticleFetchPolicy(targetUrl, feedUrl = '') {
+    const hostname = normalizedHostname(targetUrl);
+    const allAvailableStrategies = Object.keys(ARTICLE_FETCH_BASE_POINTS)
+        .filter(name => name !== 'vietserver' || Boolean(VIETSERVER_PROXY_BASE));
+    const configuredMethods = await getConfiguredArticleFetchMethods(targetUrl, feedUrl);
+    const hasStrictConfiguredMethods = Array.isArray(configuredMethods) && configuredMethods.length > 0;
+    const configuredAvailableStrategies = hasStrictConfiguredMethods
+        ? configuredMethods.filter(method => allAvailableStrategies.includes(method))
+        : [];
+    const strategyOrder = hasStrictConfiguredMethods
+        ? configuredAvailableStrategies
+        : await rankArticleFetchStrategies(hostname);
+    const availableStrategies = hasStrictConfiguredMethods
+        ? configuredAvailableStrategies
+        : allAvailableStrategies;
+    return {
+        hostname,
+        allAvailableStrategies,
+        availableStrategies,
+        configuredMethods,
+        hasStrictConfiguredMethods,
+        strategyOrder,
+        excludedStrategies: new Set(
+            allAvailableStrategies.filter(method => hasStrictConfiguredMethods && !configuredAvailableStrategies.includes(method))
+        )
+    };
+}
+
 async function getArticleFetchPreferences(hostname) {
     const stats = await ensureArticleFetchStats();
     const sourceStats = stats[hostname] || {};
@@ -3718,11 +4480,13 @@ async function recordArticleFetchOutcome(hostname, strategy, succeeded, error = 
 }
 
 function isUsableArticlePage(html) {
-    if (!html || html.length < 800) return false;
+    if (!html) return false;
+    if (html.match(/The requested thread could not be found/i) || html.match(/Chủ đề yêu cầu không tìm thấy/i)) return true;
+    if (html.length < 800) return false;
     const sample = html.slice(0, 120000);
     const titleMatch = sample.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
     const titleText = titleMatch ? titleMatch[1].trim() : '';
-    if (/(?:attention required|just a moment|access denied|cloudflare)/i.test(titleText) || /(?:cf-chl-|enable javascript and cookies to continue)/i.test(sample)) return false;
+    if (/(?:attention required|just a moment|access denied)/i.test(titleText) || /(?:cf-chl-|enable javascript and cookies to continue)/i.test(sample)) return false;
     if (/(?:attention required|access denied)/i.test(sample) && !/<(?:article|main|h1)\b/i.test(sample)) return false;
     return /<(?:html|article|main|p|script)\b/i.test(sample);
 }
@@ -3842,113 +4606,180 @@ function trimArticleMarkupAtSemanticBoundary(markup) {
 
 function cleanArticleMarkup(markup) {
     let cleaned = String(markup || '');
-    cleaned = cleaned.split(/<div[^>]*class=["'][^"']*(?:thread-comment|comment-list|bdPostTree|replies|comments-area)[^"']*["']/i)[0];
-    cleaned = cleaned.replace(/<!--[\s\S]*?-->/g, '');
-    cleaned = cleaned.replace(/<(?:script|style|template|nav|aside|form|noscript)\b[^>]*>[\s\S]*?<\/(?:script|style|template|nav|aside|form|noscript)>/gi, '');
-
-    // Promote image data attributes (data-large-src, data-original, data-src, data-url) to src so infographic and lazyloaded images display correctly
-    cleaned = cleaned.replace(/<img\b[^>]*>/gi, (img) => {
-        if (!cleaned.includes('voz-post') && /(class|src)=["'][^"']*(avatar|author|logo|smilie|emoji)[^"']*["']/i.test(img)) return '';
-        if (cleaned.includes('voz-post') && /(class|src)=["'][^"']*logo[^"']*["']/i.test(img) && !/avatar/i.test(img)) return '';
-        const realSrcMatch = img.match(/\s(?:data-large-src|data-original|data-src|data-url|data-zoom-image|data-img-src)=(?:"([^"]*)"|'([^']*)')/i);
-        if (realSrcMatch) {
-            let newImg = img.replace(/\bsrc=(?:"[^"]*"|'[^']*')/i, '');
-            newImg = newImg.replace(/\b(?:data-large-src|data-original|data-src|data-url|data-zoom-image|data-img-src)=(?:"[^"]*"|'[^']*')/gi, '');
-            const url = realSrcMatch[1] || realSrcMatch[2];
-            return `<img src="${url}" ${newImg.replace(/^<img\s*/i, '')}`;
-        }
-        if (/src=(?:"data:image\/[^"]*"|'data:image\/[^']*')/i.test(img)) return '';
-        return img;
-    });
-
-    // Convert VCCorp / publisher video embeds into clean video players
-    cleaned = cleaned.replace(/<(?:div|figure)\b[^>]*(?:type=["']VideoStream["']|data-vid=["'][^"']+["']|data-video=["'][^"']+["'])[^>]*>[\s\S]*?<\/(?:div|figure)>/gi, (match) => {
-        const vidMatch = match.match(/data-vid=(["'])([^"']+)\1/i) || match.match(/data-video=(["'])([^"']+)\1/i) || match.match(/data-src=(["'])([^"']+\.(?:mp4|m3u8)[^"']*)\1/i);
-        if (!vidMatch) return match;
-        let vidUrl = vidMatch[2];
-        if (!vidUrl.startsWith('http://') && !vidUrl.startsWith('https://')) {
-            vidUrl = 'https://' + vidUrl.replace(/^\/+/, '');
-        }
-        const thumbMatch = match.match(/data-thumb=(["'])([^"']+)\1/i) || match.match(/poster=(["'])([^"']+)\1/i);
-        const posterAttr = thumbMatch && safeHttpUrl(thumbMatch[2]) ? `poster="${escapeHtml(safeHttpUrl(thumbMatch[2]))}"` : '';
-        return `<div class="article-video-container my-4 rounded-xl overflow-hidden shadow-md"><video controls playsinline preload="metadata" class="w-full h-auto" src="${escapeHtml(vidUrl)}" ${posterAttr}>Video playback is not supported by this browser.</video></div>`;
-    });
-
-    // Format related article embeds cleanly into styled cards so users know they are separate clickable links without cluttering the text
-    cleaned = cleaned.replace(/<(?:article|div)\b[^>]*(?:class=["'][^"']*(?:article-relate|summary__content|box-tin-lien-quan|ck-cms-insert-news|relate-news|box-related-news|related-topic)[^"']*["']|type=["'](?:RelatedOneNews|RelatedNewsBox)["']|data-source=["']related-news["'])[^>]*>([\s\S]*?)<\/(?:article|div)>/gi, (match, inner) => {
-        const linkMatch = inner.match(/<a\b[^>]*href=(["'])([^"']+)\1[^>]*>([\s\S]*?)<\/a>/i);
-        if (!linkMatch) return '';
-        const href = linkMatch[2];
-        const titleText = linkMatch[3].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim() || inner.match(/<(?:h[1-6]|span)\b[^>]*>([\s\S]*?)<\/(?:h[1-6]|span)>/i)?.[1]?.replace(/<[^>]+>/g, '').trim() || 'Bài viết liên quan';
-        if (!titleText || titleText.length < 10) return '';
-        const descMatch = inner.match(/class=["'][^"']*(?:desc|sapo|summary|VCObjectBoxRelatedNewsItemSapo)[^"']*["'][^>]*>([\s\S]*?)<\/(?:div|p|span)>/i);
-        const descText = descMatch ? `<p class="text-xs text-gray-600 dark:text-gray-400 mt-1 leading-relaxed">${escapeHtml(descMatch[1].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim())}</p>` : '';
-        return `<div class="styled-rel-card my-6 px-4 py-3.5 rounded-xl border-l-4 border-l-blue-600 dark:border-l-blue-500 bg-gray-50 dark:bg-gray-800/80 border border-gray-200/80 dark:border-gray-700 shadow-sm not-prose transition hover:shadow-md hover:border-l-blue-700"><div class="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400 mb-2"><span>📰 Bài viết liên quan / Xem thêm:</span></div><a href="${escapeHtml(href)}" target="_blank" class="font-bold text-gray-900 dark:text-gray-100 hover:text-blue-600 dark:hover:text-blue-400 text-base md:text-lg block leading-snug no-underline transition">${escapeHtml(titleText)} →</a>${descText}</div>`;
-    });
-
-    const noisePattern = /<(div|section|footer|header|ul|aside)\b[^>]*(?:class|id|data-module|role)=(["\'])[^"\']*(?:advert|adsbygoogle|ad-container|breadcrumb|pagination|related|recommend|share|social|reaction|signature|message-user|message-attribution|message-footer|message-cell--user|post-meta|author-box|author-info|singular-author|user-info|user-panel|member-header|comment-list|comments-area|newsletter|subscribe|topic-list|trending|popular-post|read-more|tags-list|article__tags|author-area|menu-area|menu-container|action-bar|thread-action|thread-editor|relate-news|box-topic|tinlienquan|knc-relate|box-relate|zone-interlink|article-audio|tts-player|dt-size-6|detail-comment|box-comment|box-bottom|cmbl|detail-tab|admzone|link-source-detail)[^"\']*\2[^>]*>[\s\S]*?<\/\1>/gi;
-    for (let i = 0; i < 5; i++) cleaned = cleaned.replace(noisePattern, '');
-    cleaned = cleaned.replace(/<(?:button)\b[^>]*>[\s\S]*?<\/(?:button)>/gi, '');
-    if (!cleaned.includes('voz-post')) {
-        cleaned = cleaned.replace(/<img\b[^>]*avatar[^>]*>/gi, '');
-        cleaned = cleaned.replace(/<img\b[^>]*src=["'][^"']*avatars[^"']*["'][^>]*>/gi, '');
+    const threadCommentIdx = cleaned.search(/<div[^>]*class=["'][^"']*(?:thread-comment|comment-list|bdPostTree|replies|comments-area)[^"']*["']/i);
+    if (threadCommentIdx > -1) {
+        cleaned = cleaned.slice(0, threadCommentIdx);
     }
-    cleaned = trimArticleMarkupAtSemanticBoundary(cleaned);
+    const isVozPost = cleaned.includes('voz-post');
 
-    // Strip AVPlayer / video controls, audio player texts, ad markers, Image X: prefixes, trailing comment counts, category returns, search engine promos
-    cleaned = cleaned.replace(/<(?:p|div|span|h[1-6]|li)\b[^>]*>\s*(?:Your browser does not support HTML5 audio\.?|Advertisement|Advertisements|Ads\s+by|Skip|Next|Stay|Back|Quality|Playback\s+speed|1x\s+Normal|Normal|\d+(?:\.\d+)?x|(?:Video|Audio)\s+\d+(?:\s+Shorts)?|Link bài gốc)\s*<\/(?:p|div|span|h[1-6]|li)>/gi, '');
-    cleaned = cleaned.replace(/(?:<p[^>]*>|<div[^>]*>|\s)*Your browser does not support HTML5 audio\.?(?:<\/p>|<\/div>|\s)*/gi, ' ');
-    cleaned = cleaned.replace(/<(?:p|div|span|h[1-6]|li)\b[^>]*>(?:[\s|/:-]|&nbsp;|<br\s*\/?>|<img[^>]*>)*(?:Advertisement|Advertisements|Ads\s+by|Skip|Next|Stay|Back|Quality|Playback\s+speed|1x\s+Normal|Normal|\d+(?:\.\d+)?x|(?:Video|Audio)\s+\d+(?:\s+Shorts)?|Link bài gốc)(?:[\s|/:-]|&nbsp;|<br\s*\/?>|<img[^>]*>)*<\/(?:p|div|span|h[1-6]|li)>/gi, '');
-    cleaned = cleaned.replace(/Image\s+\d+:\s*/gi, '');
-    cleaned = cleaned.replace(/\.(\d{1,4})(?=\s*<\/(?:p|div|span|h[1-6]|li)>)/g, '.');
-    cleaned = cleaned.replace(/\.(\d{1,4})(?=\s*(?:\n|$))/g, '.');
-    cleaned = cleaned.replace(/<(?:p|div|span|h[1-6])\b[^>]*>\s*(?:Trở lại|Quay lại)\s+(?:trang chủ|chuyên mục|Trang chủ|Chuyên mục)\s*<\/(?:p|div|span|h[1-6])>/giu, '');
-    cleaned = cleaned.replace(/<(?:p|div|span|h[1-6])\b[^>]*>[\s\S]*?(?:Thêm\s+[^\n<]{1,80}\s+trên Google|Chọn\s+[^\n<]{1,80}\s+làm nguồn ưu tiên)[\s\S]*?<\/(?:p|div|span|h[1-6])>/gi, '');
+    try {
+        const $ = cheerio.load(cleaned, null, false);
+        $('script,style,template,nav,form,noscript,button').remove();
+        $('aside').not('.tuoitre-info-card').remove();
+        $('[aria-hidden="true"]')
+            .not('.tuoitre-event-stream__icon, .tuoitre-event-stream__arrow')
+            .remove();
 
-    // Clean up duplicate author names at the start of Tuoi Tre / news articles (e.g., DUY LINH DUY LINH)
-    cleaned = cleaned.replace(/^(?:\s*<(?:p|div|span)[^>]*>)?\s*([A-ZÀ-Ỹ\s]{3,25})\s+\1\b/u, '$1');
+        const noise = /(?:advert|adsbygoogle|ad-container|breadcrumb|pagination|related|recommend|share|social|reaction|signature|message-user|message-attribution|message-footer|message-cell--user|post-meta|author-box|author-info|singular-author|user-info|user-panel|member-header|comment-list|comments-area|newsletter|subscribe|topic-list|trending|popular-post|read-more|tags-list|article__tags|author-area|menu-area|menu-container|action-bar|thread-action|thread-editor|relate-news|box-topic|tinlienquan|knc-relate|box-relate|zone-interlink|article-audio|tts-player|dt-size-6|detail-comment|box-comment|box-bottom|cmbl|detail-tab|admzone|link-source-detail)/i;
+        
+        $('*').each((i, el) => {
+            const node = $(el);
+            const tag = el.tagName;
+            const marker = [node.attr('id'), node.attr('class'), node.attr('role')].filter(Boolean).join(' ');
+            
+            if (noise.test(marker)) {
+                node.remove();
+                return;
+            }
 
-    if (!cleaned.includes('voz-post')) {
-        const protectedLinks = [];
-        cleaned = cleaned.replace(/<a\b[^>]*class=["'][^"']*(?:font-bold text-gray-900|embedded-suggested-card|embedded-suggested-overlay)[^"']*["'][^>]*>[\s\S]*?<\/a>/gi, (match) => {
-            protectedLinks.push(match);
-            return `__PROTECTED_LINK_${protectedLinks.length - 1}__`;
+            if (['article', 'div'].includes(tag)) {
+                if (/(?:article-relate|summary__content|box-tin-lien-quan|ck-cms-insert-news|relate-news|box-related-news|related-topic)/i.test(marker) || 
+                    ['RelatedOneNews', 'RelatedNewsBox'].includes(node.attr('type')) || 
+                    node.attr('data-source') === 'related-news') {
+                    
+                    const link = node.find('a').first();
+                    if (link.length) {
+                        const href = link.attr('href');
+                        let titleText = link.text().replace(/\s+/g, ' ').trim() || node.find('h1,h2,h3,h4,h5,h6,span').first().text().trim() || 'Bài viết liên quan';
+                        if (titleText && titleText.length >= 10 && href) {
+                            const descNode = node.find('[class*="desc"], [class*="sapo"], [class*="summary"], [class*="VCObjectBoxRelatedNewsItemSapo"]').first();
+                            const descText = descNode.length ? `<p class="text-xs text-gray-600 dark:text-gray-400 mt-1 leading-relaxed">${escapeHtml(descNode.text().replace(/\s+/g, ' ').trim())}</p>` : '';
+                            
+                            const card = `<div class="styled-rel-card my-6 px-4 py-3.5 rounded-xl border-l-4 border-l-blue-600 dark:border-l-blue-500 bg-gray-50 dark:bg-gray-800/80 border border-gray-200/80 dark:border-gray-700 shadow-sm not-prose transition hover:shadow-md hover:border-l-blue-700"><div class="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400 mb-2"><span>📰 Bài viết liên quan / Xem thêm:</span></div><a href="${escapeHtml(href)}" target="_blank" class="font-bold text-gray-900 dark:text-gray-100 hover:text-blue-600 dark:hover:text-blue-400 text-base md:text-lg block leading-snug no-underline transition">${escapeHtml(titleText)} →</a>${descText}</div>`;
+                            node.replaceWith(card);
+                            return;
+                        }
+                    }
+                }
+            }
+
+            if (['div', 'figure'].includes(tag)) {
+                const vidSrc = node.attr('data-vid') || node.attr('data-video') || node.attr('data-src');
+                if (vidSrc && (node.attr('type') === 'VideoStream' || /(?:\.mp4|\.m3u8)/i.test(vidSrc))) {
+                    let vidUrl = vidSrc;
+                    if (!vidUrl.startsWith('http://') && !vidUrl.startsWith('https://')) {
+                        vidUrl = 'https://' + vidUrl.replace(/^\/+/, '');
+                    }
+                    const thumb = node.attr('data-thumb') || node.attr('poster');
+                    const posterAttr = thumb && (thumb.startsWith('http') || thumb.startsWith('/')) ? `poster="${escapeHtml(thumb)}"` : '';
+                    node.replaceWith(`<div class="article-video-container my-4 rounded-xl overflow-hidden shadow-md"><video controls playsinline preload="metadata" class="w-full h-auto" src="${escapeHtml(vidUrl)}" ${posterAttr}>Video playback is not supported by this browser.</video></div>`);
+                    return;
+                }
+            }
+
+            if (tag === 'img') {
+                if (!isVozPost && /(avatar|logo|smilie|emoji)/i.test(marker + ' ' + (node.attr('src')||''))) {
+                    node.remove(); return;
+                }
+                if (isVozPost && /logo/i.test(marker + ' ' + (node.attr('src')||'')) && !/avatar/i.test(marker + ' ' + (node.attr('src')||''))) {
+                    node.remove(); return;
+                }
+                const realSrc = node.attr('data-large-src') || node.attr('data-original') || node.attr('data-src') || node.attr('data-url') || node.attr('data-zoom-image') || node.attr('data-img-src') || node.attr('data-lazy-src');
+                if (realSrc) {
+                    node.attr('src', realSrc);
+                    ['data-large-src', 'data-original', 'data-src', 'data-url', 'data-zoom-image', 'data-img-src', 'data-lazy-src'].forEach(a => node.removeAttr(a));
+                }
+                if (/^data:image\//i.test(node.attr('src'))) {
+                    node.remove(); return;
+                }
+            }
+            
+            if (['p', 'div', 'span', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li'].includes(tag)) {
+                const text = node.text().replace(/\s+/g, ' ').trim();
+                if (/^Quảng cáo$/i.test(text) || 
+                    /^(Your browser does not support HTML5 audio\.?|Advertisement|Advertisements|Ads by|Skip|Next|Stay|Back|Quality|Playback speed|1x Normal|Normal|\d+(?:\.\d+)?x|(Video|Audio) \d+( Shorts)?|Link bài gốc)$/i.test(text) ||
+                    /^Image \d+:$/i.test(text) ||
+                    /^(Trở lại|Quay lại) (trang chủ|chuyên mục|Trang chủ|Chuyên mục)$/i.test(text) ||
+                    /(Thêm [^\n<]{1,80} trên Google|Chọn [^\n<]{1,80} làm nguồn ưu tiên)/i.test(text)) {
+                    node.remove(); return;
+                }
+            }
+
+            const isMediaNode = ['img', 'video', 'audio', 'iframe'].includes(tag);
+            const isProtectedNode = node.hasClass('voz-post-likes') || node.closest('.voz-post-likes').length > 0 || 
+                                    node.hasClass('box_tiso_all') || node.closest('.box_tiso_all').length > 0 ||
+                                    node.hasClass('highcharts-container') || node.closest('.highcharts-container').length > 0;
+            if (!isProtectedNode) {
+                if (!isMediaNode || tag === 'img') {
+                    node.removeAttr('style');
+                    node.removeAttr('height');
+                    node.removeAttr('min-height');
+                    node.removeAttr('max-height');
+                    node.removeAttr('width');
+                }
+            }
+            Object.keys(el.attribs || {}).forEach(attr => {
+                if (/^on/i.test(attr)) node.removeAttr(attr);
+            });
         });
-        for (let i = 0; i < 3; i++) cleaned = cleaned.replace(/<a\b[^>]*>([\s\S]*?)<\/a>/gi, '$1');
-        cleaned = cleaned.replace(/<\/?a\b[^>]*>/gi, '');
-        for (let i = 0; i < protectedLinks.length; i++) {
-            cleaned = cleaned.replace(`__PROTECTED_LINK_${i}__`, protectedLinks[i]);
-        }
-    }
-    let protectedStyles = [];
-    cleaned = cleaned.replace(/<(iframe|video|div|span|a)\b([^>]*)style=(["'])([^"']+)\3([^>]*)>/gi, (m, tag, pre, q, styleContent, post) => {
-        if (tag.toLowerCase() === 'iframe' || tag.toLowerCase() === 'video' || m.includes('voz-like') || m.includes('embedded-suggested-card') || m.includes('box_tiso')) {
-            protectedStyles.push(styleContent);
-            return `<${tag}${pre}data-protected-style="${protectedStyles.length - 1}"${post}>`;
-        }
-        return m;
-    });
 
-    cleaned = cleaned.replace(/<img\b[^>]*(?:width|height)=(["\'])1\1[^>]*>/gi, '');
-    cleaned = cleaned.replace(/\sstyle=(["\'])[\s\S]*?\1/gi, '');
-    
-    cleaned = cleaned.replace(/\sdata-protected-style=["'](\d+)["']/gi, (m, id) => {
-        return ` style="${protectedStyles[id]}"`;
-    });
+        $('img,video,audio').each((i, el) => {
+            const node = $(el);
+            const mediaMarker = [node.attr('src'), node.attr('alt'), node.attr('class')].filter(Boolean).join(' ');
+            if (/(?:newsletter|captcha|default[-_ ]?avatar|userdeff?ault|draggable-icon|cmsads|admicro|doubleclick|googlesyndication)/i.test(mediaMarker)) {
+                node.remove(); return;
+            }
+            node.attr('referrerpolicy', 'no-referrer');
+            const w = Number(node.attr('width') || 0), h = Number(node.attr('height') || 0);
+            if ((w && w <= 2) || (h && h <= 2)) {
+                node.remove(); return;
+            }
+            if (['video', 'audio'].includes(el.tagName)) {
+                node.attr('controls', '');
+                node.attr('playsinline', '');
+            }
+        });
 
-    cleaned = cleaned.replace(/<(iframe|video|img|div|span|p|a|ul|li)\b([^>]*)>/gi, (m, tag, rest) => {
-        if (tag.toLowerCase() === 'iframe' || tag.toLowerCase() === 'video') return m; // protect iframe/video from height stripping
-        return `<${tag}${rest.replace(/\s(?:height|min-height|max-height)=["'][^"']*["']/gi, '')}>`;
-    });
-    cleaned = cleaned.replace(/\s(?:aria-hidden)=(["\'])true\1/gi, '');
-    cleaned = cleaned.replace(/(?:<br\s*\/?>\s*){3,}/gi, '<br><br>');
-    for (let i = 0; i < 3; i++) {
-        cleaned = cleaned.replace(/<(p|div|span|section|figure)\b[^>]*>(?:\s|&nbsp;|<br\s*\/?>)*<\/\1>/gi, '');
+        $('div,section,ul').each((i, el) => {
+            const node = $(el);
+            if (node.hasClass('embedded-suggested-articles') || node.closest('.embedded-suggested-articles').length > 0 || 
+                node.hasClass('styled-rel-card') || node.closest('.styled-rel-card').length > 0 ||
+                node.hasClass('tuoitre-event-stream') || node.closest('.tuoitre-event-stream').length > 0) return;
+            const textLength = node.text().replace(/\s+/g, ' ').trim().length;
+            const links = node.find('a');
+            let linkLength = 0;
+            links.each((_, link) => { linkLength += $(link).text().trim().length; });
+            if (links.length >= 4 && textLength > 0 && linkLength / textLength > 0.78) node.remove();
+        });
+        
+        for (let i = 0; i < 3; i++) {
+            $('p,div,span,section,figure').each((i, el) => {
+                const node = $(el);
+                if (node.children().length === 0 && !node.text().trim()) {
+                    node.remove();
+                }
+            });
+        }
+        
+        if (!isVozPost) {
+            $('a').each((i, el) => {
+                const node = $(el);
+                if (node.closest('.tuoitre-event-stream, .embedded-suggested-articles').length > 0 || node.hasClass('styled-rel-card')) return;
+                if (!node.hasClass('font-bold') && !node.hasClass('embedded-suggested-card')) {
+                    node.replaceWith(node.html());
+                }
+            });
+        }
+
+        let out = $.html();
+        out = out.replace(/(?:<br\s*\/?>\s*){3,}/gi, '<br><br>');
+        
+        const boundaryPattern = /<(?:p|h[1-6]|div|section|ul|li)\b[^>]*>[\s\S]{0,350}?(?:Đọc tiếp\s*Về trang Chủ đề|Tặng sao cho bài viết hay|Đừng bỏ lỡ|Advertisements|(?:Trở lại|Quay lại)\s+(?:trang chủ|chuyên mục|Trang chủ|Chuyên mục)|(?:Bình luận|Comments)\s*\(\s*\d+\s*\)|Tin liên quan|Related stories|You may also like|Recommended for you|More stories|Read next|Tuổi Trẻ Online Newsletters|Thêm\s+[^\n<]{1,80}\s+trên Google|Chọn\s+[^\n<]{1,80}\s+làm nguồn ưu tiên|Chủ đề liên quan|Xem thêm:|\bTIN LIÊN QUAN\b|\bCHỦ ĐỀ LIÊN QUAN\b|Link bài gốc)[\s\S]{0,350}?<\/(?:p|h[1-6]|div|section|ul|li)>/giu;
+        const candidates = [...out.matchAll(boundaryPattern)]
+            .map(m => m.index || 0)
+            .filter(idx => out.slice(0, idx).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().length >= Math.max(250, Math.min(800, Math.floor(out.length * 0.25))));
+        if (candidates.length) out = out.slice(0, Math.min(...candidates));
+
+        out = out.replace(/^(?:\s*<(?:p|div|span)[^>]*>)?\s*([A-ZÀ-Ỹ\s]{3,25})\s+\1\b/u, '$1');
+        return out;
+
+    } catch (e) {
+        return cleaned; 
     }
-    return cleaned.replace(/>\s{3,}(?=<)/g, '>').replace(/\s{3,}/g, ' ').trim();
 }
 
 async function fetchArticleHtmlByStrategy(strategy, url) {
+    url = normalizeArticleSourceUrl(url);
     if (strategy === 'direct') return await fetchWithCookies(url);
     if (strategy === 'vietserver') return await fetchViaVietserver(url);
 
@@ -3961,11 +4792,79 @@ async function fetchArticleHtmlByStrategy(strategy, url) {
             ? CF_PROXY_BASE + encodeURIComponent(url + cbParam)
             : 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url + cbParam);
         const response = await fetch(fetchUrl, { signal: controller.signal });
-        if (!response.ok) throw new Error('HTTP ' + response.status);
-        return await response.text();
+        if (!response.ok && response.status !== 404 && response.status !== 403 && response.status !== 410) {
+            await discardResponseBody(response);
+            throw new Error('HTTP ' + response.status);
+        }
+        const body = await response.text();
+        return (response.status === 404 || response.status === 410)
+            ? `<!-- RSS_SOURCE_HTTP_STATUS:${response.status} -->${body}`
+            : body;
     } finally {
         clearTimeout(timeout);
     }
+}
+
+async function fetchParsedArticleByStrategy(strategy, url, policy, feedUrl = '', fallbackTitle = '') {
+    url = normalizeArticleSourceUrl(url);
+    const commonMetadata = {
+        url,
+        feedUrl: feedUrl || '',
+        fetchStrategy: strategy,
+        attemptedStrategies: [strategy],
+        availableStrategies: policy.availableStrategies,
+        methodPreferences: {}
+    };
+
+    if (strategy === 'jina') {
+        const result = await fetchViaJina(url);
+        return {
+            ...commonMetadata,
+            ...result,
+            title: normalizeArticleTitle(result.title || fallbackTitle || '')
+        };
+    }
+
+    if (strategy === 'opencli') {
+        const result = await fetchViaOpenCli(url);
+        if (isUnsafeVozThreadPayload(url, result) && !isDeletedVozThreadPayload(url, result)) {
+            throw new Error('OpenCLI returned a VOZ error page');
+        }
+        return {
+            ...commonMetadata,
+            ...result,
+            title: normalizeArticleTitle(result.title || fallbackTitle || '')
+        };
+    }
+
+    const html = await fetchArticleHtmlByStrategy(strategy, url);
+    if (isDeletedArticlePayload(url, html)) {
+        return {
+            ...commonMetadata,
+            title: deletedSourceTitle(url),
+            content: '',
+            isDeletedSource: true,
+            isDeletedThread: deletedSourceKind(url) === 'thread'
+        };
+    }
+    if (!html || !isUsableArticlePage(html)) {
+        throw new Error('Fetched page did not contain usable article HTML');
+    }
+    const result = await parseArticleHtmlContent(
+        html,
+        url,
+        strategy,
+        [strategy],
+        policy.availableStrategies,
+        {},
+        null,
+        policy.excludedStrategies
+    );
+    if (result) {
+        result.feedUrl = feedUrl || result.feedUrl || '';
+        result.title = normalizeArticleTitle(result.title || fallbackTitle || '');
+    }
+    return result;
 }
 
 async function discoverArticleAudioUrls(html, pageUrl) {
@@ -4024,10 +4923,12 @@ async function discoverArticleAudioUrls(html, pageUrl) {
                             signal: controller.signal
                         });
                         const result = response.ok ? await response.json() : null;
+                        if (!response.ok) await discardResponseBody(response);
                         exists = Boolean(result && Number(result.status) === 1);
                     } else {
                         const response = await fetch(candidate, { method: 'HEAD', signal: controller.signal });
                         exists = response.ok;
+                        await discardResponseBody(response);
                     }
                 } catch (e) { }
                 finally { clearTimeout(timeout); }
@@ -4066,48 +4967,70 @@ app.post('/api/article-fetch-preference', authMiddleware, async (req, res) => {
     }
 });
 
-function triggerVozNextPagePrefetch(nextUrl, depth = 1) {
-    if (!nextUrl || !nextUrl.includes('voz.vn') || depth > 2) return;
-    setTimeout(async () => {
-        try {
-            const cached = await getCachedArticle(nextUrl);
-            if (cached && cached.content) return;
-            console.log(`[VOZ PAGINATION PREFETCH] Background caching next page: ${nextUrl}`);
-            const strategyOrder = await rankArticleFetchStrategies('voz.vn');
-            for (const strategy of strategyOrder) {
-                try {
-                    const candidateHtml = await fetchArticleHtmlByStrategy(strategy, nextUrl);
-                    if (candidateHtml && isUsableArticlePage(candidateHtml)) {
-                        const result = await parseArticleHtmlContent(candidateHtml, nextUrl, strategy, [strategy], strategyOrder, {}, null);
+function triggerVozNextPagePrefetch(nextUrl, depth = 1, feedUrl = '') {
+    if (!nextUrl || !nextUrl.includes('voz.vn') || depth > 2) return Promise.resolve();
+    return new Promise(resolve => {
+        setTimeout(async () => {
+            try {
+                const cached = await getCachedArticle(nextUrl);
+                if (cached && cached.content) { resolve(); return; }
+                console.log(`[VOZ PAGINATION PREFETCH] Background caching next page: ${nextUrl}`);
+                const policy = await getArticleFetchPolicy(nextUrl, feedUrl);
+                for (const strategy of policy.strategyOrder) {
+                    try {
+                        const result = await fetchParsedArticleByStrategy(strategy, nextUrl, policy, feedUrl);
+                        if (isDeletedArticlePayload(nextUrl, result)) {
+                            await buildDeletedSourceResponse(nextUrl);
+                            break;
+                        }
                         if (result && result.content) {
                             result.cached = true;
                             await cacheArticleResult(nextUrl, result);
                             console.log(`[VOZ PAGINATION PREFETCH] Successfully cached ${nextUrl} via ${strategy} (${result.content.length} bytes)`);
                             if (result.pagination && result.pagination.nextUrl && depth < 2) {
-                                triggerVozNextPagePrefetch(result.pagination.nextUrl, depth + 1);
+                                triggerVozNextPagePrefetch(result.pagination.nextUrl, depth + 1, feedUrl);
                             }
                             break;
                         }
-                    }
-                } catch(e) {}
+                    } catch(e) {}
+                }
+            } catch (e) {
+                console.error(`[VOZ PAGINATION PREFETCH ERROR] ${nextUrl}: ${e.message}`);
             }
-        } catch (e) {
-            console.error(`[VOZ PAGINATION PREFETCH ERROR] ${nextUrl}: ${e.message}`);
-        }
-    }, 150);
+            resolve();
+        }, 150);
+    });
 }
 
-function triggerVozCurrentPageBackgroundUpdate(url, cachedArticle) {
+function triggerVozCurrentPageBackgroundUpdate(url, cachedArticle, feedUrl = '') {
     if (!url || !url.includes('voz.vn')) return;
+    const canonicalUrl = normalizeStateUrl(url);
+    if (cachedArticle?.sourceDeleted) {
+        deletedVozThreads.add(canonicalUrl);
+        return;
+    }
+    const lastCheckedAt = vozBackgroundLastCheck.get(canonicalUrl) || 0;
+    if (vozBackgroundUpdatesInFlight.has(canonicalUrl) || Date.now() - lastCheckedAt < VOZ_BACKGROUND_REFRESH_INTERVAL_MS) return;
+    vozBackgroundUpdatesInFlight.add(canonicalUrl);
+    vozBackgroundLastCheck.set(canonicalUrl, Date.now());
+    if (vozBackgroundLastCheck.size > 2000) {
+        const oldestKey = vozBackgroundLastCheck.keys().next().value;
+        vozBackgroundLastCheck.delete(oldestKey);
+    }
     setTimeout(async () => {
         try {
             console.log(`[VOZ BACKGROUND UPDATE] Checking for new posts on ${url}`);
-            const strategyOrder = await rankArticleFetchStrategies('voz.vn');
-            for (const strategy of strategyOrder) {
+            const effectiveFeedUrl = feedUrl || cachedArticle?.feedUrl || '';
+            const policy = await getArticleFetchPolicy(url, effectiveFeedUrl);
+            for (const strategy of policy.strategyOrder) {
                 try {
-                    const candidateHtml = await fetchArticleHtmlByStrategy(strategy, url);
-                    if (candidateHtml && isUsableArticlePage(candidateHtml)) {
-                        const result = await parseArticleHtmlContent(candidateHtml, url, strategy, [strategy], strategyOrder, {}, null);
+                    const result = await fetchParsedArticleByStrategy(strategy, url, policy, effectiveFeedUrl);
+                    if (result) {
+                        if (isDeletedArticlePayload(url, result)) {
+                            await buildDeletedSourceResponse(url);
+                            console.log(`[VOZ BACKGROUND UPDATE] Thread ${url} is deleted. Marked to skip future background fetches.`);
+                            break;
+                        }
                         if (result && result.content && result.content !== cachedArticle.content) {
                             result.cached = true;
                             await cacheArticleResult(url, result);
@@ -4115,7 +5038,7 @@ function triggerVozCurrentPageBackgroundUpdate(url, cachedArticle) {
                             
                             // Also trigger next page prefetch if it has a new next page
                             if (result.pagination && result.pagination.nextUrl) {
-                                triggerVozNextPagePrefetch(result.pagination.nextUrl, 1);
+                                triggerVozNextPagePrefetch(result.pagination.nextUrl, 1, effectiveFeedUrl);
                             }
                             break;
                         } else if (result && result.content) {
@@ -4127,58 +5050,101 @@ function triggerVozCurrentPageBackgroundUpdate(url, cachedArticle) {
             }
         } catch (e) {
             console.error(`[VOZ BACKGROUND UPDATE ERROR] ${url}: ${e.message}`);
+        } finally {
+            vozBackgroundUpdatesInFlight.delete(canonicalUrl);
         }
     }, 2000);
 }
 
-function triggerNextFiveArticlesPrefetch(currentUrl) {
-    setTimeout(async () => {
-        try {
-            const articles = await env.RSS_DATA.get('articles', { type: 'json' }) || [];
-            const smartClusters = await env.RSS_DATA.get('smartClusters', { type: 'json' }) || [];
-            const urlsToPrefetch = new Set();
+function enqueuePrefetchedSummary(url, articleData, priority) {
+    // Background summarization is completely disabled for all sources
+    return;
+}
 
-            // 1. Check if currentUrl is in smart clusters or has related articles
-            for (const cluster of smartClusters) {
-                const clusterUrl = cluster?.originalLink || cluster?.link;
-                if (clusterUrl === currentUrl || (cluster?.cluster && cluster.cluster.some(r => (r.originalLink || r.link) === currentUrl))) {
-                    if (cluster.cluster) {
-                        for (const rel of cluster.cluster) {
-                            const u = rel.originalLink || rel.link;
-                            if (u && u !== currentUrl && urlsToPrefetch.size < 5) urlsToPrefetch.add(u);
-                        }
-                    }
-                }
+let currentPrefetchRunId = 0;
+async function triggerNextFiveArticlesPrefetch(currentUrl, dryRun = false, prefetchTargets = null, waitPromise = null) {
+    const runId = ++currentPrefetchRunId;
+    const urlsToPrefetch = new Map();
+    try {
+        const articles = await env.RSS_DATA.get('articles', { type: 'json' }) || [];
+        
+        if (prefetchTargets && prefetchTargets.length > 0) {
+            for (const target of prefetchTargets) {
+                const targetUrl = typeof target === 'string' ? target : (target?.url || target?.originalLink || target?.link);
+                if (!targetUrl || urlsToPrefetch.size >= 5) continue;
+                const knownArticle = articles.find(article =>
+                    [article?.link, article?.originalLink, article?.id].includes(targetUrl)
+                );
+                urlsToPrefetch.set(targetUrl, {
+                    ...(knownArticle || {}),
+                    ...(typeof target === 'object' && target ? target : {})
+                });
             }
-
-            // 2. Check next 5 in active articles list
+        } else {
+            // Check next 5 in active articles list (Fallback if not provided)
             const idx = articles.findIndex(a => (a.originalLink || a.link) === currentUrl);
             if (idx !== -1) {
                 for (let i = idx + 1; i < Math.min(articles.length, idx + 6); i++) {
-                    const u = articles[i]?.originalLink || articles[i]?.link;
-                    if (u && u !== currentUrl && urlsToPrefetch.size < 5) urlsToPrefetch.add(u);
+                    const art = articles[i];
+                    const u = art?.originalLink || art?.link;
+                    if (u && u !== currentUrl && urlsToPrefetch.size < 5) urlsToPrefetch.set(u, art);
                 }
             }
+        }
+    } catch (e) {}
 
-            if (urlsToPrefetch.size === 0) return;
+    const list = [];
+    for (const u of urlsToPrefetch.keys()) {
+        try {
+            const cached = await getCachedArticle(u);
+            list.push({ url: u, isCached: !!(cached && cached.content) });
+        } catch (e) {
+            list.push({ url: u, isCached: false });
+        }
+    }
+    
+    if (urlsToPrefetch.size === 0 || dryRun) return list;
+
+    setTimeout(async () => {
+        try {
             console.log(`[NEXT-5 PREFETCH] Triggered background prefetch for ${urlsToPrefetch.size} articles after reading ${currentUrl}`);
 
-            for (const targetUrl of urlsToPrefetch) {
+            for (const [targetUrl, art] of urlsToPrefetch.entries()) {
+                if (currentPrefetchRunId !== runId) {
+                    console.log(`[NEXT-5 PREFETCH] Aborting old prefetch queue for ${currentUrl} because a newer article was opened.`);
+                    return;
+                }
+                // Wait for any active foreground article requests to finish so we don't starve opencli/puppeteer
+                while (activeForegroundRequests > 0) {
+                    if (currentPrefetchRunId !== runId) return;
+                    await new Promise(r => setTimeout(r, 1000));
+                }
+
                 let cached = await getCachedArticle(targetUrl);
-                if (cached && cached.content) continue;
+                if (cached && cached.content) {
+                    enqueuePrefetchedSummary(targetUrl, art, 1);
+                    continue;
+                }
                 try {
-                    const hostname = (() => { try { return new URL(targetUrl).hostname.toLowerCase(); } catch(e) { return ''; } })();
-                    const strategyOrder = await rankArticleFetchStrategies(hostname);
-                    for (const strategy of strategyOrder) {
+                    const policy = await getArticleFetchPolicy(targetUrl, art?.feedUrl || '');
+                    for (const strategy of policy.strategyOrder) {
                         try {
-                            const candidateHtml = await fetchArticleHtmlByStrategy(strategy, targetUrl);
-                            if (isUsableArticlePage(candidateHtml)) {
-                                const parsedPayload = await parseArticleHtmlContent(candidateHtml, targetUrl, strategy, [strategy], strategyOrder, {}, null);
-                                if (parsedPayload && parsedPayload.content) {
-                                    await cacheArticleResult(targetUrl, parsedPayload);
-                                    console.log(`[NEXT-5 PREFETCH] Cached ready to serve: ${targetUrl}`);
-                                    break;
-                                }
+                            const parsedPayload = await fetchParsedArticleByStrategy(
+                                strategy,
+                                targetUrl,
+                                policy,
+                                art?.feedUrl || '',
+                                art?.title || ''
+                            );
+                            if (isDeletedArticlePayload(targetUrl, parsedPayload)) {
+                                await buildDeletedSourceResponse(targetUrl, { fallbackTitle: art?.title || '' });
+                                break;
+                            }
+                            if (parsedPayload && parsedPayload.content) {
+                                await cacheArticleResult(targetUrl, parsedPayload);
+                                console.log(`[NEXT-5 PREFETCH] Cached ready to serve: ${targetUrl}`);
+                                enqueuePrefetchedSummary(targetUrl, art, 1);
+                                break;
                             }
                         } catch(e) {}
                     }
@@ -4189,14 +5155,25 @@ function triggerNextFiveArticlesPrefetch(currentUrl) {
             console.error(`[NEXT-5 PREFETCH ERROR] ${e.message}`);
         }
     }, 200);
+    return list;
+}
+
+async function isProtectedDeletedSourceSnapshot(url) {
+    const canonicalUrl = normalizeStateUrl(url);
+    if (isVozThreadUrl(url) && deletedVozThreads.has(canonicalUrl)) return true;
+    const cachedArticle = await getCachedArticle(url)
+        || (canonicalUrl !== url ? await getCachedArticle(canonicalUrl) : null);
+    return cachedArticle?.sourceDeleted === true;
 }
 
 app.post('/api/clear-article-cache', authMiddleware, async (req, res) => {
     const { url } = req.body;
     if (!url) return res.status(400).json({ error: 'URL required' });
     try {
+        if (await isProtectedDeletedSourceSnapshot(url)) {
+            return res.status(403).json({ error: 'Deleted-source snapshots are protected from cache clearing.' });
+        }
         await deleteCachedArticle(url);
-        // If it's a voz.vn thread, clear all pages of the thread
         if (url.includes('voz.vn/t/')) {
             const baseUrl = url.split('?')[0];
             const isSpecificPostOrPage = baseUrl.match(/\/(page-\d+|post-\d+|unread|latest)/i);
@@ -4204,15 +5181,13 @@ app.post('/api/clear-article-cache', authMiddleware, async (req, res) => {
                 const threadMatch = url.match(/\/t\/.*?\.(\d+)/);
                 if (threadMatch) {
                     const threadId = threadMatch[1];
-                    const files = await fs.readdir(ARTICLE_CACHE_DIR).catch(() => []);
-                    for (const file of files) {
-                        const filename = path.join(ARTICLE_CACHE_DIR, file);
-                        try {
-                            const cached = JSON.parse(await fs.readFile(filename, 'utf-8'));
-                            if (cached.url && cached.url.includes(`voz.vn/t/`) && cached.url.includes(`.${threadId}`)) {
-                                await fs.unlink(filename).catch(() => {});
+                    if (_articleCacheIndex !== null) {
+                        for (const [filename, meta] of _articleCacheIndex.entries()) {
+                            if (meta.url && meta.url.includes(`voz.vn/t/`) && meta.url.includes(`.${threadId}`)) {
+                                await fs.unlink(path.join(ARTICLE_CACHE_DIR, filename)).catch(() => {});
+                                _articleCacheIndex.delete(filename);
                             }
-                        } catch (e) {}
+                        }
                     }
                 }
             }
@@ -4223,15 +5198,87 @@ app.post('/api/clear-article-cache', authMiddleware, async (req, res) => {
     }
 });
 
+const DELETED_SOURCE_TOMBSTONE = '<!-- deleted-source-no-cached-content -->';
+
+async function buildDeletedSourceResponse(url, responseMetadata = {}) {
+    const baseUrl = normalizeStateUrl(url);
+    const kind = deletedSourceKind(url);
+    if (kind === 'thread') {
+        if (deletedVozThreads.size > 2000) deletedVozThreads.clear();
+        deletedVozThreads.add(baseUrl);
+    }
+    const lastCache = await getLastKnownCachedArticle(baseUrl);
+    const cachedPayloadIsOnlyDeletionPage = Boolean(
+        lastCache
+        && lastCache.sourceDeleted !== true
+        && isDeletedArticlePayload(url, lastCache)
+    );
+    const hasCachedContent = Boolean(
+        lastCache?.content
+        && !cachedPayloadIsOnlyDeletionPage
+        && lastCache.sourceDeletedHasCache !== false
+        && !lastCache.content.includes(DELETED_SOURCE_TOMBSTONE)
+        && !(isUnsafeVozThreadPayload(url, lastCache) && lastCache.sourceDeleted !== true)
+    );
+    const deletedDetectedAt = lastCache?.deletedDetectedAt || new Date().toISOString();
+    let sourceSiteName = lastCache?.siteName || responseMetadata.sourceSiteName || '';
+    if (!sourceSiteName) {
+        try { sourceSiteName = new URL(url).hostname.replace(/^www\./, ''); } catch (error) { }
+    }
+    const preserved = {
+        ...(lastCache || {}),
+        url: baseUrl,
+        title: hasCachedContent
+            ? lastCache.title
+            : (responseMetadata.fallbackTitle || lastCache?.title || deletedSourceTitle(url)),
+        content: hasCachedContent ? lastCache.content : DELETED_SOURCE_TOMBSTONE,
+        siteName: sourceSiteName,
+        sourceDeleted: true,
+        sourceDeletedHasCache: hasCachedContent,
+        sourceDeletedKind: kind,
+        isDeletedSource: true,
+        isDeletedThread: kind === 'thread',
+        deletedDetectedAt
+    };
+    await cacheArticleResult(baseUrl, preserved);
+    return {
+        url,
+        ...preserved,
+        ...responseMetadata,
+        content: hasCachedContent ? cleanArticleMarkup(preserved.content) : '',
+        title: normalizeArticleTitle(preserved.title),
+        cached: hasCachedContent,
+        sourceDeleted: true,
+        sourceDeletedHasCache: hasCachedContent,
+        sourceDeletedKind: kind,
+        deletedDetectedAt
+    };
+}
+
 // --- ARTICLE CONTENT EXTRACTION ENDPOINT ---
+let activeForegroundRequests = 0;
 app.get('/api/article-content', authMiddleware, async (req, res) => {
     const requestedUrl = req.query.url;
     if (!requestedUrl) return res.status(400).json({ error: 'URL required' });
-    let url = requestedUrl;
+    activeForegroundRequests++;
+    let url = normalizeArticleSourceUrl(requestedUrl);
+    let prefetchTargets = [];
+    try { if (req.query.prefetchTargets) prefetchTargets = JSON.parse(req.query.prefetchTargets); } catch(e) {}
+    
     const requestId = String(req.query.requestId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80);
     updateArticleFetchProgress(requestId, 'starting', 'Identifying source and loading its fetch history…');
 
     try {
+        const hasMethodRejection = Object.prototype.hasOwnProperty.call(req.query, 'reject')
+            || Object.prototype.hasOwnProperty.call(req.query, 'exclude');
+        const hasProtectedDeletedSnapshot = await isProtectedDeletedSourceSnapshot(requestedUrl);
+        if (hasMethodRejection && hasProtectedDeletedSnapshot) {
+            return res.status(403).json({ error: 'Deleted-source snapshots are protected from reader-method rejection.' });
+        }
+        if (hasProtectedDeletedSnapshot) {
+            finishArticleFetchProgress(requestId, 'Source deleted. Serving the protected snapshot without contacting the publisher.', { method: 'cache' });
+            return res.json(await buildDeletedSourceResponse(requestedUrl));
+        }
         if (url.match(/\.pdf(\?|$)/i)) {
             finishArticleFetchProgress(requestId, 'PDF Document loaded.', { method: 'pdf' });
             return res.json({
@@ -4246,14 +5293,14 @@ app.get('/api/article-content', authMiddleware, async (req, res) => {
         }
         const requestedStrategy = String(req.query.strategy || '').trim();
         const rejectedStrategy = String(req.query.reject || '').trim();
+        const requestedFeedUrl = String(req.query.feedUrl || '').trim();
         const excludedStrategies = new Set(String(req.query.exclude || '').split(',').map(value => value.trim()).filter(Boolean));
         if (requestedStrategy && requestedStrategy !== 'refresh' && !(requestedStrategy in ARTICLE_FETCH_BASE_POINTS)) {
             return res.status(400).json({ error: 'Unknown fetch method' });
         }
         const bypassCache = Boolean(req.query.bypassCache === 'true' || req.query.bypassCache === '1' || requestedStrategy || rejectedStrategy || excludedStrategies.size);
-        if (bypassCache) {
-            try { await deleteCachedArticle(requestedUrl); } catch(e) {}
-        }
+        // Bypass means skip the cache read, not destroy the last-known-good
+        // value before the replacement has been fetched and validated.
 
         if (isGoogleNewsArticleUrl(requestedUrl)) {
             url = await resolveGoogleNewsUrl(requestedUrl, {
@@ -4267,12 +5314,12 @@ app.get('/api/article-content', authMiddleware, async (req, res) => {
 
         if (!bypassCache) {
             let directCached = await getCachedArticle(requestedUrl);
-            if (!directCached && googleNewsUrlCache && googleNewsUrlCache[requestedUrl]?.resolvedUrl) {
-                url = googleNewsUrlCache[requestedUrl].resolvedUrl;
+            if (!directCached && googleNewsUrlCache && googleNewsUrlCache.has(requestedUrl) && googleNewsUrlCache.get(requestedUrl).resolvedUrl) {
+                url = googleNewsUrlCache.get(requestedUrl).resolvedUrl;
                 directCached = await getCachedArticle(url);
             } else if (directCached && isGoogleNewsArticleUrl(directCached.url || requestedUrl)) {
-                if (googleNewsUrlCache && googleNewsUrlCache[requestedUrl]?.resolvedUrl) {
-                    url = googleNewsUrlCache[requestedUrl].resolvedUrl;
+                if (googleNewsUrlCache && googleNewsUrlCache.has(requestedUrl) && googleNewsUrlCache.get(requestedUrl).resolvedUrl) {
+                    url = googleNewsUrlCache.get(requestedUrl).resolvedUrl;
                     directCached = await getCachedArticle(url);
                 } else {
                     directCached = null;
@@ -4281,52 +5328,111 @@ app.get('/api/article-content', authMiddleware, async (req, res) => {
             if (directCached && !isGoogleNewsArticleUrl(directCached.url || '')) {
                 let hostname = '';
                 try { hostname = new URL(url).hostname.toLowerCase(); } catch (e) { }
-                const availableStrategies = Object.keys(ARTICLE_FETCH_BASE_POINTS).filter(name => name !== 'vietserver' || Boolean(VIETSERVER_PROXY_BASE));
+                const effectiveFeedUrl = requestedFeedUrl || directCached.feedUrl || '';
+                const policy = await getArticleFetchPolicy(url, effectiveFeedUrl);
+                const availableStrategies = policy.availableStrategies;
                 const methodPreferences = await getArticleFetchPreferences(hostname);
-                finishArticleFetchProgress(requestId, 'Article loaded from cache.', { method: 'cache', cached: true });
+                if (policy.hasStrictConfiguredMethods && !availableStrategies.includes(directCached.fetchStrategy)) {
+                    // Preserve the old file as last-known-good, but do not
+                    // serve a cache created through a method the user has now
+                    // excluded for this source.
+                    directCached = null;
+                }
+                if (!directCached) {
+                    // Continue below and fetch only through the selected policy.
+                } else {
+                const cachedSourceIsDeleted = directCached.sourceDeleted === true
+                    || deletedVozThreads.has(normalizeStateUrl(url));
+                const cachedSourceHasContent = cachedSourceIsDeleted
+                    ? directCached.sourceDeletedHasCache !== false && !directCached.content.includes(DELETED_SOURCE_TOMBSTONE)
+                    : true;
+                finishArticleFetchProgress(
+                    requestId,
+                    cachedSourceIsDeleted
+                        ? (cachedSourceHasContent ? 'Source deleted. Serving the last cached version.' : 'Source deleted. No cached copy is available.')
+                        : 'Article loaded from cache.',
+                    { method: 'cache', cached: cachedSourceHasContent }
+                );
+                let prefetchPromise = null;
                 if (directCached.pagination?.nextUrl && (hostname === 'voz.vn' || hostname.endsWith('.voz.vn'))) {
-                    triggerVozNextPagePrefetch(directCached.pagination.nextUrl, 1);
+                    prefetchPromise = triggerVozNextPagePrefetch(directCached.pagination.nextUrl, 1, effectiveFeedUrl);
                 }
-                if (hostname === 'voz.vn' || hostname.endsWith('.voz.vn')) {
-                    triggerVozCurrentPageBackgroundUpdate(url, directCached);
+                if (!cachedSourceIsDeleted && (hostname === 'voz.vn' || hostname.endsWith('.voz.vn'))) {
+                    triggerVozCurrentPageBackgroundUpdate(url, directCached, effectiveFeedUrl);
                 }
-                triggerNextFiveArticlesPrefetch(url);
+                const prefetchQueue = await triggerNextFiveArticlesPrefetch(url, false, prefetchTargets, prefetchPromise);
                 return res.json({
                     url,
+                    prefetchQueue,
                     ...directCached,
-                    content: cleanArticleMarkup(directCached.content),
+                    content: cachedSourceHasContent ? cleanArticleMarkup(directCached.content) : '',
+                    sourceDeleted: cachedSourceIsDeleted,
+                    sourceDeletedHasCache: cachedSourceHasContent,
+                    sourceDeletedKind: directCached.sourceDeletedKind || deletedSourceKind(url),
                     title: normalizeArticleTitle(directCached.title),
-                    cached: true,
+                    cached: cachedSourceIsDeleted ? cachedSourceHasContent : true,
                     attemptedStrategies: [directCached.fetchStrategy].filter(Boolean),
                     availableStrategies,
+                    configuredFetchMethods: policy.hasStrictConfiguredMethods ? policy.configuredMethods : [],
                     methodPreferences
                 });
+                }
             }
         }
 
+        // Non-Google URLs must retain their canonicalized form. Previously
+        // this block passed the raw request through the Google resolver and
+        // accidentally restored copied trailing punctuation such as `.tpo)`.
         if (!isGoogleNewsArticleUrl(requestedUrl)) {
-            url = await resolveGoogleNewsUrl(requestedUrl, {
-                title: req.query.title,
-                feedTitle: req.query.feedTitle,
-                feedUrl: req.query.feedUrl,
-                feedIcon: req.query.feedIcon,
-                domain: req.query.domain
-            }, { force: bypassCache, backgroundResolve: false });
+            url = normalizeArticleSourceUrl(requestedUrl);
         }
         let hostname = '';
         try { hostname = new URL(url).hostname.toLowerCase(); } catch (e) { }
         if (rejectedStrategy && rejectedStrategy in ARTICLE_FETCH_BASE_POINTS) {
             excludedStrategies.add(rejectedStrategy);
             await recordArticleFetchOutcome(hostname, rejectedStrategy, false, 'Rejected by user');
-            await deleteCachedArticle(url);
+            // Keep the old entry until a different validated strategy has
+            // produced an atomic replacement.
         }
-        const availableStrategies = Object.keys(ARTICLE_FETCH_BASE_POINTS).filter(name => name !== 'vietserver' || Boolean(VIETSERVER_PROXY_BASE));
+        const policy = await getArticleFetchPolicy(url, requestedFeedUrl);
+        const availableStrategies = policy.availableStrategies;
         const methodPreferences = await getArticleFetchPreferences(hostname);
 
         let html = '';
         let htmlStrategy = '';
         const attemptedStrategies = new Set();
-        const rankedStrategies = await rankArticleFetchStrategies(hostname);
+        const feedConfiguredMethods = policy.hasStrictConfiguredMethods ? policy.configuredMethods : null;
+        let rankedStrategies = [...policy.strategyOrder];
+        
+        // Fast-track Reddit to opencli to avoid wasting time on HTTP proxies that will fail
+        const isReddit = hostname === 'reddit.com' || hostname === 'www.reddit.com' || hostname === 'old.reddit.com';
+        if (isReddit && !policy.hasStrictConfiguredMethods) {
+            rankedStrategies = ['opencli'];
+        }
+
+        if (requestedStrategy && requestedStrategy !== 'refresh'
+            && policy.hasStrictConfiguredMethods
+            && !availableStrategies.includes(requestedStrategy)) {
+            finishArticleFetchProgress(requestId, 'Method blocked by source settings.', { failed: true });
+            return res.status(400).json({
+                error: `Fetch method "${requestedStrategy}" is not allowed for this source.`,
+                url,
+                attemptedStrategies: [],
+                availableStrategies,
+                configuredFetchMethods: policy.configuredMethods,
+                methodPreferences
+            });
+        }
+
+        const allowedDefaultStrategies = (requestedStrategy && requestedStrategy !== 'refresh')
+            ? [requestedStrategy]
+            : rankedStrategies;
+        if (policy.hasStrictConfiguredMethods || req.query.fallback !== 'true') {
+            for (const strategy of policy.allAvailableStrategies) {
+                if (!allowedDefaultStrategies.includes(strategy)) excludedStrategies.add(strategy);
+            }
+        }
+        
         const strategyOrder = ((requestedStrategy && requestedStrategy !== 'refresh') ? [requestedStrategy] : rankedStrategies)
             .filter(strategy => !excludedStrategies.has(strategy));
         const strategyLabels = {
@@ -4335,11 +5441,13 @@ app.get('/api/article-content', authMiddleware, async (req, res) => {
             vietserver: 'Vietnam reader proxy',
             allorigins: 'backup reader proxy',
             jina: 'text reader backup',
-            opencli: 'browser reader backup'
+            opencli: isReddit ? 'Reddit API bridge' : 'browser reader backup'
         };
         updateArticleFetchProgress(requestId, 'ranking', 'Choosing the best reader method for this source…', {
             methods: strategyOrder.length
         });
+
+        const strategyErrors = [];
 
         for (let strategyIndex = 0; strategyIndex < strategyOrder.length; strategyIndex++) {
             const strategy = strategyOrder[strategyIndex];
@@ -4351,68 +5459,112 @@ app.get('/api/article-content', authMiddleware, async (req, res) => {
             try {
                 if (strategy === 'jina') {
                     const jinaResult = await fetchViaJina(url);
+                    if (isDeletedArticlePayload(url, jinaResult)) {
+                        finishArticleFetchProgress(requestId, 'Source deleted. Preserving the last cached version.', { method: 'cache' });
+                        return res.json(await buildDeletedSourceResponse(url, {
+                            attemptedStrategies: [...attemptedStrategies],
+                            availableStrategies,
+                            configuredFetchMethods: feedConfiguredMethods || [],
+                            methodPreferences,
+                            fallbackTitle: req.query.title
+                        }));
+                    }
                     await recordArticleFetchOutcome(hostname, strategy, true);
                     finishArticleFetchProgress(requestId, 'Article is ready.', { method: strategy });
                     const payload = {
                         url,
+                        feedUrl: requestedFeedUrl,
                         ...jinaResult,
                         fetchStrategy: strategy,
                         attemptedStrategies: [...attemptedStrategies],
                         availableStrategies,
+                        configuredFetchMethods: feedConfiguredMethods || [],
                         methodPreferences
                     };
                     await cacheArticleResult(url, payload);
-                    triggerNextFiveArticlesPrefetch(url);
+                    payload.prefetchQueue = await triggerNextFiveArticlesPrefetch(url, false, prefetchTargets);
                     return res.json(payload);
                 }
 
                 if (strategy === 'opencli') {
                     const openCliResult = await fetchViaOpenCli(url);
+                    if (isDeletedArticlePayload(url, openCliResult)) {
+                        finishArticleFetchProgress(requestId, 'Source deleted. Preserving the last cached version.', { method: 'cache' });
+                        return res.json(await buildDeletedSourceResponse(url, {
+                            attemptedStrategies: [...attemptedStrategies],
+                            availableStrategies,
+                            configuredFetchMethods: feedConfiguredMethods || [],
+                            methodPreferences,
+                            fallbackTitle: req.query.title
+                        }));
+                    }
+                    if (isUnsafeVozThreadPayload(url, openCliResult)) throw new Error('OpenCLI returned a VOZ error page');
                     await recordArticleFetchOutcome(hostname, strategy, true);
                     finishArticleFetchProgress(requestId, 'Article is ready.', { method: strategy });
                     const payload = {
                         url,
+                        feedUrl: requestedFeedUrl,
                         ...openCliResult,
                         fetchStrategy: strategy,
                         attemptedStrategies: [...attemptedStrategies],
                         availableStrategies,
+                        configuredFetchMethods: feedConfiguredMethods || [],
                         methodPreferences
                     };
+                    let prefetchPromise = null;
                     if (payload.pagination?.nextUrl && (hostname === 'voz.vn' || hostname.endsWith('.voz.vn'))) {
-                        triggerVozNextPagePrefetch(payload.pagination.nextUrl, 1);
+                        prefetchPromise = triggerVozNextPagePrefetch(payload.pagination.nextUrl, 1, requestedFeedUrl);
                     }
                     await cacheArticleResult(url, payload);
-                    triggerNextFiveArticlesPrefetch(url);
+                    payload.prefetchQueue = await triggerNextFiveArticlesPrefetch(url, false, prefetchTargets, prefetchPromise);
                     return res.json(payload);
                 }
 
                 const candidateHtml = await fetchArticleHtmlByStrategy(strategy, url);
-                if (hostname === 'voz.vn' || hostname.endsWith('.voz.vn')) {
-                    if (candidateHtml.includes('Oops! We ran into some problems.') && candidateHtml.includes('The requested thread could not be found.')) {
-                        let articles = await env.RSS_DATA.get('articles', { type: 'json' }) || [];
-                        const articlesBefore = articles.length;
-                        articles = articles.filter(a => !(a.link === url || a.url === url || (a.link && a.link.split('?')[0].replace(/\/unread\/?$/, '') === url.split('?')[0].replace(/\/unread\/?$/, ''))));
-                        if (articles.length < articlesBefore) {
-                            await env.RSS_DATA.put('articles', JSON.stringify(articles));
-                            console.log(`[VOZ] Removed deleted thread: ${url}`);
-                        }
-                        return res.json({ error: 'Thread deleted', url });
-                    }
-                }
 
+                if (isDeletedArticlePayload(url, candidateHtml)) {
+                    finishArticleFetchProgress(requestId, 'Source deleted. Preserving the last cached version.', { method: 'cache' });
+                    return res.json(await buildDeletedSourceResponse(url, {
+                        attemptedStrategies: [...attemptedStrategies],
+                        availableStrategies,
+                        configuredFetchMethods: feedConfiguredMethods || [],
+                        methodPreferences,
+                        fallbackTitle: req.query.title
+                    }));
+                }
                 if (!isUsableArticlePage(candidateHtml)) throw new Error('Fetched page did not contain usable article HTML');
                 html = candidateHtml;
                 htmlStrategy = strategy;
                 break;
             } catch (error) {
                 await recordArticleFetchOutcome(hostname, strategy, false, error.message);
+                strategyErrors.push(`[${strategy}]: ${error.message}`);
             }
         }
 
         if (!html) {
+            if (feedConfiguredMethods) {
+                finishArticleFetchProgress(requestId, 'Selected source methods failed.', { failed: true });
+                return res.json({
+                    error: 'Failed to fetch article using the methods selected for this source.',
+                    remainingAvailable: false,
+                    url,
+                    attemptedStrategies: [...attemptedStrategies],
+                    availableStrategies,
+                    configuredFetchMethods: feedConfiguredMethods,
+                    methodPreferences
+                });
+            }
+
             finishArticleFetchProgress(requestId, 'No reader method could load this article.', { failed: true });
+            
+            let errorMessage = 'Failed to fetch article';
+            if (strategyErrors.length > 0) {
+                errorMessage += ':\n' + strategyErrors.join('\n');
+            }
+            
             return res.json({
-                error: 'Failed to fetch article',
+                error: errorMessage,
                 url,
                 attemptedStrategies: [...attemptedStrategies],
                 availableStrategies,
@@ -4421,6 +5573,22 @@ app.get('/api/article-content', authMiddleware, async (req, res) => {
         }
 
         const result = await parseArticleHtmlContent(html, url, htmlStrategy, [...attemptedStrategies], availableStrategies, methodPreferences, requestId, excludedStrategies);
+        if (result) {
+            result.feedUrl = requestedFeedUrl || result.feedUrl || '';
+            result.configuredFetchMethods = feedConfiguredMethods || [];
+        }
+        
+        if (result && isDeletedArticlePayload(url, result)) {
+            finishArticleFetchProgress(requestId, 'Source deleted. Preserving the last cached version.', { method: 'cache' });
+            return res.json(await buildDeletedSourceResponse(url, {
+                attemptedStrategies: [...attemptedStrategies],
+                availableStrategies,
+                configuredFetchMethods: feedConfiguredMethods || [],
+                methodPreferences,
+                fallbackTitle: req.query.title
+            }));
+        }
+
         const extractedTextLength = (result.content || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().length;
         const extractionSucceeded = extractedTextLength >= 200 || /<(?:video|audio|img)\b/i.test(result.content || '');
 
@@ -4429,14 +5597,17 @@ app.get('/api/article-content', authMiddleware, async (req, res) => {
             partial: !extractionSucceeded
         });
         if (extractionSucceeded) await cacheArticleResult(url, result);
+        let prefetchPromise = null;
         if (result.pagination?.nextUrl && (hostname === 'voz.vn' || hostname.endsWith('.voz.vn'))) {
-            triggerVozNextPagePrefetch(result.pagination.nextUrl, 1);
+            prefetchPromise = triggerVozNextPagePrefetch(result.pagination.nextUrl, 1, requestedFeedUrl);
         }
-        triggerNextFiveArticlesPrefetch(url);
+        result.prefetchQueue = await triggerNextFiveArticlesPrefetch(url, false, prefetchTargets, prefetchPromise);
         res.json(result);
     } catch (e) {
         finishArticleFetchProgress(requestId, 'Article loading failed.', { failed: true });
         res.json({ error: e.message, url });
+    } finally {
+        activeForegroundRequests = Math.max(0, activeForegroundRequests - 1);
     }
 });
 
@@ -4447,16 +5618,43 @@ async function parseArticleHtmlContent(html, url, htmlStrategy, attemptedStrateg
     try { hostname = new URL(url).hostname.toLowerCase(); } catch (e) { }
     if (requestId) updateArticleFetchProgress(requestId, 'extracting', 'Finding the article body, images, and video…');
 
+    // A deleted source is a terminal state, not an extraction failure. Return
+    // it before any clean-reader fallback can erase the flag or replace the
+    // last-known-good cache with a publisher's error page.
+    if (isDeletedArticlePayload(url, html)) {
+        const kind = deletedSourceKind(url);
+        return {
+            url,
+            title: deletedSourceTitle(url),
+            author: '',
+            date: '',
+            image: '',
+            siteName: hostname.replace(/^www\./, ''),
+            content: '',
+            isDeletedSource: true,
+            isDeletedThread: kind === 'thread',
+            fetchStrategy: htmlStrategy || 'none',
+            attemptedStrategies: [...attemptedStrategies],
+            availableStrategies,
+            methodPreferences
+        };
+    }
+
     const pageAudioUrls = await discoverArticleAudioUrls(html, url);
 
     let sourceHandler = sourceRegistry.getHandler(url);
-    const fetchWithTimeout = (url, options, timeout) => {
+    const sourceFetches = createTrackedFetch((url, options, timeout = 8000) => {
         const controller = new AbortController();
         const id = setTimeout(() => controller.abort(), timeout);
         return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(id));
-    };
+    });
+    const fetchWithTimeout = sourceFetches.fetch;
     if (sourceHandler && sourceHandler.preProcessHtml) {
-        html = await sourceHandler.preProcessHtml(html, { fetchWithTimeout });
+        try {
+            html = await sourceHandler.preProcessHtml(html, { fetchWithTimeout });
+        } finally {
+            await sourceFetches.discardUnread();
+        }
     }
 
 
@@ -4528,7 +5726,7 @@ async function parseArticleHtmlContent(html, url, htmlStrategy, attemptedStrateg
                 if (schemaTypes.includes('VideoObject')) {
                     const rawVideoUrl = Array.isArray(schema.contentUrl) ? schema.contentUrl[0] : schema.contentUrl;
                     const videoUrl = safeHttpUrl(rawVideoUrl || schema.encoding?.contentUrl || '');
-                    if (videoUrl && /\.(?:mp4|webm|ogg)(?:$|[?#])/i.test(videoUrl)) {
+                    if (videoUrl && /\.(?:m3u8|mp4|webm|ogg)(?:$|[?#])/i.test(videoUrl)) {
                         const thumbnail = Array.isArray(schema.thumbnailUrl) ? schema.thumbnailUrl[0] : schema.thumbnailUrl;
                         const video = {
                             url: videoUrl,
@@ -4554,16 +5752,20 @@ async function parseArticleHtmlContent(html, url, htmlStrategy, attemptedStrateg
     let isCustomSource = false;
     sourceHandler = sourceRegistry.getHandler(url);
     if (sourceHandler && sourceHandler.parseArticleHtmlContent) {
-        const parsedContent = sourceHandler.parseArticleHtmlContent(html, url, result, { escapeHtml, extractBalancedElementByClass, fetchWithTimeout });
-        const resolvedContent = parsedContent instanceof Promise ? await parsedContent : parsedContent;
-        if (resolvedContent !== false) {
-            articleHtml = resolvedContent;
-            isCustomSource = true;
+        try {
+            const parsedContent = sourceHandler.parseArticleHtmlContent(html, url, result, { escapeHtml, extractBalancedElementByClass, fetchWithTimeout });
+            const resolvedContent = parsedContent instanceof Promise ? await parsedContent : parsedContent;
+            if (resolvedContent !== false) {
+                articleHtml = resolvedContent;
+                isCustomSource = true;
+            }
+        } finally {
+            await sourceFetches.discardUnread();
         }
     }
     
     if (!isCustomSource) {
-        const sapoMatch = html.match(/<(?:h[1-6]|div|p)\b[^>]*class=["'][^"']*(?:content-detail-sapo|article-sapo|singular-sapo|story-sapo|detail-sapo|sapo)[^"']*["'][^>]*>([\s\S]*?)<\/(?:h[1-6]|div|p)>/i);
+        const sapoMatch = html.match(/<(?:h[1-6]|div|p)\b[^>]*class=["'][^"']*(?:content-detail-sapo|article-sapo|singular-sapo|story-sapo|detail-sapo|sapo)[^"']*["'][^>]*>([\s\S]{0,5000}?)<\/(?:h[1-6]|div|p)>/i);
         const sapoHtml = sapoMatch && sapoMatch[1].replace(/<[^>]+>/g, '').trim().length > 30 ? `<p class="article-sapo font-semibold text-lg mb-4 text-gray-800 dark:text-gray-200 leading-relaxed">${sapoMatch[1].trim()}</p>` : '';
 
         articleHtml = selectBestArticleMarkup(html);
@@ -4572,10 +5774,10 @@ async function parseArticleHtmlContent(html, url, htmlStrategy, attemptedStrateg
         }
         if (!articleHtml || scoreArticleMarkup(cleanArticleMarkup(articleHtml)) < 250) {
             const articleSelectors = [
-                /<article\b[^>]*>([\s\S]*?)<\/article>/i,
-                /<main\b[^>]*>([\s\S]*?)<\/main>/i,
-                /<div\b[^>]*class=["'][^"']*(?:article|post|content|entry-content|post-content|article-body|story-body)[^"']*["'][^>]*>([\s\S]*?)<\/div>/i,
-                /<section\b[^>]*class=["'][^"']*(?:article|post|content|entry-content|post-content|article-body)[^"']*["'][^>]*>([\s\S]*?)<\/section>/i
+                /<article\b[^>]*>([\s\S]{0,100000}?)<\/article>/i,
+                /<main\b[^>]*>([\s\S]{0,100000}?)<\/main>/i,
+                /<div\b[^>]*class=["'][^"']*(?:article|post|content|entry-content|post-content|article-body|story-body)[^"']*["'][^>]*>([\s\S]{0,100000}?)<\/div>/i,
+                /<section\b[^>]*class=["'][^"']*(?:article|post|content|entry-content|post-content|article-body)[^"']*["'][^>]*>([\s\S]{0,100000}?)<\/section>/i
             ];
             for (const regex of articleSelectors) {
                 const match = html.match(regex);
@@ -4598,12 +5800,15 @@ async function parseArticleHtmlContent(html, url, htmlStrategy, attemptedStrateg
                 attemptedStrategies.add('jina');
                 updateArticleFetchProgress(requestId, 'fallback', 'The page layout was unusual; trying the clean text reader…');
                 const jinaResult = await fetchViaJina(url);
+                if (isDeletedArticlePayload(url, jinaResult)) {
+                    return { url, ...jinaResult, fetchStrategy: 'jina', attemptedStrategies: [...attemptedStrategies], availableStrategies, methodPreferences };
+                }
                 if (htmlStrategy) await recordArticleFetchOutcome(hostname, htmlStrategy, false, 'HTML loaded but article body extraction failed');
                 await recordArticleFetchOutcome(hostname, 'jina', true);
                 finishArticleFetchProgress(requestId, 'Article is ready.', { method: 'jina' });
                 const payload = { url, ...jinaResult, fetchStrategy: 'jina', attemptedStrategies: [...attemptedStrategies], availableStrategies, methodPreferences };
                 await cacheArticleResult(url, payload);
-                return res.json(payload);
+                return payload;
             } catch (error) {
                 await recordArticleFetchOutcome(hostname, 'jina', false, error.message);
             }
@@ -4614,11 +5819,15 @@ async function parseArticleHtmlContent(html, url, htmlStrategy, attemptedStrateg
                 attemptedStrategies.add('opencli');
                 updateArticleFetchProgress(requestId, 'fallback', 'Trying the browser reader as the final backup…');
                 const openCliResult = await fetchViaOpenCli(url);
+                if (isDeletedArticlePayload(url, openCliResult)) {
+                    return { url, ...openCliResult, content: '', isDeletedSource: true, isDeletedThread: deletedSourceKind(url) === 'thread', fetchStrategy: 'opencli', attemptedStrategies: [...attemptedStrategies], availableStrategies, methodPreferences };
+                }
+                if (isUnsafeVozThreadPayload(url, openCliResult)) throw new Error('OpenCLI returned a VOZ error page');
                 await recordArticleFetchOutcome(hostname, 'opencli', true);
                 finishArticleFetchProgress(requestId, 'Article is ready.', { method: 'opencli' });
                 const payload = { url, ...openCliResult, fetchStrategy: 'opencli', attemptedStrategies: [...attemptedStrategies], availableStrategies, methodPreferences };
                 await cacheArticleResult(url, payload);
-                return res.json(payload);
+                return payload;
             } catch (error) {
                 await recordArticleFetchOutcome(hostname, 'opencli', false, error.message);
             }
@@ -4639,7 +5848,7 @@ async function parseArticleHtmlContent(html, url, htmlStrategy, attemptedStrateg
             articleHtml = cleanArticleMarkup(articleHtml);
         } else {
             // Only strip scripts, styles, forms, and template tags for custom sources to preserve specialized markup
-            articleHtml = articleHtml.replace(/<(?:script|style|template|nav|form|noscript)\b[^>]*>[\s\S]*?<\/(?:script|style|template|nav|form|noscript)>/gi, '');
+            articleHtml = articleHtml.replace(/<(?:script|style|template|nav|form|noscript)\b[^>]*>[\s\S]{0,50000}?<\/(?:script|style|template|nav|form|noscript)>/gi, '');
         }
 
         if (!result.videos?.length) {
@@ -4668,12 +5877,15 @@ async function parseArticleHtmlContent(html, url, htmlStrategy, attemptedStrateg
                 attemptedStrategies.add('jina');
                 updateArticleFetchProgress(requestId, 'fallback', 'The first result was incomplete; trying the clean text reader…');
                 const jinaResult = await fetchViaJina(url);
+                if (isDeletedArticlePayload(url, jinaResult)) {
+                    return { url, ...jinaResult, fetchStrategy: 'jina', attemptedStrategies: [...attemptedStrategies], availableStrategies, methodPreferences };
+                }
                 if (htmlStrategy) await recordArticleFetchOutcome(hostname, htmlStrategy, false, 'Extracted article fragment was incomplete');
                 await recordArticleFetchOutcome(hostname, 'jina', true);
                 finishArticleFetchProgress(requestId, 'Article is ready.', { method: 'jina' });
                 const payload = { url, ...jinaResult, fetchStrategy: 'jina', attemptedStrategies: [...attemptedStrategies], availableStrategies, methodPreferences };
                 await cacheArticleResult(url, payload);
-                return res.json(payload);
+                return payload;
             } catch (error) {
                 await recordArticleFetchOutcome(hostname, 'jina', false, error.message);
                 if (malformedArticleMarkup) articleHtml = '';
@@ -4685,12 +5897,16 @@ async function parseArticleHtmlContent(html, url, htmlStrategy, attemptedStrateg
                 attemptedStrategies.add('opencli');
                 updateArticleFetchProgress(requestId, 'fallback', 'Trying the browser reader as the final backup…');
                 const openCliResult = await fetchViaOpenCli(url);
+                if (isDeletedArticlePayload(url, openCliResult)) {
+                    return { url, ...openCliResult, content: '', isDeletedSource: true, isDeletedThread: deletedSourceKind(url) === 'thread', fetchStrategy: 'opencli', attemptedStrategies: [...attemptedStrategies], availableStrategies, methodPreferences };
+                }
+                if (isUnsafeVozThreadPayload(url, openCliResult)) throw new Error('OpenCLI returned a VOZ error page');
                 if (htmlStrategy) await recordArticleFetchOutcome(hostname, htmlStrategy, false, 'Extracted article fragment was incomplete');
                 await recordArticleFetchOutcome(hostname, 'opencli', true);
                 finishArticleFetchProgress(requestId, 'Article is ready.', { method: 'opencli' });
                 const payload = { url, ...openCliResult, fetchStrategy: 'opencli', attemptedStrategies: [...attemptedStrategies], availableStrategies, methodPreferences };
                 await cacheArticleResult(url, payload);
-                return res.json(payload);
+                return payload;
             } catch (error) {
                 await recordArticleFetchOutcome(hostname, 'opencli', false, error.message);
                 if (malformedArticleMarkup) articleHtml = '';
@@ -4709,13 +5925,13 @@ async function parseArticleHtmlContent(html, url, htmlStrategy, attemptedStrateg
             // Replace empty/custom player placeholders in document order so
             // video stays where the publisher placed it in the article.
             articleHtml = articleHtml.replace(
-                /<(div|span|b|figure)\b[^>]*class=(["'])[^"']*(?:video-element|video-player|player-video|embed-video)[^"']*\2[^>]*>[\s\S]*?<\/\1>/gi,
+                /<(div|span|b|figure)\b[^>]*class=(["'])[^"']*(?:video-element|video-player|player-video|embed-video)[^"']*\2[^>]*>[\s\S]{0,50000}?<\/\1>/gi,
                 placeholder => placedVideoCount < pendingVideos.length ? renderVideo(pendingVideos[placedVideoCount++]) : placeholder
             );
 
             // Some publishers use a video iframe rather than an empty player
             // placeholder. Replace only frames that identify themselves as media.
-            articleHtml = articleHtml.replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe>/gi, iframe => {
+            articleHtml = articleHtml.replace(/<iframe\b[^>]*>[\s\S]{0,10000}?<\/iframe>/gi, iframe => {
                 if (placedVideoCount >= pendingVideos.length || !/(?:video|youtube|vimeo|player)/i.test(iframe)) return iframe;
                 return renderVideo(pendingVideos[placedVideoCount++]);
             });
@@ -4731,8 +5947,8 @@ async function parseArticleHtmlContent(html, url, htmlStrategy, attemptedStrateg
         // Clean the extracted HTML
         if (articleHtml) {
             // Remove script/style tags
-            articleHtml = articleHtml.replace(/<script[\s\S]*?<\/script>/gi, '');
-            articleHtml = articleHtml.replace(/<style[\s\S]*?<\/style>/gi, '');
+            articleHtml = articleHtml.replace(/<script[\s\S]{0,50000}?<\/script>/gi, '');
+            articleHtml = articleHtml.replace(/<style[\s\S]{0,50000}?<\/style>/gi, '');
 
             // Promote lazy-loaded media attributes to native browser
             // attributes while preserving each element's article position.
@@ -4801,7 +6017,7 @@ async function parseArticleHtmlContent(html, url, htmlStrategy, attemptedStrateg
                 });
             } catch (e) { }
 
-            articleHtml = articleHtml.replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe>/gi, (iframeMatch) => {
+            articleHtml = articleHtml.replace(/<iframe\b[^>]*>[\s\S]{0,10000}?<\/iframe>/gi, (iframeMatch) => {
                 const srcMatch = iframeMatch.match(/\bsrc=(["'])([\s\S]*?)\1/i);
                 const src = srcMatch ? srcMatch[2].toLowerCase() : '';
                 if (!src || /(doubleclick|googlesyndication|adnxs|tracking|analytics|banner|widget\/like|fbevents)/i.test(src)) {
@@ -4821,6 +6037,8 @@ async function parseArticleHtmlContent(html, url, htmlStrategy, attemptedStrateg
                 articleHtml = articleHtml.replace(/src=["'](\/(?!api\/)[^"']+)["']/g, `src="${baseUrl.origin}$1"`);
                 articleHtml = articleHtml.replace(/href=["'](\/(?!api\/)[^"']+)["']/g, `href="${baseUrl.origin}$1"`);
             } catch(e) {}
+
+            articleHtml = normalizeArticleMediaMarkup(articleHtml, url);
         }
 
         if (pageAudioUrls.length) {
@@ -4854,6 +6072,22 @@ async function parseArticleHtmlContent(html, url, htmlStrategy, attemptedStrateg
     return result;
 }
 
+function getRootDomain(urlStr) {
+    try {
+        let hostname = new URL(urlStr).hostname;
+        const parts = hostname.split('.');
+        if (parts.length <= 2) return hostname;
+        const secondToLast = parts[parts.length - 2];
+        const knownSecondLevel = ['co', 'com', 'net', 'org', 'gov', 'edu', 'ac'];
+        if (knownSecondLevel.includes(secondToLast)) {
+            return parts.slice(-3).join('.');
+        }
+        return parts.slice(-2).join('.');
+    } catch(e) {
+        return '';
+    }
+}
+
 app.post('/api/feeds', authMiddleware, async (req, res) => {
     try {
         let { url: feedUrl, category } = req.body;
@@ -4867,11 +6101,17 @@ app.post('/api/feeds', authMiddleware, async (req, res) => {
             if (cleanHostname.includes('bbc')) cleanHostname = 'bbc.com';
             let iconUrl = publisherIcon(cleanHostname);
             
+            // Check if we already have a feed from this root domain with configured fetch methods
+            const rootDomain = getRootDomain(feedUrl);
+            const existingSameDomainFeed = feeds.find(f => getRootDomain(f.url) === rootDomain && f.fetchMethods && f.fetchMethods.length > 0);
+            
             feeds.push({
                 url: feedUrl,
                 title: cleanHostname,
                 category: category || 'Others',
-                icon: iconUrl
+                icon: iconUrl,
+                excludeFromSmart: req.body.excludeFromSmart || false,
+                fetchMethods: existingSameDomainFeed ? [...existingSameDomainFeed.fetchMethods] : []
             });
             await env.RSS_DATA.put('feeds', JSON.stringify(feeds));
         }
@@ -4882,12 +6122,31 @@ app.post('/api/feeds', authMiddleware, async (req, res) => {
 });
 
 app.put('/api/feeds', authMiddleware, async (req, res) => {
-    const { url: feedUrl, title, category } = req.body;
+    const { url: feedUrl, title, category, fetchMethods, excludeFromSmart } = req.body;
+    const requestedFetchMethods = Array.isArray(fetchMethods) ? fetchMethods : [];
+    const invalidFetchMethods = requestedFetchMethods.filter(method => !(method in ARTICLE_FETCH_BASE_POINTS));
+    if (invalidFetchMethods.length) {
+        return res.status(400).send(`Unknown fetch method(s): ${[...new Set(invalidFetchMethods)].join(', ')}`);
+    }
+    const normalizedFetchMethods = [...new Set(requestedFetchMethods)];
     let feeds = await env.RSS_DATA.get('feeds', { type: 'json' }) || [];
     let feedIndex = feeds.findIndex(f => f.url === feedUrl);
     if (feedIndex > -1) {
         feeds[feedIndex].title = title;
         feeds[feedIndex].category = category;
+        if (excludeFromSmart !== undefined) feeds[feedIndex].excludeFromSmart = excludeFromSmart;
+        feeds[feedIndex].fetchMethods = normalizedFetchMethods;
+        
+        // Sync to all other feeds with the same root domain
+        const rootDomain = getRootDomain(feedUrl);
+        if (rootDomain) {
+            for (let f of feeds) {
+                if (getRootDomain(f.url) === rootDomain) {
+                    f.fetchMethods = [...normalizedFetchMethods];
+                }
+            }
+        }
+        
         await env.RSS_DATA.put('feeds', JSON.stringify(feeds));
         res.status(200).send('Updated');
     } else {
@@ -4945,17 +6204,239 @@ app.post('/api/categories/reorder', authMiddleware, async (req, res) => {
     }
 });
 
+app.get('/api/user-states', authMiddleware, async (req, res) => {
+    try {
+        const prefs = await env.RSS_DATA.get('userPreferences', { type: 'json' }) || {};
+        res.json({
+            readStates: prefs.readStates || [],
+            savedStates: prefs.savedStates || [],
+            boardStates: prefs.boardStates || [],
+            hiddenStates: prefs.hiddenStates || [],
+            clusteringModel: prefs.clusteringModel || 'gemini-3.5-flash'
+        });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 app.post('/api/user-preferences', authMiddleware, async (req, res) => {
     try {
         const { key, value } = req.body;
         if (!key) return res.status(400).json({ error: 'Missing key' });
         let prefs = await env.RSS_DATA.get('userPreferences', { type: 'json' }) || {};
         prefs[key] = value;
-        await env.RSS_DATA.put('userPreferences', prefs);
+        await env.RSS_DATA.put('userPreferences', JSON.stringify(prefs));
+        
+        if (key === 'clusteringModel') {
+            const valid = ['gemini-3.1-pro', 'gemini-3.5-flash', 'gemini-3.5-flash-lite', 'Qwen3.7-Plus', 'qwen3.7-flash'];
+            if (valid.includes(value)) {
+                setClusteringModel(value);
+            }
+        }
+        
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
+});
+
+// AI Summary Routes
+app.get('/api/summary', authMiddleware, async (req, res) => {
+    let url = req.query.url;
+    if (!url) return res.status(400).json({ error: 'URL required' });
+    
+    
+    url = await decodeGoogleNews(url);
+    
+    try {
+        const summary = await getSummaryFromCache(url);
+        if (summary && summary.status === 'ready') {
+            return res.json(summary);
+        }
+        if (summary && summary.status === 'generating') {
+            const jobStatus = summaryQueue.getJobStatus(url);
+            return res.json(jobStatus || { status: 'generating' });
+        }
+        const isVoz = url.includes('voz.vn');
+        if (isVoz) return res.json({ status: 'voz_manual' });
+
+        const jobStatus = summaryQueue.getJobStatus(url);
+        if (jobStatus) {
+            return res.json(jobStatus);
+        }
+        return res.json({ status: 'manual' });
+    } catch (e) {
+        console.error('[SUMMARY] Failed to fetch summary:', e);
+        res.status(500).json({ error: 'Failed to fetch summary' });
+    }
+});
+
+app.post('/api/summary/prioritize', authMiddleware, async (req, res) => {
+    let url = req.body?.url;
+    if (!url) return res.status(400).json({ error: 'URL required' });
+    
+    
+    url = await decodeGoogleNews(url);
+
+    summaryQueue.prioritize(url);
+    res.json({ ok: true });
+});
+
+const vozJobs = new Map();
+
+app.post('/api/summary/voz', authMiddleware, async (req, res) => {
+    let url = req.body?.url;
+    let mode = req.body?.mode || 'detailed';
+    if (!url) return res.status(400).json({ error: 'URL required' });
+    
+    if (vozJobs.has(url)) {
+        return res.json({ ok: true, message: 'Already running' });
+    }
+
+    const controller = new AbortController();
+    const job = { url, mode, progress: { stage: 'starting', current: 0, total: null, message: 'Starting...' }, summary: null, error: null, controller };
+    vozJobs.set(url, job);
+
+    res.json({ ok: true });
+
+    // Run in background
+    (async () => {
+        const fetchPage = async (pageUrl) => {
+            const proxyUrl = "https://rss-proxy.k1d.workers.dev/?url=" + encodeURIComponent(pageUrl);
+            let fetchRes = await fetch(proxyUrl, { 
+                headers: { ...BROWSER_HEADERS, 'Connection': 'close' }, 
+                signal: controller.signal 
+            }).catch(e => ({ ok: false }));
+            
+            let content = '';
+            if (fetchRes.ok) {
+                content = await fetchRes.text();
+            }
+
+            if (!fetchRes.ok || content.includes('<title>Just a moment...</title>') || content.includes('Cloudflare')) {
+                console.log(`[VOZ SUMMARY] CF Proxy failed/blocked for ${pageUrl}. Falling back to Vietserver proxy...`);
+                content = await fetchViaVietserver(pageUrl);
+            }
+
+            let pagination = null;
+            if (content) {
+                const nextMatch = content.match(/<a[^>]+href=["']([^"']+)["'][^>]*class=["'][^"']*pageNav-jump--next[^"']*["']/i);
+                const nextUrl = nextMatch ? "https://voz.vn" + nextMatch[1].replace(/^https:\/\/voz\.vn/, '') : null;
+                
+                const allPages = [...content.matchAll(/href=["'][^"']+page-(\d+)["']/gi)].map(m => parseInt(m[1]));
+                const totalPages = allPages.length > 0 ? Math.max(1, ...allPages) : 1;
+                
+                if (totalPages > 1 || nextUrl) {
+                    pagination = { totalPages, nextUrl };
+                }
+            }
+            
+            return { content, pagination };
+        };
+
+        try {
+            const summary = await generateVozThreadSummary(
+                url, 
+                fetchPage, 
+                (progress) => { job.progress = progress; },
+                controller.signal,
+                { fastMode: mode === 'fast' }
+            );
+
+            job.summary = summary;
+
+            let articles = await env.RSS_DATA.get('articles', { type: 'json' }) || [];
+            let updated = false;
+            for (let i = 0; i < articles.length; i++) {
+                if (articles[i].link === url || articles[i].url === url || (articles[i].link && articles[i].link.split('?')[0].replace(/\/unread\/?$/, '') === url.split('?')[0].replace(/\/unread\/?$/, ''))) {
+                    articles[i].vozSummary = summary;
+                    updated = true;
+                }
+            }
+            if (updated) {
+                await env.RSS_DATA.put('articles', JSON.stringify(articles));
+            }
+        } catch (e) {
+            if (e.name !== 'AbortError' && e.message !== 'Cancelled') {
+                job.error = e.message;
+                console.error('[VOZ SUMMARY] Error:', e);
+            }
+        }
+    })();
+});
+
+app.get('/api/summary/voz/status', authMiddleware, (req, res) => {
+    const url = req.query.url;
+    if (!url) return res.status(400).json({ error: 'URL required' });
+    const job = vozJobs.get(url);
+    if (!job) return res.json({ status: 'not_found' });
+    
+    if (job.summary) {
+        vozJobs.delete(url);
+        return res.json({ status: 'ready', summary: job.summary });
+    }
+    if (job.error) {
+        vozJobs.delete(url);
+        return res.json({ status: 'error', error: job.error });
+    }
+    return res.json({ status: 'generating', progress: job.progress });
+});
+
+app.post('/api/summary/voz/cancel', authMiddleware, (req, res) => {
+    const url = req.body.url;
+    if (!url) return res.status(400).json({ error: 'URL required' });
+    const job = vozJobs.get(url);
+    if (job) {
+        job.controller.abort();
+        vozJobs.delete(url);
+    }
+    res.json({ ok: true });
+});
+
+app.post('/api/summary/feedback', authMiddleware, async (req, res) => {
+    let { url, feedback } = req.body;
+    if (!url) return res.status(400).json({ error: 'URL required' });
+    
+    
+    url = await decodeGoogleNews(url);
+
+    try {
+        const summary = await getSummaryFromCache(url);
+        if (summary) {
+            summary.feedback = feedback;
+            await writeSummaryToCache(url, summary);
+            return res.json({ ok: true });
+        }
+        res.status(404).json({ error: 'Summary not found' });
+    } catch (e) {
+        res.status(500).json({ error: 'Failed to update feedback' });
+    }
+});
+
+app.post('/api/summary/analysis', authMiddleware, async (req, res) => {
+    let url = req.body?.url;
+    if (!url) return res.status(400).json({ error: 'URL required' });
+    
+    
+    url = await decodeGoogleNews(url);
+    
+    try {
+        const result = await generateDeepAnalysis(url);
+        res.json({ success: true, analysis: result.text, analysisModel: result.model });
+    } catch (e) {
+        console.error('[SUMMARY] Failed to generate deep analysis:', e);
+        res.status(500).json({ error: e.message || 'Failed to generate deep analysis' });
+    }
+});
+
+app.get('/api/summary/debug', authMiddleware, (req, res) => {
+    const geminiStats = geminiKeyManager.getDebugStats();
+    const qwenStats = qwenKeyManager.getDebugStats();
+    res.json({
+        queue: summaryQueue.getStatus(),
+        gemini: geminiStats,
+        qwen: qwenStats
+    });
 });
 
 app.post('/api/toggle', authMiddleware, async (req, res) => {
@@ -4963,14 +6444,19 @@ app.post('/api/toggle', authMiddleware, async (req, res) => {
     if (!['readStates', 'savedStates', 'boardStates', 'hiddenStates'].includes(list)) return res.status(400).send('Invalid List');
 
     let stateArray = await env.RSS_DATA.get(list, { type: 'json' }) || [];
+    const normLink = normalizeStateUrl(link);
+    
     if (forceRemove) {
-        stateArray = stateArray.filter(item => item !== link);
+        stateArray = stateArray.filter(item => normalizeStateUrl(item) !== normLink);
     } else if (forceAdd) {
-        stateArray = stateArray.filter(item => item !== link);
-        stateArray.push(link);
+        stateArray = stateArray.filter(item => normalizeStateUrl(item) !== normLink);
+        stateArray.push(normLink);
     } else {
-        if (stateArray.includes(link)) stateArray = stateArray.filter(l => l !== link);
-        else stateArray.push(link);
+        if (stateArray.some(item => normalizeStateUrl(item) === normLink)) {
+            stateArray = stateArray.filter(item => normalizeStateUrl(item) !== normLink);
+        } else {
+            stateArray.push(normLink);
+        }
     }
     if (stateArray.length > 2000) stateArray.shift();
     await env.RSS_DATA.put(list, JSON.stringify(stateArray));
@@ -4987,6 +6473,41 @@ app.post('/api/toggle', authMiddleware, async (req, res) => {
     }
 
     res.status(200).send('Toggled');
+});
+
+app.post('/api/toggle-batch', authMiddleware, async (req, res) => {
+    const { links, list, forceAdd, forceRemove } = req.body;
+    if (!['readStates', 'savedStates', 'boardStates', 'hiddenStates'].includes(list)) return res.status(400).send('Invalid List');
+    if (!Array.isArray(links)) return res.status(400).send('links must be an array');
+
+    let stateArray = await env.RSS_DATA.get(list, { type: 'json' }) || [];
+    let stateSet = new Set(stateArray);
+    
+    if (forceRemove) {
+        links.forEach(link => stateSet.delete(link));
+    } else if (forceAdd) {
+        links.forEach(link => stateSet.add(link));
+    }
+    
+    stateArray = Array.from(stateSet);
+    while (stateArray.length > 2000) stateArray.shift();
+    
+    await env.RSS_DATA.put(list, JSON.stringify(stateArray));
+
+    if (list === 'readStates' && forceAdd) {
+        const linkSet = new Set(links);
+        for (const bumpList of ['savedStates', 'boardStates']) {
+            let bArray = await env.RSS_DATA.get(bumpList, { type: 'json' }) || [];
+            const commonLinks = bArray.filter(l => linkSet.has(l));
+            if (commonLinks.length > 0) {
+                bArray = bArray.filter(l => !linkSet.has(l));
+                bArray.push(...commonLinks);
+                await env.RSS_DATA.put(bumpList, JSON.stringify(bArray));
+            }
+        }
+    }
+
+    res.status(200).send('Toggled Batch');
 });
 
 app.get('/api/proxy-image', authMiddleware, async (req, res) => {
@@ -5007,6 +6528,7 @@ app.get('/api/proxy-image', authMiddleware, async (req, res) => {
             res.setHeader('Cache-Control', 'public, max-age=86400');
             return res.send(Buffer.from(buffer));
         }
+        await discardResponseBody(imgRes);
     } catch (e) {
         console.error(`[PROXY CRASH] ${e.message}`);
     }
@@ -5019,7 +6541,7 @@ app.get('/api/og-image', authMiddleware, async (req, res) => {
     if (!targetUrl) return res.status(400).send('Missing URL');
     try {
         const scrapeUrl = targetUrl.replace(/\/unread\/?$/, '');
-        const foundImg = await getBestImage(scrapeUrl, async (u) => fetch(u, { headers: BROWSER_HEADERS }), rssFallback);
+        const foundImg = await getBestImage(scrapeUrl, async (u, opts = {}) => fetch(u, { headers: BROWSER_HEADERS, ...opts }), rssFallback);
         if (foundImg) {
             if (foundImg.includes('dantri.com.vn') || foundImg.includes('baodautu.vn')) {
                 return res.redirect(301, `/api/proxy-image?url=${encodeURIComponent(foundImg)}`);
@@ -5040,7 +6562,7 @@ app.get('/script.js', async (req, res) => {
     try {
         const js = await fs.readFile('./script.js', 'utf8');
         res.setHeader('Content-Type', 'application/javascript');
-        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
         res.send(js);
     } catch (e) {
         res.status(500).send('Error loading script');
@@ -5049,7 +6571,10 @@ app.get('/script.js', async (req, res) => {
 app.get('/', async (req, res) => {
     try {
         const html = await fs.readFile('./index.html', 'utf8');
-        res.setHeader('Cache-Control', 'no-cache');
+        // The document contains critical inline component styles and the
+        // versioned asset URLs, so it must revalidate instead of serving a
+        // day-old shell after a UI deployment.
+        res.setHeader('Cache-Control', 'no-cache, must-revalidate');
         res.send(html);
     } catch (e) {
         res.status(500).send('Please create an index.html file with your frontend code.');
@@ -5061,12 +6586,12 @@ app.get('/', async (req, res) => {
 // ============================================================================
 
 let isUniversalPrefetching = false;
-async function runUniversalTabPrefetch(env) {
-    if (isUniversalPrefetching) return;
-    isUniversalPrefetching = true;
+async function computeUniversalPrefetchList(env, articleSnapshot = null) {
     try {
-        console.log('\n[PREFETCH ENGINE] Starting universal prefetch for first 5 articles of all tabs...');
-        const articles = await env.RSS_DATA.get('articles', { type: 'json' }) || [];
+        console.log('\n[PREFETCH ENGINE] Computing universal prefetch targets...');
+        const articles = Array.isArray(articleSnapshot)
+            ? articleSnapshot
+            : (await env.RSS_DATA.get('articles', { type: 'json' }) || []);
         const blockedKeywords = await env.RSS_DATA.get('blockedArticleKeywords', { type: 'json' }) || [];
         const blockedKeywordEntries = normalizeBlockedKeywordEntries(blockedKeywords);
         const articleIsBlocked = article => articleContentFilterMatches(article, blockedKeywordEntries);
@@ -5083,7 +6608,7 @@ async function runUniversalTabPrefetch(env) {
                 if (!art) continue;
                 const url = art.originalLink || art.link;
                 if (url && !topArticlesMap.has(url)) {
-                    topArticlesMap.set(url, art);
+                    topArticlesMap.set(url, { url, title: art.title, originalLink: art.originalLink, link: art.link });
                 }
             }
         };
@@ -5129,40 +6654,60 @@ async function runUniversalTabPrefetch(env) {
         }
 
         const toProcess = Array.from(topArticlesMap.values());
-        console.log(`[PREFETCH ENGINE] Found ${toProcess.length} unique top-5 articles across all tabs. Checking cache and prefetching...`);
+        console.log(`[PREFETCH ENGINE] Computed ${toProcess.length} prefetch targets for the next atomic database commit.`);
+        return toProcess;
+    } catch (e) {
+        console.error('[PREFETCH ENGINE] Target computation failed:', e.message);
+        return null;
+    }
+}
+
+async function runUniversalTabPrefetch(env) {
+    if (isUniversalPrefetching) return;
+    isUniversalPrefetching = true;
+    try {
+        await waitForHttpIdle();
+        const toProcess = await env.RSS_DATA.get('universalPrefetchTargets', { type: 'json' }) || [];
+        console.log(`[PREFETCH ENGINE] Loaded ${toProcess.length} unique top-5 articles from cache. Checking cache and prefetching...`);
+
 
         let prefetchedCount = 0;
         for (const art of toProcess) {
             const url = art.originalLink || art.link;
             if (!url) continue;
             let cached = await getCachedArticle(url);
-            if (!cached && googleNewsUrlCache && googleNewsUrlCache[url]?.resolvedUrl) {
-                cached = await getCachedArticle(googleNewsUrlCache[url].resolvedUrl);
+            if (!cached && googleNewsUrlCache && googleNewsUrlCache.has(url) && googleNewsUrlCache.get(url).resolvedUrl) {
+                cached = await getCachedArticle(googleNewsUrlCache.get(url).resolvedUrl);
             }
-            if (cached && cached.content) continue; // Already saved on disk, ready to serve!
+            if (cached && cached.content) {
+                enqueuePrefetchedSummary(url, art, 2);
+                continue; // Already saved on disk, ready to serve!
+            }
 
             try {
-                const hostname = (() => { try { return new URL(url).hostname.toLowerCase(); } catch(e) { return ''; } })();
-                const strategyOrder = await rankArticleFetchStrategies(hostname);
-                let html = '';
-                let htmlStrategy = '';
-                for (const strategy of strategyOrder) {
+                const policy = await getArticleFetchPolicy(url, art.feedUrl || '');
+                for (const strategy of policy.strategyOrder) {
                     try {
-                        const candidateHtml = await fetchArticleHtmlByStrategy(strategy, url);
-                        if (isUsableArticlePage(candidateHtml)) {
-                            html = candidateHtml;
-                            htmlStrategy = strategy;
+                        const parsedPayload = await fetchParsedArticleByStrategy(
+                            strategy,
+                            url,
+                            policy,
+                            art.feedUrl || '',
+                            art.title || ''
+                        );
+                        if (isDeletedArticlePayload(url, parsedPayload)) {
+                            await buildDeletedSourceResponse(url, { fallbackTitle: art.title || '' });
                             break;
                         }
-                    } catch (e) {}
-                }
-                if (html) {
-                    const parsedPayload = await parseArticleHtmlContent(html, url, htmlStrategy, [htmlStrategy], strategyOrder, {}, null);
-                    if (parsedPayload && parsedPayload.content) {
-                        parsedPayload.title = normalizeArticleTitle(parsedPayload.title || art.title || '');
-                        await cacheArticleResult(url, parsedPayload);
-                        prefetchedCount++;
-                        await new Promise(r => setTimeout(r, 600));
+                        if (parsedPayload && parsedPayload.content) {
+                            await cacheArticleResult(url, parsedPayload);
+                            prefetchedCount++;
+                            enqueuePrefetchedSummary(url, art, 2);
+                            await new Promise(r => setTimeout(r, 600));
+                            break;
+                        }
+                    } catch (error) {
+                        // Try the next method within this source's allowed policy.
                     }
                 }
             } catch (e) {}
@@ -5184,6 +6729,8 @@ async function startSequentialSyncLoop() {
             continue;
         }
 
+        await waitForHttpIdle();
+
         const cycleStart = Date.now();
 
         try {
@@ -5192,18 +6739,12 @@ async function startSequentialSyncLoop() {
             if (feeds.length === 0) {
                 console.log('[SYNC QUEUE] No feeds found. Waiting before next check...');
             } else {
-                console.log(`\n[SYNC QUEUE] Starting new cycle. Processing ${feeds.length} feeds sequentially...`);
+                console.log(`\n[SYNC QUEUE] Starting batched cycle for ${feeds.length} feeds...`);
 
-                for (let i = 0; i < feeds.length; i++) {
-                    const feed = feeds[i];
-                    console.log(`[SYNC QUEUE] (${i + 1}/${feeds.length}) Fetching: ${feed.title || feed.url}`);
-
-                    await syncFeeds(env, feed.url);
-
-                    if (i < feeds.length - 1) {
-                        await new Promise(resolve => setTimeout(resolve, 2000));
-                    }
-                }
+                // syncFeeds already applies a bounded network concurrency limit.
+                // Running one coordinated cycle lets it merge, prune, back up,
+                // and persist the article database once instead of once per feed.
+                await syncFeeds(env);
                 lastSyncCompletedAt = Date.now();
                 runUniversalTabPrefetch(env).catch(e => console.error('[PREFETCH ENGINE] Error:', e.message));
             }
@@ -5211,12 +6752,8 @@ async function startSequentialSyncLoop() {
             console.error('[SYNC QUEUE] Cycle encountered a fatal error:', err.message);
         }
 
-        // Trigger garbage collection after each cycle to reclaim fetch buffers
-        if (global.gc) {
-            global.gc();
-            const mem = process.memoryUsage();
-            console.log(`[GC] Post-cycle: RSS=${(mem.rss / 1024 / 1024).toFixed(0)}MB, Heap=${(mem.heapUsed / 1024 / 1024).toFixed(0)}MB/${(mem.heapTotal / 1024 / 1024).toFixed(0)}MB`);
-        }
+        // Reclaim fetch buffers only when it will not pause a foreground request.
+        gcAndLogMemory('Post-cycle');
 
         const cycleDuration = Date.now() - cycleStart;
         const MINIMUM_TIME = 10 * 60 * 1000;
@@ -5235,18 +6772,130 @@ async function startSequentialSyncLoop() {
 // always available even if the sync loop causes issues. Previously, the sync
 // loop started before listen(), which meant OOM kills during sync could
 // prevent port 3000 from ever binding.
-const isMainModule = import.meta.url === `file://${process.argv[1]}` || import.meta.url.endsWith('/server.js') || import.meta.url.endsWith('\\server.js');
+//
+// STAGGERED STARTUP: Heavy subsystems are started sequentially with delays
+// to prevent concurrent memory spikes that trigger OOM kills. The old approach
+// fired smartNews.start() + startSequentialSyncLoop() + startSmartSyncLoop()
+// all within 3 seconds, causing a memory spike (embedding model + 186 sources
+// + 43 feeds + HNSW clustering + prefetch) that exceeded the 3GB cgroup limit.
+const STAGGER_DELAY_MS = {
+    SMART_NEWS:      30_000,  // 30s – let RSS feed sync settle first
+    SMART_SYNC_LOOP: 45_000,  // 45s – fetches 186 sources, runs after smart news init
+    PREFETCH:        60_000,  // 60s – non-critical, can wait
+    SUMMARY_QUEUE:   90_000,  // 90s – summaries are low priority
+};
+
+function waitForHttpIdle(idleMs = 2500) {
+    return new Promise(resolve => {
+        const check = () => {
+            const remaining = idleMs - (Date.now() - lastHttpActivityAt);
+            if (remaining <= 0) {
+                resolve();
+                return;
+            }
+            setTimeout(check, Math.min(remaining, 500));
+        };
+        check();
+    });
+}
+
+function gcAndLogMemory(label) {
+    if (global.gc && Date.now() - lastHttpActivityAt >= 2500) {
+        global.gc();
+        const mem = process.memoryUsage();
+        console.log(`[GC] ${label}: RSS=${(mem.rss / 1024 / 1024).toFixed(0)}MB, Heap=${(mem.heapUsed / 1024 / 1024).toFixed(0)}MB/${(mem.heapTotal / 1024 / 1024).toFixed(0)}MB`);
+    } else if (global.gc) {
+        console.log(`[GC] ${label}: skipped while HTTP requests are active.`);
+    }
+}
+
+const isMainModule = process.argv[1] && process.argv[1] === fileURLToPath(import.meta.url);
 if (isMainModule) {
     app.listen(PORT, () => {
         console.log(`🚀 RSS Reader running on http://localhost:${PORT}`);
+
+        // ── Phase 0: Lightweight housekeeping (immediate) ────────────
         cleanupArticleCache();
         const articleCacheCleanupTimer = setInterval(cleanupArticleCache, 60 * 60 * 1000);
         if (articleCacheCleanupTimer.unref) articleCacheCleanupTimer.unref();
-        smartNews.start();
+
+        env.RSS_DATA.get('userPreferences', { type: 'json' }).then(prefs => {
+            if (prefs && prefs.clusteringModel) {
+                setClusteringModel(prefs.clusteringModel);
+            }
+        }).catch(err => console.error("Error loading user preferences for clustering model:", err));
+
+        // ── Phase 1: RSS feed sync (immediate) ──────────────────────
+        // This is the core feed sync loop – must start first so the UI
+        // has fresh articles as soon as possible.
+        // Give the first browser request a chance to arrive before any
+        // background database or feed processing begins.
+        lastHttpActivityAt = Date.now();
         startSequentialSyncLoop();
-        setTimeout(() => runUniversalTabPrefetch(env), 8000);
+        console.log('[STAGGERED BOOT] Phase 1: RSS feed sync started.');
+
+        // ── Phase 2: Smart news engine (delayed) ────────────────────
+        // smartNews.start() triggers HNSW clustering + embedding model
+        // load within ~2.5s. Delaying it lets RSS sync finish its initial
+        // burst and release memory before the heavy clustering begins.
+        setTimeout(() => {
+            gcAndLogMemory('Pre-SmartNews');
+            console.log('[STAGGERED BOOT] Phase 2: Starting smart news engine...');
+            smartNews.start();
+        }, STAGGER_DELAY_MS.SMART_NEWS);
+
+        // ── Phase 3: Smart source sync loop (delayed further) ───────
+        // Fetches articles from 186 smart sources. This is I/O-heavy and
+        // accumulates large response buffers in memory.
+        setTimeout(() => {
+            gcAndLogMemory('Pre-SmartSyncLoop');
+            console.log('[STAGGERED BOOT] Phase 3: Starting smart source sync loop...');
+            startSmartSyncLoop({ fastParseRSS, waitForHttpIdle }, BROWSER_HEADERS, env.RSS_DATA, smartNews.getSources);
+        }, STAGGER_DELAY_MS.SMART_SYNC_LOOP);
+
+        // ── Phase 4: Prefetch engine (delayed) ──────────────────────
+        // Non-critical – pre-caches article content for faster reads.
+        setTimeout(() => {
+            gcAndLogMemory('Pre-Prefetch');
+            console.log('[STAGGERED BOOT] Phase 4: Starting prefetch engine...');
+            runUniversalTabPrefetch(env);
+        }, STAGGER_DELAY_MS.PREFETCH);
         const prefetchTimer = setInterval(() => runUniversalTabPrefetch(env), 30 * 60 * 1000);
         if (prefetchTimer.unref) prefetchTimer.unref();
+
+        // ── Phase 5: Summary queue (delayed) ────────────────────────
+        // AI-powered article summaries – lowest priority during boot.
+        setTimeout(() => {
+            gcAndLogMemory('Pre-SummaryQueue');
+            console.log('[STAGGERED BOOT] Phase 5: Starting summary queue...');
+            summaryQueue.start();
+        }, STAGGER_DELAY_MS.SUMMARY_QUEUE);
+
+        // ── Background cron: Voz cache board refresh ────────────────
+        cron.schedule('* * * * *', async () => {
+            try {
+                const [boardStates, userPreferences] = await Promise.all([
+                    env.RSS_DATA.get('boardStates', { type: 'json' }),
+                    env.RSS_DATA.get('userPreferences', { type: 'json' })
+                ]);
+                const boardUrls = new Set((boardStates || []).map(normalizeStateUrl).filter(Boolean));
+                const cacheBoardLinks = Object.entries(userPreferences?.boardFolderMappings || {})
+                    .filter(([link, folder]) => folder === 'cache' && boardUrls.has(normalizeStateUrl(link)))
+                    .map(([link]) => link);
+
+                for (const link of cacheBoardLinks) {
+                    if (!isVozThreadUrl(link)) continue;
+                    const baseUrl = normalizeStateUrl(link);
+                    if (deletedVozThreads.has(baseUrl)) continue;
+                    const cached = await getCachedArticle(link) || { content: '' };
+                    triggerVozCurrentPageBackgroundUpdate(link, cached, cached.feedUrl || '');
+                }
+            } catch (error) {
+                console.warn('[VOZ CACHE BOARD] Could not schedule refresh:', error.message);
+            }
+        });
+
+        console.log(`[STAGGERED BOOT] Startup schedule: SmartNews=${STAGGER_DELAY_MS.SMART_NEWS/1000}s, SmartSync=${STAGGER_DELAY_MS.SMART_SYNC_LOOP/1000}s, Prefetch=${STAGGER_DELAY_MS.PREFETCH/1000}s, Summaries=${STAGGER_DELAY_MS.SUMMARY_QUEUE/1000}s`);
     });
 }
 
@@ -5255,6 +6904,13 @@ export {
     trimJinaArticleMarkdown,
     stripJinaLeadingNavigation,
     cleanArticleMarkup,
+    normalizeArticleMediaMarkup,
     jinaMarkdownToHtml,
-    normalizeArticleTitle
+    normalizeArticleTitle,
+    fastParseRSS,
+    parseBaoMoi,
+    parseMorningstar,
+    parseTechcombank,
+    parseUOB,
+    parseUOBVN
 };

@@ -1,4 +1,4 @@
-import { JSDOM } from 'jsdom';
+import * as cheerio from 'cheerio/slim';
 
 export default class BBCSource {
     match(hostname) {
@@ -6,12 +6,12 @@ export default class BBCSource {
     }
 
     parseArticleHtmlContent(html, url, result, utils) {
-        const dom = new JSDOM(html);
-        const document = dom.window.document;
+        const $ = cheerio.load(html);
         
         // BBC wraps the main content in <article> or <main>
-        const article = document.querySelector('article') || document.querySelector('main');
-        if (!article) return false;
+        let article = $('article').first();
+        if (!article.length) article = $('main').first();
+        if (!article.length) return false;
 
         const allRelatedItems = [];
         const addItem = (itemUrl, title, img, desc) => {
@@ -24,23 +24,23 @@ export default class BBCSource {
         };
 
         // Extract "Related topics" and "More on this story"
-        const headings = article.querySelectorAll('h2');
-        headings.forEach(h2 => {
-            const text = h2.textContent.toLowerCase();
+        article.find('h2').each((_, h2Element) => {
+            const h2 = $(h2Element);
+            const text = h2.text().toLowerCase();
             if (text.includes('related topics') || text.includes('more on this story')) {
                 // Find the nearest ul or section next to it or parent
-                const parent = h2.parentElement;
-                if (parent) {
+                const parent = h2.parent();
+                if (parent.length) {
                     // Find all links in the same container or next siblings
-                    let container = parent.nextElementSibling;
-                    if (!container || !container.querySelector('a')) {
-                        container = parent.parentElement;
+                    let container = parent.next();
+                    if (!container.length || !container.find('a').length) {
+                        container = parent.parent();
                     }
-                    if (container) {
-                        const links = container.querySelectorAll('a');
-                        links.forEach(a => {
-                            const href = a.getAttribute('href');
-                            const title = a.textContent.trim();
+                    if (container.length) {
+                        container.find('a').each((__, linkElement) => {
+                            const link = $(linkElement);
+                            const href = link.attr('href');
+                            const title = link.text().trim();
                             if (href && title) {
                                 addItem(href, title, '', '');
                             }
@@ -52,7 +52,6 @@ export default class BBCSource {
             }
         });
 
-        // Remove any remaining unwanted elements like social share, etc.
         const removeSelectors = [
             '[data-component="share-panel"]',
             '[data-component="byline-block"]',
@@ -61,37 +60,47 @@ export default class BBCSource {
             '[data-component="rating"]'
         ];
         removeSelectors.forEach(sel => {
-            article.querySelectorAll(sel).forEach(el => el.remove());
+            article.find(sel).remove();
+        });
+
+        // Remove "Được đăng" and "Thời gian đọc" divs
+        article.find('div, time').each((_, element) => {
+            const node = $(element);
+            const text = node.text().trim().toLowerCase();
+            if (text.startsWith('được đăng') || text.startsWith('thời gian đọc')) {
+                node.remove();
+            }
         });
 
         // Extract the title
-        const h1 = document.querySelector('h1');
-        const title = h1 ? h1.textContent.trim() : '';
+        const h1 = $('h1').first();
+        const title = h1.length ? h1.text().trim() : '';
         if (title) result.title = title;
-        if (h1) h1.remove();
+        if (h1.length) h1.remove();
 
         // Clean image containers (BBC uses picture/source)
-        article.querySelectorAll('figure').forEach(fig => {
-            const img = fig.querySelector('img');
-            const source = fig.querySelector('source');
+        article.find('figure').each((_, figureElement) => {
+            const figure = $(figureElement);
+            const img = figure.find('img').first();
+            const source = figure.find('source').first();
             let src = '';
-            if (source && source.getAttribute('srcset')) {
+            if (source.length && source.attr('srcset')) {
                 // Get highest resolution from srcset
-                const srcset = source.getAttribute('srcset');
+                const srcset = source.attr('srcset');
                 const parts = srcset.split(',').map(s => s.trim().split(' '));
                 src = parts[parts.length - 1][0];
-            } else if (img) {
-                src = img.getAttribute('src');
+            } else if (img.length) {
+                src = img.attr('src');
             }
             
             if (src) {
-                const caption = fig.querySelector('figcaption');
-                const capText = caption ? caption.textContent.trim() : '';
-                fig.outerHTML = `<div class="my-4"><img class="w-full rounded-xl" src="${src}" alt="${utils.escapeHtml(capText)}"></div>`;
+                const caption = figure.find('figcaption').first();
+                const capText = caption.length ? caption.text().trim() : '';
+                figure.replaceWith(`<div class="my-4"><img class="w-full rounded-xl" src="${utils.escapeHtml(src)}" alt="${utils.escapeHtml(capText)}"></div>`);
             }
         });
 
-        let articleHtml = article.innerHTML;
+        let articleHtml = article.html();
 
         if (allRelatedItems.length > 0) {
             let itemsHtml = '';
@@ -104,7 +113,7 @@ export default class BBCSource {
                 </div>`;
             }
             articleHtml += `<div class="mt-8 border-t border-gray-200 dark:border-gray-700 pt-6">
-                <h3 class="text-xl font-black text-gray-900 dark:text-gray-100 mb-4 tracking-tight">Bài viết liên quan / Xem thêm</h3>
+                <h3 class="text-xl font-black text-gray-900 dark:text-gray-100 mb-4 tracking-tight">Đọc nhiều nhất</h3>
                 ${itemsHtml}
             </div>`;
         }

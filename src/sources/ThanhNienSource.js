@@ -1,3 +1,34 @@
+function readAttribute(tag, name) {
+    const match = String(tag || '').match(new RegExp(`\\b${name}=["']([^"']+)["']`, 'i'));
+    return match ? match[1].replace(/&amp;/gi, '&').trim() : '';
+}
+
+function normalizeVideoAssetUrl(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    const candidate = raw.startsWith('//') ? `https:${raw}` : (/^https?:\/\//i.test(raw) ? raw : `https://${raw.replace(/^\/+/, '')}`);
+    try {
+        const parsed = new URL(candidate);
+        return /^https?:$/.test(parsed.protocol) ? parsed.href : '';
+    } catch (e) {
+        return '';
+    }
+}
+
+export function extractThanhNienPrimaryVideo(html) {
+    const playerTags = String(html || '').match(/<(?:div|figure|video)\b[^>]*>/gi) || [];
+    const playerTag = playerTags.find(tag => /^VideoStream$/i.test(readAttribute(tag, 'type')) && readAttribute(tag, 'data-vid'));
+    if (!playerTag) return null;
+
+    const url = normalizeVideoAssetUrl(readAttribute(playerTag, 'data-vid'));
+    if (!url || !/\.(?:mp4|m3u8|webm|ogg)(?:$|[?#])/i.test(url)) return null;
+
+    return {
+        url,
+        poster: normalizeVideoAssetUrl(readAttribute(playerTag, 'data-thumb'))
+    };
+}
+
 export default class ThanhNienSource {
     match(hostname) {
         return hostname.includes('thanhnien.vn');
@@ -5,6 +36,20 @@ export default class ThanhNienSource {
 
     async parseArticleHtmlContent(html, url, result, utils) {
         let articleHtml = '';
+
+        // Thanh Nien video articles keep their primary player outside the
+        // regular detail-content container. Preserve its media metadata so
+        // the shared reader can render a native, non-autoplaying player.
+        const primaryVideo = extractThanhNienPrimaryVideo(html);
+        if (primaryVideo && result) {
+            const video = { ...primaryVideo, title: result.title || 'Video' };
+            result.videos ||= [];
+            const existingIndex = result.videos.findIndex(item => item.url === video.url);
+            if (existingIndex === -1) result.videos.unshift(video);
+            else result.videos[existingIndex] = { ...result.videos[existingIndex], ...video };
+            result.videoUrl = video.url;
+            result.videoPoster = video.poster;
+        }
         
         // Extract content from detail-content
         // It ends at <div data-check-position="body_end">
@@ -45,6 +90,12 @@ export default class ThanhNienSource {
                             html.match(/<a\b[^>]*class=["']name["'][^>]*title=["']([^"']+)["']/i);
         if (authorMatch && result) {
             result.author = authorMatch[1].trim();
+        }
+        
+        // Author avatar extraction
+        const authorAvatarMatch = html.match(/<a[^>]*class=["'][^"']*avatar author-data[^"']*["'][^>]*>\s*<img[^>]*src=["']([^"']+)["']/i);
+        if (authorAvatarMatch && result) {
+            result.authorAvatar = authorAvatarMatch[1];
         }
 
         const createSuggestedHtml = (title, itemsHtml) => {

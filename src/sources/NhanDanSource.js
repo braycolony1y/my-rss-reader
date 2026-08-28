@@ -53,15 +53,40 @@ export default class NhanDanSource {
         }
 
         let articleHtml = '';
-        const articleRegex = /<div\b[^>]*class=["'][^"']*(?:detail-content-body|article__body|detail__body)[^"']*["'][^>]*>([\s\S]*?)(?:<div\b[^>]*class=["'][^"']*article__author|<div\b[^>]*class=["'][^"']*box-author)/i;
-        let match = html.match(articleRegex);
-        if (!match) {
-            match = html.match(/<div\b[^>]*class=["'][^"']*(?:detail-content-body|article__body|detail__body)[^"']*["'][^>]*>([\s\S]*?)(?:<div\b[^>]*class=["'][^"']*related-news|<\/div>\s*<\/div>\s*<\/div>|<\/article>)/i);
+        if (utils && utils.extractBalancedElementByClass) {
+            articleHtml = utils.extractBalancedElementByClass(html, 'detail-content-body') || 
+                          utils.extractBalancedElementByClass(html, 'article__body') || 
+                          utils.extractBalancedElementByClass(html, 'detail__body');
         }
-        if (match) {
-            articleHtml = match[1];
-        } else {
-            articleHtml = html; // fallback
+
+        if (!articleHtml) {
+            const articleRegex = /<div\b[^>]*class=["'][^"']*(?:detail-content-body|article__body|detail__body)[^"']*["'][^>]*>([\s\S]*?)(?:<div\b[^>]*class=["'][^"']*related-news|<\/div>\s*<\/div>\s*<\/div>|<\/article>)/i;
+            const match = html.match(articleRegex);
+            if (match) articleHtml = match[1];
+            else articleHtml = html; // fallback
+        }
+
+        // NhanDan videos are initially hidden (display:none) and use <source>
+        articleHtml = articleHtml.replace(/<video\b([^>]*?)style=["'][^"']*display:\s*none;?[^"']*["']([^>]*?)>/gi, '<video $1 controls $2>');
+        
+        // Extract video for native reader support
+        const videoMatch = articleHtml.match(/<video\b[^>]*poster=["']([^"']+)["'][^>]*>\s*<source\b[^>]*src=["']([^"']+)["']/i);
+        if (videoMatch) {
+            result.videos = result.videos || [];
+            result.videos.push({
+                url: videoMatch[2],
+                poster: videoMatch[1],
+                title: result.title || ''
+            });
+            result.videoUrl = videoMatch[2];
+            result.videoPoster = videoMatch[1];
+        }
+
+        // Clean up trailing author block
+        const authorRemoval = /<div\b[^>]*class=["'][^"']*article__author|<div\b[^>]*class=["'][^"']*box-author/i;
+        const authorIndex = articleHtml.search(authorRemoval);
+        if (authorIndex !== -1) {
+            articleHtml = articleHtml.substring(0, authorIndex);
         }
 
         // Clean up ads

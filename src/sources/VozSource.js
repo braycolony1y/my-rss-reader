@@ -1,6 +1,69 @@
+import { hasVozDeletedThreadMarker } from '../voz-thread-state.js';
+
+function findHtmlAttribute(tag, targetName) {
+    let cursor = String(tag || '').search(/\s/);
+    if (cursor < 0) return null;
+
+    while (cursor < tag.length) {
+        while (/\s/.test(tag[cursor] || '')) cursor++;
+        if (!tag[cursor] || tag[cursor] === '>' || tag[cursor] === '/') break;
+
+        const start = cursor;
+        while (cursor < tag.length && !/[\s=/>]/.test(tag[cursor])) cursor++;
+        const name = tag.slice(start, cursor);
+        while (/\s/.test(tag[cursor] || '')) cursor++;
+
+        let value = '';
+        if (tag[cursor] === '=') {
+            cursor++;
+            while (/\s/.test(tag[cursor] || '')) cursor++;
+            const quote = tag[cursor] === '"' || tag[cursor] === "'" ? tag[cursor++] : '';
+            const valueStart = cursor;
+            if (quote) {
+                while (cursor < tag.length && tag[cursor] !== quote) cursor++;
+                value = tag.slice(valueStart, cursor);
+                if (tag[cursor] === quote) cursor++;
+            } else {
+                while (cursor < tag.length && !/[\s>]/.test(tag[cursor])) cursor++;
+                value = tag.slice(valueStart, cursor);
+            }
+        }
+
+        if (name.toLowerCase() === targetName.toLowerCase()) {
+            return { start, end: cursor, value };
+        }
+    }
+    return null;
+}
+
+export function preserveVozImageDisplayWidth(imgTag) {
+    const styleAttribute = findHtmlAttribute(imgTag, 'style');
+    const cssWidthMatch = styleAttribute?.value.match(/(?:^|;)\s*width\s*:\s*(\d+(?:\.\d+)?)px(?:\s*!important)?\s*(?:;|$)/i);
+    if (!cssWidthMatch) return imgTag;
+
+    const displayWidth = Math.round(Number(cssWidthMatch[1]));
+    if (!Number.isFinite(displayWidth) || displayWidth < 1 || displayWidth > 4096) return imgTag;
+
+    const widthAttribute = findHtmlAttribute(imgTag, 'width');
+    if (widthAttribute) {
+        return imgTag.slice(0, widthAttribute.start) + `width="${displayWidth}"` + imgTag.slice(widthAttribute.end);
+    }
+    return imgTag.replace(/\/?>\s*$/, closing => ` width="${displayWidth}"${closing}`);
+}
+
+export function renderVozTwitterEmbed(mediaKey) {
+    const tweetId = String(mediaKey || '').match(/^\d{5,30}$/)?.[0];
+    if (!tweetId) return '';
+
+    return `<div class="voz-twitter-embed" data-tweet-id="${tweetId}"><iframe class="voz-twitter-embed__fallback" src="https://platform.twitter.com/embed/Tweet.html?id=${tweetId}" title="Embedded X post" frameborder="0" scrolling="no" allow="fullscreen" sandbox="allow-scripts allow-popups allow-same-origin"></iframe></div>`;
+}
+
 export default class VozSource {
 
     async getBestImage(targetUrl, fetchFn, rssFallback, utils) {
+        if (rssFallback && !utils.isInvalidImage(rssFallback)) {
+            return rssFallback;
+        }
         if (targetUrl.includes('voz.vn/t/')) {
             targetUrl = targetUrl.replace(/\/unread\/?$/, '').replace(/\/page-\d+/i, '');
         }
@@ -26,15 +89,14 @@ export default class VozSource {
         let scopeHtml = html;
 
         if (rssFallback && rssFallback.includes('dantri.com.vn')) rssFallback = null;
-        const postMatch = html.match(/<article[^>]*message--post[^>]*>[\s\S]*?<div class="bbWrapper">([\s\S]*?)<\/div>\s*<div class="js-selectToQuoteEnd">/i) || html.match(/<div class="bbWrapper">([\s\S]*?)<\/div>\s*<div class="js-selectToQuoteEnd">/i);
+        const postMatch = html.match(/<article[^>]*message--post[^>]*>[\s\S]{0,2000}?<div class="bbWrapper">([\s\S]*?)<\/div>\s*<div class="js-selectToQuoteEnd">/i) || html.match(/<div class="bbWrapper">([\s\S]*?)<\/div>\s*<div class="js-selectToQuoteEnd">/i);
         if (postMatch) scopeHtml = postMatch[1];
 
+        const extLinks = scopeHtml.match(/<a[^>]+href=["'](https?:\/\/[^"']+)["'][^>]*>[\s\S]{0,500}?<\/a>/ig) || [];
 
-
-
-        const extLinks = scopeHtml.match(/<a[^>]+href=["'](https?:\/\/[^"']+)["'][^>]*>[\s\S]*?<\/a>/ig) || [];
-
+        let extCount = 0;
         for (let linkTag of extLinks) {
+            if (extCount >= 2) break;
             if (linkTag.includes('theNEXTvoz') || linkTag.includes('VOZVNApp')) continue;
 
             let extMatch = linkTag.match(/href=["'](https?:\/\/[^"']+)["']/i);
@@ -43,9 +105,10 @@ export default class VozSource {
                 extUrl = extUrl.replace(/^https?:\/\/amp\./i, 'https://').replace(/\/amp\/?$/i, '');
 
                 if (!extUrl.includes('voz.vn') && !extUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+                    extCount++;
                     try {
                         let extFetchUrl = utils.CF_PROXY_BASE + encodeURIComponent(extUrl);
-                        let extRes = await fetchFn(extFetchUrl);
+                        let extRes = await fetchFn(extFetchUrl, { signal: AbortSignal.timeout(3000) });
                         let extHtml = '';
 
                         let img = null;
@@ -74,6 +137,9 @@ export default class VozSource {
             }
         }
 
+        let postImg = utils.extractImageFromHtml(scopeHtml, targetUrl);
+        if (postImg) return postImg;
+
         const imgTags = scopeHtml.match(/<img[^>]+>/ig) || [];
         for (let imgTag of imgTags) {
             let m = imgTag.match(/(?:data-url|data-src|src)=["']([^"']+)["']/i);
@@ -81,6 +147,7 @@ export default class VozSource {
                 let src = m[1];
                 if (src.includes('avatar') || src.includes('smilies') || src.includes('reaction')) continue;
                 if (src.startsWith('data:')) continue;
+                if (utils && utils.isInvalidImage && utils.isInvalidImage(src)) continue;
                 return src.startsWith('/') ? new URL(src, targetUrl).href : src;
             }
         }
@@ -125,6 +192,13 @@ export default class VozSource {
     }
 
     parseArticleHtmlContent(html, url, result, utils) {
+        if (hasVozDeletedThreadMarker(html)) {
+            result.isDeletedThread = true;
+            result.title = 'Deleted Thread';
+            result.content = '';
+            return;
+        }
+
         let articleHtml = '';
         const h1Match = html.match(/<h1[^>]*class=["'][^"']*p-title-value[^"']*["'][^>]*>([\s\S]*?)<\/h1>/i);
         if (h1Match) {
@@ -136,16 +210,30 @@ export default class VozSource {
         const pageNumMatch = url.match(/\/page-(\d+)/i);
         let currentPage = pageNumMatch ? parseInt(pageNumMatch[1], 10) : 1;
 
+        // Try to accurately determine the current page from HTML (XenForo sets this class)
+        const currentMatch = html.match(/class=["'][^"']*pageNav-page--current[^"']*["'][^>]*>(?:<[^>]+>)*\s*(\d+)/i);
+        if (currentMatch) {
+            currentPage = parseInt(currentMatch[1], 10);
+        }
+
         const pages = [];
-        const pageRegex = /<li\b[^>]*class=["'][^"']*pageNav-page[^"']*["'][^>]*>[\s\S]*?<a\b[^>]*href=["']([^"']+)["'][^>]*>(\d+)<\/a>[\s\S]*?<\/li>/gi;
+        const pageRegex = /class=["'][^"']*pageNav-page(?:--current)?[^"']*["'][^>]*>[\s\S]{0,1000}?<a\b[^>]*href=["']([^"']+)["'][^>]*>(\d+)<\/a>/gi;
         let pm;
         while ((pm = pageRegex.exec(html)) !== null) {
             const href = pm[1];
             const pNum = parseInt(pm[2], 10);
-            const isCurrent = pm[0].includes('pageNav-page--current') || pNum === currentPage;
-            if (isCurrent) currentPage = pNum;
+            const isCurrent = pNum === currentPage;
             pages.push({ page: pNum, url: absUrl(href), isCurrent });
         }
+
+        // If the current page was skipped by regex (because XenForo sometimes omits the <a> tag for the active page)
+        if (!pages.some(p => p.page === currentPage) && currentMatch) {
+            let pUrl = url;
+            if (pUrl.match(/\/page-\d+/i)) pUrl = pUrl.replace(/\/page-\d+/i, '/page-' + currentPage);
+            else if (currentPage > 1) pUrl = pUrl.replace(/\/unread\/?/i, '').replace(/\/$/, '') + '/page-' + currentPage;
+            pages.push({ page: currentPage, url: absUrl(pUrl), isCurrent: true });
+        }
+
         const uniquePagesMap = new Map();
         pages.forEach(p => { if (!uniquePagesMap.has(p.page)) uniquePagesMap.set(p.page, p); });
         const sortedPages = Array.from(uniquePagesMap.values()).sort((a,b) => a.page - b.page);
@@ -195,8 +283,18 @@ export default class VozSource {
             const rankMatch = artHtml.match(/<h5\b[^>]*class=["'][^"']*userTitle[^"']*["'][^>]*>([\s\S]*?)<\/h5>/i) || artHtml.match(/class=["'][^"']*userTitle[^"']*["'][^>]*>([^<]+)/i);
             const rank = rankMatch ? rankMatch[1].replace(/<[^>]+>/g, '').trim() : 'Member';
 
-            const avatarMatch = artHtml.match(/<img\b[^>]*src=["']([^"']*avatar[^"']*)["'][^>]*>/i) || artHtml.match(/class=["'][^"']*avatar\b[^>]*>[\s\S]*?src=["']([^"']+)["']/i);
-            const avatarUrl = avatarMatch ? avatarMatch[1] : `https://ui-avatars.com/api/?name=${encodeURIComponent(author)}&background=random&color=fff&size=96`;
+            const avatarImgMatch = artHtml.match(/<img\b[^>]*src=["']([^"']*avatar[^"']*)["'][^>]*>/i) || artHtml.match(/class=["'][^"']*avatar\b[^>]*>\s*<img\b[^>]*src=["']([^"']+)["']/i);
+            const dynamicAvatarMatch = artHtml.match(/avatar--default--dynamic[^>]*style=["']background-color:\s*#([a-f0-9]+);\s*color:\s*#([a-f0-9]+)["']/i);
+            
+            let avatarUrl;
+            if (avatarImgMatch) {
+                avatarUrl = avatarImgMatch[1];
+                if (avatarUrl.startsWith('/')) avatarUrl = 'https://data.voz.vn' + avatarUrl;
+            } else if (dynamicAvatarMatch) {
+                avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(author)}&background=${dynamicAvatarMatch[1]}&color=${dynamicAvatarMatch[2]}&size=96`;
+            } else {
+                avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(author)}&background=random&color=fff&size=96`;
+            }
 
             let postTime = '';
             const attrMainMatch = artHtml.match(/<ul\b[^>]*class=["'][^"']*message-attribution-main[^"']*["'][^>]*>([\s\S]*?)<\/ul>/i) || artHtml.match(/<div\b[^>]*class=["'][^"']*message-attribution-main[^"']*["'][^>]*>([\s\S]*?)<\/div>/i) || [null, artHtml];
@@ -228,7 +326,7 @@ export default class VozSource {
             const reactionsBarIndex = artHtml.indexOf('reactionsBar js-reactionsList');
             if (reactionsBarIndex !== -1) {
                 const reactionsChunk = artHtml.substring(reactionsBarIndex, reactionsBarIndex + 3000);
-                const reactionImages = [...reactionsChunk.matchAll(/<img\b([^>]*class=["'][^"']*(?:reaction-image|reaction\b)[^"']*["'][^>]*)>|<span\b[^>]*class=["'][^"']*(?:reaction-image|reaction\b)[^"']*["'][^>]*>[\s\S]*?<img\b([^>]+)>[\s\S]*?<\/span>/gi)];
+                const reactionImages = [...reactionsChunk.matchAll(/<img\b([^>]*class=["'][^"']*(?:reaction-image|reaction\b)[^"']*["'][^>]*)>|<span\b[^>]*class=["'][^"']*(?:reaction-image|reaction\b)[^"']*["'][^>]*>[\s\S]{0,1000}?<img\b([^>]+)>[\s\S]{0,1000}?<\/span>/gi)];
                 const linkMatch = reactionsChunk.match(/<a\b[^>]*class=["'][^"']*reactionsBar-link[^"']*["'][^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/i);
                 
                 if (reactionImages.length > 0 && linkMatch) {
@@ -246,9 +344,14 @@ export default class VozSource {
                         uniqueSrcs.add(src);
                         return `<img src="${utils.escapeHtml(src)}" ${srcset ? `srcset="${utils.escapeHtml(srcset)}"` : ''} alt="${utils.escapeHtml(alt)}" title="${utils.escapeHtml(title)}" class="voz-like-icon object-contain shrink-0" style="width: 18px; height: 18px; ">`;
                     }).join('');
-                    
-                    reactionBarHtml = `<div class="voz-post-likes flex items-center gap-1.5 mt-2 text-xs text-gray-400 min-w-0"><div class="flex items-center gap-0.5">${iconsHtml}</div><a href="${utils.escapeHtml(reactionUrl)}" target="_blank" class="voz-like-users flex-1 truncate hover:text-gray-300 transition-colors" style="line-height: 18px;">${utils.escapeHtml(reactionUsersText)}</a></div>`;
+                        reactionBarHtml = `<div class="voz-post-likes flex items-center gap-2 mt-3 pt-2.5 pb-2 px-3 mx-[-12px] mb-[-10px] bg-black/[0.04] dark:bg-white/[0.04] border-t border-black/10 dark:border-white/10 rounded-b-xl text-xs text-gray-500 dark:text-gray-400 min-w-0"><div class="flex items-center gap-0.5">${iconsHtml}</div><a href="${utils.escapeHtml(reactionUrl)}" target="_blank" class="voz-like-users flex-1 truncate hover:text-gray-700 dark:hover:text-gray-300 transition-colors" style="line-height: 18px;">${utils.escapeHtml(reactionUsersText)}</a></div>`;
                 }
+            }
+
+            // Set the main article author and avatar using the first post on the page
+            if (idx === 0) {
+                if (!result.author) result.author = author;
+                if (!result.authorAvatar) result.authorAvatar = avatarUrl;
             }
 
             let bbContent = utils.extractBalancedElementByClass(artHtml, 'bbWrapper') || (artHtml.match(/<div\b[^>]*class=["'][^"']*bbWrapper[^"']*["'][^>]*>([\s\S]*?)<\/div>/i)?.[1]);
@@ -256,8 +359,10 @@ export default class VozSource {
             if (bbContent) {
                 // Clean inline styles and dimensions that break responsive design
                 bbContent = bbContent.replace(/<(span|div|table|td|tr|p|b|i|u|tbody|thead|th|img)\b([^>]*)>/gi, (m, tag, rest) => {
-                    rest = rest.replace(/\sstyle=(["'])[\s\S]*?\1/gi, '');
-                    if (/^(table|td|img|th)$/i.test(tag)) {
+                    if (tag.toLowerCase() !== 'img') {
+                        rest = rest.replace(/\sstyle=(["'])[\s\S]*?\1/gi, '');
+                    }
+                    if (/^(table|td|th)$/i.test(tag)) {
                         rest = rest.replace(/\swidth=(["'])[\s\S]*?\1/gi, '');
                         rest = rest.replace(/\sheight=(["'])[\s\S]*?\1/gi, '');
                     }
@@ -268,14 +373,14 @@ export default class VozSource {
             // Extract message signature if present
             const signatureMatch = artHtml.match(/<aside\b[^>]*class=["'][^"']*message-signature[^"']*["'][^>]*>([\s\S]*?)<\/aside>/i);
             if (signatureMatch) {
-                const sigHtml = `<aside class="message-signature mt-6 pt-4 border-t border-white/10 text-gray-500 text-sm italic">${signatureMatch[1]}</aside>`;
+                const sigHtml = `<div class="voz-user-sig mt-6 pt-4 border-t border-white/10 text-gray-500 text-sm italic">${signatureMatch[1]}</div>`;
                 bbContent = (bbContent || '') + sigHtml;
             }
             // Extract attachments
             const attachmentsMatch = artHtml.match(/<section\b[^>]*class=["'][^"']*message-attachments[^"']*["'][^>]*>([\s\S]*?)<\/section>/i);
             if (attachmentsMatch) {
                 const attachChunk = attachmentsMatch[1];
-                const attachImages = [...attachChunk.matchAll(/<a\b[^>]*class=["'][^"']*file-preview[^"']*["'][^>]*href=["']([^"']+)["'][^>]*>[\s\S]*?<img\b([^>]+)>[\s\S]*?<\/a>/gi)];
+                const attachImages = [...attachChunk.matchAll(/<a\b[^>]*class=["'][^"']*file-preview[^"']*["'][^>]*href=["']([^"']+)["'][^>]*>[\s\S]{0,1000}?<img\b([^>]+)>[\s\S]{0,1000}?<\/a>/gi)];
                 if (attachImages.length > 0) {
                     let attachHtml = '<div class="voz-attachments mt-4 flex flex-wrap gap-2">';
                     attachImages.forEach(m => {
@@ -329,6 +434,11 @@ export default class VozSource {
                     return `<div class="my-3 flex justify-center"><iframe style="max-width: 400px; min-width: 325px; height: 600px !important;" class="w-full rounded-xl shadow-sm bg-white" src="https://www.instagram.com/p/${mediaKey}/embed/captioned/" frameborder="0" allow="fullscreen" sandbox="allow-scripts allow-popups allow-same-origin"></iframe></div>`;
                 });
 
+                // Fix Twitter embed
+                bbContent = bbContent.replace(/<div\b[^>]*data-media-site-id=["']twitter["'][^>]*data-media-key=["']([^"']+)["'][^>]*>[\s\S]*?<\/div>/gi, (match, mediaKey) => {
+                    return renderVozTwitterEmbed(mediaKey) || match;
+                });
+
                 bbContent = bbContent.replace(/<video\b[^>]*>[\s\S]*?<\/video>/gi, (videoMatch) => {
                     let wMatch = videoMatch.match(/\bwidth=(["'])([^"']*)\1/i);
                     let hMatch = videoMatch.match(/\bheight=(["'])([^"']*)\1/i);
@@ -350,6 +460,8 @@ export default class VozSource {
                 bbContent = bbContent.replace(/<img\b[^>]*class=["'][^"']*bbCodeBlockUnfurl-icon[^"']*["'][^>]*>/gi, (imgMatch) => {
                     return imgMatch.replace(/class=["']([^"']*)["']/i, 'class="$1 w-4 h-4 object-contain inline-block align-middle mr-1.5"');
                 });
+                // Make the entire unfurl block clickable
+                bbContent = bbContent.replace(/<div([^>]*class=["'])([^"']*(?:bbCodeBlock--unfurl|fauxBlockLink)[^"']*)(["'][^>]*)>/gi, '<div$1$2 hover:bg-white/5 transition-colors duration-200 cursor-pointer$3>');
                 // Format quote title cleanly without nested anchors/spans or emojis
                 bbContent = bbContent.replace(/<div\b[^>]*class=["'][^"']*bbCodeBlock-title[^"']*["'][^>]*>([\s\S]*?)<\/div>/gi, (m, c) => {
                     const text = c.replace(/<[^>]+>/g, '').trim();
@@ -358,11 +470,15 @@ export default class VozSource {
                 // Simplify blockquote hierarchy by just adding classes
                 bbContent = bbContent.replace(/<blockquote\b[^>]*>/gi, match => {
                     if (match.includes('voz-quote')) return match;
-                    return `<blockquote class="voz-quote my-2 p-3 rounded-xl border-l-4 border-l-amber-500 bg-black/30 text-sm text-gray-300 leading-relaxed shadow-sm">`;
+                    return `<blockquote class="voz-quote my-2 p-3 rounded-xl border-l-4 border-l-gray-300 dark:border-l-gray-600 bg-gray-100 dark:bg-black/30 text-sm text-gray-800 dark:text-gray-300 leading-relaxed shadow-sm">`;
                 });
+
+                // The shared sanitizer removes inline styles from images. Preserve XenForo's
+                // explicit pixel display width as a safe HTML width hint before that happens.
+                bbContent = bbContent.replace(/<img\b[^>]*>/gi, preserveVozImageDisplayWidth);
                 
                 // Fix bbImageWrapper: large images stay as responsive blocks, small emoticons become inline
-                bbContent = bbContent.replace(/<div\b([^>]*class=["'][^"']*bbImageWrapper[^"']*["'][^>]*)>([\s\S]*?)<\/div>/gi, (match, attrs, inner) => {
+                bbContent = bbContent.replace(/<(div|span)\b([^>]*class=["'][^"']*bbImageWrapper[^"']*["'][^>]*)>([\s\S]*?)<\/\1>/gi, (match, tag, attrs, inner) => {
                     const imgMatch = inner.match(/<img[^>]+>/i);
                     let isSmall = false;
                     
@@ -399,7 +515,11 @@ export default class VozSource {
                     if (imgMatch) {
                         let imgTag = imgMatch[0];
                         if (!imgTag.includes('inline-block')) {
-                            imgTag = imgTag.replace(/<img\b/i, '<img style="display: inline-block !important;" ');
+                            if (/style=["']/i.test(imgTag)) {
+                                imgTag = imgTag.replace(/(style=["'])/i, '$1display: inline-block !important; ');
+                            } else {
+                                imgTag = imgTag.replace(/<img\b/i, '<img style="display: inline-block !important;" ');
+                            }
                         }
                         newInner = newInner.replace(imgMatch[0], imgTag);
                     }
@@ -413,8 +533,18 @@ export default class VozSource {
             const postNumberMatch = artHtml.match(/#(\d+)\s*<\/a>/i) || artHtml.match(/>#(\d+)</i) || artHtml.match(/post-(\d+)/i);
             let postNumber = extractedPostNumber || (postNumberMatch ? postNumberMatch[1] : (idx + 1 + ((currentPage - 1) * 20)));
 
+            const absolutePostIdMatch = artHtml.match(/data-content=["']post-(\d+)["']/i) || artHtml.match(/id=["']js-post-(\d+)["']/i);
+            const absolutePostId = absolutePostIdMatch ? absolutePostIdMatch[1] : '';
+
+            // XenForo sometimes embeds the "Sticky First Post" or OP on every page.
+            // If we are not on the first page, we should ignore post #1 to prevent it from being appended.
+            if (Number(postNumber) === 1 && currentPage > 1) {
+                idx++;
+                continue;
+            }
+
             posts.push(`
-<div class="voz-post" id="voz-post-${postNumber}" data-post-index="${postNumber}">
+<div class="voz-post" id="voz-post-${postNumber}" data-post-index="${postNumber}" data-absolute-post-id="${absolutePostId}">
     <div class="voz-post-header">
         <div class="voz-post-author-group">
             <img src="${utils.escapeHtml(avatarUrl)}" alt="${utils.escapeHtml(author)}" loading="lazy" onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(author)}&background=random&color=fff&size=80'">

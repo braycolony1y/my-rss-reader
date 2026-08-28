@@ -1,0 +1,81 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import {
+    hasVozDeletedThreadMarker,
+    isDeletedVozThreadPayload,
+    isUnsafeVozThreadPayload,
+    isVozThreadUrl
+} from '../src/voz-thread-state.js';
+
+const deletedUrl = 'https://voz.vn/t/example-thread.1268127/unread';
+
+test('recognizes VOZ thread URLs and its authoritative deletion marker', () => {
+    assert.equal(isVozThreadUrl(deletedUrl), true);
+    assert.equal(isVozThreadUrl('https://voz.vn/f/diem-bao.33/'), false);
+    assert.equal(isVozThreadUrl('https://example.com/t/example-thread.1268127'), false);
+    assert.equal(hasVozDeletedThreadMarker('The requested thread could not be found.'), true);
+    assert.equal(hasVozDeletedThreadMarker('Chủ đề yêu cầu không tìm thấy'), true);
+});
+
+test('distinguishes confirmed deletion from a retryable generic VOZ error', () => {
+    const jinaText = `Title: Oops! We ran into some problems. | VOZ
+
+Markdown Content:
+The requested thread could not be found.
+Forums Terms and rules Privacy policy`;
+    assert.equal(isDeletedVozThreadPayload(deletedUrl, jinaText), true);
+    const genericError = {
+        title: 'Oops! We ran into some problems.',
+        content: '<p>Forums</p><p>Terms and rules</p>'
+    };
+    assert.equal(isDeletedVozThreadPayload(deletedUrl, genericError), false);
+    assert.equal(isUnsafeVozThreadPayload(deletedUrl, genericError), true);
+    assert.equal(isDeletedVozThreadPayload(deletedUrl, {
+        title: 'Deleted Thread',
+        content: '',
+        isDeletedThread: true
+    }), true);
+    assert.equal(isDeletedVozThreadPayload(deletedUrl, {
+        title: 'A valid VOZ thread',
+        content: '<div class="voz-post">Real post body</div>'
+    }), false);
+});
+
+test('deletion/error markers do not affect non-VOZ articles', () => {
+    assert.equal(isDeletedVozThreadPayload('https://example.com/story', {
+        title: 'Oops! We ran into some problems.',
+        content: 'The requested thread could not be found.'
+    }), false);
+    assert.equal(isUnsafeVozThreadPayload('https://example.com/story', {
+        title: 'Oops! We ran into some problems.',
+        content: 'The requested thread could not be found.'
+    }), false);
+});
+
+test('server keeps the old cache until a validated replacement and short-circuits deletion before fallback', () => {
+    const server = readFileSync(new URL('../server.js', import.meta.url), 'utf8');
+    const cacheWriter = server.slice(
+        server.indexOf('async function cacheArticleResult'),
+        server.indexOf('async function deleteCachedArticle')
+    );
+    assert.ok(cacheWriter.indexOf('isUnsafeVozThreadPayload') < cacheWriter.indexOf('_writeJsonAtomic'));
+    assert.ok(cacheWriter.indexOf('existing?.sourceDeleted === true') < cacheWriter.indexOf('_writeJsonAtomic'));
+
+    const parser = server.slice(
+        server.indexOf('async function parseArticleHtmlContent'),
+        server.indexOf('\nexport {', server.indexOf('async function parseArticleHtmlContent'))
+    );
+    assert.ok(parser.indexOf('isDeletedArticlePayload(url, html)') < parser.indexOf('discoverArticleAudioUrls'));
+    assert.doesNotMatch(server, /if\s*\(bypassCache\)[\s\S]{0,160}deleteCachedArticle\(requestedUrl\)/);
+    assert.doesNotMatch(server, /user_settings\.json/);
+    assert.match(server, /if \(isExpired \|\| cached\.version !== ARTICLE_CACHE_VERSION\)/);
+});
+
+test('VOZ background polling carries feed policy instead of silently enabling Jina', () => {
+    const script = readFileSync(new URL('../script.js', import.meta.url), 'utf8');
+    assert.match(script, /checkVozNewPostsInBackground\(url, this\.overlayArticle\.feedUrl \|\| ''\)/);
+    assert.match(script, /new URLSearchParams\(\{ url, feedUrl, bypassCache: 'true' \}\)/);
+    assert.match(script, /this\.overlayArticle\.sourceDeleted = data\.sourceDeleted === true/);
+    assert.match(script, /this\.overlayFetchedFromCache && !this\.overlayArticle\.sourceDeleted/);
+});

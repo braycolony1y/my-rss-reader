@@ -1,0 +1,55 @@
+# /etc/systemd/system/rss-reader.service
+[Unit]
+Description=RSS Reader
+After=network-online.target
+Wants=network-online.target
+# Prevent infinite restart loops: max 5 restarts in 10 minutes
+StartLimitIntervalSec=600
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/my-rss-reader
+
+# Limit Node.js heap to 384MB so GC kicks in before the 512MB cgroup limit
+# --expose-gc allows explicit gc() calls after sync cycles
+ExecStartPre=/usr/bin/npm run build:css
+ExecStart=/usr/bin/node --max-old-space-size=2560 --expose-gc /home/ubuntu/my-rss-reader/server.js
+
+Restart=always
+RestartSec=5
+
+StandardOutput=journal
+StandardError=journal
+
+MemoryMax=3072M
+
+[Install]
+WantedBy=multi-user.target
+
+# /etc/systemd/system/rss-reader.service.d/ai-limits.conf
+[Service]
+# These match the guarded defaults in smart-news.js and remain easy to tune.
+Environment="SMART_LOCAL_AI_CHUNK_SIZE=32"
+Environment="SMART_LOCAL_AI_NUM_CTX=8192"
+Environment="SMART_LOCAL_AI_NUM_PREDICT=2048"
+Environment="SMART_LOCAL_AI_TIMEOUT_MS=480000"
+Environment="SMART_LOCAL_AI_KEEP_ALIVE=2m"
+Environment="SMART_LOCAL_AI_MAX_GROUPS_PER_CATEGORY=80"
+Environment="SMART_ENABLE_LOCAL_EMBEDDINGS=true"
+CPUWeight=500
+OOMScoreAdjust=-250
+TasksMax=128
+
+# /etc/systemd/system/rss-reader.service.d/gemini-debug.conf
+[Service]
+Environment=SMART_LOG_GEMINI_RESPONSES=true
+
+# /etc/systemd/system/rss-reader.service.d/override.conf
+[Service]
+Environment="SMART_EMBEDDING_JOB_TIMEOUT_MS=600000"
+Environment="SMART_EMBEDDING_BATCH_SIZE=8"
+
+MemoryHigh=4G
+MemoryMax=5G

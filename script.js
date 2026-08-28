@@ -6,12 +6,13 @@
                 password: '',
                 newFeedUrl: '',
                 newFeedCategory: '',
+                newFeedExcludeFromSmart: false,
                 selectedDropdownCategory: '',
                 searchQuery: '',
                 
                 feeds: [],
                 articles: [],
-                readStates: [],
+                readStates: new Set(),
                 savedStates: [],
                 boardStates: [],
                 hiddenStates: [], 
@@ -38,9 +39,11 @@
                 geminiStatusLoading: false,
                 geminiStatusError: '',
                 geminiKeyStatus: null,
+                clusteringModel: 'gemini-3.5-flash',
                 smartSourcesSettingsOpen: false,
                 smartSources: [],
                 smartSourceSearch: '',
+                smartSourceSort: 'score',
                 loadingSmartSources: false,
                 savingSmartSource: false,
                 removingSmartSourceUrl: '',
@@ -63,6 +66,8 @@
                 discoveringSmartSources: false,
                 savingDiscoveredSources: false,
                 smartClusterVersion: '',
+                smartExcludedCategories: [],
+                smartExcludedFeedCategories: [],
                 
                 selectedFilterType: 'smart',
                 selectedFilterValue: 'news_vietnam',
@@ -71,17 +76,97 @@
                 hideRead: localStorage.getItem('hideRead') === 'true',
                 
                 isMobile: window.innerWidth < 768,
+                isTouch: ('ontouchstart' in window) || navigator.maxTouchPoints > 0,
                 mobileSidebarOpen: false,
-                desktopSidebarOpen: true, 
+                sidebarExpanded: false,
+                desktopSidebarOpen: false, 
                 mobileActiveCard: null,
                 lastSavedScrollY: 0,
-                saveState: null,
+                saveState() {
+                    if (!this.isLoggedIn || !this.articles.length) return;
+
+                    const sc = document.getElementById('scroll-container');
+                    if (sc && sc.scrollTop > 0) this.lastSavedScrollY = sc.scrollTop;
+
+                    const compactArticle = (article, includeRelated = true) => {
+                        const compact = {};
+                        const fields = [
+                            'id', 'guid', 'articleKey', 'title', 'link', 'originalLink',
+                            'pubDate', 'createDate', 'publicationTimeReliable', 'description',
+                            'image', 'imageUrl', 'feedTitle', 'feedIcon', 'feedUrl',
+                            'feedCategory', 'smartCategory', 'siteName', 'sourceWeight',
+                            'region', 'language', 'domain', 'isCluster', 'clusterId',
+                            'clusterCount', 'sourceCount', 'sources', 'hotness',
+                            'aiClustered', 'replyCount', 'viewCount', 'vozSummary'
+                        ];
+                        for (const field of fields) {
+                            if (article?.[field] !== undefined) compact[field] = article[field];
+                        }
+                        compact.content = String(article?.content || '').slice(0, includeRelated ? 300 : 160);
+                        if (includeRelated && Array.isArray(article?.relatedArticles)) {
+                            compact.relatedArticles = article.relatedArticles
+                                .slice(0, 30)
+                                .map(related => compactArticle(related, false));
+                        }
+                        return compact;
+                    };
+
+                    const state = {
+                        feeds: this.feeds,
+                        articles: this.articles.map(article => compactArticle(article)),
+                        readStates: Array.from(this.readStates),
+                        savedStates: this.savedStates,
+                        boardStates: this.boardStates,
+                        hiddenStates: this.hiddenStates,
+                        userPreferences: this.userPreferences,
+                        categoryOrder: this.categoryOrder,
+                        unreadCounts: this.unreadCounts,
+                        smartClusterVersion: this.smartClusterVersion,
+                        selectedFilterType: this.selectedFilterType,
+                        selectedFilterValue: this.selectedFilterValue,
+                        currentPage: this.currentPage,
+                        hasMore: this.hasMore,
+                        expandedCategories: this.expandedCategories,
+                        scrollY: sc ? sc.scrollTop : (this.lastSavedScrollY || 0),
+                        savedAt: Date.now()
+                    };
+
+                    let json;
+                    try {
+                        json = JSON.stringify(state);
+                    } catch (e) {
+                        return;
+                    }
+
+                    const ultraCompactJson = () => JSON.stringify({
+                        ...state,
+                        articles: state.articles.slice(0, 20).map(article => ({
+                            ...article,
+                            content: '',
+                            relatedArticles: undefined
+                        }))
+                    });
+
+                    for (const storage of [sessionStorage, localStorage]) {
+                        try {
+                            storage.setItem('rssAppState', json);
+                        } catch (e) {
+                            try { storage.setItem('rssAppState', ultraCompactJson()); } catch (e2) { }
+                        }
+                    }
+                },
                 
+                debugModalOpen: false,
+                boardModalOpen: false,
+                boardModalArticle: null,
+                newBoardFolderName: '',
                 editModalOpen: false,
                 editingFeed: null,
                 editFeedTitle: '',
                 editFeedCategoryDropdown: '',
                 editFeedCategoryNew: '',
+                editFeedFetchMethods: [],
+                editFeedExcludeFromSmart: false,
                 isSavingEdit: false,
                 
                 draggedUrl: null,
@@ -103,10 +188,14 @@
                 articleOverlayOpen: false,
                 isLoadingOverlay: false,
                 overlayArticle: null,
+                articleOverlayStack: [],
                 overlayContent: null,
                 overlayPagination: null,
                 vozThreadNotice: null,
                 overlayError: null,
+                overlayRemainingAvailable: false,
+                
+                hoveredArticleUrl: null,
                 overlayProgress: { message: '' },
                 overlayProgressInterval: null,
                 overlayRequestId: '',
@@ -123,6 +212,20 @@
                 articleSpeechChunks: [],
                 articleSpeechIndex: 0,
                 articleSpeechGeneration: 0,
+                nativeAudioEl: null,
+                // AI Summary state
+                aiSummary: null,
+                aiSummaryLoading: false,
+                aiSummaryExpanded: false,
+                aiSummaryError: null,
+                aiAnalysisLoading: false,
+                aiSummaryPollTimer: null,
+                aiSummaryUpgradePollTimer: null,
+                vozSummaryProgress: null,
+                geminiDebugStats: null,
+                geminiDebugTimer: null,
+                smartAiStatusTimer: null,
+                vozSummaryController: null,
                 vozScrollRaf: 0,
                 lastVozMeasureAt: 0,
                 lastTrackedVozPost: '',
@@ -131,19 +234,116 @@
                 debugModalOpen: false,
                 isDebugging: false,
                 debugData: null,
+                debugModalArticle: null,
+
+                // CUSTOM TOOLTIP STATE
+                customTooltipOpen: false,
+                tooltipTitle: '',
+                tooltipContent: '',
+                tooltipX: 0,
+                tooltipY: 0,
+                tooltipTriggerElement: null,
+                tooltipShowTimer: null,
+                tooltipHideTimer: null,
+                tooltipDismissController: null,
+                clearTooltipTimers() {
+                    if (this.tooltipShowTimer) clearTimeout(this.tooltipShowTimer);
+                    if (this.tooltipHideTimer) clearTimeout(this.tooltipHideTimer);
+                    this.tooltipShowTimer = null;
+                    this.tooltipHideTimer = null;
+                },
+                positionTooltip(e) {
+                    let x = e.clientX + 15;
+                    let y = e.clientY + 15;
+                    const maxW = Math.min(350, window.innerWidth - 32);
+                    if (x + maxW > window.innerWidth) x = window.innerWidth - maxW - 16;
+                    if (x < 16) x = 16;
+
+                    this.tooltipX = x;
+                    this.tooltipY = y;
+                },
+                showTooltip(e, title, content) {
+                    const pointerType = String(e?.pointerType || '').toLowerCase();
+                    if (this.articleOverlayOpen || pointerType === 'touch' || (!pointerType && this.isTouch)) {
+                        this.hideTooltip();
+                        return;
+                    }
+                    this.clearTooltipTimers();
+                    this.tooltipTriggerElement = e.currentTarget || null;
+                    this.tooltipTitle = title;
+                    this.tooltipContent = content;
+                    this.positionTooltip(e);
+                    this.customTooltipOpen = true;
+                },
+                moveTooltip(e) {
+                    if (!this.customTooltipOpen || String(e?.pointerType || '').toLowerCase() === 'touch') return;
+                    if (this.tooltipTriggerElement && e.currentTarget !== this.tooltipTriggerElement) return;
+                    this.positionTooltip(e);
+                },
+                hideTooltip() {
+                    this.clearTooltipTimers();
+                    this.customTooltipOpen = false;
+                    this.tooltipTriggerElement = null;
+                },
+                installTooltipDismissListeners() {
+                    if (this.tooltipDismissController) this.tooltipDismissController.abort();
+                    if (typeof AbortController === 'undefined') return;
+
+                    const controller = new AbortController();
+                    const signal = controller.signal;
+                    const dismiss = () => this.hideTooltip();
+                    this.tooltipDismissController = controller;
+
+                    window.addEventListener('blur', dismiss, { signal });
+                    window.addEventListener('resize', dismiss, { passive: true, signal });
+                    window.addEventListener('scroll', dismiss, { capture: true, passive: true, signal });
+                    window.addEventListener('hashchange', dismiss, { signal });
+                    window.addEventListener('popstate', dismiss, { signal });
+                    document.addEventListener('visibilitychange', () => {
+                        if (document.hidden) dismiss();
+                    }, { signal });
+                    document.addEventListener('pointerdown', (event) => {
+                        if (!this.customTooltipOpen) return;
+                        const trigger = this.tooltipTriggerElement;
+                        if (!trigger || !trigger.contains(event.target)) dismiss();
+                    }, { capture: true, signal });
+                    document.addEventListener('focusin', (event) => {
+                        if (!this.customTooltipOpen) return;
+                        const trigger = this.tooltipTriggerElement;
+                        if (!trigger || !trigger.contains(event.target)) dismiss();
+                    }, { capture: true, signal });
+                },
+
+                toggleSidebar() {
+                    this.hideTooltip();
+                    if (this.isMobile) {
+                        this.mobileSidebarOpen = !this.mobileSidebarOpen;
+                    } else {
+                        this.sidebarExpanded = !this.sidebarExpanded;
+                    }
+                },
+
+                closeSidebar() {
+                    this.hideTooltip();
+                    this.mobileSidebarOpen = false;
+                    this.sidebarExpanded = false;
+                },
 
                 // PAGINATION & SIDEBAR STATE
                 currentPage: 1,
                 hasMore: true,
                 isLoadingMore: false,
                 isLoadingArticles: false,
+                loadingArticleStatus: '',
                 articleRequestGeneration: 0,
                 unreadCounts: { feeds: {}, categories: {}, total: 0 },
 
                 async initApp() {
+                    this.installTooltipDismissListeners();
                     if (document.cookie.includes('auth=true')) {
                         this.isLoggedIn = true;
                         this.fetchContentFilterSettings();
+                        this.fetchSmartSettings();
                         this.fetchSmartSources();
                         
                         // Try to restore state from sessionStorage or localStorage (handles iOS Safari & Chrome mobile tab eviction)
@@ -157,16 +357,27 @@
                                 if (state.articles && state.articles.length > 0) {
                                     this.feeds = state.feeds || [];
                                     this.articles = state.articles || [];
-                                    this.readStates = state.readStates || [];
+                                    this.readStates = new Set(state.readStates || []);
                                     this.savedStates = state.savedStates || [];
                                     this.boardStates = state.boardStates || [];
-                                    this.hiddenStates = state.hiddenStates || [];
+                                    this.hiddenStates = this.dedupeStateLinks(state.hiddenStates || []);
                                     this.userPreferences = state.userPreferences || {};
+                                    this.smartClusterVersion = state.smartClusterVersion || '';
+                                    if (this.userPreferences.clusteringModel) {
+                                        this.clusteringModel = this.userPreferences.clusteringModel;
+                                    }
                                     this.categoryOrder = state.categoryOrder || [];
                                     this.unreadCounts = state.unreadCounts || { feeds: {}, categories: {}, total: 0 };
-                                    cacheMatchesSmartDefault = state.selectedFilterType === 'smart' && state.selectedFilterValue === 'news_vietnam';
-                                    this.selectedFilterType = 'smart';
-                                    this.selectedFilterValue = 'news_vietnam';
+                                    const hashFilter = this.getFilterFromHash();
+                                    if (hashFilter) {
+                                        this.selectedFilterType = hashFilter.type;
+                                        this.selectedFilterValue = hashFilter.value;
+                                    } else {
+                                        this.selectedFilterType = state.selectedFilterType || 'smart';
+                                        this.selectedFilterValue = state.selectedFilterValue || 'news_vietnam';
+                                        window.history.replaceState(null, null, `#${this.selectedFilterType}${this.selectedFilterValue ? '/' + this.selectedFilterValue : ''}`);
+                                    }
+                                    cacheMatchesSmartDefault = this.selectedFilterType === state.selectedFilterType && this.selectedFilterValue === state.selectedFilterValue;
                                     this.currentPage = state.currentPage || 1;
                                     this.hasMore = state.hasMore !== undefined ? state.hasMore : true;
                                     this.expandedCategories = state.expandedCategories || this.categories.map(c => c.name);
@@ -202,6 +413,10 @@
                             }
                             if (restoredFromCache && !cacheMatchesSmartDefault) {
                                 await this.fetchData();
+                            } else if (restoredFromCache) {
+                                // Paint the cached cards first, then revalidate without
+                                // replacing them with a loading screen.
+                                setTimeout(() => this.fetchData(false, true, true), 50);
                             }
                         } else {
                             await this.fetchData();
@@ -217,57 +432,17 @@
                             this.prefetchArticlesList(this.articles.slice(0, 5), true);
                         }
                     }, 600);
+                    
+                    // Background poll for debug stats (quota warning)
+                    this.fetchGeminiDebugStats();
+                    setInterval(() => this.fetchGeminiDebugStats(), 30000);
 
-                    // Save state securely to both sessionStorage and localStorage with lightweight compacting so it never exceeds quota on mobile
-                    this.saveState = () => {
-                        if (!this.isLoggedIn || this.articles.length === 0) return;
-                        const sc = document.getElementById('scroll-container');
-                        if (sc && sc.scrollTop > 0) this.lastSavedScrollY = sc.scrollTop;
-                        // Always truncate article content to 300 chars in storage (~25 KB total for 40 articles) to prevent QuotaExceededError in mobile/localStorage
-                        const compactArticles = this.articles.map(a => ({
-                            ...a,
-                            content: a.content ? String(a.content).substring(0, 300) : ''
-                        }));
-                        const state = {
-                            feeds: this.feeds,
-                            articles: compactArticles,
-                            readStates: this.readStates,
-                            savedStates: this.savedStates,
-                            boardStates: this.boardStates,
-                            hiddenStates: this.hiddenStates,
-                            userPreferences: this.userPreferences,
-                            categoryOrder: this.categoryOrder,
-                            unreadCounts: this.unreadCounts,
-                            selectedFilterType: this.selectedFilterType,
-                            selectedFilterValue: this.selectedFilterValue,
-                            currentPage: this.currentPage,
-                            hasMore: this.hasMore,
-                            expandedCategories: this.expandedCategories,
-                            scrollY: sc ? sc.scrollTop : (this.lastSavedScrollY || 0),
-                            savedAt: Date.now()
-                        };
-                        try {
-                            const json = JSON.stringify(state);
-                            try { sessionStorage.setItem('rssAppState', json); } catch(e) {}
-                            try { localStorage.setItem('rssAppState', json); } catch(e) {}
-                        } catch(e) {
-                            const ultraCompact = this.articles.slice(0, 20).map(a => ({
-                                link: a.link, title: a.title, content: '', image: a.image, pubDate: a.pubDate,
-                                feedTitle: a.feedTitle, feedIcon: a.feedIcon, feedCategory: a.feedCategory, replyCount: a.replyCount, viewCount: a.viewCount
-                            }));
-                            const compactState = { ...state, articles: ultraCompact };
-                            try {
-                                const jsonCompact = JSON.stringify(compactState);
-                                try { sessionStorage.setItem('rssAppState', jsonCompact); } catch(e2) {}
-                                try { localStorage.setItem('rssAppState', jsonCompact); } catch(e2) {}
-                            } catch(e3) {}
-                        }
-                    };
                     document.addEventListener('visibilitychange', () => { 
                         if (document.hidden) {
                             if (typeof this.saveState === 'function') this.saveState();
                         } else {
                             this.fetchSyncStatus();
+                            this.syncUserStatesInBackground();
                             const sc = document.getElementById('scroll-container');
                             if (sc && sc.scrollTop === 0 && this.lastSavedScrollY > 0) {
                                 sc.scrollTop = this.lastSavedScrollY;
@@ -286,6 +461,38 @@
                         }
                     });
                     this.fetchSyncStatus();
+
+                    const initialRoute = this.getFilterFromHash();
+                    if (this.isLoggedIn && initialRoute?.articleUrl && !this.articleOverlayOpen) {
+                        await this.openArticleFromRoute(initialRoute.articleUrl);
+                    }
+
+                    // Ping backend for Forum active tab status to accelerate sync
+                    setInterval(() => {
+                        if (document.hidden) return;
+                        
+                        let isForum = false;
+                        if (this.overlayArticle && this.overlayArticle.feedCategory && this.overlayArticle.feedCategory.toLowerCase().includes('forum')) {
+                            isForum = true;
+                        } else if (this.selectedFilterType === 'feed' && this.selectedFilterValue) {
+                            const feed = this.feeds.find(f => f.url === this.selectedFilterValue);
+                            if (feed && feed.category && feed.category.toLowerCase().includes('forum')) {
+                                isForum = true;
+                            }
+                        } else if (this.selectedFilterType === 'category' && this.selectedFilterValue) {
+                            if (this.selectedFilterValue.toLowerCase().includes('forum')) {
+                                isForum = true;
+                            }
+                        }
+
+                        if (isForum) {
+                            fetch('/api/ping-active', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ isForum: true })
+                            }).catch(() => {});
+                        }
+                    }, 30000);
                 },
 
                 async login() {
@@ -427,6 +634,78 @@
                     this.geminiStatusOpen = true;
                     this.mobileSidebarOpen = false;
                     this.fetchGeminiKeyStatus();
+                    this.fetchSmartAiProgress();
+                    if (!this.smartAiStatusTimer) {
+                        this.smartAiStatusTimer = setInterval(() => this.fetchSmartAiProgress(), 2000);
+                    }
+                    if (!this.geminiDebugTimer) {
+                        this.fetchGeminiDebugStats();
+                        this.geminiDebugTimer = setInterval(() => this.fetchGeminiDebugStats(), 5000);
+                    }
+                },
+
+                closeGeminiStatus() {
+                    this.geminiStatusOpen = false;
+                    if (this.geminiDebugTimer) {
+                        clearInterval(this.geminiDebugTimer);
+                        this.geminiDebugTimer = null;
+                    }
+                    if (this.smartAiStatusTimer) {
+                        clearInterval(this.smartAiStatusTimer);
+                        this.smartAiStatusTimer = null;
+                    }
+                },
+
+                async saveClusteringModel() {
+                    try {
+                        await fetch('/api/user-preferences', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ key: 'clusteringModel', value: this.clusteringModel })
+                        });
+                    } catch (e) {
+                        console.error('Failed to save clustering model', e);
+                    }
+                },
+
+                async fetchSmartAiProgress() {
+                    try {
+                        const response = await fetch('/api/smart-status');
+                        if (!response.ok) return;
+                        const status = await response.json();
+                        const previous = this.geminiKeyStatus || {};
+                        const previousRun = previous.lastSmartRun || {};
+                        this.geminiKeyStatus = {
+                            ...previous,
+                            lastSmartRun: {
+                                ...previousRun,
+                                state: status.state || previousRun.state || '',
+                                startedAt: status.startedAt || previousRun.startedAt || '',
+                                completedAt: status.completedAt || previousRun.completedAt || '',
+                                localConfigured: Boolean(status.localConfigured),
+                                localUsed: Boolean(status.localUsed),
+                                localModel: status.localModel || previousRun.localModel || 'qwen3.5:4b',
+                                geminiUsed: Boolean(status.geminiUsed),
+                                qwenUsed: Boolean(status.qwenUsed),
+                                qwenModel: status.qwenModel || previousRun.qwenModel || 'qwen3.7-plus',
+                                providers: Array.isArray(status.aiProviders) ? status.aiProviders : (previousRun.providers || []),
+                                providerOrder: Array.isArray(status.providerOrder) ? status.providerOrder : ['local', 'gemini', 'qwen'],
+                                reviewedArticleCount: Number(status.geminiReviewedArticleCount) || previousRun.reviewedArticleCount || 0,
+                                eligibleArticleCount: Number(status.geminiEligibleArticleCount) || previousRun.eligibleArticleCount || 0,
+                                reason: status.geminiReason || previousRun.reason || '',
+                                progress: status.progress || previousRun.progress || null
+                            }
+                        };
+                    } catch (error) { }
+                },
+
+                async fetchGeminiDebugStats() {
+                    try {
+                        const res = await fetch('/api/summary/debug');
+                        if (res.ok) {
+                            this.geminiDebugStats = await res.json();
+                        }
+                    } catch (e) {}
                 },
 
                 async fetchGeminiKeyStatus() {
@@ -459,6 +738,7 @@
                     this.smartSourcesSettingsOpen = true;
                     this.mobileSidebarOpen = false;
                     this.smartSourceSearch = '';
+                    this.smartSourceSort = 'score';
                     this.smartSourceError = '';
                     this.smartSourceView = 'enabled';
                     this.smartSourcePanel = 'sources';
@@ -473,7 +753,14 @@
                         .filter(source => this.smartSourceKindFor(source) === this.smartSourceKind)
                         .filter(source => this.smartSourceView === 'disabled' ? source.enabled === false : source.enabled !== false)
                         .filter(source => !query || [source.title, source.url, this.smartSourceCategoryLabel(source)].join(' ').toLocaleLowerCase().includes(query))
-                        .sort((a, b) => String(a.category).localeCompare(String(b.category)) || String(a.region).localeCompare(String(b.region)) || String(a.title).localeCompare(String(b.title)));
+                        .sort((a, b) => {
+                            if (this.smartSourceSort === 'score') {
+                                const weightA = typeof a.weight === 'number' ? a.weight : 0;
+                                const weightB = typeof b.weight === 'number' ? b.weight : 0;
+                                if (weightA !== weightB) return weightB - weightA;
+                            }
+                            return String(a.category).localeCompare(String(b.category)) || String(a.region).localeCompare(String(b.region)) || String(a.title).localeCompare(String(b.title));
+                        });
                 },
 
                 smartSourceHost(url) {
@@ -583,6 +870,40 @@
                         : [...this.smartDiscoverySelected, url];
                 },
 
+                async fetchSmartSettings() {
+                    try {
+                        const response = await fetch('/api/smart-settings');
+                        const data = await response.json();
+                        this.smartExcludedCategories = data.excludedCategories || [];
+                        this.smartExcludedFeedCategories = data.excludedFeedCategories || [];
+                    } catch (e) { }
+                },
+
+                async toggleSmartCategoryExclusion(kind) {
+                    if (this.smartExcludedCategories.includes(kind)) {
+                        this.smartExcludedCategories = this.smartExcludedCategories.filter(k => k !== kind);
+                    } else {
+                        this.smartExcludedCategories.push(kind);
+                    }
+                    try {
+                        await fetch('/api/smart-settings', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ excludedCategories: this.smartExcludedCategories, excludedFeedCategories: this.smartExcludedFeedCategories })
+                        });
+                    } catch (e) { }
+                },
+
+                async updateSmartExcludedFeedCategories() {
+                    try {
+                        await fetch('/api/smart-settings', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ excludedCategories: this.smartExcludedCategories, excludedFeedCategories: this.smartExcludedFeedCategories })
+                        });
+                    } catch (e) { }
+                },
+
                 async discoverSmartSources() {
                     if (this.discoveringSmartSources) return;
                     this.discoveringSmartSources = true;
@@ -650,14 +971,35 @@
                     }
                 },
 
-                async fetchData(isLoadMore = false, skipPageReset = false) {
+                async fetchData(isLoadMore = false, skipPageReset = false, keepVisible = false) {
                     const requestGeneration = ++this.articleRequestGeneration;
                     if (!isLoadMore && !skipPageReset) {
                         this.currentPage = 1;
                     }
                     if (!isLoadMore) {
                         this.isLoadingArticles = true;
-                        this.articles = [];
+                        this.loadingArticleStatus = 'Connecting to server...';
+                        if (!keepVisible) this.articles = [];
+                        
+                        if (this._connectTimer) clearInterval(this._connectTimer);
+                        let connectWaitTime = 0;
+                        this._connectTimer = setInterval(() => {
+                            connectWaitTime += 500;
+                            // Only update if we are still in the pre-download phase
+                            if (!this.loadingArticleStatus || this.loadingArticleStatus.startsWith('Downloading') || this.loadingArticleStatus.startsWith('Processing')) {
+                                clearInterval(this._connectTimer);
+                                return;
+                            }
+                            if (connectWaitTime === 1000) {
+                                this.loadingArticleStatus = 'Reading database into memory...';
+                            } else if (connectWaitTime === 2000) {
+                                this.loadingArticleStatus = 'Filtering and sorting articles...';
+                            } else if (connectWaitTime === 3500) {
+                                this.loadingArticleStatus = 'Almost there, preparing response...';
+                            } else if (connectWaitTime > 5000 && connectWaitTime % 1000 === 0) {
+                                this.loadingArticleStatus = `Still processing... (${connectWaitTime/1000}s)`;
+                            }
+                        }, 500);
                     }
 
                     const pageLimit = this.isMobile ? 15 : 40;
@@ -676,33 +1018,108 @@
                     params.append('_t', Date.now().toString());
 
                     try {
-                        const res = await fetch(`/api/data?${params.toString()}`);
+                        const earlyRequest = window.__rssInitialDataRequest;
+                        const canUseEarlyRequest = !isLoadMore && !keepVisible && this.currentPage === 1 &&
+                            earlyRequest &&
+                            earlyRequest.limit === String(pageLimit) &&
+                            earlyRequest.filterType === this.selectedFilterType &&
+                            earlyRequest.filterValue === (this.selectedFilterValue || '') &&
+                            earlyRequest.hideRead === String(this.hideRead) &&
+                            !this.searchQuery;
+                        let res = null;
+                        if (canUseEarlyRequest) {
+                            window.__rssInitialDataRequest = null;
+                            res = await earlyRequest.promise;
+                        }
+                        if (!res) res = await fetch(`/api/data?${params.toString()}`);
                         if (res.ok) {
-                            const data = await res.json();
+                            if (!isLoadMore) this.loadingArticleStatus = 'Downloading data...';
+                            
+                            let data;
+                            if (res.body && window.ReadableStream) {
+                                const contentLength = res.headers.get('content-length');
+                                const total = contentLength ? parseInt(contentLength, 10) : 0;
+                                let loaded = 0;
+                                const reader = res.body.getReader();
+                                const chunks = [];
+                                while(true) {
+                                    const {done, value} = await reader.read();
+                                    if (done) break;
+                                    chunks.push(value);
+                                    loaded += value.length;
+                                    if (!isLoadMore) {
+                                        if (total) {
+                                            this.loadingArticleStatus = `Downloading data... ${Math.round(loaded/total*100)}%`;
+                                        } else {
+                                            this.loadingArticleStatus = `Downloading data... ${(loaded/1024).toFixed(1)} KB`;
+                                        }
+                                    }
+                                }
+                                if (!isLoadMore) this.loadingArticleStatus = 'Processing...';
+                                let position = 0;
+                                let result = new Uint8Array(loaded);
+                                for(let chunk of chunks) {
+                                    result.set(chunk, position);
+                                    position += chunk.length;
+                                }
+                                const text = new TextDecoder("utf-8").decode(result);
+                                data = JSON.parse(text);
+                            } else {
+                                data = await res.json();
+                                if (!isLoadMore) this.loadingArticleStatus = 'Processing...';
+                            }
+                            
                             if (requestGeneration !== this.articleRequestGeneration) return;
                             
                             if (isLoadMore) {
+                                const existingLinks = new Set(this.articles.map(a => a.link));
                                 let newUniqueArticles = (data.articles || []).filter(a => !existingLinks.has(a.link));
-                                if (this.hideRead) {
-                                    newUniqueArticles = newUniqueArticles.filter(a => !this.readStates.includes(a.link));
+                                if (this.hideRead && !['recent', 'saved', 'board'].includes(this.selectedFilterType)) {
+                                    newUniqueArticles = newUniqueArticles.filter(a => !this.readStates.has(a.link));
                                 }
                                 this.articles = [...this.articles, ...newUniqueArticles];
                             } else {
                                 this.feeds = data.feeds || [];
-                                this.readStates = [...new Set([...(data.readStates || []), ...this.readStates])];
+                                this.readStates = new Set([...(data.readStates || []), ...this.readStates]);
                                 this.savedStates = [...new Set([...(data.savedStates || []), ...this.savedStates])];
                                 this.boardStates = [...new Set([...(data.boardStates || []), ...this.boardStates])];
-                                this.hiddenStates = [...new Set([...(data.hiddenStates || []), ...this.hiddenStates])];
+                                // The server is authoritative. Merging with an old browser snapshot
+                                // kept removed entries forever and made the sidebar count drift.
+                                this.hiddenStates = this.dedupeStateLinks(data.hiddenStates || []);
                                 
                                 let newArticles = data.articles || [];
-                                if (this.hideRead) {
-                                    newArticles = newArticles.filter(a => !this.readStates.includes(a.link));
+                                if (this.hideRead && !['recent', 'saved', 'board'].includes(this.selectedFilterType)) {
+                                    newArticles = newArticles.filter(a => !this.readStates.has(a.link));
                                 }
-                                this.articles = newArticles;
+                                if (keepVisible && this.articles.length > 0) {
+                                    // A cache revalidation must not reorder, remove, or insert cards
+                                    // while the user is reading. Merge fresh fields into the exact
+                                    // visible list and leave membership/order for an explicit refresh.
+                                    const refreshedByIdentity = new Map();
+                                    for (const refreshed of newArticles) {
+                                        for (const key of [refreshed.id, refreshed.guid, refreshed.originalLink, refreshed.link]) {
+                                            if (key) refreshedByIdentity.set(String(key), refreshed);
+                                        }
+                                    }
+                                    this.articles = this.articles.map(existing => {
+                                        const refreshed = [existing.id, existing.guid, existing.originalLink, existing.link]
+                                            .map(key => key ? refreshedByIdentity.get(String(key)) : null)
+                                            .find(Boolean);
+                                        return refreshed ? { ...existing, ...refreshed } : existing;
+                                    });
+                                } else {
+                                    this.hideTooltip();
+                                    this.articles = newArticles;
+                                }
                                 
                                 this.userPreferences = data.userPreferences || {};
+                                if (this.userPreferences.clusteringModel) {
+                                    this.clusteringModel = this.userPreferences.clusteringModel;
+                                }
+                                this.userPreferences.boardFolders = this.userPreferences.boardFolders || [];
+                                this.userPreferences.boardFolderMappings = this.userPreferences.boardFolderMappings || {};
                                 this.categoryOrder = data.categoryOrder || [];
-                                this.unreadCounts = data.unreadCounts || { feeds: {}, categories: {}, total: 0 };
+                                if (data.unreadCounts) this.unreadCounts = data.unreadCounts;
                                 if (data.smartClusterVersion) {
                                     this.smartClusterVersion = data.smartClusterVersion;
                                 }
@@ -710,7 +1127,7 @@
                             this.hasMore = data.hasMore !== undefined ? data.hasMore : false;
                             if (typeof this.saveState === 'function') this.saveState();
                             if (!isLoadMore && this.articles && this.articles.length > 0) {
-                                setTimeout(() => this.prefetchArticlesList(this.articles.slice(0, 5), false), 250);
+                                setTimeout(() => this.prefetchArticlesList(this.articles.slice(0, 10), false), 250);
                             }
                         }
                     } catch (e) {
@@ -764,6 +1181,30 @@
                     const suffix = index === '' ? '' : ':' + String(index);
                     if (identity) return 'article:' + String(identity) + suffix;
                     return 'article:' + String(article.pubDate || '') + ':' + String(article.title || '') + suffix;
+                },
+
+                normalizeStateLink(link) {
+                    let value = String(link || '');
+                    if (value.includes('voz.vn/t/')) {
+                        value = value
+                            .replace(/[?#].*$/, '')
+                            .replace(/\/(?:unread|latest|page-\d+|post-\d+)\/?$/i, '')
+                            .replace(/\/+$/, '');
+                    }
+                    return value.replace(/\/+$/, '');
+                },
+
+                dedupeStateLinks(links) {
+                    const unique = new Map();
+                    for (const link of Array.isArray(links) ? links : []) {
+                        const normalized = this.normalizeStateLink(link);
+                        if (normalized) unique.set(normalized, normalized);
+                    }
+                    return [...unique.values()];
+                },
+
+                hiddenArticleCount() {
+                    return this.dedupeStateLinks(this.hiddenStates).length;
                 },
 
                 get categories() {
@@ -834,12 +1275,14 @@
                 },
 
                 setFilter(type, value, preserveVersion = false) {
+                    this.hideTooltip();
                     if (type !== 'smart' || !preserveVersion || this.selectedFilterType !== 'smart') {
                         this.smartClusterVersion = '';
                     }
                     this._preserveSmartVersionCall = preserveVersion && this.selectedFilterType === 'smart';
                     this.selectedFilterType = type;
                     this.selectedFilterValue = value;
+                    window.location.hash = `${type}${value ? '/' + value : ''}`;
                     this.currentPage = 1;
                     this.hasMore = false;
                     this.articles = [];
@@ -860,6 +1303,62 @@
                         }
                     } else {
                         this.openArticleOverlay(article);
+                    }
+                },
+
+                handleCardHover(article) {
+                    if (this.isMobile) return;
+                    const url = article.originalLink || article.link;
+                    if (!url) return;
+                    
+                    this.hoveredArticleUrl = url;
+                    
+                    
+                    // If already in client-side cache, skip
+                    if (this.articleContentCache && this.articleContentCache.has(url)) return;
+                    
+                    if (!this.hoverPrefetchTimeouts) this.hoverPrefetchTimeouts = {};
+                    if (this.hoverPrefetchTimeouts[url]) clearTimeout(this.hoverPrefetchTimeouts[url]);
+                    
+                    this.hoverPrefetchTimeouts[url] = setTimeout(() => {
+                        if (this.hoveredArticleUrl !== url) return;
+                        if ((this.activeHoverPrefetches || 0) >= 2) return; // Cap at 2 concurrent
+                        
+                        this.activeHoverPrefetches = (this.activeHoverPrefetches || 0) + 1;
+                        if (!this.articleContentCache) this.articleContentCache = new Map();
+                        
+                        fetch('/api/article-content?' + new URLSearchParams({
+                            url,
+                            title: article.title || '',
+                            feedTitle: article.feedTitle || '',
+                            feedUrl: article.feedUrl || '',
+                            feedIcon: article.feedIcon || '',
+                            prefetch: '1',
+                            _t: Date.now().toString()
+                        }).toString()).then(res => res.ok ? res.json() : null).then(data => {
+                            if (data && !data.error && data.content) {
+                                if (!this.articleContentCache) this.articleContentCache = new Map();
+                                this.articleContentCache.set(url, data);
+                                if (this.articleContentCache.size > 80) {
+                                    const firstKey = this.articleContentCache.keys().next().value;
+                                    this.articleContentCache.delete(firstKey);
+                                }
+                            }
+                        }).catch(() => {}).finally(() => {
+                            this.activeHoverPrefetches = (this.activeHoverPrefetches || 1) - 1;
+                        });
+                    }, 400);
+                },
+
+                handleCardHoverOut(article) {
+                    const url = article.originalLink || article.link;
+                    if (this.hoveredArticleUrl === url) {
+                        this.hoveredArticleUrl = null;
+                    }
+
+                    if (this.hoverPrefetchTimeouts && this.hoverPrefetchTimeouts[url]) {
+                        clearTimeout(this.hoverPrefetchTimeouts[url]);
+                        delete this.hoverPrefetchTimeouts[url];
                     }
                 },
 
@@ -907,21 +1406,46 @@
                     this.dragTargetCategory = null;
                 },
 
-                async toggleState(listName, link) {
-                    let isAdding = !this[listName].includes(link);
+                toggleState(list, link) {
+                    if (!link) return;
+                    const array = this[list];
+                    const index = array.indexOf(link);
+                    const isAdding = index === -1;
                     if (isAdding) {
-                        this[listName].push(link);
-                        if (listName === 'savedStates' || listName === 'boardStates') {
-                            // Auto-cache article content in background when saved
-                            fetch(`/api/article-content?url=${encodeURIComponent(link)}`).catch(() => {});
+                        array.push(link);
+                        if (list === 'savedStates' || list === 'boardStates') {
+                            const sourceArticle = [this.overlayArticle, ...(this.articles || []), ...(this.displayedArticles || [])]
+                                .filter(Boolean)
+                                .find(article => [article.link, article.originalLink, article.resolvedLink].includes(link));
+                            const params = new URLSearchParams({
+                                url: link,
+                                feedUrl: sourceArticle?.feedUrl || ''
+                            });
+                            fetch('/api/article-content?' + params.toString()).catch(() => {});
                         }
+                        fetch('/api/toggle', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ link, list, forceAdd: true })
+                        });
                     } else {
-                        this[listName] = this[listName].filter(l => l !== link);
+                        array.splice(index, 1);
+                        fetch('/api/toggle', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ link, list, forceRemove: true })
+                        });
+                        
+                        // Clean up folder mapping if removing from board
+                        if (list === 'boardStates' && this.userPreferences.boardFolderMappings?.[link]) {
+                            delete this.userPreferences.boardFolderMappings[link];
+                            this.syncUserPreferenceDebounced('boardFolderMappings', this.userPreferences.boardFolderMappings);
+                        }
                     }
                     
-                    if (listName === 'hiddenStates') {
+                    if (list === 'hiddenStates') {
                          const article = this.articles.find(a => a.link === link);
-                         if (article && !this.readStates.includes(link)) {
+                         if (article && !this.readStates.has(link)) {
                              if (isAdding) {
                                  if (this.unreadCounts.total > 0) this.unreadCounts.total--;
                                  if (this.unreadCounts.feeds[article.feedUrl] > 0) this.unreadCounts.feeds[article.feedUrl]--;
@@ -935,19 +1459,56 @@
                              }
                          }
                     }
-
+                    
                     if (typeof this.saveState === 'function') this.saveState();
-                    await fetch('/api/toggle', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ link: link, list: listName })
-                    });
+                },
+
+                openBoardModal(article) {
+                    this.boardModalArticle = article;
+                    this.newBoardFolderName = '';
+                    this.boardModalOpen = true;
+                },
+
+                assignBoardFolder(folderName) {
+                    if (!this.boardModalArticle) return;
+                    const link = this.boardModalArticle.originalLink || this.boardModalArticle.link;
+                    
+                    // Add to boardStates if not already there
+                    if (!this.boardStates.includes(link)) {
+                        this.toggleState('boardStates', link);
+                    }
+                    
+                    // Set folder mapping
+                    this.userPreferences.boardFolderMappings[link] = folderName;
+                    this.syncUserPreferenceDebounced('boardFolderMappings', this.userPreferences.boardFolderMappings);
+                    
+                    this.boardModalOpen = false;
+                },
+
+                createNewBoardFolder() {
+                    const name = this.newBoardFolderName.trim();
+                    if (!name) return;
+                    
+                    if (!this.userPreferences.boardFolders.includes(name)) {
+                        this.userPreferences.boardFolders.push(name);
+                        this.syncUserPreferenceDebounced('boardFolders', this.userPreferences.boardFolders);
+                    }
+                    this.assignBoardFolder(name);
+                },
+
+                removeArticleFromBoard() {
+                    if (!this.boardModalArticle) return;
+                    const link = this.boardModalArticle.originalLink || this.boardModalArticle.link;
+                    if (this.boardStates.includes(link)) {
+                        this.toggleState('boardStates', link);
+                    }
+                    this.boardModalOpen = false;
                 },
 
                 async markAsReadExplicit(link) {
                     this.prefetchNextAfter(link);
-                    if (!this.readStates.includes(link)) {
-                        this.readStates.push(link);
+                    if (!this.readStates.has(link)) {
+                        this.readStates = new Set([...this.readStates, link]);
                         
                         const article = this.articles.find(a => a.link === link);
                         if (article && !this.hiddenStates.includes(link)) {
@@ -968,14 +1529,14 @@
                 },
 
                 async markAllAsRead() {
-                    const unreadInView = this.articles.filter(a => !this.readStates.includes(a.link) && !this.hiddenStates.includes(a.link));
+                    const unreadInView = this.articles.filter(a => !this.readStates.has(a.link) && !this.hiddenStates.includes(a.link));
                     let linksToMark = unreadInView.map(a => a.link);
                     
                     // Also mark all related articles as read
                     unreadInView.forEach(a => {
                         if (a.relatedArticles && Array.isArray(a.relatedArticles)) {
                             a.relatedArticles.forEach(r => {
-                                if (!this.readStates.includes(r.link)) {
+                                if (!this.readStates.has(r.link)) {
                                     linksToMark.push(r.link);
                                 }
                             });
@@ -995,7 +1556,7 @@
                         this.markAllUndoTimer = null;
                     }, 15000);
 
-                    this.readStates = [...this.readStates, ...linksToMark];
+                    this.readStates = new Set([...this.readStates, ...linksToMark]);
                     
                     unreadInView.forEach(article => {
                         if (this.unreadCounts.total > 0) this.unreadCounts.total--;
@@ -1006,13 +1567,11 @@
 
                     if (typeof this.saveState === 'function') this.saveState();
 
-                    await Promise.allSettled(linksToMark.map(link =>
-                        fetch('/api/toggle', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ link: link, list: 'readStates', forceAdd: true })
-                        })
-                    ));
+                    await fetch('/api/toggle-batch', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ links: linksToMark, list: 'readStates', forceAdd: true })
+                    });
                 },
 
                 async undoMarkAllRead() {
@@ -1022,16 +1581,14 @@
                     this.markAllUndo = null;
                     this.markAllUndoTimer = null;
                     const links = new Set(undo.links);
-                    this.readStates = this.readStates.filter(link => !links.has(link));
+                    this.readStates = new Set([...this.readStates].filter(link => !links.has(link)));
                     this.unreadCounts = JSON.parse(JSON.stringify(undo.unreadCounts));
                     if (typeof this.saveState === 'function') this.saveState();
-                    await Promise.allSettled(undo.links.map(link =>
-                        fetch('/api/toggle', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ link, list: 'readStates', forceRemove: true })
-                        })
-                    ));
+                    await fetch('/api/toggle-batch', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ links: undo.links, list: 'readStates', forceRemove: true })
+                    });
                 },
                 
                 openEditModal(feed) {
@@ -1039,6 +1596,8 @@
                     this.editFeedTitle = feed.title;
                     this.editFeedCategoryDropdown = feed.category;
                     this.editFeedCategoryNew = '';
+                    this.editFeedFetchMethods = feed.fetchMethods || [];
+                    this.editFeedExcludeFromSmart = feed.excludeFromSmart || false;
                     this.editModalOpen = true;
                 },
                 
@@ -1050,9 +1609,19 @@
                         const response = await fetch('/api/feeds', {
                             method: 'PUT',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ url: this.editingFeed.url, title: this.editFeedTitle, category: newCat })
+                            body: JSON.stringify({ 
+                                url: this.editingFeed.url, 
+                                title: this.editFeedTitle, 
+                                category: newCat,
+                                fetchMethods: this.editFeedFetchMethods,
+                                excludeFromSmart: this.editFeedExcludeFromSmart
+                            })
                         });
                         if(response.ok) {
+                            // A changed source policy must take effect on the
+                            // very next open, not after an old browser-memory
+                            // article result has been reused.
+                            if (this.articleContentCache) this.articleContentCache.clear();
                             this.fetchData();
                             this.editModalOpen = false;
                         }
@@ -1083,7 +1652,7 @@
                         const response = await fetch('/api/feeds', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ url: urlToSubmit, category: catToSubmit })
+                            body: JSON.stringify({ url: urlToSubmit, category: catToSubmit, excludeFromSmart: this.newFeedExcludeFromSmart })
                         });
                         if (!response.ok) {
                             const errText = await response.text();
@@ -1093,6 +1662,7 @@
                         this.newFeedUrl = '';
                         this.newFeedCategory = '';
                         this.selectedDropdownCategory = '';
+                        this.newFeedExcludeFromSmart = false;
                         await this.syncNow();
                     } catch (e) {
                         console.error(e);
@@ -1116,6 +1686,27 @@
                     }
                 },
 
+                async syncUserStatesInBackground() {
+                    if (!this.isLoggedIn) return;
+                    try {
+                        const res = await fetch('/api/user-states');
+                        if (res.ok) {
+                            const data = await res.json();
+                            if (data.readStates) this.readStates = new Set([...data.readStates, ...this.readStates]);
+                            if (data.savedStates) this.savedStates = [...new Set([...data.savedStates, ...this.savedStates])];
+                            if (data.boardStates) this.boardStates = [...new Set([...data.boardStates, ...this.boardStates])];
+                            if (data.hiddenStates) this.hiddenStates = this.dedupeStateLinks(data.hiddenStates);
+                            if (data.clusteringModel) this.clusteringModel = data.clusteringModel;
+                            
+                            // State sync updates badges and actions only. Removing cards here made
+                            // the feed jump after returning from the reader or another browser tab.
+                            // Membership is refreshed only by an explicit feed request.
+                        }
+                    } catch (e) {
+                        console.error('Failed to background sync user states:', e);
+                    }
+                },
+
                 async syncNow() {
                     let isRefreshingAll = true;
                     if (this.selectedFilterType === 'feed' && this.selectedFilterValue) {
@@ -1130,6 +1721,7 @@
                     this.isSyncing = true;
                     if (this.syncProgressInterval) clearInterval(this.syncProgressInterval);
                     this.syncProgress = { visible: true, message: 'Preparing refresh…', done: false, failed: false, current: 0, total: 0, requestId };
+                    this.preliminaryLoaded = false;
                     const updateProgress = async () => {
                         try {
                             const response = await fetch('/api/sync-progress?id=' + encodeURIComponent(requestId));
@@ -1137,6 +1729,13 @@
                             const progress = await response.json();
                             if (this.syncProgress.requestId !== requestId) return;
                             this.syncProgress = { ...this.syncProgress, ...progress, visible: true, requestId };
+                            
+                            if (progress.stage === 'smart-minilm-ready' && !this.preliminaryLoaded) {
+                                this.preliminaryLoaded = true;
+                                if (this.selectedFilterType === 'smart') {
+                                    this.loadSmartClusters(true);
+                                }
+                            }
                         } catch (e) { }
                     };
                     this.syncProgressInterval = setInterval(updateProgress, 450);
@@ -1174,9 +1773,10 @@
                 stripHtml(html) {
                     if (!html) return '';
                     let text = html.replace(/<[^>]*>?/gm, '');
+                    if (!this._decodeTextArea) this._decodeTextArea = document.createElement('textarea');
                     for (let pass = 0; pass < 3; pass++) {
-                        const doc = new DOMParser().parseFromString(text, 'text/html');
-                        const decoded = doc.body.textContent || '';
+                        this._decodeTextArea.innerHTML = text;
+                        const decoded = this._decodeTextArea.value;
                         if (decoded === text) break;
                         text = decoded;
                     }
@@ -1192,6 +1792,84 @@
                         jina: 'Jina Reader',
                         opencli: 'OpenCLI browser reader'
                     })[strategy] || strategy;
+                },
+
+                loadTwitterWidgets() {
+                    if (window.twttr?.widgets?.createTweet) return Promise.resolve(window.twttr);
+                    if (window.__rssTwitterWidgetsPromise) return window.__rssTwitterWidgetsPromise;
+
+                    window.__rssTwitterWidgetsPromise = new Promise((resolve, reject) => {
+                        let script = document.getElementById('twitter-widgets-script');
+                        let settled = false;
+                        const finish = () => {
+                            if (settled) return;
+                            if (window.twttr?.widgets?.createTweet) {
+                                settled = true;
+                                resolve(window.twttr);
+                            }
+                        };
+                        const fail = () => {
+                            if (settled) return;
+                            settled = true;
+                            window.__rssTwitterWidgetsPromise = null;
+                            reject(new Error('X embed renderer unavailable'));
+                        };
+
+                        if (!script) {
+                            script = document.createElement('script');
+                            script.id = 'twitter-widgets-script';
+                            script.src = 'https://platform.twitter.com/widgets.js';
+                            script.async = true;
+                            script.charset = 'utf-8';
+                            document.head.appendChild(script);
+                        }
+                        script.addEventListener('load', finish, { once: true });
+                        script.addEventListener('error', fail, { once: true });
+
+                        let attempts = 0;
+                        const waitForApi = () => {
+                            finish();
+                            if (settled) return;
+                            attempts += 1;
+                            if (attempts >= 80) return fail();
+                            setTimeout(waitForApi, 100);
+                        };
+                        waitForApi();
+                    });
+
+                    return window.__rssTwitterWidgetsPromise;
+                },
+
+                hydrateTwitterEmbeds(root = document) {
+                    const scope = root?.querySelectorAll ? root : document;
+                    const embeds = Array.from(scope.querySelectorAll('.voz-twitter-embed[data-tweet-id]'))
+                        .filter(embed => !embed.dataset.twitterState);
+                    if (!embeds.length) return;
+
+                    const theme = this.theme === 'glass-light' ? 'light' : 'dark';
+                    embeds.forEach(embed => {
+                        embed.dataset.twitterState = 'loading';
+                        const staging = document.createElement('div');
+                        staging.className = 'voz-twitter-embed__staging';
+                        embed.appendChild(staging);
+
+                        this.loadTwitterWidgets()
+                            .then(twttr => twttr.widgets.createTweet(embed.dataset.tweetId, staging, {
+                                dnt: true,
+                                theme
+                            }))
+                            .then(tweetFrame => {
+                                if (!tweetFrame || !embed.isConnected) throw new Error('X post unavailable');
+                                tweetFrame.setAttribute('scrolling', 'no');
+                                embed.querySelector('.voz-twitter-embed__fallback')?.remove();
+                                staging.classList.add('is-ready');
+                                embed.dataset.twitterState = 'ready';
+                            })
+                            .catch(() => {
+                                staging.remove();
+                                embed.dataset.twitterState = 'fallback';
+                            });
+                    });
                 },
 
                 overlaySuccessfulStrategies() {
@@ -1212,22 +1890,39 @@
                     const strategy = data.fetchStrategy || '';
                     if (strategy && strategy !== 'none') this.overlayMethodResults = { ...this.overlayMethodResults, [strategy]: { ...data } };
                     this.stopArticleSpeech();
+                    this.overlayArticle.sourceDeleted = data.sourceDeleted === true;
+                    this.overlayArticle.sourceDeletedHasCache = data.sourceDeletedHasCache !== false && Boolean(data.content);
+                    this.overlayArticle.sourceDeletedKind = data.sourceDeletedKind || (this.isVozArticle(this.overlayArticle) ? 'thread' : 'article');
                     this.overlayPagination = data.pagination || null;
-                    this.overlayContent = this.beautifyArticleHtml(data.content, data.title || fallbackArticle?.title || this.overlayArticle?.title);
+                    if (!this.overlayArticle.sourceDeleted && this.overlayPagination && this.overlayPagination.nextUrl) {
+                        this.prefetchArticlesList([{
+                            link: this.overlayPagination.nextUrl,
+                            feedUrl: this.overlayArticle.feedUrl || ''
+                        }]);
+                    }
+                    this.overlayContent = data.content;
                     this.overlayHasNativeAudio = /<audio\b/i.test(this.overlayContent || '');
                     if (!this.overlayHasNativeAudio) this.prepareArticleSpeech();
                     this.overlayArticle.overlayTitle = this.stripHtml(data.title || fallbackArticle?.title || this.overlayArticle.title);
                     this.overlayArticle.overlayImage = data.image || fallbackArticle?.image || this.overlayArticle.image;
                     this.overlayArticle.overlayAuthor = data.author || '';
+                    this.overlayArticle.overlayAuthorAvatar = data.authorAvatar || fallbackArticle?.authorAvatar || this.overlayArticle.authorAvatar || '';
                     this.overlayArticle.overlayDate = data.date || fallbackArticle?.pubDate || this.overlayArticle.pubDate;
                     
                     if (data.image && !this.overlayArticle.image) this.overlayArticle.image = data.image;
                     if (data.author && !this.overlayArticle.author) this.overlayArticle.author = data.author;
-                    this.overlayArticle.siteName = data.siteName || this.overlayArticle.siteName || '';
+                    if (data.authorAvatar && !this.overlayArticle.authorAvatar) this.overlayArticle.authorAvatar = data.authorAvatar;
+                    this.overlayArticle.siteName = data.siteName || this.overlayArticle.siteName || this.overlayArticle.feedTitle || '';
                     this.overlayArticle.isCached = Boolean(data.cached);
-                    if (data.url && data.url !== this.overlayArticle.link) {
-                        this.overlayArticle.originalLink ||= this.overlayArticle.link;
-                        this.overlayArticle.link = data.url;
+                    if (data.url) {
+                        if (data.url !== this.overlayArticle.link) {
+                            this.overlayArticle.originalLink ||= this.overlayArticle.link;
+                        }
+                        // Keep the exact page that produced the rendered content.
+                        // VOZ /post-{id} URLs resolve to the page containing that
+                        // post; background updates must refresh this page, not the
+                        // feed's original /unread URL.
+                        this.overlayArticle.resolvedLink = data.url;
                     }
                     this.overlayFetchStrategy = strategy;
                     this.overlayFetchedFromCache = data.cached === true;
@@ -1239,6 +1934,7 @@
                     ].filter(Boolean))];
                     this.checkVozThreadPosition();
                     this.$nextTick(() => {
+                        this.hydrateTwitterEmbeds(document.getElementById('overlay-scroll-container'));
                         if (window.Hls) {
                             document.querySelectorAll('.article-rendered-content video').forEach(video => {
                                 let src = video.getAttribute('src');
@@ -1259,22 +1955,38 @@
                                 }
                             });
                         }
+                        const articleScroll = document.getElementById('overlay-scroll-container');
+                        if (articleScroll) articleScroll.scrollTop = 0;
                     });
                 },
 
                 checkVozThreadPosition() {
                     this.vozThreadNotice = null;
                     if (!this.overlayArticle) return;
-                    const url = this.overlayArticle.link || '';
+                    const url = this.overlayArticle.resolvedLink || this.overlayArticle.link || '';
                     const isVoz = url.includes('voz.vn') || this.overlayArticle.siteName === 'VOZ';
                     if (!isVoz) return;
                     const threadMatch = url.match(/threads\/[^\/.]+\.(\d+)/i) || url.match(/\b(\d{5,8})\b/);
                     const threadId = threadMatch ? threadMatch[1] : url;
                     const prefKey = 'voz_last_read_post_' + threadId;
-                    const lastRead = this.userPreferences[prefKey] || localStorage.getItem(prefKey);
+                    const lastReadRaw = this.userPreferences[prefKey] || localStorage.getItem(prefKey);
                     
-                    if (this.overlayFetchedFromCache) {
-                        this.checkVozNewPostsInBackground(url);
+                    let lastRead = null;
+                    let lastReadAbsId = null;
+                    if (lastReadRaw) {
+                        if (lastReadRaw.startsWith('{')) {
+                            try {
+                                const parsed = JSON.parse(lastReadRaw);
+                                lastRead = parsed.index;
+                                lastReadAbsId = parsed.absId;
+                            } catch(e) {}
+                        } else {
+                            lastRead = lastReadRaw;
+                        }
+                    }
+                    
+                    if (this.overlayFetchedFromCache && !this.overlayArticle.sourceDeleted) {
+                        this.checkVozNewPostsInBackground(url, this.overlayArticle.feedUrl || '');
                     }
                     
                     if (this.vozPollingInterval) {
@@ -1289,16 +2001,16 @@
                             if (!this.articleOverlayOpen || this.overlayRequestId !== requestId) return;
                             const postEl = document.getElementById('voz-post-' + lastRead);
                             if (postEl && postEl.offsetParent !== null) {
-                                postEl.scrollIntoView({ behavior: 'auto', block: 'center' });
-                                
                                 const existingNotice = document.getElementById('voz-inline-notice');
                                 if (existingNotice) existingNotice.remove();
                                 
                                 const inlineNotice = document.createElement('div');
                                 inlineNotice.id = 'voz-inline-notice';
-                                inlineNotice.className = 'mb-3 px-4 py-2.5 bg-blue-900 text-blue-200 rounded-xl border border-blue-700 flex justify-between items-center text-sm font-medium shadow-sm';
-                                inlineNotice.innerHTML = `<span>📍 Bạn đã quay lại đúng vị trí bài viết #${lastRead} mà bạn đang đọc lần trước!</span><button class="text-blue-600 dark:text-blue-400 hover:opacity-80 ml-4 font-bold text-lg" onclick="this.parentElement.remove()" title="Đóng">&times;</button>`;
+                                inlineNotice.className = `mb-3 px-4 py-2.5 rounded-2xl border flex justify-between items-center text-sm font-medium shadow-sm transition ${this.theme === 'glass-light' ? 'bg-blue-500/10 text-blue-700 border-blue-500/20' : 'bg-blue-500/10 text-blue-300 border-blue-500/20'}`;
+                                inlineNotice.innerHTML = `<span>📍 Bạn đã quay lại đúng vị trí bài viết #${lastRead} mà bạn đang đọc lần trước!</span><button class="hover:opacity-80 ml-4 font-bold text-lg transition ${this.theme === 'glass-light' ? 'text-blue-600' : 'text-blue-400'}" onclick="this.parentElement.style.opacity='0'; setTimeout(()=>this.parentElement.remove(), 200)" title="Đóng">&times;</button>`;
                                 postEl.parentElement.insertBefore(inlineNotice, postEl);
+                                
+                                inlineNotice.scrollIntoView({ behavior: 'auto', block: 'center' });
                             } else if (attempts < 30) {
                                 attempts++;
                                 setTimeout(checkAndScroll, 100); // Poll every 100ms for up to 3 seconds
@@ -1313,11 +2025,41 @@
                                         action: () => this.navigateToThreadPage(pageObj.url, true)
                                     };
                                 } else {
-                                    this.vozThreadNotice = {
-                                        text: `📍 Lần trước bạn đã đọc đến bài #${lastRead}.`,
-                                        actionText: 'Ẩn',
-                                        action: () => { this.vozThreadNotice = null; }
-                                    };
+                                    // Post not found and no matching page in pagination — construct page URL
+                                    const targetPage = Math.ceil(Number(lastRead) / 20);
+                                    const currentPage = this.overlayPagination ? this.overlayPagination.currentPage : 1;
+                                    if (targetPage > 1 && targetPage !== currentPage) {
+                                        // Build the target page URL from the thread URL
+                                        const baseThreadUrl = (this.overlayArticle.originalLink || this.overlayArticle.link || url).split(/[?#]/)[0].replace(/\/page-\d+$/, '').replace(/\/$/, '');
+                                        const targetPageUrl = lastReadAbsId ? baseThreadUrl + '/post-' + lastReadAbsId : baseThreadUrl + '/page-' + targetPage;
+                                        this.vozThreadNotice = {
+                                            text: `📍 Lần trước bạn đã đọc đến bài #${lastRead}.`,
+                                            actionText: 'Tới bài',
+                                            action: () => this.navigateToThreadPage(targetPageUrl, true)
+                                        };
+                                    } else {
+                                        // Same page — exact post not found (likely deleted), scroll to closest automatically
+                                        let closest = null;
+                                        let minDiff = Infinity;
+                                        document.querySelectorAll('[id^="voz-post-"]').forEach(el => {
+                                            const num = parseInt(el.id.replace('voz-post-', ''));
+                                            if (!isNaN(num)) {
+                                                const diff = Math.abs(num - Number(lastRead));
+                                                if (diff < minDiff) { minDiff = diff; closest = el; }
+                                            }
+                                        });
+                                        if (closest) {
+                                            const closestId = closest.id.replace('voz-post-', '');
+                                            const existingNotice = document.getElementById('voz-inline-notice');
+                                            if (existingNotice) existingNotice.remove();
+                                            const inlineNotice = document.createElement('div');
+                                            inlineNotice.id = 'voz-inline-notice';
+                                            inlineNotice.className = `mb-3 px-4 py-2.5 rounded-2xl border flex justify-between items-center text-sm font-medium shadow-sm transition ${this.theme === 'glass-light' ? 'bg-orange-500/10 text-orange-700 border-orange-500/20' : 'bg-orange-500/10 text-orange-300 border-orange-500/20'}`;
+                                            inlineNotice.innerHTML = `<span>📍 Bài #${lastRead} không tìm thấy, nhảy đến bài #${closestId}!</span><button class="hover:opacity-80 ml-4 font-bold text-lg transition text-orange-500" onclick="this.parentElement.style.opacity='0'; setTimeout(()=>this.parentElement.remove(), 200)" title="Đóng">&times;</button>`;
+                                            closest.parentElement.insertBefore(inlineNotice, closest);
+                                            closest.scrollIntoView({ behavior: 'auto', block: 'center' });
+                                        }
+                                    }
                                 }
                             }
                         };
@@ -1327,7 +2069,8 @@
 
                 syncUserPreferenceDebounced(key, value) {
                     if (!this.syncPrefsTimer) this.syncPrefsTimer = {};
-                    if (String(this.userPreferences[key] ?? '') === String(value ?? '')) return;
+                    // Skip string comparison for objects/arrays to ensure they sync
+                    if (typeof value !== 'object' && String(this.userPreferences[key] ?? '') === String(value ?? '')) return;
                     clearTimeout(this.syncPrefsTimer[key]);
                     this.userPreferences[key] = value;
                     try { localStorage.setItem(key, value); } catch(e) {}
@@ -1364,27 +2107,31 @@
                             }
                         }
                         const index = topPost.getAttribute('data-post-index');
+                        const absId = topPost.getAttribute('data-absolute-post-id');
                         if (!index || index === this.lastTrackedVozPost) return;
                         this.lastTrackedVozPost = index;
                         const currentUrl = this.overlayArticle.link || '';
                         const threadMatch = currentUrl.match(/threads\/[^\/.]+\.(\d+)/i) || currentUrl.match(/\b(\d{5,8})\b/);
                         const threadId = threadMatch ? threadMatch[1] : currentUrl;
-                        this.syncUserPreferenceDebounced('voz_last_read_post_' + threadId, index);
+                        
+                        const saveData = absId ? JSON.stringify({ index, absId }) : index;
+                        this.syncUserPreferenceDebounced('voz_last_read_post_' + threadId, saveData);
                     });
                 },
 
-                async checkVozNewPostsInBackground(url) {
+                async checkVozNewPostsInBackground(url, feedUrl = '') {
                     const requestId = this.overlayRequestId;
                     try {
-                        const res = await fetch('/api/article-content?url=' + encodeURIComponent(url) + '&bypassCache=true');
+                        const params = new URLSearchParams({ url, feedUrl, bypassCache: 'true' });
+                        const res = await fetch('/api/article-content?' + params.toString());
                         if (!res.ok) return;
                         const freshData = await res.json();
                         if (!freshData || freshData.error) return;
                         /* Never let a background refresh for an old article
                            write into the newly opened article. */
                         if (!this.articleOverlayOpen || this.overlayRequestId !== requestId) return;
-                        const activeUrl = this.overlayArticle?.link || this.overlayArticle?.originalLink || '';
-                        if (activeUrl !== url && this.overlayArticle?.originalLink !== url) return;
+                        const activeUrl = this.overlayArticle?.resolvedLink || this.overlayArticle?.link || this.overlayArticle?.originalLink || '';
+                        if (activeUrl !== url) return;
 
                         const renderedContainer = document.querySelector('#overlay-scroll-container .article-rendered-content');
                         const currentPostsCount = renderedContainer
@@ -1394,7 +2141,10 @@
                         const currentPageNum = this.overlayPagination?.currentPage || 1;
                         const freshPageNum = freshData.pagination?.currentPage || 1;
 
-                        const isNewPage = freshPageNum > currentPageNum;
+                        // Never splice posts from another VOZ page into the page
+                        // currently being read. This was the source of page 8
+                        // posts being followed by the sticky/page-1 post #1.
+                        if (freshPageNum !== currentPageNum) return;
                         
                         if (freshPostsCount > 0) {
                             const parser = new DOMParser();
@@ -1424,6 +2174,7 @@
                                 if (contentUpdated) {
                                     this.overlayContent = renderedContainer.innerHTML;
                                     this.overlayPagination = freshData.pagination || this.overlayPagination;
+                                    this.hydrateTwitterEmbeds(renderedContainer);
                                     const cached = this.articleContentCache?.get(url);
                                     if (cached) {
                                         cached.content = this.overlayContent;
@@ -1464,7 +2215,11 @@
                             this.applyOverlayArticleData(cached, this.overlayArticle);
                             return;
                         }
-                        const res = await fetch('/api/article-content?url=' + encodeURIComponent(targetUrl));
+                        const params = new URLSearchParams({
+                            url: targetUrl,
+                            feedUrl: this.overlayArticle?.feedUrl || ''
+                        });
+                        const res = await fetch('/api/article-content?' + params.toString());
                         const data = await res.json();
                         if (!this.articleOverlayOpen || this.overlayRequestId !== requestId) return;
                         if (!res.ok || data.error) throw new Error(data.error || 'Trang không tồn tại hoặc lỗi tải');
@@ -1510,27 +2265,35 @@
 
                 async clearArticleCache() {
                     if (!this.overlayArticle || !this.overlayFetchedFromCache) return;
+                    if (this.overlayArticle.sourceDeleted) {
+                        this.overlayMethodError = 'Deleted-source snapshots are protected and cannot be refreshed.';
+                        return;
+                    }
                     const targetUrl = this.overlayArticle.originalLink || this.overlayArticle.link;
                     if (!targetUrl) return;
-                    
+
                     try {
                         const res = await fetch('/api/clear-article-cache', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ url: targetUrl })
                         });
-                        if (res.ok) {
-                            if (this.articleContentCache) this.articleContentCache.delete(targetUrl);
-                            this.overlayArticle.isCached = false;
-                            this.openArticleOverlay(this.overlayArticle);
-                        }
-                    } catch (e) {
-                        console.error('Failed to clear cache:', e);
+                        const data = await res.json().catch(() => ({}));
+                        if (!res.ok) throw new Error(data.error || 'Failed to clear cache.');
+                        if (this.articleContentCache) this.articleContentCache.delete(targetUrl);
+                        this.overlayArticle.isCached = false;
+                        this.openArticleOverlay(this.overlayArticle);
+                    } catch (error) {
+                        this.overlayMethodError = error.message;
                     }
                 },
 
                 async rejectAndTryNextArticleMethod() {
                     if (this.overlayTryingMethod || !this.overlayFetchStrategy || !this.overlayArticle) return;
+                    if (this.overlayArticle.sourceDeleted) {
+                        this.overlayMethodError = 'Deleted-source snapshots are protected and cannot reject reader methods.';
+                        return;
+                    }
                     const rejected = this.overlayFetchStrategy;
                     const targetUrl = this.overlayArticle.originalLink || this.overlayArticle.link;
                     this.overlayRejectedStrategies = [...new Set([...this.overlayRejectedStrategies, rejected])];
@@ -1591,6 +2354,33 @@
 
                 prepareArticleSpeech() {
                     if (!this.supportsArticleSpeech()) return;
+                    
+                    if (this.overlayHasNativeAudio) {
+                        setTimeout(() => {
+                            const audioEl = document.querySelector('#overlay-scroll-container audio');
+                            if (audioEl) {
+                                this.nativeAudioEl = audioEl;
+                                this.articleSpeechState = audioEl.paused ? 'idle' : 'playing';
+                                this.articleSpeechIndex = 0;
+                                this.articleSpeechChunks = [1];
+                                
+                                const updateProgress = () => {
+                                    if (audioEl.duration) {
+                                        this.articleSpeechIndex = (audioEl.currentTime / audioEl.duration) * 100;
+                                    }
+                                };
+                                audioEl.addEventListener('timeupdate', updateProgress);
+                                audioEl.addEventListener('play', () => this.articleSpeechState = 'playing');
+                                audioEl.addEventListener('pause', () => this.articleSpeechState = 'paused');
+                                audioEl.addEventListener('ended', () => {
+                                    this.articleSpeechState = 'idle';
+                                    this.articleSpeechIndex = 0;
+                                });
+                            }
+                        }, 100);
+                        return;
+                    }
+
                     const doc = new DOMParser().parseFromString(this.overlayContent || '', 'text/html');
                     doc.querySelectorAll('audio,video,figcaption').forEach(node => node.remove());
                     const text = (doc.body.textContent || '').replace(/\s+/g, ' ').trim();
@@ -1609,10 +2399,18 @@
                     this.articleSpeechChunks = chunks;
                     this.articleSpeechIndex = 0;
                     this.articleSpeechState = 'idle';
+                    this.nativeAudioEl = null;
                 },
 
                 toggleArticleSpeech() {
                     if (!this.supportsArticleSpeech()) return;
+                    
+                    if (this.nativeAudioEl) {
+                        if (this.nativeAudioEl.paused) this.nativeAudioEl.play();
+                        else this.nativeAudioEl.pause();
+                        return;
+                    }
+
                     if (this.articleSpeechState === 'playing') {
                         window.speechSynthesis.pause();
                         this.articleSpeechState = 'paused';
@@ -1632,6 +2430,12 @@
                 },
 
                 seekArticleSpeech(index) {
+                    if (this.nativeAudioEl) {
+                        if (this.nativeAudioEl.duration) {
+                            this.nativeAudioEl.currentTime = (index / 100) * this.nativeAudioEl.duration;
+                        }
+                        return;
+                    }
                     if (!this.articleSpeechChunks.length) return;
                     this.articleSpeechGeneration += 1;
                     window.speechSynthesis.cancel();
@@ -1641,10 +2445,18 @@
                 },
 
                 skipArticleSpeech(direction) {
+                    if (this.nativeAudioEl) {
+                        this.nativeAudioEl.currentTime = Math.max(0, Math.min(this.nativeAudioEl.duration || Number.MAX_VALUE, this.nativeAudioEl.currentTime + (direction * 15)));
+                        return;
+                    }
                     this.seekArticleSpeech(this.articleSpeechIndex + (Number(direction) || 0));
                 },
 
                 articleSpeechProgressLabel() {
+                    if (this.nativeAudioEl && this.nativeAudioEl.duration) {
+                        const fmt = t => `${Math.floor(t/60)}:${Math.floor(t%60).toString().padStart(2,'0')}`;
+                        return `${fmt(this.nativeAudioEl.currentTime)} / ${fmt(this.nativeAudioEl.duration)}`;
+                    }
                     if (!this.articleSpeechChunks.length) return '0 / 0';
                     return (this.articleSpeechIndex + 1) + ' / ' + this.articleSpeechChunks.length;
                 },
@@ -1675,154 +2487,6 @@
                     window.speechSynthesis.speak(utterance);
                 },
 
-                beautifyArticleHtml(html, title = '') {
-                    if (!html) return '';
-                    const doc = new DOMParser().parseFromString(String(html), 'text/html');
-                    doc.querySelectorAll('script,style,template,nav,aside,form,noscript,button,[aria-hidden="true"]').forEach(node => node.remove());
-                    const noise = /(?:advert|adsbygoogle|breadcrumb|pagination|related|recommend|share|social|signature|message-user|message-attribution|message-footer|post-meta|author-box|author-info|user-panel|member-header|comment-list|comments-area|newsletter|subscribe|trending|popular-post|read-more|tags-list)/i;
-                    doc.body.querySelectorAll('*').forEach(node => {
-                        const marker = [node.id, node.className, node.getAttribute('role')].filter(value => typeof value === 'string').join(' ');
-                        if (noise.test(marker)) {
-                            node.remove();
-                            return;
-                        }
-                        if (['DIV', 'P', 'SPAN', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6'].includes(node.tagName)) {
-                            const text = (node.textContent || '').replace(/\s+/g, ' ').trim();
-                            if (/^Quảng cáo$/i.test(text)) {
-                                node.remove();
-                                return;
-                            }
-                        }
-                        const isMediaNode = ['IMG', 'VIDEO', 'AUDIO', 'IFRAME'].includes(node.tagName);
-                        const isProtectedNode = node.classList.contains('voz-post-likes') || node.closest('.voz-post-likes') || node.classList.contains('box_tiso_all') || node.closest('.box_tiso_all') || node.classList.contains('highcharts-container') || node.closest('.highcharts-container');
-                        if (!isProtectedNode) {
-                            if (!isMediaNode || node.tagName === 'IMG') {
-                                node.removeAttribute('style');
-                                node.removeAttribute('height');
-                                node.removeAttribute('min-height');
-                                node.removeAttribute('max-height');
-                                node.removeAttribute('width');
-                            }
-                        }
-                        [...node.attributes].forEach(attribute => {
-                            if (/^on/i.test(attribute.name)) node.removeAttribute(attribute.name);
-                        });
-                    });
-                    doc.body.querySelectorAll('div,section,ul').forEach(node => {
-                        if (!node.isConnected) return;
-                        if (node.classList.contains('embedded-suggested-articles') || node.closest('.embedded-suggested-articles') || node.classList.contains('styled-rel-card') || node.closest('.styled-rel-card')) return;
-                        const textLength = (node.textContent || '').replace(/\s+/g, ' ').trim().length;
-                        const links = [...node.querySelectorAll('a')];
-                        const linkLength = links.reduce((sum, link) => sum + (link.textContent || '').trim().length, 0);
-                        if (links.length >= 4 && textLength > 0 && linkLength / textLength > 0.78) node.remove();
-                    });
-                    const semanticBoundary = /^(?:Đọc tiếp\s*Về trang Chủ đề|Tặng sao cho bài viết hay|Đừng bỏ lỡ|Advertisements|(?:Bình luận|Comments)\s*\(\s*\d+\s*\)|Tin liên quan|Related stories|You may also like|Recommended for you|More stories|Read next|Tuổi Trẻ Online Newsletters)\b/i;
-                    const boundary = [...doc.body.querySelectorAll('p,h1,h2,h3,h4,h5,h6,div,section')].find(node => {
-                        const text = (node.textContent || '').replace(/\s+/g, ' ').trim();
-                        if (!semanticBoundary.test(text)) return false;
-                        const range = doc.createRange();
-                        range.setStart(doc.body, 0);
-                        range.setEndBefore(node);
-                        return range.toString().replace(/\s+/g, ' ').trim().length >= 400;
-                    });
-                    if (boundary) {
-                        let parent = boundary.parentNode;
-                        let cursor = boundary;
-                        while (cursor) {
-                            const next = cursor.nextSibling;
-                            cursor.remove();
-                            cursor = next;
-                        }
-                        while (parent && parent !== doc.body) {
-                            let sibling = parent.nextSibling;
-                            while (sibling) {
-                                const next = sibling.nextSibling;
-                                sibling.remove();
-                                sibling = next;
-                            }
-                            parent = parent.parentNode;
-                        }
-                    }
-                    doc.body.querySelectorAll('img,video,audio').forEach(media => {
-                        const lazy = media.getAttribute('data-src') || media.getAttribute('data-url') || media.getAttribute('data-original') || media.getAttribute('data-lazy-src');
-                        if (lazy) media.setAttribute('src', lazy);
-                        const mediaMarker = [media.getAttribute('src'), media.getAttribute('alt'), media.getAttribute('class')].filter(Boolean).join(' ');
-                        if (/(?:newsletter|captcha|default[-_ ]?avatar|userdeff?ault|draggable-icon|cmsads|admicro|doubleclick|googlesyndication)/i.test(mediaMarker)) {
-                            media.remove();
-                            return;
-                        }
-                        const width = Number(media.getAttribute('width') || 0);
-                        const height = Number(media.getAttribute('height') || 0);
-                        if ((width && width <= 2) || (height && height <= 2)) media.remove();
-                        if (media.tagName === 'VIDEO' || media.tagName === 'AUDIO') {
-                            media.setAttribute('controls', '');
-                            media.setAttribute('playsinline', '');
-                        }
-                    });
-                    doc.body.querySelectorAll('audio').forEach(audio => {
-                        let player = audio.closest('.article-audio-player');
-                        if (!player) {
-                            player = doc.createElement('div');
-                            player.className = 'article-audio-player';
-                            audio.parentNode?.insertBefore(player, audio);
-                            player.appendChild(audio);
-                        }
-                        if (!player.querySelector('.article-audio-player__label')) {
-                            const label = doc.createElement('div');
-                            label.className = 'article-audio-player__label';
-                            label.textContent = 'Listen to article';
-                            player.insertBefore(label, player.firstChild);
-                        }
-                        audio.setAttribute('controls', '');
-                        audio.setAttribute('playsinline', '');
-                        audio.setAttribute('preload', 'metadata');
-                    });
-                    doc.body.querySelectorAll('.bbCodeBlock--unfurl').forEach(node => {
-                        let href = node.getAttribute('data-url') || '';
-                        if (!href) {
-                            const titleLink = node.querySelector('.contentRow-header a');
-                            if (titleLink) href = titleLink.href;
-                        }
-                        if (href) {
-                            node.style.setProperty('position', 'relative', 'important');
-                            const overlay = doc.createElement('a');
-                            overlay.href = href;
-                            overlay.target = '_blank';
-                            overlay.className = 'embedded-suggested-overlay';
-                            node.appendChild(overlay);
-                        }
-                    });
-                    
-                    if (!html.includes('voz-post')) {
-                        doc.body.querySelectorAll('a:not(.voz-post-index):not(.voz-like-users):not(.embedded-suggested-overlay):not(.bbCodeBlock--unfurl)').forEach(link => link.replaceWith(...link.childNodes));
-                    } else {
-                        doc.body.querySelectorAll('a').forEach(link => link.setAttribute('target', '_blank'));
-                    }
-                    doc.body.querySelectorAll('p,div,span,section').forEach(node => {
-                        if (!node.isConnected || node.querySelector('audio,video,img')) return;
-                        const text = (node.textContent || '').replace(/\s+/g, ' ').trim();
-                        const isPageControl = /^(?:chia sẻ|share|báo lỗi(?: cho .*)?|gửi email|in bài viết|copy link)$/i.test(text);
-                        const isDuplicateByline = /^[^|]{2,100}\|\s*\d{1,2}\/\d{1,2}\/\d{4}\s+\d{1,2}:\d{2}$/.test(text);
-                        const isAudioLabel = /^Audio\s+\d+$/i.test(text);
-                        if (isPageControl || isDuplicateByline || isAudioLabel) node.remove();
-                    });
-                    const normalizedTitle = this.stripHtml(title).replace(/\s+/g, ' ').trim().toLowerCase();
-                    const firstHeading = doc.body.querySelector('h1,h2,h3');
-                    if (firstHeading && normalizedTitle && (firstHeading.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase() === normalizedTitle) firstHeading.remove();
-                    for (let pass = 0; pass < 4; pass++) {
-                        doc.body.querySelectorAll('p:empty,div:empty,span:empty,section:empty,figure:empty').forEach(node => node.remove());
-                    }
-                    doc.body.querySelectorAll('table').forEach(table => {
-                        if (!table.parentElement.classList.contains('overflow-x-auto')) {
-                            const wrapper = doc.createElement('div');
-                            wrapper.className = 'overflow-x-auto my-4';
-                            table.parentElement.insertBefore(wrapper, table);
-                            wrapper.appendChild(table);
-                            table.style.minWidth = 'max-content';
-                        }
-                    });
-                    return doc.body.innerHTML.trim();
-                },
 
                 sortedRelatedArticles(articles) {
                     return [...(Array.isArray(articles) ? articles : [])].sort((a, b) =>
@@ -1830,6 +2494,130 @@
                         (Date.parse(b.pubDate) || 0) - (Date.parse(a.pubDate) || 0) ||
                         String(a.link || '').localeCompare(String(b.link || ''))
                     );
+                },
+
+                normalizeArticleSourceUrl(value) {
+                    return String(value || '').trim().replace(
+                        /(\.(?:tpo|chn|s?html?|aspx?|php))[\]\\)}]+([?#].*)?$/i,
+                        '$1$2'
+                    );
+                },
+
+                articleRouteUrl(articleOrUrl) {
+                    const raw = typeof articleOrUrl === 'string'
+                        ? articleOrUrl
+                        : (articleOrUrl?.originalLink || articleOrUrl?.link || articleOrUrl?.resolvedLink || '');
+                    if (!raw) return '';
+                    const normalized = this.normalizeArticleSourceUrl(raw);
+                    try {
+                        const parsed = new URL(normalized, window.location.origin);
+                        parsed.hash = '';
+                        return parsed.href;
+                    } catch (e) {
+                        return normalized;
+                    }
+                },
+
+                articleIdentity(articleOrUrl) {
+                    return this.normalizeStateLink(this.articleRouteUrl(articleOrUrl));
+                },
+
+                filterHash(articleUrl = '') {
+                    const base = `${this.selectedFilterType}${this.selectedFilterValue ? '/' + this.selectedFilterValue : ''}`;
+                    return articleUrl ? `#${base}?article=${encodeURIComponent(articleUrl)}` : `#${base}`;
+                },
+
+                updateArticleRoute(articleOrUrl, replace = false) {
+                    const articleUrl = this.articleRouteUrl(articleOrUrl);
+                    const nextHash = this.filterHash(articleUrl);
+                    if (window.location.hash === nextHash) return;
+                    const nextUrl = window.location.pathname + window.location.search + nextHash;
+                    window.history[replace ? 'replaceState' : 'pushState'](window.history.state, '', nextUrl);
+                },
+
+                clearArticleRoute(replace = true) {
+                    const nextHash = this.filterHash();
+                    if (window.location.hash === nextHash) return;
+                    const nextUrl = window.location.pathname + window.location.search + nextHash;
+                    window.history[replace ? 'replaceState' : 'pushState'](window.history.state, '', nextUrl);
+                },
+
+                findArticleByRouteUrl(articleUrl) {
+                    const target = this.articleIdentity(articleUrl);
+                    const candidates = [];
+                    const append = article => {
+                        if (!article) return;
+                        candidates.push(article);
+                        if (Array.isArray(article.relatedArticles)) article.relatedArticles.forEach(append);
+                    };
+                    (this.articles || []).forEach(append);
+                    return candidates.find(article =>
+                        [article.originalLink, article.link, article.resolvedLink]
+                            .filter(Boolean)
+                            .some(link => this.articleIdentity(link) === target)
+                    ) || null;
+                },
+
+                async openArticleFromRoute(articleUrl) {
+                    if (!articleUrl) return;
+                    const targetIdentity = this.articleIdentity(articleUrl);
+                    if (this.articleOverlayOpen && this.articleIdentity(this.overlayArticle) === targetIdentity) return;
+
+                    const previous = this.articleOverlayStack[this.articleOverlayStack.length - 1];
+                    if (previous && this.articleIdentity(previous.overlayArticle) === targetIdentity) {
+                        this.articleOverlayStack.pop();
+                        this.restoreArticleOverlay(previous, false);
+                        return;
+                    }
+
+                    const article = this.findArticleByRouteUrl(articleUrl) || {
+                        link: articleUrl,
+                        originalLink: articleUrl,
+                        title: '',
+                        feedCategory: this.selectedFilterType === 'category' ? this.selectedFilterValue : ''
+                    };
+                    await this.openArticleOverlay(article, {
+                        stack: this.articleOverlayOpen,
+                        updateHistory: false
+                    });
+                },
+
+                getFilterFromHash() {
+                    const hash = window.location.hash.substring(1);
+                    if (hash) {
+                        const articleMarker = '?article=';
+                        const markerIndex = hash.lastIndexOf(articleMarker);
+                        const filterPath = markerIndex === -1 ? hash : hash.slice(0, markerIndex);
+                        const encodedArticle = markerIndex === -1 ? '' : hash.slice(markerIndex + articleMarker.length);
+                        const parts = filterPath.split('/');
+                        let articleUrl = '';
+                        try { articleUrl = encodedArticle ? this.normalizeArticleSourceUrl(decodeURIComponent(encodedArticle)) : ''; } catch (e) { }
+                        return {
+                            type: parts[0],
+                            value: parts.length > 1 ? parts.slice(1).join('/') : null,
+                            articleUrl
+                        };
+                    }
+                    return null;
+                },
+
+                async handleHashChange() {
+                    this.hideTooltip();
+                    const hashFilter = this.getFilterFromHash();
+                    if (!hashFilter) return;
+                    if (hashFilter.type !== this.selectedFilterType || hashFilter.value !== this.selectedFilterValue) {
+                        this.selectedFilterType = hashFilter.type;
+                        this.selectedFilterValue = hashFilter.value;
+                        this.currentPage = 1;
+                        this.hasMore = false;
+                        this.articles = [];
+                        await this.fetchData();
+                    }
+                    if (hashFilter.articleUrl) {
+                        await this.openArticleFromRoute(hashFilter.articleUrl);
+                    } else if (this.articleOverlayOpen) {
+                        this.closeArticleOverlay({ updateHistory: false, closeAll: true });
+                    }
                 },
 
                 formatLogTime(ts) {
@@ -1911,12 +2699,13 @@
                         : (articleOrLink?.originalLink || articleOrLink?.link || articleOrLink?.id);
                     if (!targetUrl || !Array.isArray(this.articles) || !this.articles.length) return;
 
-                    let currentIndex = this.articles.findIndex(a => (a.originalLink || a.link || a.id) === targetUrl || a.link === targetUrl);
+                    const sourceArray = this.displayedArticles || [];
+                    let currentIndex = sourceArray.findIndex(a => (a.originalLink || a.link || a.id) === targetUrl || a.link === targetUrl);
                     if (currentIndex === -1 && typeof articleOrLink === 'object' && articleOrLink?.link) {
-                        currentIndex = this.articles.findIndex(a => a.link === articleOrLink.link);
+                        currentIndex = sourceArray.findIndex(a => a.link === articleOrLink.link);
                     }
                     if (currentIndex !== -1) {
-                        const nextFive = this.articles.slice(currentIndex + 1, currentIndex + 6);
+                        const nextFive = sourceArray.slice(currentIndex + 1, currentIndex + 6);
                         if (nextFive.length > 0) {
                             this.prefetchArticlesList(nextFive, false);
                         }
@@ -1987,9 +2776,116 @@
                     this.isProcessingPrefetch = false;
                 },
 
-                async openArticleOverlay(article) {
+                captureArticleOverlay() {
+                    const articleScroll = document.getElementById('overlay-scroll-container');
+                    return {
+                        overlayArticle: this.overlayArticle ? { ...this.overlayArticle } : null,
+                        overlayContent: this.overlayContent,
+                        overlayPagination: this.overlayPagination,
+                        vozThreadNotice: this.vozThreadNotice,
+                        overlayError: this.overlayError,
+                        overlayRemainingAvailable: this.overlayRemainingAvailable,
+                        overlayFetchStrategy: this.overlayFetchStrategy,
+                        overlayFetchedFromCache: this.overlayFetchedFromCache,
+                        overlayHasNativeAudio: this.overlayHasNativeAudio,
+                        overlayMethodResults: { ...this.overlayMethodResults },
+                        overlayAttemptedStrategies: [...this.overlayAttemptedStrategies],
+                        overlayRejectedStrategies: [...this.overlayRejectedStrategies],
+                        overlayMethodPreferences: { ...this.overlayMethodPreferences },
+                        aiSummary: this.aiSummary,
+                        aiSummaryLoading: this.aiSummaryLoading,
+                        aiSummaryExpanded: this.aiSummaryExpanded,
+                        aiSummaryError: this.aiSummaryError,
+                        vozSummaryProgress: this.vozSummaryProgress,
+                        currentPrefetchQueue: [...(this.currentPrefetchQueue || [])],
+                        scrollTop: articleScroll?.scrollTop || 0
+                    };
+                },
+
+                restoreArticleOverlay(snapshot, updateHistory = true) {
+                    if (!snapshot?.overlayArticle) return;
+                    this.overlayRequestId = '';
+                    this.articleOverlayOpen = true;
+                    this.isLoadingOverlay = false;
+                    this.overlayArticle = { ...snapshot.overlayArticle };
+                    this.overlayContent = snapshot.overlayContent;
+                    this.overlayPagination = snapshot.overlayPagination;
+                    this.vozThreadNotice = snapshot.vozThreadNotice;
+                    this.overlayError = snapshot.overlayError;
+                    this.overlayRemainingAvailable = snapshot.overlayRemainingAvailable;
+                    this.overlayFetchStrategy = snapshot.overlayFetchStrategy;
+                    this.overlayFetchedFromCache = snapshot.overlayFetchedFromCache;
+                    this.overlayHasNativeAudio = snapshot.overlayHasNativeAudio;
+                    this.overlayMethodResults = { ...snapshot.overlayMethodResults };
+                    this.overlayAttemptedStrategies = [...snapshot.overlayAttemptedStrategies];
+                    this.overlayRejectedStrategies = [...snapshot.overlayRejectedStrategies];
+                    this.overlayMethodPreferences = { ...snapshot.overlayMethodPreferences };
+                    this.aiSummary = snapshot.aiSummary;
+                    this.aiSummaryLoading = snapshot.aiSummaryLoading;
+                    this.aiSummaryExpanded = snapshot.aiSummaryExpanded;
+                    this.aiSummaryError = snapshot.aiSummaryError;
+                    this.vozSummaryProgress = snapshot.vozSummaryProgress;
+                    this.currentPrefetchQueue = [...snapshot.currentPrefetchQueue];
+                    this.overlayProgress = { message: '' };
+                    document.body.style.overflow = 'hidden';
+                    if (updateHistory) this.updateArticleRoute(this.overlayArticle, true);
+                    this.$nextTick(() => {
+                        const articleScroll = document.getElementById('overlay-scroll-container');
+                        this.hydrateTwitterEmbeds(articleScroll);
+                        if (articleScroll) articleScroll.scrollTop = snapshot.scrollTop || 0;
+                    });
+                },
+
+                async openRelatedArticle(article, event = null) {
+                    if (event) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                    }
+                    if (!article?.link && !article?.originalLink) return;
+                    if (this.articleIdentity(article) === this.articleIdentity(this.overlayArticle)) return;
+                    await this.openArticleOverlay(article, { stack: true });
+                },
+
+                async openArticleOverlay(article, options = {}) {
+                    this.hideTooltip();
+                    const shouldStack = options.stack === true && this.articleOverlayOpen && this.overlayArticle;
+                    if (shouldStack) this.articleOverlayStack.push(this.captureArticleOverlay());
+                    else if (!this.articleOverlayOpen) this.articleOverlayStack = [];
+                    if (options.updateHistory !== false) this.updateArticleRoute(article);
                     const requestId = 'article-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
-                    const targetUrl = article.originalLink || article.link;
+                    let targetUrl = article.originalLink || article.link;
+                    const isVoz = targetUrl.includes('voz.vn') || article.siteName === 'VOZ';
+                    if (isVoz) {
+                        const threadMatch = targetUrl.match(/threads\/[^\/.]+\.(\d+)/i) || targetUrl.match(/\b(\d{5,8})\b/);
+                        const threadId = threadMatch ? threadMatch[1] : targetUrl;
+                        const prefKey = 'voz_last_read_post_' + threadId;
+                        const lastReadRaw = this.userPreferences[prefKey] || localStorage.getItem(prefKey);
+                        
+                        let lastRead = null;
+                        let lastReadAbsId = null;
+                        if (lastReadRaw) {
+                            if (lastReadRaw.startsWith('{')) {
+                                try {
+                                    const parsed = JSON.parse(lastReadRaw);
+                                    lastRead = parsed.index;
+                                    lastReadAbsId = parsed.absId;
+                                } catch(e) {}
+                            } else {
+                                lastRead = lastReadRaw;
+                            }
+                        }
+
+                        if (lastReadAbsId) {
+                            const baseThreadUrl = targetUrl.split(/[?#]/)[0].replace(/\/unread\/?(?:[?#].*)?$/i, '').replace(/\/page-\d+$/, '').replace(/\/$/, '');
+                            targetUrl = baseThreadUrl + '/post-' + lastReadAbsId;
+                        } else if (lastRead && Number(lastRead) > 1) {
+                            const targetPage = Math.ceil(Number(lastRead) / 20);
+                            if (targetPage > 1) {
+                                const baseThreadUrl = targetUrl.split(/[?#]/)[0].replace(/\/unread\/?(?:[?#].*)?$/i, '').replace(/\/page-\d+$/, '').replace(/\/$/, '');
+                                targetUrl = baseThreadUrl + '/page-' + targetPage;
+                            }
+                        }
+                    }
                     this.stopArticleSpeech();
                     this.articleOverlayOpen = true;
                     this.isLoadingOverlay = true;
@@ -1997,6 +2893,7 @@
                     this.overlayContent = null;
                     this.overlayPagination = null;
                     this.overlayError = null;
+                    this.overlayRemainingAvailable = false;
                     this.overlayFetchStrategy = '';
                     this.overlayFetchedFromCache = false;
                     this.overlayHasNativeAudio = false;
@@ -2016,13 +2913,53 @@
                     this.markAsReadExplicit(article.link);
                     document.body.style.overflow = 'hidden';
 
-                    const currentIndex = (this.articles || []).findIndex(a => (a.originalLink || a.link || a.id) === targetUrl || a.link === article.link);
+                    // AI Summary: reset and fetch
+                    this.aiSummary = null;
+                    this.aiSummaryLoading = true;
+                    this.aiSummaryExpanded = false;
+                    this.aiSummaryError = null;
+                    this.vozSummaryProgress = null;
+                    if (this.aiSummaryPollTimer) clearInterval(this.aiSummaryPollTimer);
+                    this.aiSummaryPollTimer = null;
+                    if (this.isVozArticle(article) && article.vozSummary) {
+                        this.aiSummary = article.vozSummary;
+                        this.aiSummaryLoading = false;
+                    } else {
+                        this.aiSummary = { status: 'manual' }; // Default to manual state without checking cache
+                    }
+
+                    const sourceArray = this.displayedArticles || [];
+                    const currentIndex = sourceArray.findIndex(a => (a.originalLink || a.link || a.id) === targetUrl || a.link === article.link);
+                    
+                    const prefetchTargets = [];
+                    if (currentIndex !== -1) {
+                        for (let i = currentIndex + 1; i < Math.min(sourceArray.length, currentIndex + 6); i++) {
+                            const nextArticle = sourceArray[i];
+                            const u = nextArticle?.originalLink || nextArticle?.link;
+                            if (u && u !== targetUrl) {
+                                prefetchTargets.push({
+                                    url: u,
+                                    title: nextArticle?.title || '',
+                                    feedTitle: nextArticle?.feedTitle || '',
+                                    feedUrl: nextArticle?.feedUrl || '',
+                                    feedIcon: nextArticle?.feedIcon || ''
+                                });
+                            }
+                        }
+                    }
+
                     this.prefetchNextAfter(article);
 
                     if (this.articleContentCache && this.articleContentCache.has(targetUrl)) {
                         const cachedData = this.articleContentCache.get(targetUrl);
                         cachedData.cached = true; // Frontend cache hit counts as cached
                         if (this.overlayRequestId !== requestId || !this.articleOverlayOpen) return;
+                        
+                        this.currentPrefetchQueue = prefetchTargets.map(target => ({ 
+                            url: target.url,
+                            isCached: this.articleContentCache.has(target.url)
+                        }));
+                        
                         this.applyOverlayArticleData(cachedData, article);
                         this.isLoadingOverlay = false;
                         return;
@@ -2041,13 +2978,16 @@
 
                     try {
                         const params = new URLSearchParams({
-                            url: article.originalLink || article.link,
+                            url: targetUrl,
                             requestId,
                             title: article.title || '',
                             feedTitle: article.feedTitle || '',
                             feedUrl: article.feedUrl || '',
                             feedIcon: article.feedIcon || ''
                         });
+                        if (prefetchTargets.length > 0) {
+                            params.set('prefetchTargets', JSON.stringify(prefetchTargets));
+                        }
                         const res = await fetch('/api/article-content?' + params.toString());
                         if (this.overlayRequestId !== requestId || !this.articleOverlayOpen) return;
                         if (res.ok) {
@@ -2055,7 +2995,9 @@
                             if (this.overlayRequestId !== requestId || !this.articleOverlayOpen) return;
                             if (data.error) {
                                 this.overlayError = data.error;
+                                this.overlayRemainingAvailable = data.remainingAvailable === true;
                             } else {
+                                this.currentPrefetchQueue = data.prefetchQueue || [];
                                 this.applyOverlayArticleData(data, article);
                             }
                         } else {
@@ -2072,7 +3014,34 @@
                     }
                 },
 
-                closeArticleOverlay() {
+                handleArticleClick(e) {
+                    const relatedLink = e.target.closest('.embedded-suggested-card a, a.styled-rel-card, a.tuoitre-event-stream__item-link');
+                    if (relatedLink?.href) {
+                        const matched = this.findArticleByRouteUrl(relatedLink.href);
+                        this.openRelatedArticle(matched || {
+                            link: relatedLink.href,
+                            originalLink: relatedLink.href,
+                            title: relatedLink.textContent?.trim() || ''
+                        }, e);
+                        return;
+                    }
+                    const spoiler = e.target.closest('.bbCodeBlock--spoiler');
+                    if (spoiler) {
+                        spoiler.classList.toggle('revealed');
+                    }
+                    const unfurl = e.target.closest('.bbCodeBlock--unfurl, .fauxBlockLink');
+                    if (unfurl) {
+                        const link = unfurl.getAttribute('data-url') || unfurl.querySelector('a')?.href;
+                        if (link) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            window.open(link, '_blank', 'noopener,noreferrer');
+                        }
+                    }
+                },
+            
+            closeArticleOverlay(options = {}) {
+                    const closeOptions = options && options.constructor === Object ? options : {};
                     this.stopArticleSpeech();
                     if (this.vozScrollRaf) cancelAnimationFrame(this.vozScrollRaf);
                     this.vozScrollRaf = 0;
@@ -2083,6 +3052,11 @@
                     if (this.vozPollingInterval) clearInterval(this.vozPollingInterval);
                     this.vozPollingInterval = null;
                     this.overlayRequestId = '';
+                    if (this.articleOverlayStack.length > 0 && closeOptions.closeAll !== true) {
+                        const previous = this.articleOverlayStack.pop();
+                        this.restoreArticleOverlay(previous, closeOptions.updateHistory !== false);
+                        return;
+                    }
                     this.articleOverlayOpen = false;
                     this.overlayContent = null;
                     this.overlayPagination = null;
@@ -2099,17 +3073,309 @@
                     this.overlayProgress = { message: '' };
                     this.overlayArticle = null;
                     this.isLoadingOverlay = false;
+                    // AI Summary cleanup
+                    this.aiSummary = null;
+                    this.aiSummaryLoading = false;
+                    this.aiSummaryExpanded = false;
+                    this.aiSummaryError = null;
+                    this.vozSummaryProgress = null;
+                    if (this.aiSummaryPollTimer) clearInterval(this.aiSummaryPollTimer);
+                    this.aiSummaryPollTimer = null;
+                    // Let Voz Summary run in background
+                    // No need to cancel, but we could clear the poll timer if we want
+                    if (this.vozSummaryPollTimer) clearInterval(this.vozSummaryPollTimer);
                     document.body.style.overflow = '';
+                    this.articleOverlayStack = [];
+                    if (closeOptions.updateHistory !== false) this.clearArticleRoute(true);
                 },
 
-                async openDebugModal(url) {
+                // ─── AI Summary Methods ────────────────────────────────
+                isVozArticle(article) {
+                    if (!article) return false;
+                    const url = article.originalLink || article.link || '';
+                    return url.includes('voz.vn');
+                },
+
+                async fetchAiSummary(url) {
+                    if (!url) return;
+                    this.aiSummaryLoading = true;
+                    try {
+                        // Prioritize this article
+                        fetch('/api/summary/prioritize', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ url })
+                        }).catch(() => {});
+
+                        const res = await fetch(`/api/summary?url=${encodeURIComponent(url)}`);
+                        if (!res.ok) { this.aiSummaryLoading = false; return; }
+                        const data = await res.json();
+
+                        if (data.status === 'ready') {
+                            this.aiSummary = data;
+                            this.aiSummaryLoading = false;
+                        } else if (data.status === 'voz_manual') {
+                            this.aiSummary = { status: 'voz_manual' };
+                            this.aiSummaryLoading = false;
+                        } else {
+                            // pending or generating — start polling
+                            this.aiSummary = data;
+                            this.pollAiSummary(url);
+                        }
+                    } catch (e) {
+                        this.aiSummaryLoading = false;
+                        this.aiSummaryError = e.message;
+                    }
+                },
+
+                pollAiSummary(url) {
+                    if (this.aiSummaryPollTimer) clearInterval(this.aiSummaryPollTimer);
+                    let attempts = 0;
+                    this.aiSummaryPollTimer = setInterval(async () => {
+                        attempts++;
+                        if (attempts > 60) { // Stop after ~3 minutes
+                            clearInterval(this.aiSummaryPollTimer);
+                            this.aiSummaryPollTimer = null;
+                            this.aiSummaryLoading = false;
+                            return;
+                        }
+                        try {
+                            const res = await fetch(`/api/summary?url=${encodeURIComponent(url)}`);
+                            if (!res.ok) return;
+                            const data = await res.json();
+                            if (data.status === 'ready') {
+                                this.aiSummary = data;
+                                this.aiSummaryLoading = false;
+                                clearInterval(this.aiSummaryPollTimer);
+                                this.aiSummaryPollTimer = null;
+                            } else {
+                                this.aiSummary = data;
+                            }
+                        } catch (e) {}
+                    }, 3000);
+                },
+
+                pollAiSummaryUpgrade(url) {
+                    if (this.aiSummaryUpgradePollTimer) clearInterval(this.aiSummaryUpgradePollTimer);
+                    let attempts = 0;
+                    this.aiSummaryUpgradePollTimer = setInterval(async () => {
+                        attempts++;
+                        if (attempts > 30) { // Stop after 90s
+                            clearInterval(this.aiSummaryUpgradePollTimer);
+                            this.aiSummaryUpgradePollTimer = null;
+                            return;
+                        }
+                        try {
+                            const res = await fetch(`/api/summary?url=${encodeURIComponent(url)}`);
+                            if (!res.ok) return;
+                            const data = await res.json();
+                            if (data.status === 'ready' && data.modelUsed === 'gemini-3.5-flash') {
+                                this.aiSummary = data;
+                                clearInterval(this.aiSummaryUpgradePollTimer);
+                                this.aiSummaryUpgradePollTimer = null;
+                            }
+                        } catch (e) {}
+                    }, 3000);
+                },
+
+                async submitSummaryFeedback(url, feedback) {
+                    if (!url) return;
+                    try {
+                        await fetch('/api/summary/feedback', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ url, feedback })
+                        });
+                        if (this.aiSummary) {
+                            this.aiSummary = { ...this.aiSummary, feedback };
+                        }
+                    } catch (e) {}
+                },
+
+                async fetchAiAnalysis(url) {
+                    if (!url || this.aiAnalysisLoading) return;
+                    this.aiAnalysisLoading = true;
+                    try {
+                        const res = await fetch('/api/summary/analysis', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ url })
+                        });
+                        const data = await res.json();
+                        if (data.success && data.analysis) {
+                            if (!this.aiSummary) this.aiSummary = {};
+                            this.aiSummary.analysis = data.analysis;
+                            this.aiSummary.analysisModel = data.analysisModel;
+                        }
+                    } catch (e) {
+                        console.error('Failed to fetch analysis:', e);
+                    } finally {
+                        this.aiAnalysisLoading = false;
+                    }
+                },
+                async generateVozSummary(url, mode = 'detailed') {
+                    if (!url) return;
+                    this.vozSummaryProgress = { stage: 'starting', current: 0, total: null, message: 'Starting...' };
+                    this.aiSummary = null;
+
+                    try {
+                        const res = await fetch('/api/summary/voz', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ url, mode })
+                        });
+                        if (!res.ok) throw new Error('Failed to start summary');
+                        
+                        this.pollVozSummary(url);
+                    } catch (e) {
+                        this.aiSummaryError = e.message;
+                        this.vozSummaryProgress = null;
+                    }
+                },
+
+                pollVozSummary(url) {
+                    if (this.vozSummaryPollTimer) clearInterval(this.vozSummaryPollTimer);
+                    this.vozSummaryPollTimer = setInterval(async () => {
+                        try {
+                            const res = await fetch(`/api/summary/voz/status?url=${encodeURIComponent(url)}`);
+                            if (!res.ok) return;
+                            const data = await res.json();
+                            
+                            if (data.status === 'not_found') {
+                                clearInterval(this.vozSummaryPollTimer);
+                                this.vozSummaryProgress = null;
+                            } else if (data.status === 'ready') {
+                                clearInterval(this.vozSummaryPollTimer);
+                                this.aiSummary = data.summary;
+                                this.vozSummaryProgress = null;
+                                if (this.overlayArticle && (this.overlayArticle.link === url || this.overlayArticle.originalLink === url)) {
+                                    this.overlayArticle.vozSummary = data.summary;
+                                }
+                                const article = this.articles.find(a => a.link === url || a.originalLink === url);
+                                if (article) article.vozSummary = data.summary;
+                            } else if (data.status === 'error') {
+                                clearInterval(this.vozSummaryPollTimer);
+                                this.aiSummaryError = data.error;
+                                this.vozSummaryProgress = null;
+                            } else if (data.status === 'generating') {
+                                this.vozSummaryProgress = data.progress;
+                            }
+                        } catch(e) {}
+                    }, 2000);
+                },
+
+                async cancelVozSummary(url) {
+                    if (this.vozSummaryPollTimer) {
+                        clearInterval(this.vozSummaryPollTimer);
+                        this.vozSummaryPollTimer = null;
+                    }
+                    this.vozSummaryProgress = null;
+                    
+                    if (url) {
+                        try {
+                            await fetch('/api/summary/voz/cancel', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ url })
+                            });
+                        } catch(e) {}
+                    }
+                },
+
+                exportVozToPdf(url) {
+                    const summary = this.aiSummary;
+                    if (!summary || !summary.rawPosts || summary.rawPosts.length === 0) {
+                        alert('Raw thread data not available. Please generate a new summary to export the full thread.');
+                        return;
+                    }
+                    
+                    const printWindow = window.open('', '_blank');
+                    const content = `
+                        <html>
+                        <head>
+                            <title>Voz Thread Export - ${url}</title>
+                            <style>
+                                body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 40px; line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto; }
+                                h1 { font-size: 24px; margin-bottom: 10px; }
+                                .meta { color: #666; font-size: 14px; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 1px solid #eee; }
+                                .post { margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid #eee; }
+                                .post-header { font-weight: bold; margin-bottom: 10px; color: #4f46e5; }
+                                .post-content { white-space: pre-wrap; font-size: 15px; }
+                            </style>
+                        </head>
+                        <body>
+                            <h1>Voz Thread Export</h1>
+                            <div class="meta">Source: <a href="${url}">${url}</a><br>Exported on: ${new Date().toLocaleString()}<br>Total Posts: ${summary.rawPosts.length}</div>
+                            
+                            ${summary.rawPosts.map(p => `
+                                <div class="post">
+                                    <div class="post-header">#${p.number} - ${p.author || 'Anonymous'}</div>
+                                    <div class="post-content">${p.content.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+                                </div>
+                            `).join('')}
+                            
+                            <script>
+                                window.onload = () => { window.print(); };
+                            </script>
+                        </body>
+                        </html>
+                    `;
+                    printWindow.document.write(content);
+                    printWindow.document.close();
+                },
+
+                async generateSummary(url, mode) {
+                    if (!url) return;
+                    if (this.isVozArticle(this.overlayArticle)) {
+                        return this.generateVozSummary(url, mode);
+                    }
+                    try {
+                        // First, explicitly check if it's already in the cache
+                        const checkRes = await fetch('/api/summary?url=' + encodeURIComponent(url));
+                        if (checkRes.ok) {
+                            const data = await checkRes.json();
+                            if (data && data.status === 'ready') {
+                                this.aiSummary = data;
+                                return; // Already generated!
+                            }
+                        }
+
+                        await fetch('/api/summary/upgrade', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ url })
+                        });
+                        if (this.aiSummary) this.aiSummary.status = 'pending';
+                        this.fetchAiSummary(url); // Start polling
+
+                    } catch (e) {
+                        console.error('Failed to trigger summary:', e);
+                    }
+                },
+                formatText(text) {
+                    if (!text) return '';
+                    // Escape HTML first to prevent XSS
+                    const escaped = text.replace(/[&<>'"]/g, tag => ({
+                        '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+                    }[tag]));
+                    // Replace bold markdown with <b>
+                    const formatted = escaped.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
+                    return formatted;
+                },
+
+                async openDebugModal(articleOrUrl) {
+                    const url = typeof articleOrUrl === 'string' ? articleOrUrl : (articleOrUrl.originalLink || articleOrUrl.link);
+                    this.debugModalArticle = typeof articleOrUrl === 'object' ? articleOrUrl : this.articles.find(a => (a.originalLink || a.link) === url);
+                    
                     this.debugModalOpen = true;
                     this.isDebugging = true;
                     this.debugData = null;
+                    
                     try {
                         const res = await fetch(`/api/debug-article?url=${encodeURIComponent(url)}`);
                         if (res.ok) {
                             this.debugData = await res.json();
+                            this.debugData.prefetchQueue = this.currentPrefetchQueue || [];
                         } else {
                             this.debugData = { url, error: 'Server error during debug' };
                         }
@@ -2122,7 +3388,7 @@
 
                 proxyImageUrl(url) {
                     if (!url) return "";
-                    if (url.includes("baodautu.vn") || url.includes("media.baodautu.vn")) {
+                    if (url.includes("baodautu.vn") || url.includes("baoxaydung.com.vn") || url.includes("baoxaydung.vn")) {
                         return "/api/proxy-image?url=" + encodeURIComponent(url);
                     }
                     return url;

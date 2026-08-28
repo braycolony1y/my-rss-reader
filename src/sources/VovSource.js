@@ -24,6 +24,20 @@ export default class VovSource {
     }
 
     parseArticleHtmlContent(html, url, result, utils) {
+        // Extract og:image if missing
+        if (!result.image) {
+            const ogImageMatch = html.match(/<meta\b[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i) ||
+                                 html.match(/<meta\b[^>]*content=["']([^"']+)["'][^>]*property=["']og:image["']/i);
+            if (ogImageMatch) result.image = ogImageMatch[1];
+        }
+
+        // Extract author if missing
+        if (!result.author) {
+            const authorMatch = html.match(/<a\b[^>]*href=["']\/author\?[^>]+>([^<]+)<\/a>/i) || 
+                                html.match(/<div\b[^>]*class=["'][^"']*article-author[^"']*["'][^>]*>([\s\S]*?)<\/div>\s*<\/div>/i);
+            if (authorMatch) result.author = authorMatch[1].replace(/<[^>]+>/g, '').trim();
+        }
+
         let articleHtml = '';
         const articleBodyMatch = html.match(/<div\b[^>]*class=["'][^"']*text-long[^"']*["'][^>]*>([\s\S]*?)<\/div>\s*<div\b[^>]*class=["']author/i) || 
                                  html.match(/<div\b[^>]*class=["'][^"']*text-long[^"']*["'][^>]*>([\s\S]*?)(?:<\/div>\s*<div\b[^>]*class=["']row|$)/i);
@@ -32,10 +46,6 @@ export default class VovSource {
         } else {
             articleHtml = html; // fallback
         }
-
-        // Remove unnecessary info (inner-article / related links inside text)
-        const innerArticleRegex = /<article\b[^>]*class=["'][^"']*inner-article[^"']*["'][^>]*>[\s\S]*?<\/article>/gi;
-        articleHtml = articleHtml.replace(innerArticleRegex, '');
         
         return articleHtml;
     }

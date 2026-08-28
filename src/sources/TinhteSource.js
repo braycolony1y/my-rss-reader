@@ -31,6 +31,9 @@ export default class TinhteSource {
                     if (post.poster_username) {
                         result.author = post.poster_username;
                     }
+                    if (post.links && post.links.poster_avatar) {
+                        result.authorAvatar = post.links.poster_avatar;
+                    }
                     
                     // Process Tinhte_Galleria to extract original images
                     articleHtml = articleHtml.replace(/<ul[^>]*class="[^"]*Tinhte_Galleria[^"]*"[^>]*>([\s\S]*?)<\/ul>/ig, (match, inner) => {
@@ -94,8 +97,18 @@ export default class TinhteSource {
 
                     if (post.attachments && Array.isArray(post.attachments)) {
                         post.attachments.forEach(att => {
-                            if (att.links && att.links.permalink && !att.attachment_is_video) {
-                                articleHtml += `<br><img src="${utils.escapeHtml(att.links.permalink)}" alt="${utils.escapeHtml(att.filename || '')}">`;
+                            if (att.attachment_is_video && att.links && (att.links.video_url || att.links.permalink)) {
+                                const url = att.links.video_url || att.links.permalink;
+                                const idStr = String(att.attachment_id || '');
+                                if (!articleHtml.includes(url) && (!idStr || !articleHtml.includes(idStr))) {
+                                    articleHtml += `<br><video controls style="width: 100%; border-radius: 8px; margin: 16px 0;"><source src="${utils.escapeHtml(url)}" type="video/mp4"></video>`;
+                                }
+                            } else if (att.links && att.links.permalink && !att.attachment_is_video) {
+                                const url = att.links.permalink;
+                                const idStr = String(att.attachment_id || '');
+                                if (!articleHtml.includes(url) && (!idStr || !articleHtml.includes(idStr))) {
+                                    articleHtml += `<br><img src="${utils.escapeHtml(url)}" alt="${utils.escapeHtml(att.filename || '')}">`;
+                                }
                             }
                         });
                     }

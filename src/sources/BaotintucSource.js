@@ -11,7 +11,7 @@ export default class BaotintucSource {
             const agent = new https.Agent({
                 rejectUnauthorized: false
             });
-            const res = await fetch(targetUrl, { agent });
+            const res = await fetchFn(targetUrl, { agent });
             if (res.ok) {
                 const html = await res.text();
                 const ogImageMatch = html.match(/<meta\b[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i) ||

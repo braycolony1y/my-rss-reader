@@ -46,6 +46,9 @@ import ApnewsSource from './ApnewsSource.js';
 import NytSource from './NytSource.js';
 import UpgradedPointsSource from './UpgradedPointsSource.js';
 import BBCSource from './BBCSource.js';
+import SggpSource from './SggpSource.js';
+import DanvietSource from './DanvietSource.js';
+import BaovanhoaSource from './BaovanhoaSource.js';
 registry.register(new VozSource());
 registry.register(new TinhteSource());
 registry.register(new VietnamplusSource());
@@ -69,5 +72,8 @@ registry.register(new ApnewsSource());
 registry.register(new NytSource());
 registry.register(new UpgradedPointsSource());
 registry.register(new BBCSource());
+registry.register(new SggpSource());
+registry.register(new DanvietSource());
+registry.register(new BaovanhoaSource());
 
 export default registry;

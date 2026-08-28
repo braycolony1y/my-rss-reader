@@ -92,6 +92,23 @@ venv/
 # Secrets
 # =========================
 pwd.txt
+gemini-keys.txt
+qwen-keys.txt
+
+# =========================
+# Atomic-write leftovers and local diagnostics
+# =========================
+*.tmp-*
+*.cpuprofile
+*.before-*
+*.corrupted.js
+.codex-staging-*/
+backups/
+smart-embeddings-worker.json
+
+# The backup job's own public-safe operational log is intentionally versioned.
+!ops/backup/logs/
+!ops/backup/logs/*.log
 
 # =========================
 # Optional large generated files

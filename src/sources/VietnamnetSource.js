@@ -47,6 +47,11 @@ export default class VietnamnetSource {
         if (authorMatch) {
             result.author = authorMatch[1].trim();
         }
+
+        const authorImageMatch = html.match(/<a\b[^>]*data-background-image=["']([^"']+)["'][^>]*>/i) || html.match(/background-image:\s*url\(['"]([^'"]+)['"]\)/i);
+        if (authorImageMatch) {
+            result.authorAvatar = authorImageMatch[1].trim();
+        }
         
         let articleHtml = '';
         const articleRegex = /<div\b[^>]*class=["'][^"']*(?:maincontent|main-content)[^"']*["'][^>]*>([\s\S]*?)<\/div>\s*<div\b[^>]*class=["'][^"']*article-detail-author-wrapper/i;
@@ -71,6 +76,11 @@ export default class VietnamnetSource {
             let saboHtml = videoSaboMatch ? `<p><strong>${videoSaboMatch[1].trim()}</strong></p>` : '';
             if (!match) articleHtml = ''; // Clear fallback HTML
             articleHtml = mediaHtml + saboHtml + articleHtml;
+        }
+
+        const sapoMatch = html.match(/<h[1-6]\b[^>]*class=["'][^"']*content-detail-sapo[^"']*["'][^>]*>([\s\S]*?)<\/h[1-6]>/i) || html.match(/<div\b[^>]*class=["'][^"']*content-detail-sapo[^"']*["'][^>]*>([\s\S]*?)<\/div>/i);
+        if (sapoMatch && !articleHtml.includes(sapoMatch[1].trim())) {
+            articleHtml = `<p><strong>${sapoMatch[1].trim()}</strong></p>` + articleHtml;
         }
 
         if (articleHtml) {
@@ -119,13 +129,14 @@ export default class VietnamnetSource {
             }
             articleHtml = articleHtml.replace(insertGroupRegex, '');
 
-            const wikiNewsFullRegex = /<article\b[^>]*class=["'][^"']*ck-cms-wiki-news-full[^>]*>([\s\S]*?)<\/article>/gi;
+            const wikiNewsFullRegex = /<article\b[^>]*class=["'][^"']*ck-cms-wiki-news-(?:full|column-left|column-right)[^"']*["'][^>]*>([\s\S]*?)<\/article>|<article\b[^>]*data-vnnembedtype=["']article["'][^>]*>([\s\S]*?)<\/article>/gi;
             const wikiNewsPromises = [];
             let wikiMatch;
             while ((wikiMatch = wikiNewsFullRegex.exec(articleHtml)) !== null) {
-                const inner = wikiMatch[1];
+                const inner = wikiMatch[1] || wikiMatch[2];
+                if (!inner) continue;
                 wikiNewsPromises.push((async () => {
-                    const linkMatch = inner.match(/<a\b[^>]*class=["'][^"']*summary__content-title[^"']*["'][^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/i) || inner.match(/<a\b[^>]*href=["']([^"']+)["'][^>]*class=["'][^"']*summary__content-title[^"']*["'][^>]*>([\s\S]*?)<\/a>/i);
+                    const linkMatch = inner.match(/<a\b[^>]*class=["'][^"']*summary__content(?:-title)?[^"']*["'][^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/i) || inner.match(/<a\b[^>]*href=["']([^"']+)["'][^>]*class=["'][^"']*summary__content(?:-title)?[^"']*["'][^>]*>([\s\S]*?)<\/a>/i);
                     const imgMatch = inner.match(/<img\b[^>]*data-original=["']([^"']+)["']/i) || inner.match(/<img\b[^>]*src=["']([^"']+)["']/i);
                     const descMatch = inner.match(/<span\b[^>]*class=["'][^"']*summary__content-desc[^"']*["'][^>]*>([\s\S]*?)<\/span>/i);
                     if (linkMatch) {
@@ -217,6 +228,9 @@ export default class VietnamnetSource {
                 relatedListHtml += `</div></div>`;
                 articleHtml += relatedListHtml;
             }
+
+            // Convert tables used as blockquotes (e.g. background-color: #bfedd2) to standard blockquotes
+            articleHtml = articleHtml.replace(/<table\b[^>]*>\s*<tbody>\s*<tr>\s*<td\b[^>]*>([\s\S]*?)<\/td>\s*<\/tr>\s*<\/tbody>\s*<\/table>/gi, '<blockquote>$1</blockquote>');
         }
         
         return articleHtml;

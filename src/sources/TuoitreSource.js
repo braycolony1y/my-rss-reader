@@ -1,17 +1,19 @@
+import { decodeHTML } from 'entities';
+
 export default class TuoitreSource {
     match(hostname) {
         return hostname.includes('tuoitre.vn');
     }
 
-    parseArticleHtmlContent(html, url, result, utils) {
+    async parseArticleHtmlContent(html, url, result, utils) {
         let articleHtml = '';
-        const articleBodyMatch = html.match(/<div\b[^>]*class=["'][^"']*detail-cmain[^"']*["'][^>]*>([\s\S]*?)(?:<div\b[^>]*class=["'][^"']*readmore-body-box[^"']*["']|<div\b[^>]*id=["']tuoitre-tag-detail)/i) ||
-                                 html.match(/<div\b[^>]*class=["'][^"']*detail-content[^"']*["'][^>]*>([\s\S]*?)(?:<div\b[^>]*class=["'][^"']*readmore-body-box[^"']*["']|<div\b[^>]*id=["']tuoitre-tag-detail)/i);
+        const articleBodyMatch = html.match(/<div\b[^>]*class=["'][^"']*detail-cmain[^"']*["'][^>]*>([\s\S]*?)(?:<div\b[^>]*class=["'][^"']*readmore-body-box[^"']*["']|<div\b[^>]*id=["']tuoitre-tag-detail|<div\b[^>]*data-check-position=["']body_end["'])/i) ||
+                                 html.match(/<div\b[^>]*class=["'][^"']*detail-content[^"']*["'][^>]*>([\s\S]*?)(?:<div\b[^>]*class=["'][^"']*readmore-body-box[^"']*["']|<div\b[^>]*id=["']tuoitre-tag-detail|<div\b[^>]*data-check-position=["']body_end["'])/i);
         
         if (articleBodyMatch) {
             articleHtml = articleBodyMatch[1];
         } else {
-            const match = html.match(/<div\b[^>]*class=["'][^"']*detail-content[^"']*["'][^>]*>([\s\S]*?)(?:<div\b[^>]*class=["']tags[^"']*["']|<div\b[^>]*class=["']footer-content)/i);
+            const match = html.match(/<div\b[^>]*class=["'][^"']*detail-content[^"']*["'][^>]*>([\s\S]*?)(?:<div\b[^>]*class=["']tags[^"']*["']|<div\b[^>]*class=["']footer-content|<div\b[^>]*data-check-position=["']body_end["'])/i);
             articleHtml = match ? match[1] : html;
         }
 
@@ -24,7 +26,7 @@ export default class TuoitreSource {
             let absUrl = href;
             try { absUrl = href.startsWith('/') ? new URL(href, url).href : href; } catch(e) {}
             let mediaHtml = '';
-            if (img) mediaHtml = img.toLowerCase().endsWith('.mp4') ? `<video src="${img}" class="embedded-suggested-image" autoplay muted loop playsinline></video>` : `<img src="${img}" class="embedded-suggested-image" alt="">`;
+            if (img) mediaHtml = img.toLowerCase().endsWith('.mp4') ? `<video src="${img}" class="embedded-suggested-image"  muted loop playsinline></video>` : `<img src="${img}" class="embedded-suggested-image" alt="">`;
             return `<div class="embedded-suggested-card"><a href="${absUrl}" target="_blank" class="embedded-suggested-overlay"></a>${mediaHtml}<div class="embedded-suggested-content"><div class="embedded-suggested-title">${title}</div>${desc ? `<div class="embedded-suggested-summary">${desc}</div>` : ''}</div></div>`;
         };
 
@@ -59,12 +61,27 @@ export default class TuoitreSource {
             return '';
         });
 
+        // Format VideoStream
+        articleHtml = articleHtml.replace(/<div\b[^>]*type=["']VideoStream["'][^>]*>([\s\S]*?)<\/div>\s*<\/div>/gi, (m, inner) => {
+            const vidMatch = m.match(/data-vid=["']([^"']+)["']/i);
+            const thumbMatch = m.match(/data-thumb=["']([^"']+)["']/i);
+            const captionMatch = inner.match(/<div\b[^>]*class=["'][^"']*VideoCMS_Caption[^"']*["'][^>]*>([\s\S]*?)<\/div>/i);
+            let captionText = '';
+            if (captionMatch) captionText = captionMatch[1].replace(/<[^>]+>/g, '').trim();
+
+            if (vidMatch) {
+                let vidUrl = vidMatch[1];
+                if (!vidUrl.startsWith('http')) vidUrl = 'https://' + vidUrl;
+                let posterAttr = thumbMatch ? ` poster="${thumbMatch[1]}"` : '';
+                return `<figure class="my-6"><video src="${vidUrl}"${posterAttr} controls class="w-full rounded-2xl bg-black" playsinline></video>${captionText ? `<figcaption class="mt-2 text-center text-sm text-gray-500 italic">${captionText}</figcaption>` : ''}</figure>`;
+            }
+            return '';
+        });
+
         // Format Box Note / Summary (VCSortableInPreviewMode type="content")
         articleHtml = articleHtml.replace(/<div\b[^>]*type=["']content["'][^>]*>([\s\S]*?)<\/div>\s*<\/div>/gi, (m, inner) => {
-            let content = inner + '</div>';
-            content = content.replace(/<h2/i, '<h2 class="text-xl font-bold mb-3 text-amber-900 dark:text-amber-500"');
-            content = content.replace(/<p>/gi, '<p class="mb-3">');
-            return `<div class="not-prose my-6 p-5 rounded-2xl bg-amber-50 dark:bg-amber-900/10 border-l-4 border-l-amber-500 dark:border-l-amber-600 text-gray-800 dark:text-gray-200 shadow-sm leading-relaxed">${content}</div>`;
+            const content = inner.replace(/^\s*<div\b[^>]*placeholder=["'][^"']*["'][^>]*>/i, '').trim();
+            return `<aside class="tuoitre-info-card" role="note"><div class="tuoitre-info-card__content">${content}</div></aside>`;
         });
 
         // Box Tin Lien Quan (VCSortableInPreviewMode type="RelatedNewsBox")
@@ -178,12 +195,120 @@ export default class TuoitreSource {
             articleHtml = `<p class="font-bold text-xl mb-6 text-gray-900 dark:text-gray-100 leading-relaxed">${sapoMatch[1].trim()}</p>` + articleHtml;
         }
 
+        // Tuổi Trẻ leaves the event list empty in the initial document and hydrates it
+        // from /ajax/detailbox-thread/:id.htm. Fetch that small fragment with a strict
+        // deadline so the article remains responsive even if the optional list fails.
+        const historyStart = html.match(/<div\b[^>]*class=["'][^"']*detail__history[^"']*["'][^>]*>/i);
+        const historyHtml = historyStart && Number.isInteger(historyStart.index)
+            ? html.slice(historyStart.index, historyStart.index + 12000)
+            : '';
+        let eventHtmlBlock = '';
+        if (historyHtml) {
+            const titleBoxMatch = historyHtml.match(/<h2\b[^>]*class=["'][^"']*title-box[^"']*["'][^>]*>([\s\S]*?)<\/h2>/i);
+            if (titleBoxMatch) {
+                const aMatch = titleBoxMatch[1].match(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/i);
+                if (aMatch) {
+                    let href = aMatch[1];
+                    try { href = new URL(href, url).href; } catch (e) {}
+                    const titleText = decodeHTML(aMatch[2].replace(/<[^>]+>/g, '').trim());
+                    const threadMatch = historyHtml.match(/data-box-thread=["']([^"']+)["']/i);
+                    const eventItems = [];
+
+                    if (threadMatch && utils?.fetchWithTimeout) {
+                        try {
+                            const threadUrl = new URL(`/ajax/detailbox-thread/${encodeURIComponent(threadMatch[1])}.htm`, url).href;
+                            const response = await utils.fetchWithTimeout(threadUrl, {
+                                headers: {
+                                    Accept: 'text/html, */*;q=0.8',
+                                    Referer: url
+                                }
+                            }, 1200);
+                            if (response.ok) {
+                                const threadHtml = await response.text();
+                                const itemRegex = /<div\b[^>]*class=["'][^"']*\bitem\b[^"']*["'][^>]*>([\s\S]*?)<\/div>/gi;
+                                const currentPath = new URL(url).pathname.replace(/\/$/, '');
+                                let itemMatch;
+                                while ((itemMatch = itemRegex.exec(threadHtml)) !== null) {
+                                    const linkMatch = itemMatch[1].match(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/i);
+                                    if (!linkMatch) continue;
+
+                                    let itemHref;
+                                    try { itemHref = new URL(decodeHTML(linkMatch[1]), url).href; } catch (e) { continue; }
+                                    const itemPath = new URL(itemHref).pathname.replace(/\/$/, '');
+                                    if (itemPath === currentPath) continue;
+
+                                    const itemTitle = decodeHTML(linkMatch[2].replace(/<[^>]+>/g, '').trim());
+                                    const timeMatch = itemMatch[1].match(/<p\b[^>]*class=["'][^"']*box-category-time[^"']*["'][^>]*>([\s\S]*?)<\/p>/i);
+                                    const itemTime = timeMatch ? decodeHTML(timeMatch[1].replace(/<[^>]+>/g, '').trim()) : '';
+                                    if (itemTitle && !eventItems.some(item => item.href === itemHref)) {
+                                        eventItems.push({ href: itemHref, title: itemTitle, time: itemTime });
+                                    }
+                                    if (eventItems.length === 5) break;
+                                }
+                            }
+                        } catch (e) {
+                            // The heading remains useful when the optional event request fails.
+                        }
+                    }
+
+                    const escape = value => utils?.escapeHtml
+                        ? utils.escapeHtml(String(value))
+                        : String(value).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    const itemsHtml = eventItems.map(item => `
+                            <li class="tuoitre-event-stream__item">
+                                ${item.time ? `<time class="tuoitre-event-stream__date">${escape(item.time)}</time>` : '<span class="tuoitre-event-stream__date"></span>'}
+                                <a class="tuoitre-event-stream__item-link" href="${escape(item.href)}" target="_blank" rel="noopener">${escape(item.title)}</a>
+                            </li>`).join('');
+                    eventHtmlBlock = `
+                    <section class="tuoitre-event-stream" aria-label="Dòng sự kiện: ${escape(titleText)}">
+                        <header class="tuoitre-event-stream__header">
+                            <span class="tuoitre-event-stream__icon" aria-hidden="true">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 2 4.5 13H11l-1 9 9-12h-6V2Z"></path></svg>
+                            </span>
+                            <span class="tuoitre-event-stream__heading">
+                                <span class="tuoitre-event-stream__eyebrow">Dòng sự kiện</span>
+                                <a href="${escape(href)}" target="_blank" rel="noopener" class="tuoitre-event-stream__title-link"><strong class="tuoitre-event-stream__title">${escape(titleText)}</strong></a>
+                            </span>
+                        </header>
+                        ${itemsHtml ? `<ol class="tuoitre-event-stream__list">${itemsHtml}</ol>` : ''}
+                        <footer class="tuoitre-event-stream__footer">
+                            <a href="${escape(href)}" target="_blank" rel="noopener" class="tuoitre-event-stream__more">
+                                <span>Xem thêm</span>
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m9 5 7 7-7 7"></path></svg>
+                            </a>
+                        </footer>
+                    </section>`;
+                }
+            }
+        }
+
         if (allRelatedItems.length > 0) {
             let itemsHtml = '';
             for (const item of allRelatedItems) {
                 itemsHtml += createCardHtml(item.href, item.title, item.img, item.desc);
             }
-            articleHtml += createSuggestedHtml('BÀI VIẾT LIÊN QUAN / SỰ KIỆN', itemsHtml);
+            articleHtml += createSuggestedHtml('BÀI VIẾT LIÊN QUAN', itemsHtml);
+        }
+
+        if (eventHtmlBlock) {
+            articleHtml += eventHtmlBlock;
+        }
+
+        // Extract TTS Audio
+        const ttsMatch = html.match(/embedTTS\.init\(\{[\s\S]*?newsId:\s*['"]([^'"]+)['"][\s\S]*?distributionDate:\s*['"]([^'"]+)['"][\s\S]*?domainStorage:\s*['"]([^'"]+)['"][\s\S]*?srcAudioFormat:\s*['"]([^'"]+)['"][\s\S]*?ext:\s*['"]([^'"]+)['"]/i);
+        if (ttsMatch) {
+            const newsId = ttsMatch[1];
+            const dateStr = ttsMatch[2]; // e.g. 2026/08/01
+            const domainStorage = ttsMatch[3]; // https://tts.mediacdn.vn
+            const ext = ttsMatch[5]; // m4a
+            const voiceMatch = html.match(/defaultVoice:\s*['"]([^'"]+)['"]/i);
+            const voice = voiceMatch ? voiceMatch[1] : 'nu';
+            const nsMatch = html.match(/nameSpace:\s*['"]([^'"]+)['"]/i);
+            const namespace = nsMatch ? nsMatch[1] : 'tuoitre';
+            
+            // Format: {0}/{1}/{2}-{3}-{4}.{5}
+            const audioUrl = `${domainStorage}/${dateStr}/${namespace}-${voice}-${newsId}.${ext}`;
+            articleHtml = `<audio class="native-article-audio" src="${audioUrl}" style="display: none;" controls></audio>` + articleHtml;
         }
 
         return articleHtml;
