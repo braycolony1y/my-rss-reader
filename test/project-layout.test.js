@@ -23,7 +23,6 @@ const allowedRootFiles = new Set([
     'index.html',
     'package-lock.json',
     'package.json',
-    'qwen-keys.txt',
     'script.js',
     'server.js',
     'smart-cluster-worker.js',

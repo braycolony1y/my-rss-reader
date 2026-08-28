@@ -2,5 +2,8 @@ SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 MAILTO=""
 
+# Keep a private, rolling record of online AI calls and outcomes.
+*/5 * * * * /home/ubuntu/script/export-online-ai-usage-24h.sh >/dev/null 2>&1
+
 # Host timezone is Etc/UTC. 22:00 UTC is 05:00 Asia/Ho_Chi_Minh the next day.
 0 22 * * * /home/ubuntu/script/backup-my-rss-reader.sh >/dev/null 2>&1

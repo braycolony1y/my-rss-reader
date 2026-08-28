@@ -686,10 +686,10 @@
                                 localUsed: Boolean(status.localUsed),
                                 localModel: status.localModel || previousRun.localModel || 'qwen3.5:4b',
                                 geminiUsed: Boolean(status.geminiUsed),
-                                qwenUsed: Boolean(status.qwenUsed),
-                                qwenModel: status.qwenModel || previousRun.qwenModel || 'qwen3.7-plus',
                                 providers: Array.isArray(status.aiProviders) ? status.aiProviders : (previousRun.providers || []),
-                                providerOrder: Array.isArray(status.providerOrder) ? status.providerOrder : ['local', 'gemini', 'qwen'],
+                                providerOrder: Array.isArray(status.providerOrder)
+                                    ? status.providerOrder.filter(provider => provider !== 'qwen-flash')
+                                    : ['local-qwen', 'gemini-flash-lite', 'gemini-flash'],
                                 reviewedArticleCount: Number(status.geminiReviewedArticleCount) || previousRun.reviewedArticleCount || 0,
                                 eligibleArticleCount: Number(status.geminiEligibleArticleCount) || previousRun.eligibleArticleCount || 0,
                                 reason: status.geminiReason || previousRun.reason || '',

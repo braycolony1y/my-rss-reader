@@ -17,6 +17,8 @@ Production RSS reader served by `rss-reader.service` from `/home/ubuntu/my-rss-r
 
 Runtime databases, caches, environment files, and API keys remain local and are excluded from the public GitHub backup.
 
+The private rolling online-AI usage report is refreshed every five minutes at `/home/ubuntu/script/logs/online-ai-usage-last-24h.log`. It contains only the last 24 hours and is intentionally excluded from the public backup.
+
 Disposable work belongs in `/tmp`, not in the repository. Obsolete or uncertain files should be moved to the external cleanup quarantine documented in `ops/maintenance/` until they can be safely deleted. A regression test enforces the allowed top-level layout.
 
 ## Verification

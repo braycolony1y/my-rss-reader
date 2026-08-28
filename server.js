@@ -79,7 +79,6 @@ import {
 import {
     summaryQueue,
     geminiKeyManager,
-    qwenKeyManager,
     getSummaryFromCache,
     writeSummaryToCache,
     generateVozThreadSummary,
@@ -2843,8 +2842,7 @@ const smartNews = createSmartNewsEngine({
     db: env.RSS_DATA,
     helpers: { fastParseRSS, waitForHttpIdle },
     headers: BROWSER_HEADERS,
-    geminiKeyManager,
-    qwenKeyManager
+    geminiKeyManager
 });
 
 // ============================================================================
@@ -3925,16 +3923,15 @@ app.post('/api/smart-settings', authMiddleware, async (req, res) => {
 app.get('/api/gemini-key-status', authMiddleware, async (req, res) => {
     const activeKey = geminiKeyManager.getCurrentKeyObj();
     const keyStats = geminiKeyManager.getDebugStats();
-    const qwenStats = qwenKeyManager.getDebugStats();
     const apiKey = activeKey?.key || '';
     const model = process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite';
     const smartStatus = await smartNews.getStatus();
     const rawProviderHealth = await env.RSS_DATA.get('smartAiProviderHealth', { type: 'json' }).catch(()=>null);
     const providerHealth = rawProviderHealth || {};
     const smartError = String(smartStatus.geminiError || '');
-    const smartHttpStatus = Number((smartError.match(/(?:Gemini|Qwen|Local AI) HTTP\s+(\d{3})/i) || [])[1]) || null;
+    const smartHttpStatus = Number((smartError.match(/(?:Gemini|Local AI) HTTP\s+(\d{3})/i) || [])[1]) || null;
     const smartErrorSummary = smartHttpStatus === 429
-        ? 'An AI provider returned HTTP 429. The request pacer or Qwen fallback was used; the last successful snapshot is kept if both providers fail.'
+        ? 'Gemini returned HTTP 429. The request pacer was used; the last successful snapshot is kept if online AI remains unavailable.'
         : smartError.split('\n')[0].slice(0, 240);
     const persistedKeyErrors = Array.isArray(smartStatus.geminiKeyErrors)
         ? smartStatus.geminiKeyErrors.map(event => ({
@@ -3942,16 +3939,6 @@ app.get('/api/gemini-key-status', authMiddleware, async (req, res) => {
             httpStatus: Number(event.httpStatus) || null,
             category: String(event.category || '').slice(0, 100),
             provider: 'Gemini',
-            error: String(event.error || '').split('\n')[0].slice(0, 240),
-            at: event.at || ''
-        })).filter(event => event.key > 0)
-        : [];
-    const persistedQwenKeyErrors = Array.isArray(smartStatus.qwenKeyErrors)
-        ? smartStatus.qwenKeyErrors.map(event => ({
-            key: Number(event.key) || 0,
-            httpStatus: Number(event.httpStatus) || null,
-            category: String(event.category || '').slice(0, 100),
-            provider: 'Qwen',
             error: String(event.error || '').split('\n')[0].slice(0, 240),
             at: event.at || ''
         })).filter(event => event.key > 0)
@@ -3974,15 +3961,8 @@ app.get('/api/gemini-key-status', authMiddleware, async (req, res) => {
         provider: 'Gemini',
         error: String(key.lastError || '').split('\n')[0].slice(0, 240),
         at: key.lastErrorAt || ''
-    })).concat((qwenStats.keys || []).filter(key => key.lastError || key.lastHttpStatus).map(key => ({
-        key: Number(key.index) + 1,
-        httpStatus: Number(key.lastHttpStatus) || null,
-        category: 'current key state',
-        provider: 'Qwen',
-        error: String(key.lastError || '').split('\n')[0].slice(0, 240),
-        at: key.lastErrorAt || ''
-    })));
-    const persistedAiKeyErrors = [...persistedLocalErrors, ...persistedKeyErrors, ...persistedQwenKeyErrors];
+    }));
+    const persistedAiKeyErrors = [...persistedLocalErrors, ...persistedKeyErrors];
     const base = {
         configured: keyStats.totalKeys > 0,
         keyCount: keyStats.totalKeys,
@@ -4002,11 +3982,9 @@ app.get('/api/gemini-key-status', authMiddleware, async (req, res) => {
             localUsed: Boolean(smartStatus.localUsed),
             localModel: smartStatus.localModel || process.env.OLLAMA_SMART_MODEL || 'qwen3.5:4b',
             geminiUsed: Boolean(smartStatus.geminiUsed),
-            qwenUsed: Array.isArray(smartStatus.aiProviders) ? smartStatus.aiProviders.some(p => p.startsWith('qwen')) : Boolean(smartStatus.qwenUsed),
             providers: Array.isArray(smartStatus.aiProviders) ? smartStatus.aiProviders : [],
-            providerOrder: Array.isArray(smartStatus.providerOrder) ? smartStatus.providerOrder : ['local', 'gemini', 'qwen'],
+            providerOrder: Array.isArray(smartStatus.providerOrder) ? smartStatus.providerOrder.filter(provider => provider !== 'qwen-flash') : ['local-qwen', 'gemini-flash-lite', 'gemini-flash'],
             progress: smartStatus.progress || null,
-            qwenModel: smartStatus.qwenModel || process.env.QWEN_SMART_MODEL || 'qwen3.7-plus',
             reviewedArticleCount: smartStatus.verificationStats ? Number(smartStatus.verificationStats.reviewedArticleCount) : (Number(smartStatus.geminiReviewedArticleCount) || 0),
             eligibleArticleCount: Number(smartStatus.candidateCount) || Number(smartStatus.geminiEligibleArticleCount) || 0,
             reason: smartStatus.reason || smartStatus.geminiReason || '',
@@ -6228,7 +6206,7 @@ app.post('/api/user-preferences', authMiddleware, async (req, res) => {
         await env.RSS_DATA.put('userPreferences', JSON.stringify(prefs));
         
         if (key === 'clusteringModel') {
-            const valid = ['gemini-3.1-pro', 'gemini-3.5-flash', 'gemini-3.5-flash-lite', 'Qwen3.7-Plus', 'qwen3.7-flash'];
+            const valid = ['gemini-3.1-pro', 'gemini-3.5-flash', 'gemini-3.5-flash-lite'];
             if (valid.includes(value)) {
                 setClusteringModel(value);
             }
@@ -6431,11 +6409,9 @@ app.post('/api/summary/analysis', authMiddleware, async (req, res) => {
 
 app.get('/api/summary/debug', authMiddleware, (req, res) => {
     const geminiStats = geminiKeyManager.getDebugStats();
-    const qwenStats = qwenKeyManager.getDebugStats();
     res.json({
         queue: summaryQueue.getStatus(),
-        gemini: geminiStats,
-        qwen: qwenStats
+        gemini: geminiStats
     });
 });
 

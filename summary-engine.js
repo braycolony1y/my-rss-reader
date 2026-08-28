@@ -2,7 +2,8 @@
  * summary-engine.js — AI Summary Engine
  * 
  * Background queue that generates article summaries using Gemini APIs.
- * Uses gemini-3.5-flash-lite by default, and gemini-3.5-flash for VOZ or upgrades.
+ * Uses Gemini for online generation. Local Qwen remains available only to the
+ * Smart clustering engine; no Qwen cloud endpoint is used here.
  */
 
 import fs from 'fs/promises';
@@ -25,6 +26,16 @@ const MAX_RETRIES = 2;
 const RETRY_DELAY_MS = 5000;
 const QUEUE_POLL_INTERVAL_MS = 3000;
 const COOLDOWN_BETWEEN_JOBS_MS = 1500;
+const GEMINI_PRIMARY_MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
+const GEMINI_FALLBACK_MODEL = process.env.GEMINI_FLASH_LITE_MODEL || 'gemini-3.5-flash-lite';
+
+function logOnlineAiUsage(event) {
+    console.log('[ONLINE AI]', JSON.stringify({
+        at: new Date().toISOString(),
+        provider: 'gemini',
+        ...event
+    }));
+}
 
 // ─── Key Manager ───────────────────────────────────────────────────────
 
@@ -192,67 +203,6 @@ export class GeminiKeyManager {
 
 const geminiKeyManager = new GeminiKeyManager();
 
-class QwenKeyManager extends GeminiKeyManager {
-    constructor() {
-        super();
-    }
-    
-    loadKeys() {
-        try {
-            if (fsSync.existsSync('./qwen-keys.txt')) {
-                const lines = fsSync.readFileSync('./qwen-keys.txt', 'utf-8')
-                    .split('\n')
-                    .map(l => l.trim())
-                    .filter(l => l.length > 10);
-                this.keys = lines.map((k, i) => ({
-                    key: k,
-                    index: i,
-                    status: 'Standby',
-                    requestsToday: 0,
-                    lastUsed: null,
-                    lastError: null
-                }));
-            }
-        } catch(e) {}
-        
-        if (this.keys.length === 0 && process.env.QWEN_API_KEY) {
-            this.keys.push({
-                key: process.env.QWEN_API_KEY,
-                index: 0,
-                status: 'Standby',
-                requestsToday: 0,
-                lastUsed: null,
-                lastError: null
-            });
-        }
-        if (this.keys.length > 0) {
-            this.keys[0].status = 'Active';
-        }
-    }
-    
-    reportError(errorObj) {
-        if (!this.keys.length) return;
-        const current = this.keys[this.activeIdx];
-        current.lastError = errorObj.message || 'Unknown error';
-        current.lastHttpStatus = Number(errorObj.status) || null;
-        current.lastErrorAt = new Date().toISOString();
-        
-        const isQuotaError = errorObj.status === 429 || errorObj.status === 403 || errorObj.status === 402 || (errorObj.message && errorObj.message.toLowerCase().includes('quota') || errorObj.message.toLowerCase().includes('balance'));
-        
-        if (isQuotaError) {
-            current.status = 'Rate Limited';
-            current.cooldownUntil = Date.now() + 15 * 60 * 1000;
-            this.autoSwitchCount++;
-            this._switchToNextAvailableKey();
-            console.log(`[SUMMARY] Qwen API quota hit (${errorObj.status}). Failover to key index ${this.activeIdx}`);
-        } else {
-            console.log(`[SUMMARY] Qwen API error (${errorObj.status || 'Network/Timeout'}). Retrying same key.`);
-        }
-    }
-}
-
-const qwenKeyManager = new QwenKeyManager();
-
 // ─── Language Detection ────────────────────────────────────────────────
 
 const VIETNAMESE_MARKERS = /[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]/i;
@@ -280,6 +230,7 @@ async function geminiGenerate(model, prompt, options = {}) {
     const timeout = setTimeout(() => controller.abort(), options.timeoutMs || 120000);
     
     const startTime = Date.now();
+    let usageLogged = false;
     try {
         const res = await fetch(url, {
             method: 'POST',
@@ -287,7 +238,6 @@ async function geminiGenerate(model, prompt, options = {}) {
             body: JSON.stringify({
                 contents: [{ parts: [{ text: prompt }] }],
                 generationConfig: {
-                    temperature: 0.3,
                     maxOutputTokens: options.maxTokens || 800
                 }
             }),
@@ -298,6 +248,15 @@ async function geminiGenerate(model, prompt, options = {}) {
             const body = await res.text().catch(() => '');
             const err = new Error(`Gemini HTTP ${res.status}: ${body.slice(0, 200)}`);
             err.status = res.status;
+            logOnlineAiUsage({
+                operation: options.operation || 'summary',
+                model,
+                keyIndex: Number(keyObj.index) + 1,
+                status: 'failed',
+                httpStatus: res.status,
+                durationMs: Date.now() - startTime
+            });
+            usageLogged = true;
             geminiKeyManager.reportError(err);
             throw err;
         }
@@ -306,6 +265,19 @@ async function geminiGenerate(model, prompt, options = {}) {
         if (!data.candidates?.[0]?.content?.parts?.[0]?.text) {
             throw new Error("Invalid Gemini response format");
         }
+
+        logOnlineAiUsage({
+            operation: options.operation || 'summary',
+            model,
+            keyIndex: Number(keyObj.index) + 1,
+            status: 'success',
+            httpStatus: res.status,
+            durationMs: Date.now() - startTime,
+            promptTokens: Number(data.usageMetadata?.promptTokenCount) || 0,
+            outputTokens: Number(data.usageMetadata?.candidatesTokenCount) || 0,
+            totalTokens: Number(data.usageMetadata?.totalTokenCount) || 0
+        });
+        usageLogged = true;
         
         return {
             text: data.candidates[0].content.parts[0].text,
@@ -316,67 +288,28 @@ async function geminiGenerate(model, prompt, options = {}) {
         if (error.name === 'AbortError') {
             const err = new Error('Request timed out');
             err.status = 504;
+            logOnlineAiUsage({
+                operation: options.operation || 'summary',
+                model,
+                keyIndex: Number(keyObj.index) + 1,
+                status: 'failed',
+                httpStatus: 504,
+                durationMs: Date.now() - startTime
+            });
+            usageLogged = true;
             geminiKeyManager.reportError(err);
             throw err;
         }
-        throw error;
-    } finally {
-        clearTimeout(timeout);
-    }
-}
-
-async function qwenGenerate(model, prompt, options = {}) {
-    const keyObj = qwenKeyManager.getCurrentKeyObj();
-    if (!keyObj) throw new Error("No Qwen API key available");
-    
-    qwenKeyManager.recordUsage();
-    const url = `https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions`;
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), options.timeoutMs || 120000);
-    
-    const startTime = Date.now();
-    try {
-        const res = await fetch(url, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${keyObj.key}`
-            },
-            body: JSON.stringify({
-                model: model,
-                messages: [{ role: 'user', content: prompt }],
-                temperature: 0.3,
-                max_tokens: options.maxTokens || 800,
-                enable_thinking: false
-            }),
-            signal: controller.signal
-        });
-        
-        if (!res.ok) {
-            const body = await res.text().catch(() => '');
-            const err = new Error(`Qwen HTTP ${res.status}: ${body.slice(0, 200)}`);
-            err.status = res.status;
-            qwenKeyManager.reportError(err);
-            throw err;
-        }
-        
-        const data = await res.json();
-        if (!data.choices?.[0]?.message?.content) {
-            throw new Error("Invalid Qwen response format");
-        }
-        
-        return {
-            text: data.choices[0].message.content,
-            totalDuration: (Date.now() - startTime) * 1e6,
-            provider: 'qwen'
-        };
-    } catch (error) {
-        if (error.name === 'AbortError') {
-            const err = new Error('Request timed out');
-            err.status = 504;
-            qwenKeyManager.reportError(err);
-            throw err;
+        if (!usageLogged) {
+            logOnlineAiUsage({
+                operation: options.operation || 'summary',
+                model,
+                keyIndex: Number(keyObj.index) + 1,
+                status: 'failed',
+                httpStatus: Number(error.status) || null,
+                durationMs: Date.now() - startTime,
+                errorCode: String(error.code || error.name || 'UNKNOWN').slice(0, 80)
+            });
         }
         throw error;
     } finally {
@@ -385,15 +318,17 @@ async function qwenGenerate(model, prompt, options = {}) {
 }
 
 async function generateWithFallback(geminiModel, prompt, options = {}) {
-    const { maxTokens = 1500, timeoutMs = 120000, fastMode = false } = options;
+    const { maxTokens = 1500, timeoutMs = 120000 } = options;
     const globalTimeout = Date.now() + timeoutMs;
-    
-    // User requested order: Qwen3.7-Plus, gemini-3.5-flash, Qwen3.7-Flash, gemini-3.5-flash lite
+
+    const primaryModel = geminiModel || GEMINI_PRIMARY_MODEL;
     const sequence = [
-        { provider: 'qwen', displayModel: 'Qwen3.7-Plus', apiModel: 'qwen3.7-plus', timeout: 40000, isHeavy: true },
-        { provider: 'gemini', displayModel: 'gemini-3.5-flash', apiModel: 'gemini-3.5-flash', timeout: 40000, isHeavy: true },
-        { provider: 'qwen', displayModel: 'Qwen3.7-Flash', apiModel: 'qwen3.7-flash', timeout: 30000, isHeavy: false },
-        { provider: 'gemini', displayModel: 'gemini-3.5-flash-lite', apiModel: 'gemini-3.5-flash-lite', timeout: 30000, isHeavy: false }
+        { displayModel: primaryModel, apiModel: primaryModel, timeout: 40000 },
+        ...(GEMINI_FALLBACK_MODEL === primaryModel ? [] : [{
+            displayModel: GEMINI_FALLBACK_MODEL,
+            apiModel: GEMINI_FALLBACK_MODEL,
+            timeout: 30000
+        }])
     ];
     
     let fallbackTrace = [];
@@ -403,21 +338,15 @@ async function generateWithFallback(geminiModel, prompt, options = {}) {
         if (Date.now() > globalTimeout) break;
         
         try {
-            if (step.provider === 'qwen' && qwenKeyManager.keys.length > 0) {
-                const res = await qwenGenerate(step.apiModel, prompt, { maxTokens, timeoutMs: step.timeout });
-                res.provider = 'qwen';
-                res.modelUsed = step.displayModel;
-                res.fallbackTrace = fallbackTrace;
-                return res;
-            } else if (step.provider === 'gemini') { // Gemini is fallback even if no keys array checked (geminiKeyManager.getCurrentKeyObj throws)
-                const res = await geminiGenerate(step.apiModel, prompt, { maxTokens, timeoutMs: step.timeout });
-                res.provider = 'gemini';
-                res.modelUsed = step.displayModel;
-                res.fallbackTrace = fallbackTrace;
-                return res;
-            } else if (step.provider === 'qwen') {
-                fallbackTrace.push({ model: step.displayModel, status: 'failed', reason: 'No API keys configured' });
-            }
+            const res = await geminiGenerate(step.apiModel, prompt, {
+                maxTokens,
+                timeoutMs: step.timeout,
+                operation: options.operation || 'summary'
+            });
+            res.provider = 'gemini';
+            res.modelUsed = step.displayModel;
+            res.fallbackTrace = fallbackTrace;
+            return res;
         } catch (e) {
             console.log(`[SUMMARY] Model ${step.displayModel} failed: ${e.message}`);
             fallbackTrace.push({ model: step.displayModel, status: 'failed', reason: e.message });
@@ -593,7 +522,11 @@ async function generateDeepAnalysis(url) {
     let analysisModel = null;
     
     try {
-        const result = await generateWithFallback('gemini-3.5-flash', prompt, { maxTokens: 1500, timeoutMs: 120000 });
+        const result = await generateWithFallback(GEMINI_PRIMARY_MODEL, prompt, {
+            maxTokens: 1500,
+            timeoutMs: 120000,
+            operation: 'deep-analysis'
+        });
         analysisText = result.text;
         analysisModel = result.modelUsed;
     } catch (e) {
@@ -786,7 +719,7 @@ class SummaryQueue {
                 const existing = await getSummaryFromCache(job.url);
                 // If it's ready and we're NOT upgrading, or if we ARE upgrading and it's already upgraded.
                 if (existing && existing.status === 'ready') {
-                    if (!job.upgrade || (job.upgrade && existing.modelUsed === 'gemini-3.5-flash')) {
+                    if (!job.upgrade || (job.upgrade && existing.modelUsed === GEMINI_PRIMARY_MODEL)) {
                         this._stats.skipped++;
                         this._notifyListeners(job.url, existing);
                         continue;
@@ -826,7 +759,11 @@ class SummaryQueue {
 
                 console.log(`[SUMMARY] 🤖 Generating Breakdown: ${(cached.result.title || job.url).slice(0, 60)}...`);
 
-                const result = await generateWithFallback('gemini-3.5-flash', prompt, { maxTokens: 1500, timeoutMs: 120000 });
+                const result = await generateWithFallback(GEMINI_PRIMARY_MODEL, prompt, {
+                    maxTokens: 1500,
+                    timeoutMs: 120000,
+                    operation: 'article-summary'
+                });
 
                 const summaryData = {
                     status: 'ready',
@@ -978,7 +915,7 @@ async function generateVozThreadSummary(threadUrl, fetchPage, onProgress, signal
     }
 
     const language = detectLanguage(combinedText);
-    const model = 'gemini-3.5-flash';
+    const model = GEMINI_PRIMARY_MODEL;
 
     onProgress({
         stage: 'generating',
@@ -993,10 +930,11 @@ async function generateVozThreadSummary(threadUrl, fetchPage, onProgress, signal
         fastMode: options.fastMode || false
     });
 
-    const result = await generateWithFallback('gemini-3.5-flash', prompt, {
+    const result = await generateWithFallback(GEMINI_PRIMARY_MODEL, prompt, {
         maxTokens: 1200,
         timeoutMs: 180000,
-        fastMode: options.fastMode || false
+        fastMode: options.fastMode || false,
+        operation: 'voz-thread-summary'
     });
 
     const parsed = parseSummaryResponse(result.text);
@@ -1099,7 +1037,11 @@ ${domains.join(', ')}
 `;
 
     try {
-        const result = await generateWithFallback('gemini-3.5-flash', prompt, { maxTokens: 4000, timeoutMs: 60000 });
+        const result = await generateWithFallback(GEMINI_PRIMARY_MODEL, prompt, {
+            maxTokens: 4000,
+            timeoutMs: 60000,
+            operation: 'source-discovery'
+        });
         if (!result || !result.content) throw new Error("Empty response from AI");
         
         let jsonStr = result.content;
@@ -1124,7 +1066,6 @@ ${domains.join(', ')}
 export {
     summaryQueue,
     geminiKeyManager,
-    qwenKeyManager,
     getSummaryFromCache,
     writeSummaryToCache,
     generateVozThreadSummary,

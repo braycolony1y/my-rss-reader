@@ -7,7 +7,7 @@
     <title>My RSS Reader</title>
     <link rel="icon"
         href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22%238b5cf6%22/><circle cx=%2230%22 cy=%2270%22 r=%2210%22 fill=%22white%22/><path d=%22M30 40a30 30 0 0 1 30 30M30 20a50 50 0 0 1 50 50%22 fill=%22none%22 stroke=%22white%22 stroke-width=%2210%22 stroke-linecap=%22round%22/></svg>">
-    <link rel="stylesheet" href="/public/styles.css?v=20260826_deleted_sources">
+    <link rel="stylesheet" href="/public/styles.css?v=20260828_online_ai_cleanup">
     <script>
         // Start the first Smart News request while the browser is still parsing
         // the page. Returning visitors paint saved cards immediately instead.
@@ -3164,7 +3164,7 @@
                     <div class="ai-status-card rounded-2xl border border-white/[0.07] bg-[#0B101E]/60 p-4">
                         <div class="ai-status-card-title text-[11px] uppercase tracking-wider font-bold text-gray-500 mb-3">Clustering Model</div>
                         <div class="space-y-2">
-                            <template x-for="m in ['gemini-3.1-pro', 'gemini-3.5-flash', 'gemini-3.5-flash-lite', 'Qwen3.7-Plus', 'qwen3.7-flash']" :key="m">
+                            <template x-for="m in ['gemini-3.1-pro', 'gemini-3.5-flash', 'gemini-3.5-flash-lite']" :key="m">
                                 <label class="flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-2.5 cursor-pointer hover:bg-white/[0.05] transition">
                                     <input type="radio" name="clusteringModel" :value="m" x-model="clusteringModel" @change="saveClusteringModel()" class="text-violet-500 bg-[#0B101E] border-white/20 focus:ring-violet-500/50 h-4 w-4">
                                     <span class="text-sm font-semibold text-white" x-text="m"></span>
@@ -3187,17 +3187,17 @@
                                     <span class="ai-status-provider-rank flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-violet-400/10 text-xs font-black text-violet-300" x-text="idx + 1"></span>
                                     <div class="min-w-0 flex-1 space-y-1">
                                         <div class="flex justify-between items-center">
-                                            <div class="ai-status-value text-sm font-semibold text-white" x-text="providerId === 'local-qwen' ? 'Local Qwen' : providerId.includes('gemini') ? 'Gemini' : 'Qwen Cloud'"></div>
+                                            <div class="ai-status-value text-sm font-semibold text-white" x-text="providerId === 'local-qwen' ? 'Local Qwen' : 'Gemini'"></div>
                                             <span class="text-[10px] font-bold uppercase tracking-wide" 
                                                   :class="idx === 0 ? 'text-emerald-300' : 'text-gray-500'" 
                                                   x-text="idx === 0 ? 'Primary' : 'Backup'"></span>
                                         </div>
                                         <div class="ai-status-muted truncate text-xs text-gray-500" 
-                                             x-text="providerId === 'local-qwen' ? (geminiKeyStatus?.lastSmartRun?.localModel || 'qwen3.5:2b') : (providerId.includes('gemini') || providerId.includes('qwen') ? clusteringModel : '')"></div>
+                                             x-text="providerId === 'local-qwen' ? (geminiKeyStatus?.lastSmartRun?.localModel || 'qwen3.5:2b') : clusteringModel"></div>
                                         
                                         <!-- Health stats -->
                                         <div class="mt-2 text-[11px] text-gray-400 space-y-0.5"
-                                            x-data="{ healthType: providerId.startsWith('local') ? 'ollama' : (providerId.includes('gemini') ? 'gemini' : 'qwen') }">
+                                            x-data="{ healthType: providerId.startsWith('local') ? 'ollama' : 'gemini' }">
                                             <div class="flex gap-2">
                                                 <span class="font-medium text-gray-300">Status:</span>
                                                 <span :class="{
@@ -3224,14 +3224,6 @@
                                     </div>
                                 </div>
                             </template>
-                            <div class="ai-status-provider-row flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-2.5">
-                                <span class="ai-status-provider-rank flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-violet-400/10 text-xs font-black text-violet-300">3</span>
-                                <div class="min-w-0 flex-1">
-                                    <div class="ai-status-value text-sm font-semibold text-white">Qwen Cloud</div>
-                                    <div class="ai-status-muted truncate text-xs text-gray-500" x-text="geminiKeyStatus?.lastSmartRun?.qwenModel || 'qwen3.7-plus'"></div>
-                                </div>
-                                <span class="text-[10px] font-bold uppercase tracking-wide text-gray-500">Last backup</span>
-                            </div>
                         </div>
                     </div>
 
@@ -3327,7 +3319,7 @@
                             <div class="ai-status-card-title text-[11px] uppercase tracking-wider font-bold text-gray-500" x-text="geminiKeyStatus?.lastSmartRun?.state === 'refreshing' ? 'Current Smart refresh' : 'Last Smart refresh'">
                             </div>
                             <div class="ai-status-value text-sm font-semibold text-white mt-2"
-                                x-text="geminiKeyStatus?.lastSmartRun?.state === 'refreshing' ? 'AI review is running' : (geminiKeyStatus?.lastSmartRun?.localUsed ? ('Local ' + (geminiKeyStatus?.lastSmartRun?.localModel || 'Qwen') + ' was used') : (geminiKeyStatus?.lastSmartRun?.geminiUsed ? 'Gemini fallback was used' : (geminiKeyStatus?.lastSmartRun?.qwenUsed ? 'Qwen Cloud fallback was used' : 'No AI provider was used')))">
+                                x-text="geminiKeyStatus?.lastSmartRun?.state === 'refreshing' ? 'AI review is running' : (geminiKeyStatus?.lastSmartRun?.localUsed ? ('Local ' + (geminiKeyStatus?.lastSmartRun?.localModel || 'Qwen') + ' was used') : (geminiKeyStatus?.lastSmartRun?.geminiUsed ? 'Gemini was used' : 'No AI provider was used'))">
                             </div>
                             <div x-show="geminiKeyStatus?.lastSmartRun?.httpStatus" class="mt-2">
                                 <span class="ai-status-http-badge inline-flex rounded-md border border-red-400/20 bg-red-500/10 px-2 py-1 text-[10px] font-black tracking-wide text-red-300"
@@ -3374,7 +3366,7 @@
                         <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-4">Background Summary
                             Queue</h3>
 
-                        <div class="grid md:grid-cols-2 gap-3 mb-4">
+                        <div class="grid gap-3 mb-4">
                             <div class="ai-status-card rounded-xl border border-white/[0.07] bg-[#0B101E]/60 p-4">
                                 <div class="text-[11px] uppercase tracking-wider font-bold text-gray-500">Queue Status
                                 </div>
@@ -3408,21 +3400,9 @@
                                         x-text="geminiDebugStats?.gemini?.autoSwitchCount || 0"></span></div>
                             </div>
 
-                            <div class="ai-status-card rounded-xl border border-white/[0.07] bg-[#0B101E]/60 p-4">
-                                <div class="text-[11px] uppercase tracking-wider font-bold text-gray-500">Qwen Key
-                                    Manager</div>
-                                <div class="ai-status-value text-sm font-semibold text-white mt-2 flex items-center gap-2">
-                                    Key <span x-text="(geminiDebugStats?.qwen?.activeKeyIndex || 0) + 1"></span> of
-                                    <span x-text="geminiDebugStats?.qwen?.totalKeys || 0"></span>
-                                    <span class="ai-status-mask px-2 py-0.5 rounded-full text-[10px] font-bold bg-white/10"
-                                        x-text="geminiDebugStats?.qwen?.activeKeyMasked"></span>
-                                </div>
-                                <div class="text-xs text-gray-400 mt-1">Auto-failovers: <span class="text-amber-400"
-                                        x-text="geminiDebugStats?.qwen?.autoSwitchCount || 0"></span></div>
-                            </div>
                         </div>
 
-                        <div class="grid md:grid-cols-2 gap-4">
+                        <div class="grid gap-4">
                             <div class="space-y-2">
                                 <div class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Gemini Keys
                                 </div>
@@ -3453,35 +3433,6 @@
                                 </template>
                             </div>
 
-                            <div class="space-y-2">
-                                <div class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Qwen Keys
-                                </div>
-                                <template x-for="key in geminiDebugStats?.qwen?.keys" :key="key.index">
-                                    <div
-                                        class="ai-status-key-row text-xs p-3 rounded-lg border border-white/[0.05] bg-white/[0.02]">
-                                        <div class="flex items-center justify-between gap-3">
-                                            <div class="flex items-center gap-3">
-                                                <div class="ai-status-key-label font-bold text-gray-300" x-text="key.label"></div>
-                                                <div class="px-2 py-0.5 rounded-full text-[10px] font-bold" :class="{
-                                                    'bg-emerald-400/10 text-emerald-400': key.status === 'Active',
-                                                    'bg-red-400/10 text-red-400': key.status === 'Error' || key.status === 'Rate Limited',
-                                                    'bg-gray-500/10 text-gray-400': key.status === 'Standby'
-                                                }" x-text="key.status"></div>
-                                            </div>
-                                            <div class="text-gray-500"><span x-text="key.requestsToday"></span> req(s)</div>
-                                        </div>
-                                        <div x-show="key.lastHttpStatus || key.lastError"
-                                            class="ai-status-key-error mt-2 border-t border-white/[0.06] pt-2 text-[11px] text-red-300/80">
-                                            <span x-show="key.lastHttpStatus" class="mr-1 font-black"
-                                                x-text="'HTTP ' + key.lastHttpStatus"></span>
-                                            <span x-text="key.lastError ? key.lastError.split('\n')[0] : ''"></span>
-                                            <div x-show="key.cooldownUntil" class="mt-1 text-gray-500">
-                                                Retry after <span x-text="formatVietnamDateTime(key.cooldownUntil)"></span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </template>
-                            </div>
                         </div>
                     </div>
                 </div>
@@ -4547,7 +4498,7 @@
                         <div class="flex items-center gap-2">
                             <div class="w-7 flex items-center justify-center shrink-0">
                                 <svg class="w-4 h-4 shrink-0 transition-colors duration-300"
-                                    :class="(geminiDebugStats?.qwen?.keys?.length > 0 && geminiDebugStats.qwen.keys.every(k => k.status === 'Rate Limited' || k.status.includes('Error'))) ? 'text-red-500' : (geminiKeyStatus?.valid ? 'text-emerald-400' : 'text-amber-400')"
+                                    :class="geminiKeyStatus?.valid ? 'text-emerald-400' : 'text-amber-400'"
                                     fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                         d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z">
@@ -4557,18 +4508,10 @@
                             <span class="transition-opacity duration-300 truncate delay-75 flex items-center gap-2"
                                 :class="!sidebarExpanded && !isMobile ? 'opacity-0' : 'opacity-100'">
                                 AI API Keys
-                                <template
-                                    x-if="geminiDebugStats?.qwen?.keys?.length > 0 && geminiDebugStats.qwen.keys.every(k => k.status === 'Rate Limited' || k.status.includes('Error'))">
-                                    <span class="flex h-2 w-2 relative" title="Qwen Out of Quota">
-                                        <span
-                                            class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                                        <span class="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
-                                    </span>
-                                </template>
                             </span>
                         </div>
                         <span
-                            x-show="geminiKeyStatus?.valid && !(geminiDebugStats?.qwen?.keys?.length > 0 && geminiDebugStats.qwen.keys.every(k => k.status === 'Rate Limited' || k.status.includes('Error')))"
+                            x-show="geminiKeyStatus?.valid"
                             class="w-2 h-2 rounded-full bg-emerald-400 shrink-0 transition-opacity duration-300 delay-75"
                             :class="!sidebarExpanded && !isMobile ? 'opacity-0' : 'opacity-100'"></span>
                     </li>

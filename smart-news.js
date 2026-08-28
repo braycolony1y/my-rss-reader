@@ -6,7 +6,6 @@ import { decodeHTMLEntities } from './feed-parsers.js';
 import { normalizeArticleSourceUrl } from './src/article-source-state.js';
 import { discardResponseBody } from './src/fetch-response.js';
 import { createHash } from 'node:crypto';
-import { existsSync } from 'node:fs';
 import { readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
@@ -111,14 +110,6 @@ const SMART_NEWS_AI_CONFIG = {
         )
       ),
       maxRetries: 0
-    },
-    {
-      id: 'qwen-flash',
-      type: 'qwen',
-      model: 'qwen3.7-flash',
-      priority: 2,
-      timeoutMs: 30_000,
-      maxRetries: 1
     }
   ],
 
@@ -4851,11 +4842,6 @@ function providerEnabled(
     'false' &&
     !onlyLocal;
 
-  const qwenEnabled =
-    process.env.USE_QWEN !==
-    'false' &&
-    !onlyLocal;
-
   const localEnabled =
     process.env
       .SMART_LOCAL_AI_ENABLED !==
@@ -4867,35 +4853,6 @@ function providerEnabled(
     return (
       geminiEnabled &&
       hasGeminiKey
-    );
-  }
-
-  if (
-    provider.type === 'qwen'
-  ) {
-    const keyFileExists =
-      existsSync(
-        new URL(
-          './qwen-keys.txt',
-          import.meta.url
-        )
-      );
-
-    const environmentKeyExists =
-      Boolean(
-        process.env.QWEN_API_KEY
-      ) ||
-      Boolean(
-        process.env
-          .DASHSCOPE_API_KEY
-      );
-
-    return (
-      qwenEnabled &&
-      (
-        keyFileExists ||
-        environmentKeyExists
-      )
     );
   }
 
@@ -5160,7 +5117,6 @@ async function requestGeminiPartition(
           ],
 
           generationConfig: {
-            temperature: 0,
             maxOutputTokens:
               2048,
             responseMimeType:
@@ -5331,8 +5287,6 @@ function isModelOutputError(
     code === 'INVALID_JSON' ||
     code === 'INVALID_PARTITION' ||
     code === 'POST_VALIDATION_FAILED' ||
-    code === 'QWEN_INVALID_ENVELOPE' ||
-    code === 'QWEN_EMPTY_RESPONSE' ||
     message.includes(
       'invalid json'
     ) ||
@@ -5349,310 +5303,6 @@ function isModelOutputError(
       'post-validation'
     )
   );
-}
-
-async function requestQwenPartition(
-  articles,
-  model,
-  timeoutMs
-) {
-  /*
-   * Dynamic import is cached by Node. This reuses the
-   * existing qwenKeyManager and qwen-keys.txt loader.
-   */
-  const {
-    qwenKeyManager
-  } = await import(
-    './summary-engine.js'
-  );
-
-  if (
-    !qwenKeyManager ||
-    !Array.isArray(
-      qwenKeyManager.keys
-    ) ||
-    qwenKeyManager.keys.length === 0
-  ) {
-    const error =
-      new Error(
-        'No keys found in qwen-keys.txt'
-      );
-
-    error.code =
-      'QWEN_KEY_MISSING';
-
-    throw error;
-  }
-
-  if (
-    qwenKeyManager
-      .waitForRateSlot
-  ) {
-    await qwenKeyManager
-      .waitForRateSlot(1000);
-  }
-
-  const keyObject =
-    qwenKeyManager
-      .getCurrentKeyObj();
-
-  if (
-    !keyObject?.key
-  ) {
-    const error =
-      new Error(
-        'Qwen key manager returned no active key'
-      );
-
-    error.code =
-      'QWEN_KEY_MISSING';
-
-    throw error;
-  }
-
-  qwenKeyManager
-    .recordUsage?.();
-
-  const articlePayload =
-    articles.map(article => {
-      const source =
-        typeof article?.source ===
-        'string'
-          ? article.source
-          : (
-              article?.source?.name ||
-              article?.sourceName ||
-              article?.domain ||
-              ''
-            );
-
-      return {
-        articleId:
-          getArticleId(article),
-
-        title:
-          String(
-            article?.title || ''
-          ).slice(0, 500),
-
-        description:
-          String(
-            article?.description ||
-            article?.summary ||
-            article?.contentSnippet ||
-            ''
-          ).slice(0, 1600),
-
-        source:
-          String(source)
-            .slice(0, 200),
-
-        publishedAt:
-          article?.pubDate ||
-          article?.publishedAt ||
-          article?.isoDate ||
-          null,
-
-        category:
-          article?.category ||
-          null,
-
-        language:
-          article?.language ||
-          null
-      };
-    });
-
-  const prompt =
-    `Determine which news articles describe the SAME EXACT EVENT.
-
-Merged articles must have compatible:
-- people or organizations
-- action or occurrence
-- location
-- event date and time
-- important numbers and facts
-- event stage
-
-Never merge articles merely because they share a broad topic,
-company, person, country, industry, crime type, product or policy.
-
-Return JSON only using exactly this structure:
-
-{
-  "uncertain": false,
-  "clusters": [
-    {
-      "articleIds": ["ARTICLE_ID"]
-    }
-  ]
-}
-
-Rules:
-- Include every supplied articleId exactly once.
-- Use only supplied articleIds.
-- Put different events in separate clusters.
-- Set uncertain=true if evidence is insufficient.
-- Do not return Markdown or explanatory text.
-
-Articles:
-${JSON.stringify(
-  articlePayload,
-  null,
-  2
-)}`;
-
-  const baseUrl =
-    (
-      process.env.QWEN_BASE_URL ||
-      'https://dashscope-intl.aliyuncs.com/compatible-mode/v1'
-    ).replace(/\/+$/, '');
-
-  const controller =
-    new AbortController();
-
-  const timeout =
-    setTimeout(
-      () => controller.abort(),
-      Number(timeoutMs) ||
-      30_000
-    );
-
-  try {
-    console.log(
-      `[SMART VERIFY] Calling qwen-flash ` +
-      `model=${model} ` +
-      `articles=${articles.length}`
-    );
-
-    const response =
-      await fetch(
-        `${baseUrl}/chat/completions`,
-        {
-          method: 'POST',
-
-          headers: {
-            Authorization:
-              `Bearer ${keyObject.key}`,
-
-            'Content-Type':
-              'application/json'
-          },
-
-          body: JSON.stringify({
-            model:
-              model ||
-              'qwen3.7-flash',
-
-            messages: [
-              {
-                role: 'system',
-                content:
-                  'You are a strict news-event clustering verifier. Return valid JSON only.'
-              },
-              {
-                role: 'user',
-                content: prompt
-              }
-            ],
-
-            response_format: {
-              type: 'json_object'
-            },
-
-            enable_thinking: false,
-
-            temperature: 0,
-
-            max_tokens: 1200
-          }),
-
-          signal:
-            controller.signal
-        }
-      );
-
-    const responseText =
-      await response.text();
-
-    if (!response.ok) {
-      const error =
-        new Error(
-          `Qwen HTTP ${response.status}: ` +
-          responseText.slice(
-            0,
-            700
-          )
-        );
-
-      error.status =
-        response.status;
-
-      throw error;
-    }
-
-    let payload;
-
-    try {
-      payload =
-        JSON.parse(responseText);
-    } catch {
-      const error =
-        new Error(
-          'Qwen returned an invalid API response'
-        );
-
-      error.code =
-        'QWEN_INVALID_ENVELOPE';
-
-      throw error;
-    }
-
-    const content =
-      payload?.choices?.[0]
-        ?.message?.content;
-
-    if (
-      typeof content !== 'string' ||
-      !content.trim()
-    ) {
-      const error =
-        new Error(
-          'Qwen returned empty content'
-        );
-
-      error.code =
-        'QWEN_EMPTY_RESPONSE';
-
-      throw error;
-    }
-
-    return parsePartitionResponse(
-      content,
-      model ||
-      'qwen3.7-flash'
-    );
-  } catch (error) {
-    /*
-     * Invalid JSON is a model-output problem, not a
-     * broken API key. Quota and network errors still
-     * go through the existing Qwen key manager.
-     */
-    if (
-      !isModelOutputError(
-        error
-      )
-    ) {
-      qwenKeyManager
-        .reportError?.(
-          error
-        );
-    }
-
-    throw error;
-  } finally {
-    clearTimeout(timeout);
-  }
 }
 
 async function callVerificationProvider(
@@ -5686,16 +5336,6 @@ async function callVerificationProvider(
     return requestGeminiPartition(
       group.articles,
       keyObject?.key,
-      provider.model,
-      provider.timeoutMs
-    );
-  }
-
-  if (
-    provider.type === 'qwen'
-  ) {
-    return requestQwenPartition(
-      group.articles,
       provider.model,
       provider.timeoutMs
     );
@@ -5749,6 +5389,9 @@ async function attemptProviderVerification(
     attempt <= maximumAttempts;
     attempt++
   ) {
+    const attemptStartedAt =
+      Date.now();
+
     await recordProviderAttempt(
       db,
       provider
@@ -6187,6 +5830,42 @@ async function attemptProviderVerification(
         provider
       );
 
+      if (
+        provider.type ===
+        'gemini'
+      ) {
+        console.log(
+          '[ONLINE AI]',
+          JSON.stringify({
+            at:
+              new Date()
+                .toISOString(),
+            provider:
+              'gemini',
+            operation:
+              'smart-clustering',
+            providerId:
+              provider.id,
+            model:
+              provider.model,
+            status:
+              'success',
+            attempt,
+            durationMs:
+              Date.now() -
+              attemptStartedAt,
+            groupId:
+              group?.id || null,
+            articleCount:
+              Array.isArray(
+                group?.articles
+              )
+                ? group.articles.length
+                : 0
+          })
+        );
+      }
+
       return {
         valid: true,
         uncertain: false,
@@ -6199,6 +5878,53 @@ async function attemptProviderVerification(
           splitClusters.length > 0
       };
     } catch (error) {
+      if (
+        provider.type ===
+        'gemini'
+      ) {
+        console.log(
+          '[ONLINE AI]',
+          JSON.stringify({
+            at:
+              new Date()
+                .toISOString(),
+            provider:
+              'gemini',
+            operation:
+              'smart-clustering',
+            providerId:
+              provider.id,
+            model:
+              provider.model,
+            status:
+              'failed',
+            httpStatus:
+              Number(
+                error?.status ||
+                error?.httpStatus
+              ) || null,
+            errorCode:
+              String(
+                error?.code ||
+                error?.name ||
+                'UNKNOWN'
+              ).slice(0, 80),
+            attempt,
+            durationMs:
+              Date.now() -
+              attemptStartedAt,
+            groupId:
+              group?.id || null,
+            articleCount:
+              Array.isArray(
+                group?.articles
+              )
+                ? group.articles.length
+                : 0
+          })
+        );
+      }
+
       console.warn(
         `[SMART VERIFY] ${provider.id} ` +
         `model=${provider.model} failed: ` +

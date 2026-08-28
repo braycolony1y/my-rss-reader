@@ -6,7 +6,7 @@ Custom self-hosted RSS reader with AI summarization capabilities, offline cachin
 
 - **Frontend**: Single Page Application (SPA) built with Alpine.js and Tailwind CSS (`index.html`, `script.js`).
 - **Backend**: Node.js/Express (`server.js`) serving API routes and handling scheduled jobs.
-- **AI/LLM**: Integrates Gemini/Qwen APIs via `summary-engine.js` for article summarization and deep analysis.
+- **AI/LLM**: Uses Gemini for online article summarization, deep analysis, and Smart verification. Local Qwen may be used by Smart clustering, but Qwen Cloud is disabled.
 - **Storage**: In-memory database with write-through persistence to local JSON files (`database.json`, `smart-data.json`).
 - **Data Gathering**: Custom source parsers for local news/forums (e.g., Voz, Tuoi Tre) inside `src/sources/`, falling back to `opencli` and `Jina Reader`.
 
@@ -43,7 +43,7 @@ Custom self-hosted RSS reader with AI summarization capabilities, offline cachin
 # Backend Architecture
 
 - `server.js`: Main entry point, sets up Express, manages in-memory DB locking, provides core API routes.
-- `summary-engine.js`: Manages AI processing queues, API key rotation (Gemini/Qwen), and caching of summaries.
+- `summary-engine.js`: Manages Gemini processing queues, API key rotation, usage logging, and caching of summaries.
 - `smart-news.js`: Logic for clustering news topics and generating AI-based insights.
 - `src/sources/`: Modular parser handlers overriding generic fetching behaviors to extract specialized fields.
 
@@ -63,7 +63,8 @@ Custom self-hosted RSS reader with AI summarization capabilities, offline cachin
 
 - **Jina Reader** (`r.jina.ai`): Used as a generic fallback for converting URLs to Markdown.
 - **Google News URL Decoder**: Decodes obfuscated Google News links.
-- **Gemini / Qwen API**: Used for AI-based summaries and contextual content analysis.
+- **Gemini API**: Used for online AI summaries and contextual content analysis.
+- **Local Qwen through Ollama**: Optional offline fallback for Smart clustering; no Qwen Cloud API is used.
 - **Vietserver Proxy**: Configurable proxy for bypassing blocked regional sites.
 - **OpenCLI**: Used for scraping heavy, JS-rendered pages when lightweight scraping fails.
 
