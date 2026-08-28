@@ -86,7 +86,8 @@ const SMART_NEWS_AI_CONFIG = {
       type: 'gemini',
       model:
         process.env.GEMINI_FLASH_MODEL ||
-        'gemini-3.5-flash',
+        process.env.GEMINI_MODEL ||
+        'gemini-3.7-flash',
       priority: 3,
       timeoutMs: 25_000,
       maxRetries: 1

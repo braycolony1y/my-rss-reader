@@ -863,6 +863,17 @@ app.use('/api', (req, res, next) => {
     next();
 });
 const PORT = process.env.PORT || 3000;
+const VALID_CLUSTERING_MODELS = new Set([
+    'gemini-3.7-flash',
+    'gemini-3.5-flash-lite'
+]);
+const configuredClusteringModel = process.env.GEMINI_MODEL || 'gemini-3.7-flash';
+const DEFAULT_CLUSTERING_MODEL = VALID_CLUSTERING_MODELS.has(configuredClusteringModel)
+    ? configuredClusteringModel
+    : 'gemini-3.7-flash';
+const normalizeClusteringModel = model => VALID_CLUSTERING_MODELS.has(model)
+    ? model
+    : DEFAULT_CLUSTERING_MODEL;
 const DB_FILE = './database.json';
 const SMART_DB_FILE = './smart-data.json';
 const SMART_KEYS = new Set(['smartClusters', 'smartRawArticles', 'smartCandidateLinks', 'smartCandidateSignature', 'smartAiConfig', 'smartClusterVersion', 'smartStatus']);
@@ -3924,7 +3935,7 @@ app.get('/api/gemini-key-status', authMiddleware, async (req, res) => {
     const activeKey = geminiKeyManager.getCurrentKeyObj();
     const keyStats = geminiKeyManager.getDebugStats();
     const apiKey = activeKey?.key || '';
-    const model = process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite';
+    const model = process.env.GEMINI_MODEL || 'gemini-3.7-flash';
     const smartStatus = await smartNews.getStatus();
     const rawProviderHealth = await env.RSS_DATA.get('smartAiProviderHealth', { type: 'json' }).catch(()=>null);
     const providerHealth = rawProviderHealth || {};
@@ -6190,7 +6201,7 @@ app.get('/api/user-states', authMiddleware, async (req, res) => {
             savedStates: prefs.savedStates || [],
             boardStates: prefs.boardStates || [],
             hiddenStates: prefs.hiddenStates || [],
-            clusteringModel: prefs.clusteringModel || 'gemini-3.5-flash'
+            clusteringModel: normalizeClusteringModel(prefs.clusteringModel)
         });
     } catch (e) {
         res.status(500).json({ error: e.message });
@@ -6201,16 +6212,16 @@ app.post('/api/user-preferences', authMiddleware, async (req, res) => {
     try {
         const { key, value } = req.body;
         if (!key) return res.status(400).json({ error: 'Missing key' });
+        if (key === 'clusteringModel') {
+            if (!VALID_CLUSTERING_MODELS.has(value)) {
+                return res.status(400).json({ error: 'Unsupported clustering model' });
+            }
+        }
+
         let prefs = await env.RSS_DATA.get('userPreferences', { type: 'json' }) || {};
         prefs[key] = value;
         await env.RSS_DATA.put('userPreferences', JSON.stringify(prefs));
-        
-        if (key === 'clusteringModel') {
-            const valid = ['gemini-3.1-pro', 'gemini-3.5-flash', 'gemini-3.5-flash-lite'];
-            if (valid.includes(value)) {
-                setClusteringModel(value);
-            }
-        }
+        if (key === 'clusteringModel') setClusteringModel(value);
         
         res.json({ success: true });
     } catch (error) {
@@ -6795,9 +6806,15 @@ if (isMainModule) {
         const articleCacheCleanupTimer = setInterval(cleanupArticleCache, 60 * 60 * 1000);
         if (articleCacheCleanupTimer.unref) articleCacheCleanupTimer.unref();
 
-        env.RSS_DATA.get('userPreferences', { type: 'json' }).then(prefs => {
-            if (prefs && prefs.clusteringModel) {
-                setClusteringModel(prefs.clusteringModel);
+        env.RSS_DATA.get('userPreferences', { type: 'json' }).then(async prefs => {
+            const currentPreferences = prefs || {};
+            const clusteringModel = normalizeClusteringModel(currentPreferences.clusteringModel);
+            setClusteringModel(clusteringModel);
+            if (currentPreferences.clusteringModel !== clusteringModel) {
+                await env.RSS_DATA.put('userPreferences', JSON.stringify({
+                    ...currentPreferences,
+                    clusteringModel
+                }));
             }
         }).catch(err => console.error("Error loading user preferences for clustering model:", err));
 

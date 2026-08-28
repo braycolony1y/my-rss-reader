@@ -39,7 +39,7 @@
                 geminiStatusLoading: false,
                 geminiStatusError: '',
                 geminiKeyStatus: null,
-                clusteringModel: 'gemini-3.5-flash',
+                clusteringModel: 'gemini-3.7-flash',
                 smartSourcesSettingsOpen: false,
                 smartSources: [],
                 smartSourceSearch: '',
@@ -3169,7 +3169,7 @@
                             const res = await fetch(`/api/summary?url=${encodeURIComponent(url)}`);
                             if (!res.ok) return;
                             const data = await res.json();
-                            if (data.status === 'ready' && data.modelUsed === 'gemini-3.5-flash') {
+                            if (data.status === 'ready' && data.modelUsed === 'gemini-3.7-flash') {
                                 this.aiSummary = data;
                                 clearInterval(this.aiSummaryUpgradePollTimer);
                                 this.aiSummaryUpgradePollTimer = null;

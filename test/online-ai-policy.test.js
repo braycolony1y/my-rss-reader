@@ -33,3 +33,15 @@ test('online AI calls and the private 24-hour exporter are logged', async () => 
     assert.match(exporter, /--since='24 hours ago'/);
     assert.match(exporter, /online-ai-usage-last-24h\.log/);
 });
+
+test('Gemini 3.7 Flash is the production default', async () => {
+    const summarySource = await read('summary-engine.js');
+    const smartSource = await read('smart-news.js');
+    const serverSource = await read('server.js');
+    const frontendSource = await read('script.js');
+
+    assert.match(summarySource, /GEMINI_PRIMARY_MODEL[^\n]+gemini-3\.7-flash/);
+    assert.match(smartSource, /process\.env\.GEMINI_MODEL\s*\|\|\s*\n\s*'gemini-3\.7-flash'/);
+    assert.match(serverSource, /DEFAULT_CLUSTERING_MODEL/);
+    assert.match(frontendSource, /clusteringModel:\s*'gemini-3\.7-flash'/);
+});
