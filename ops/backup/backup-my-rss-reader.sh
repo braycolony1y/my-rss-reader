@@ -103,7 +103,7 @@ for relative_path in "${root_files[@]}"; do
     fi
 done
 
-for directory in .agents docs ops public src test; do
+for directory in .agents docs ops public src test tools; do
     if [[ -d "${LIVE_DIR}/${directory}" ]]; then
         mkdir -p "${STAGING_DIR}/${directory}"
         rsync -a --delete "${LIVE_DIR}/${directory}/" "${STAGING_DIR}/${directory}/"

@@ -55,6 +55,8 @@ article_cache/
 # Playwright / Puppeteer
 playwright-report/
 test-results/
+test/fixtures/generated/
+tools/experiments/output/
 
 # =========================
 # Local databases & backups

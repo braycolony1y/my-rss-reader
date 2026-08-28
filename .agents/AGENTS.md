@@ -8,3 +8,12 @@
 
 # Backend Server Restart
 - **Restart Requirement**: The Node.js backend server for this project is managed by a systemd service (`rss-reader.service`). It does NOT use nodemon or auto-restart on file changes. Whenever you make modifications to `server.js` or any other backend logic, you **MUST** run the command `sudo systemctl restart rss-reader` for the changes to take effect.
+
+# Workspace Organization
+
+- Keep the repository root limited to production entry points, package/configuration files, and local runtime state already documented in `README.md`.
+- Put maintained automated tests in `test/`; put test-only inputs in `test/fixtures/` and generated test output in `test/fixtures/generated/`.
+- Put reusable experiments and diagnostics in `tools/experiments/`. Use `/tmp` for disposable scratch files and remove them after the task.
+- Put operational scripts in the appropriate `ops/` subdirectory: backups in `ops/backup/`, maintenance in `ops/maintenance/`, and service snapshots in `ops/systemd/`.
+- Do not leave temporary, experimental, duplicate, obsolete, patch, debug, copied, or one-off test files in the project root. Remove them when safe or quarantine uncertain items outside the live tree.
+- Run `npm test` before handoff. The `test/project-layout.test.js` guard must continue to pass when root files or top-level directories change intentionally.
