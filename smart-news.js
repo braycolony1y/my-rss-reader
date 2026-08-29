@@ -72,14 +72,28 @@ const SMART_NEWS_CLUSTER_CONFIG = {
 const SMART_NEWS_AI_CONFIG = {
   providers: [
     {
+      id: 'gemini-flash-lite',
+      type: 'gemini',
+      model:
+        process.env.GEMINI_FLASH_LITE_MODEL ||
+        'gemini-3.5-flash-lite',
+      priority: 1,
+      timeoutMs: 15_000,
+      maxRetries: 1,
+      maxOutputTokens: 768,
+      thinkingLevel: 'minimal'
+    },
+    {
       id: 'gemini-flash',
       type: 'gemini',
       model:
         process.env.GEMINI_MODEL ||
         'gemini-3.7-flash',
-      priority: 1,
+      priority: 2,
       timeoutMs: 25_000,
-      maxRetries: 1
+      maxRetries: 1,
+      maxOutputTokens: 1024,
+      thinkingLevel: 'low'
     },
     {
       id: 'local-qwen',
@@ -5051,7 +5065,8 @@ async function requestGeminiPartition(
   apiKey,
   model,
   timeoutMs,
-  keyIndex
+  keyIndex,
+  generationOptions = {}
 ) {
   if (!apiKey) {
     const error =
@@ -5109,7 +5124,22 @@ async function requestGeminiPartition(
 
           generationConfig: {
             maxOutputTokens:
-              2048,
+              Math.max(
+                256,
+                Math.min(
+                  2048,
+                  Number(
+                    generationOptions
+                      .maxOutputTokens
+                  ) || 1024
+                )
+              ),
+            thinkingConfig: {
+              thinkingLevel:
+                generationOptions
+                  .thinkingLevel ||
+                'low'
+            },
             responseMimeType:
               'application/json',
             responseJsonSchema:
@@ -5304,6 +5334,7 @@ function isModelOutputError(
     code === 'INVALID_JSON' ||
     code === 'INVALID_PARTITION' ||
     code === 'POST_VALIDATION_FAILED' ||
+    code === 'LITE_ESCALATION_REQUIRED' ||
     message.includes(
       'invalid json'
     ) ||
@@ -5355,7 +5386,13 @@ async function callVerificationProvider(
       keyObject?.key,
       provider.model,
       provider.timeoutMs,
-      Number(keyObject?.index) + 1
+      Number(keyObject?.index) + 1,
+      {
+        maxOutputTokens:
+          provider.maxOutputTokens,
+        thinkingLevel:
+          provider.thinkingLevel
+      }
     );
   }
 
@@ -5765,6 +5802,71 @@ async function attemptProviderVerification(
         }
       }
 
+      const lowConfidenceLiteMerges =
+        provider.id ===
+          'gemini-flash-lite'
+          ? parsed.clusters.filter(
+            cluster => {
+              const articleIds =
+                Array.isArray(
+                  cluster?.articleIds
+                )
+                  ? cluster.articleIds
+                  : [];
+              const confidence =
+                Number(
+                  cluster?.confidence
+                );
+
+              return (
+                articleIds.length > 1 &&
+                (
+                  !Number.isFinite(
+                    confidence
+                  ) ||
+                  confidence < 0.9
+                )
+              );
+            }
+          )
+          : [];
+
+      if (
+        provider.id ===
+          'gemini-flash-lite' &&
+        (
+          modelWasUncertain ||
+          splitClusters.length > 0 ||
+          lowConfidenceLiteMerges
+            .length > 0
+        )
+      ) {
+        const error =
+          new Error(
+            'Flash-Lite decision needs Gemini 3.7 review'
+          );
+
+        error.code =
+          'LITE_ESCALATION_REQUIRED';
+        error.expectedEscalation =
+          true;
+        error.httpStatus =
+          Number(
+            parsed?.onlineAiUsage
+              ?.httpStatus
+          ) || 200;
+        error.keyIndex =
+          Number(
+            parsed?.onlineAiUsage
+              ?.keyIndex
+          ) || null;
+        error.onlineAiUsage =
+          parsed?.onlineAiUsage ||
+          null;
+
+        throw error;
+      }
+
       const safeResult = {
         clusters:
           safeClusters,
@@ -5975,22 +6077,50 @@ async function attemptProviderVerification(
                 group?.articles
               )
                 ? group.articles.length
-                : 0
+                : 0,
+            promptTokens:
+              Number(
+                error?.onlineAiUsage
+                  ?.promptTokens
+              ) || 0,
+            outputTokens:
+              Number(
+                error?.onlineAiUsage
+                  ?.outputTokens
+              ) || 0,
+            totalTokens:
+              Number(
+                error?.onlineAiUsage
+                  ?.totalTokens
+              ) || 0
           })
         );
       }
 
-      console.warn(
-        `[SMART VERIFY] ${provider.id} ` +
-        `model=${provider.model} failed: ` +
-        `${error?.message || error}`
-      );
+      if (error?.expectedEscalation) {
+        console.info(
+          `[SMART VERIFY FALLBACK] ${provider.id} ` +
+          `model=${provider.model}: ` +
+          `${error?.message || error}`
+        );
 
-      await recordProviderError(
-        db,
-        provider,
-        error
-      );
+        await recordProviderSuccess(
+          db,
+          provider
+        );
+      } else {
+        console.warn(
+          `[SMART VERIFY] ${provider.id} ` +
+          `model=${provider.model} failed: ` +
+          `${error?.message || error}`
+        );
+
+        await recordProviderError(
+          db,
+          provider,
+          error
+        );
+      }
 
       if (
         provider.type ===

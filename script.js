@@ -39,7 +39,7 @@
                 geminiStatusLoading: false,
                 geminiStatusError: '',
                 geminiKeyStatus: null,
-                clusteringModel: 'gemini-3.7-flash',
+                clusteringModel: 'gemini-3.5-flash-lite',
                 smartSourcesSettingsOpen: false,
                 smartSources: [],
                 smartSourceSearch: '',
@@ -814,8 +814,8 @@
                                 geminiUsed: Boolean(status.geminiUsed),
                                 providers: Array.isArray(status.aiProviders) ? status.aiProviders : (previousRun.providers || []),
                                 providerOrder: Array.isArray(status.providerOrder)
-                                    ? status.providerOrder.filter(provider => provider !== 'qwen-flash' && provider !== 'gemini-flash-lite')
-                                    : ['gemini-flash', 'local-qwen'],
+                                    ? status.providerOrder.filter(provider => provider !== 'qwen-flash')
+                                    : ['gemini-flash-lite', 'gemini-flash', 'local-qwen'],
                                 reviewedArticleCount: Number(status.geminiReviewedArticleCount) || previousRun.reviewedArticleCount || 0,
                                 eligibleArticleCount: Number(status.geminiEligibleArticleCount) || previousRun.eligibleArticleCount || 0,
                                 reason: status.geminiReason || previousRun.reason || '',
