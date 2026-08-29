@@ -245,7 +245,7 @@ export function parseOnlineAiUsageLog(rawLog, options = {}) {
             lastEventAt: timestamps.length ? new Date(Math.max(...timestamps)).toISOString() : null,
             detailedRequestCount: requestEvents.filter(event => event.precision === 'exact').length,
             legacyRequestCount: requestEvents.filter(event => event.precision === 'legacy').length,
-            note: 'Exact token, latency, key and attempt fields are available for structured events. Earlier legacy events retain every detail present in the historical journal.'
+            note: 'Full-detail records were written by the current logger and can include tokens, latency, key number and attempt. Earlier text-log records predate that logger, so the screen shows only the fields that were recorded at the time.'
         },
         summary: summarize(events),
         filters: {

@@ -236,6 +236,11 @@
                 onlineAiUsageOperation: 'all',
                 onlineAiUsageModel: 'all',
                 onlineAiUsageSearch: '',
+                newGeminiKey: '',
+                newGeminiKeyVisible: false,
+                addingGeminiKey: false,
+                addGeminiKeyError: '',
+                addGeminiKeyMessage: '',
                 vozSummaryController: null,
                 vozScrollRaf: 0,
                 lastVozMeasureAt: 0,
@@ -754,6 +759,38 @@
                         });
                     } catch (e) {
                         console.error('Failed to save clustering model', e);
+                    }
+                },
+
+                async addGeminiKey() {
+                    const apiKey = String(this.newGeminiKey || '').trim();
+                    this.addGeminiKeyError = '';
+                    this.addGeminiKeyMessage = '';
+                    if (apiKey.length < 20 || /\s/.test(apiKey)) {
+                        this.addGeminiKeyError = 'Enter a complete Gemini API key without spaces.';
+                        return;
+                    }
+
+                    this.addingGeminiKey = true;
+                    try {
+                        const response = await fetch('/api/gemini-keys', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ apiKey })
+                        });
+                        const data = await response.json().catch(() => ({}));
+                        if (!response.ok) throw new Error(data.detail || data.error || 'Could not add the Gemini key');
+                        this.addGeminiKeyMessage = data.message || 'The key was validated and activated.';
+                        this.newGeminiKey = '';
+                        this.newGeminiKeyVisible = false;
+                        await Promise.all([
+                            this.fetchGeminiKeyStatus(),
+                            this.fetchGeminiDebugStats()
+                        ]);
+                    } catch (error) {
+                        this.addGeminiKeyError = error.message || 'Could not add the Gemini key';
+                    } finally {
+                        this.addingGeminiKey = false;
                     }
                 },
 

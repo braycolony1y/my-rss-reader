@@ -46,6 +46,7 @@ export class GeminiKeyManager {
         this.autoSwitchCount = 0;
         this.requestStartChain = Promise.resolve();
         this.nextRequestStartAt = 0;
+        this.rateScheduleVersion = 0;
         this.loadKeys();
     }
 
@@ -144,7 +145,42 @@ export class GeminiKeyManager {
         current.status = 'Active';
     }
 
+    addKey(key, { activate = true } = {}) {
+        const normalized = String(key || '').trim();
+        if (!normalized) throw new Error('Gemini API key is required');
+
+        let index = this.keys.findIndex(entry => entry.key === normalized);
+        const added = index === -1;
+        if (added) {
+            index = this.keys.length;
+            this.keys.push({
+                key: normalized,
+                index,
+                status: 'Standby',
+                requestsToday: 0,
+                lastUsed: null,
+                lastError: null
+            });
+        }
+
+        if (activate) {
+            const previous = this.keys[this.activeIdx];
+            if (previous && previous.status === 'Active') previous.status = 'Standby';
+            this.activeIdx = index;
+            this.keys[index].status = 'Active';
+            this.keys[index].cooldownUntil = null;
+            this.keys[index].lastError = null;
+            this.keys[index].lastErrorAt = null;
+            this.keys[index].lastHttpStatus = null;
+            this.nextRequestStartAt = Date.now();
+            this.rateScheduleVersion += 1;
+        }
+
+        return { added, index, active: this.activeIdx === index };
+    }
+
     async waitForRateSlot(minIntervalMs = 6000) {
+        const scheduleVersion = this.rateScheduleVersion;
         const waitForSlot = this.requestStartChain.then(async () => {
             // Re-check after waking because a 429 response can extend the shared
             // deadline while another request is already asleep in this queue.
@@ -155,7 +191,8 @@ export class GeminiKeyManager {
                 if (!hasAvailableKey) return;
                 const delay = Math.max(0, this.nextRequestStartAt - Date.now());
                 if (delay <= 0) break;
-                await new Promise(resolve => setTimeout(resolve, delay));
+                await new Promise(resolve => setTimeout(resolve, Math.min(delay, 1000)));
+                if (scheduleVersion !== this.rateScheduleVersion) return;
             }
             this.nextRequestStartAt = Date.now() + Math.max(1000, Number(minIntervalMs) || 6000);
         });
@@ -183,7 +220,7 @@ export class GeminiKeyManager {
     getDebugStats() {
         return {
             activeKeyIndex: this.activeIdx,
-            activeKeyMasked: this.keys.length ? `${this.keys[this.activeIdx].key.substring(0, 10)}...` : 'None',
+            activeKeyMasked: this.keys.length ? `•••• ${this.keys[this.activeIdx].key.slice(-4)}` : 'None',
             totalKeys: this.keys.length,
             autoSwitchCount: this.autoSwitchCount,
             keys: this.keys.map(k => ({

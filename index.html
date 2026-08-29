@@ -7,7 +7,7 @@
     <title>My RSS Reader</title>
     <link rel="icon"
         href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22%238b5cf6%22/><circle cx=%2230%22 cy=%2270%22 r=%2210%22 fill=%22white%22/><path d=%22M30 40a30 30 0 0 1 30 30M30 20a50 50 0 0 1 50 50%22 fill=%22none%22 stroke=%22white%22 stroke-width=%2210%22 stroke-linecap=%22round%22/></svg>">
-    <link rel="stylesheet" href="/public/styles.css?v=20260829_ai_usage_log_v2">
+    <link rel="stylesheet" href="/public/styles.css?v=20260829_ai_usage_keys_contrast">
     <script>
         // Start the first Smart News request while the browser is still parsing
         // the page. Returning visitors paint saved cards immediately instead.
@@ -2682,6 +2682,89 @@
             background: linear-gradient(135deg, #7c3aed, #8b5cf6) !important;
         }
 
+        /* The activity viewer contains dense operational data. Keep its light
+           mode opaque and high-contrast instead of inheriting pale dark-mode
+           utility colors through the glass surface. */
+        .theme-glass-light .ai-status-modal .ai-status-usage {
+            color: #1e293b !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-usage .rounded-xl,
+        .theme-glass-light .ai-status-modal .ai-status-usage article {
+            background-color: rgba(255, 255, 255, 0.86) !important;
+            background-image: none !important;
+            border-color: rgba(71, 85, 105, 0.24) !important;
+            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.055) !important;
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-usage [class*="text-white"],
+        .theme-glass-light .ai-status-modal .ai-status-usage [class*="text-gray-200"],
+        .theme-glass-light .ai-status-modal .ai-status-usage [class*="text-gray-300"] {
+            color: #1e293b !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-usage [class*="text-gray-400"],
+        .theme-glass-light .ai-status-modal .ai-status-usage [class*="text-gray-500"],
+        .theme-glass-light .ai-status-modal .ai-status-usage [class*="text-gray-600"] {
+            color: #526077 !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-usage [class*="text-red-"] {
+            color: #b42334 !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-usage [class*="text-emerald-"] {
+            color: #047857 !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-usage [class*="text-amber-"] {
+            color: #92400e !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-usage [class*="bg-red-"] {
+            background: #fff1f2 !important;
+            border-color: rgba(190, 18, 60, 0.24) !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-usage [class*="bg-emerald-"] {
+            background: #ecfdf5 !important;
+            border-color: rgba(4, 120, 87, 0.22) !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-usage select,
+        .theme-glass-light .ai-status-modal .ai-status-usage input,
+        .theme-glass-light .ai-status-modal .ai-key-input {
+            color: #172033 !important;
+            background: rgba(255, 255, 255, 0.94) !important;
+            border-color: rgba(71, 85, 105, 0.3) !important;
+            box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.04) !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-usage input::placeholder,
+        .theme-glass-light .ai-status-modal .ai-key-input::placeholder {
+            color: #64748b !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-usage .ai-usage-format-badge {
+            color: #475569 !important;
+            background: #f1f5f9 !important;
+            border-color: #cbd5e1 !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-key-success {
+            color: #065f46 !important;
+            background: #ecfdf5 !important;
+            border-color: rgba(4, 120, 87, 0.24) !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-usage .text-\[10px\],
+        .theme-glass-light .ai-status-modal .ai-status-usage .text-\[11px\] {
+            font-size: 0.75rem !important;
+            line-height: 1.15rem !important;
+        }
+
         /* Hide underline on VOZ usernames */
         .voz-post a.username {
             text-decoration: none !important;
@@ -3173,6 +3256,42 @@
                         </div>
                     </div>
 
+                    <div id="gemini-add-key" class="ai-status-card ai-key-add-card rounded-2xl border border-white/[0.07] bg-[#0B101E]/60 p-4">
+                        <div class="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                                <div class="ai-status-card-title text-[11px] uppercase tracking-wider font-bold text-gray-500">Add Gemini API key</div>
+                                <p class="ai-status-muted mt-1 text-xs leading-relaxed text-gray-500">
+                                    The key is checked using Google's non-billed token counter, saved only in the private server key file, and made active immediately. It is excluded from GitHub backups.
+                                </p>
+                            </div>
+                            <span class="ai-status-mask rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-bold text-gray-400"
+                                x-text="(geminiKeyStatus?.keyCount || 0) + ' configured'"></span>
+                        </div>
+                        <form @submit.prevent="addGeminiKey()" class="mt-3 flex flex-col gap-2 sm:flex-row">
+                            <div class="relative min-w-0 flex-1">
+                                <input x-model="newGeminiKey" :type="newGeminiKeyVisible ? 'text' : 'password'"
+                                    autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="text"
+                                    placeholder="Paste a new Gemini API key"
+                                    class="ai-key-input w-full rounded-xl border border-white/10 bg-black/10 px-3 py-2.5 pr-10 text-sm text-white outline-none transition placeholder:text-gray-600 focus:border-violet-400/50 focus:ring-2 focus:ring-violet-400/15">
+                                <button type="button" @click="newGeminiKeyVisible = !newGeminiKeyVisible"
+                                    class="ai-status-secondary-button absolute inset-y-0 right-1 flex w-9 items-center justify-center rounded-lg text-gray-500 hover:text-white"
+                                    :aria-label="newGeminiKeyVisible ? 'Hide API key' : 'Show API key'">
+                                    <svg x-show="!newGeminiKeyVisible" class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0zm6 0c-1.5 4-4.5 6-9 6s-7.5-2-9-6c1.5-4 4.5-6 9-6s7.5 2 9 6z"></path>
+                                    </svg>
+                                    <svg x-show="newGeminiKeyVisible" class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3l18 18M10.6 10.7a2 2 0 002.7 2.7M9.9 4.2A10 10 0 0112 4c4.5 0 7.5 2.7 9 8a12 12 0 01-2 3.4M6.2 6.2C4.7 7.3 3.6 9.2 3 12c1.5 5.3 4.5 8 9 8a10 10 0 004.1-.8"></path>
+                                    </svg>
+                                </button>
+                            </div>
+                            <button type="submit" :disabled="addingGeminiKey || !newGeminiKey.trim()"
+                                class="ai-status-primary-button shrink-0 rounded-xl bg-violet-400 px-4 py-2.5 text-sm font-bold text-[#120b21] transition hover:bg-violet-300 disabled:opacity-50"
+                                x-text="addingGeminiKey ? 'Validating…' : 'Validate & add'"></button>
+                        </form>
+                        <div x-show="addGeminiKeyError" class="ai-status-error-card mt-3 rounded-xl border border-red-400/20 bg-red-500/[0.07] px-3 py-2 text-xs text-red-200" x-text="addGeminiKeyError"></div>
+                        <div x-show="addGeminiKeyMessage" class="ai-key-success mt-3 rounded-xl border border-emerald-400/20 bg-emerald-500/[0.07] px-3 py-2 text-xs text-emerald-200" x-text="addGeminiKeyMessage"></div>
+                    </div>
+
                     <div class="ai-status-card rounded-2xl border border-white/[0.07] bg-[#0B101E]/60 p-4">
                         <div class="flex items-center justify-between gap-3 mb-3">
                             <div>
@@ -3362,7 +3481,7 @@
                     </div>
 
                     <!-- Detailed online AI activity -->
-                    <section class="ai-status-debug mt-8 border-t border-white/10 pt-6">
+                    <section class="ai-status-debug ai-status-usage mt-8 border-t border-white/10 pt-6">
                         <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
                             <div>
                                 <h3 class="text-sm font-black text-white">Online AI activity · last 24 hours</h3>
@@ -3451,8 +3570,8 @@
 
                             <div class="rounded-xl border border-white/[0.07] bg-black/10 p-3 text-[11px] leading-relaxed text-gray-500">
                                 <div class="flex flex-wrap gap-x-4 gap-y-1">
-                                    <span>Exact detailed requests: <strong class="text-gray-300" x-text="formatAiUsageNumber(onlineAiUsage?.summary?.exactRequests)"></strong></span>
-                                    <span>Historical/legacy requests: <strong class="text-gray-300" x-text="formatAiUsageNumber(onlineAiUsage?.summary?.legacyRequests)"></strong></span>
+                                    <span>Full-detail requests: <strong class="text-gray-300" x-text="formatAiUsageNumber(onlineAiUsage?.summary?.exactRequests)"></strong></span>
+                                    <span>Earlier text-log requests: <strong class="text-gray-300" x-text="formatAiUsageNumber(onlineAiUsage?.summary?.legacyRequests)"></strong></span>
                                     <span>Blocked/diagnostic events: <strong class="text-gray-300" x-text="formatAiUsageNumber((onlineAiUsage?.summary?.blocked || 0) + (onlineAiUsage?.summary?.diagnostics || 0))"></strong></span>
                                     <span>Source: <strong class="text-gray-300" x-text="onlineAiUsage?.source"></strong></span>
                                 </div>
@@ -3525,7 +3644,8 @@
                                                                 x-text="event.status"></span>
                                                             <span class="text-sm font-bold text-white" x-text="event.operation"></span>
                                                             <span x-show="event.httpStatus" class="rounded border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-[10px] font-black text-gray-300" x-text="'HTTP ' + event.httpStatus"></span>
-                                                            <span class="rounded border border-white/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-gray-500" x-text="event.precision"></span>
+                                                            <span class="ai-usage-format-badge rounded border border-white/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-gray-500"
+                                                                x-text="event.precision === 'exact' ? 'Full detail' : 'Earlier text log'"></span>
                                                         </div>
                                                         <div class="mt-1 text-[11px] text-gray-500">
                                                             <span class="text-gray-300" x-text="event.provider"></span>
@@ -3551,7 +3671,7 @@
                                                     <summary class="cursor-pointer select-none hover:text-gray-300">Technical details</summary>
                                                     <div class="mt-1 space-y-0.5 border-l border-white/10 pl-2 font-mono break-all">
                                                         <div x-show="event.groupId">Group: <span x-text="event.groupId"></span></div>
-                                                        <div>Record source: <span x-text="event.source"></span></div>
+                                                        <div>Log format: <span x-text="event.source === 'structured' ? 'Current detailed record' : 'Earlier text record'"></span></div>
                                                         <div>Event ID: <span x-text="event.id"></span></div>
                                                     </div>
                                                 </details>
@@ -3642,12 +3762,18 @@
                     </div>
                 </div>
             </div>
-            <div class="ai-status-footer px-6 py-4 border-t border-white/10 bg-[#0B101E]/50 flex justify-end gap-3">
-                <button @click="closeGeminiStatus()"
-                    class="ai-status-secondary-button px-4 py-2 text-sm text-gray-400 hover:text-white transition rounded-lg">Close</button>
-                <button @click="fetchGeminiKeyStatus()" :disabled="geminiStatusLoading"
-                    class="ai-status-primary-button px-5 py-2.5 rounded-xl bg-violet-400 hover:bg-violet-300 text-[#120b21] text-sm font-bold transition disabled:opacity-50"
-                    x-text="geminiStatusLoading ? 'Checking…' : 'Check now'"></button>
+            <div class="ai-status-footer px-6 py-4 border-t border-white/10 bg-[#0B101E]/50 flex flex-wrap items-center justify-between gap-3">
+                <p class="ai-status-muted max-w-xl text-[11px] leading-relaxed text-gray-500">
+                    “Validate active key” sends a non-billed token-count request to Google. It checks authentication and model access; it does not generate content or consume inference quota.
+                </p>
+                <div class="flex items-center gap-3">
+                    <button @click="closeGeminiStatus()"
+                        class="ai-status-secondary-button px-4 py-2 text-sm text-gray-400 hover:text-white transition rounded-lg">Close</button>
+                    <button @click="fetchGeminiKeyStatus()" :disabled="geminiStatusLoading"
+                        title="Validate the active key with Google's non-billed token counter"
+                        class="ai-status-primary-button px-5 py-2.5 rounded-xl bg-violet-400 hover:bg-violet-300 text-[#120b21] text-sm font-bold transition disabled:opacity-50"
+                        x-text="geminiStatusLoading ? 'Validating…' : 'Validate active key'"></button>
+                </div>
             </div>
         </div>
     </div>
@@ -6284,7 +6410,7 @@
         </div>
     </div>
     
-    <script src="/script.js?v=22_ai_usage_log_paging"></script>
+    <script src="/script.js?v=23_ai_key_manager"></script>
 </body>
 
 </html>

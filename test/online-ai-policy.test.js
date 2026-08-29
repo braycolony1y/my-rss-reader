@@ -52,3 +52,25 @@ test('authenticated frontend usage API exposes the detailed 24-hour report', asy
     assert.match(serverSource, /parseOnlineAiUsageLog/);
     assert.match(serverSource, /--since=24 hours ago/);
 });
+
+test('authenticated key addition validates, privately persists, and activates a key', async () => {
+    const serverSource = await read('server.js');
+    const frontendSource = await read('script.js');
+    assert.match(serverSource, /app\.post\('\/api\/gemini-keys', authMiddleware/);
+    assert.match(serverSource, /validateGeminiKey/);
+    assert.match(serverSource, /mode: 0o600/);
+    assert.match(serverSource, /geminiKeyManager\.addKey\(apiKey, \{ activate: true \}\)/);
+    assert.match(frontendSource, /async addGeminiKey\(\)/);
+});
+
+test('light-mode AI activity uses readable labels and high-contrast styling', async () => {
+    const html = await read('index.html');
+    assert.match(html, /ai-status-debug ai-status-usage/);
+    assert.match(html, /Validate active key/);
+    assert.match(html, /Validate & add/);
+    assert.match(html, /Full detail/);
+    assert.match(html, /Earlier text log/);
+    assert.match(html, /\.theme-glass-light \.ai-status-modal \.ai-status-usage \[class\*="text-red-"\]/);
+    assert.doesNotMatch(html, /x-text="event\.precision"/);
+    assert.doesNotMatch(html, /Record source:/);
+});

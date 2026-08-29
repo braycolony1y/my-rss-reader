@@ -885,6 +885,8 @@ const MAX_RECOVERY_SNAPSHOTS = 12;
 const RECOVERY_SNAPSHOT_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const CF_PROXY_BASE = 'https://rss-proxy.k1d.workers.dev/?url=';
 const ONLINE_AI_USAGE_LOG_FILE = '/home/ubuntu/script/logs/online-ai-usage-last-24h.log';
+const GEMINI_KEYS_FILE = path.resolve('./gemini-keys.txt');
+let geminiKeyWriteChain = Promise.resolve();
 
 async function readOnlineAiUsageWindow() {
     try {
@@ -913,6 +915,72 @@ async function readOnlineAiUsageWindow() {
             throw error;
         }
     }
+}
+
+async function validateGeminiKey(apiKey, model) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15_000);
+    try {
+        const response = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:countTokens`,
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-goog-api-key': apiKey
+                },
+                body: JSON.stringify({ contents: [{ parts: [{ text: 'RSS Reader key validation' }] }] }),
+                signal: controller.signal
+            }
+        );
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            const error = new Error(String(payload?.error?.message || `Gemini returned HTTP ${response.status}`).slice(0, 300));
+            error.status = response.status;
+            throw error;
+        }
+        return { httpStatus: response.status, validationTokens: Number(payload.totalTokens) || 0 };
+    } finally {
+        clearTimeout(timeout);
+    }
+}
+
+async function persistAndActivateGeminiKey(apiKey) {
+    const writeOperation = geminiKeyWriteChain.catch(() => {}).then(async () => {
+        let configuredKeys = [];
+        try {
+            configuredKeys = (await fs.readFile(GEMINI_KEYS_FILE, 'utf8'))
+                .split(/\r?\n/)
+                .map(value => value.trim())
+                .filter(Boolean);
+        } catch (error) {
+            if (error.code !== 'ENOENT') throw error;
+        }
+
+        const alreadyConfigured = configuredKeys.includes(apiKey);
+        if (!alreadyConfigured) {
+            configuredKeys.push(apiKey);
+            const temporaryFile = `${GEMINI_KEYS_FILE}.${process.pid}.${Date.now()}.tmp`;
+            try {
+                await fs.writeFile(temporaryFile, `${configuredKeys.join('\n')}\n`, { mode: 0o600 });
+                await fs.rename(temporaryFile, GEMINI_KEYS_FILE);
+            } finally {
+                await fs.unlink(temporaryFile).catch(() => {});
+            }
+        }
+        await fs.chmod(GEMINI_KEYS_FILE, 0o600);
+
+        const runtime = geminiKeyManager.addKey(apiKey, { activate: true });
+        return {
+            added: !alreadyConfigured && runtime.added,
+            alreadyConfigured,
+            index: runtime.index,
+            active: runtime.active,
+            keyCount: geminiKeyManager.getDebugStats().totalKeys
+        };
+    });
+    geminiKeyWriteChain = writeOperation;
+    return writeOperation;
 }
 
 async function acquireDatabaseWriterLock() {
@@ -4084,6 +4152,43 @@ app.get('/api/online-ai-usage', authMiddleware, async (req, res) => {
         res.status(503).json({
             error: 'Could not load the last 24 hours of online AI activity.',
             detail: String(error.message || error).slice(0, 300)
+        });
+    }
+});
+
+app.post('/api/gemini-keys', authMiddleware, async (req, res) => {
+    const apiKey = String(req.body?.apiKey || '').trim();
+    if (apiKey.length < 20 || apiKey.length > 512 || /\s/.test(apiKey)) {
+        return res.status(400).json({ error: 'Enter a complete Gemini API key without spaces.' });
+    }
+
+    const model = process.env.GEMINI_MODEL || 'gemini-3.7-flash';
+    try {
+        const validation = await validateGeminiKey(apiKey, model);
+        const result = await persistAndActivateGeminiKey(apiKey);
+        console.log(`[GEMINI KEY] ${result.added ? 'Added' : 'Reactivated'} key ${result.index + 1}; active immediately; ${result.keyCount} configured.`);
+        return res.json({
+            success: true,
+            added: result.added,
+            alreadyConfigured: result.alreadyConfigured,
+            activeKey: result.index + 1,
+            keyCount: result.keyCount,
+            model,
+            validationHttpStatus: validation.httpStatus,
+            validationTokens: validation.validationTokens,
+            message: result.added
+                ? `Key ${result.index + 1} was validated, saved privately, and activated immediately.`
+                : `Key ${result.index + 1} was already configured and is active now.`
+        });
+    } catch (error) {
+        const httpStatus = Number(error.status) || null;
+        const responseStatus = httpStatus === 401 || httpStatus === 403 ? 400 : 502;
+        return res.status(responseStatus).json({
+            error: httpStatus
+                ? `Gemini validation failed with HTTP ${httpStatus}.`
+                : 'Gemini validation could not be completed.',
+            detail: String(error.message || error).slice(0, 300),
+            httpStatus
         });
     }
 });
