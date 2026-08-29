@@ -7,7 +7,7 @@
     <title>My RSS Reader</title>
     <link rel="icon"
         href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22%238b5cf6%22/><circle cx=%2230%22 cy=%2270%22 r=%2210%22 fill=%22white%22/><path d=%22M30 40a30 30 0 0 1 30 30M30 20a50 50 0 0 1 50 50%22 fill=%22none%22 stroke=%22white%22 stroke-width=%2210%22 stroke-linecap=%22round%22/></svg>">
-    <link rel="stylesheet" href="/public/styles.css?v=20260829_ai_usage_keys_contrast">
+    <link rel="stylesheet" href="/public/styles.css?v=20260829_gemini_37_only">
     <script>
         // Start the first Smart News request while the browser is still parsing
         // the page. Returning visitors paint saved cards immediately instead.
@@ -3247,7 +3247,7 @@
                     <div class="ai-status-card rounded-2xl border border-white/[0.07] bg-[#0B101E]/60 p-4">
                         <div class="ai-status-card-title text-[11px] uppercase tracking-wider font-bold text-gray-500 mb-3">Clustering Model</div>
                         <div class="space-y-2">
-                            <template x-for="m in ['gemini-3.7-flash', 'gemini-3.5-flash-lite']" :key="m">
+                            <template x-for="m in ['gemini-3.7-flash']" :key="m">
                                 <label class="flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-2.5 cursor-pointer hover:bg-white/[0.05] transition">
                                     <input type="radio" name="clusteringModel" :value="m" x-model="clusteringModel" @change="saveClusteringModel()" class="text-violet-500 bg-[#0B101E] border-white/20 focus:ring-violet-500/50 h-4 w-4">
                                     <span class="text-sm font-semibold text-white" x-text="m"></span>
@@ -6410,7 +6410,7 @@
         </div>
     </div>
     
-    <script src="/script.js?v=23_ai_key_manager"></script>
+    <script src="/script.js?v=24_gemini_37_only"></script>
 </body>
 
 </html>

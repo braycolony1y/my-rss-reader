@@ -27,7 +27,6 @@ const RETRY_DELAY_MS = 5000;
 const QUEUE_POLL_INTERVAL_MS = 3000;
 const COOLDOWN_BETWEEN_JOBS_MS = 1500;
 const GEMINI_PRIMARY_MODEL = process.env.GEMINI_MODEL || 'gemini-3.7-flash';
-const GEMINI_FALLBACK_MODEL = process.env.GEMINI_FLASH_LITE_MODEL || 'gemini-3.5-flash-lite';
 
 function logOnlineAiUsage(event) {
     console.log('[ONLINE AI]', JSON.stringify({
@@ -376,13 +375,10 @@ async function generateWithFallback(geminiModel, prompt, options = {}) {
     const globalTimeout = Date.now() + timeoutMs;
 
     const primaryModel = geminiModel || GEMINI_PRIMARY_MODEL;
+    // Rotate keys when the model is unavailable or rate limited, but never
+    // silently downgrade requests to an older model.
     const sequence = [
-        { displayModel: primaryModel, apiModel: primaryModel, timeout: 40000 },
-        ...(GEMINI_FALLBACK_MODEL === primaryModel ? [] : [{
-            displayModel: GEMINI_FALLBACK_MODEL,
-            apiModel: GEMINI_FALLBACK_MODEL,
-            timeout: 30000
-        }])
+        { displayModel: primaryModel, apiModel: primaryModel, timeout: 40000 }
     ];
     
     let fallbackTrace = [];

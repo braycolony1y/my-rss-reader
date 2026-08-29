@@ -72,23 +72,12 @@ const SMART_NEWS_CLUSTER_CONFIG = {
 const SMART_NEWS_AI_CONFIG = {
   providers: [
     {
-      id: 'gemini-flash-lite',
-      type: 'gemini',
-      model:
-        process.env.GEMINI_FLASH_LITE_MODEL ||
-        'gemini-3.5-flash-lite',
-      priority: 1,
-      timeoutMs: 15_000,
-      maxRetries: 1
-    },
-    {
       id: 'gemini-flash',
       type: 'gemini',
       model:
-        process.env.GEMINI_FLASH_MODEL ||
         process.env.GEMINI_MODEL ||
         'gemini-3.7-flash',
-      priority: 3,
+      priority: 1,
       timeoutMs: 25_000,
       maxRetries: 1
     },

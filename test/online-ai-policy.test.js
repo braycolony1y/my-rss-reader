@@ -42,6 +42,8 @@ test('Gemini 3.7 Flash is the production default', async () => {
 
     assert.match(summarySource, /GEMINI_PRIMARY_MODEL[^\n]+gemini-3\.7-flash/);
     assert.match(smartSource, /process\.env\.GEMINI_MODEL\s*\|\|\s*\n\s*'gemini-3\.7-flash'/);
+    assert.doesNotMatch(summarySource, /gemini-3\.5-flash-lite/);
+    assert.doesNotMatch(smartSource, /gemini-3\.5-flash-lite/);
     assert.match(serverSource, /DEFAULT_CLUSTERING_MODEL/);
     assert.match(frontendSource, /clusteringModel:\s*'gemini-3\.7-flash'/);
 });

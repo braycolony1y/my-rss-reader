@@ -814,8 +814,8 @@
                                 geminiUsed: Boolean(status.geminiUsed),
                                 providers: Array.isArray(status.aiProviders) ? status.aiProviders : (previousRun.providers || []),
                                 providerOrder: Array.isArray(status.providerOrder)
-                                    ? status.providerOrder.filter(provider => provider !== 'qwen-flash')
-                                    : ['local-qwen', 'gemini-flash-lite', 'gemini-flash'],
+                                    ? status.providerOrder.filter(provider => provider !== 'qwen-flash' && provider !== 'gemini-flash-lite')
+                                    : ['gemini-flash', 'local-qwen'],
                                 reviewedArticleCount: Number(status.geminiReviewedArticleCount) || previousRun.reviewedArticleCount || 0,
                                 eligibleArticleCount: Number(status.geminiEligibleArticleCount) || previousRun.eligibleArticleCount || 0,
                                 reason: status.geminiReason || previousRun.reason || '',

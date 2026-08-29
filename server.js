@@ -865,8 +865,7 @@ app.use('/api', (req, res, next) => {
 });
 const PORT = process.env.PORT || 3000;
 const VALID_CLUSTERING_MODELS = new Set([
-    'gemini-3.7-flash',
-    'gemini-3.5-flash-lite'
+    'gemini-3.7-flash'
 ]);
 const configuredClusteringModel = process.env.GEMINI_MODEL || 'gemini-3.7-flash';
 const DEFAULT_CLUSTERING_MODEL = VALID_CLUSTERING_MODELS.has(configuredClusteringModel)
@@ -4093,7 +4092,7 @@ app.get('/api/gemini-key-status', authMiddleware, async (req, res) => {
             localModel: smartStatus.localModel || process.env.OLLAMA_SMART_MODEL || 'qwen3.5:4b',
             geminiUsed: Boolean(smartStatus.geminiUsed),
             providers: Array.isArray(smartStatus.aiProviders) ? smartStatus.aiProviders : [],
-            providerOrder: Array.isArray(smartStatus.providerOrder) ? smartStatus.providerOrder.filter(provider => provider !== 'qwen-flash') : ['local-qwen', 'gemini-flash-lite', 'gemini-flash'],
+            providerOrder: Array.isArray(smartStatus.providerOrder) ? smartStatus.providerOrder.filter(provider => provider !== 'qwen-flash' && provider !== 'gemini-flash-lite') : ['gemini-flash', 'local-qwen'],
             progress: smartStatus.progress || null,
             reviewedArticleCount: smartStatus.verificationStats ? Number(smartStatus.verificationStats.reviewedArticleCount) : (Number(smartStatus.geminiReviewedArticleCount) || 0),
             eligibleArticleCount: Number(smartStatus.candidateCount) || Number(smartStatus.geminiEligibleArticleCount) || 0,
