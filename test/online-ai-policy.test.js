@@ -45,3 +45,10 @@ test('Gemini 3.7 Flash is the production default', async () => {
     assert.match(serverSource, /DEFAULT_CLUSTERING_MODEL/);
     assert.match(frontendSource, /clusteringModel:\s*'gemini-3\.7-flash'/);
 });
+
+test('authenticated frontend usage API exposes the detailed 24-hour report', async () => {
+    const serverSource = await read('server.js');
+    assert.match(serverSource, /app\.get\('\/api\/online-ai-usage', authMiddleware/);
+    assert.match(serverSource, /parseOnlineAiUsageLog/);
+    assert.match(serverSource, /--since=24 hours ago/);
+});

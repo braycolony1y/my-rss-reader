@@ -7,7 +7,7 @@
     <title>My RSS Reader</title>
     <link rel="icon"
         href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22%238b5cf6%22/><circle cx=%2230%22 cy=%2270%22 r=%2210%22 fill=%22white%22/><path d=%22M30 40a30 30 0 0 1 30 30M30 20a50 50 0 0 1 50 50%22 fill=%22none%22 stroke=%22white%22 stroke-width=%2210%22 stroke-linecap=%22round%22/></svg>">
-    <link rel="stylesheet" href="/public/styles.css?v=20260828_gemini37">
+    <link rel="stylesheet" href="/public/styles.css?v=20260829_ai_usage_log_v2">
     <script>
         // Start the first Smart News request while the browser is still parsing
         // the page. Returning visitors paint saved cards immediately instead.
@@ -3132,7 +3132,7 @@
     <!-- AI provider status -->
     <div x-show="geminiStatusOpen" x-cloak @keydown.escape.window="closeGeminiStatus()"
         class="ai-status-overlay fixed inset-0 bg-[#0B101E]/90 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
-        <div class="ai-status-modal bg-[#111827] rounded-2xl max-w-2xl w-full border border-white/10 shadow-2xl overflow-hidden"
+        <div class="ai-status-modal bg-[#111827] rounded-2xl max-w-5xl w-full border border-white/10 shadow-2xl overflow-hidden"
             @click.outside="closeGeminiStatus()">
             <div class="ai-status-header flex items-start justify-between gap-4 px-6 py-5 border-b border-white/10">
                 <div>
@@ -3142,9 +3142,9 @@
                                 d="M12 3l1.7 4.3L18 9l-4.3 1.7L12 15l-1.7-4.3L6 9l4.3-1.7L12 3zm6 11l.9 2.1L21 17l-2.1.9L18 20l-.9-2.1L15 17l2.1-.9L18 14z">
                             </path>
                         </svg>
-                        AI providers
+                        AI usage &amp; providers
                     </h2>
-                    <p class="ai-status-subtitle text-sm text-gray-500 mt-1">Local-first Smart clustering, cloud fallback, and live progress.
+                    <p class="ai-status-subtitle text-sm text-gray-500 mt-1">Detailed 24-hour activity, API keys, clustering, fallbacks, and live progress.
                     </p>
                 </div>
                 <button @click="closeGeminiStatus()" class="ai-status-close text-gray-500 hover:text-white transition p-1"><svg
@@ -3360,6 +3360,211 @@
                             </template>
                         </div>
                     </div>
+
+                    <!-- Detailed online AI activity -->
+                    <section class="ai-status-debug mt-8 border-t border-white/10 pt-6">
+                        <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
+                            <div>
+                                <h3 class="text-sm font-black text-white">Online AI activity · last 24 hours</h3>
+                                <p class="ai-status-muted mt-1 text-xs text-gray-500">
+                                    Every recorded cloud request, failure, fallback decision, key, latency, token count, and HTTP status.
+                                </p>
+                            </div>
+                            <button @click="fetchOnlineAiUsage()" :disabled="onlineAiUsageLoading"
+                                class="ai-status-secondary-button inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-bold text-gray-300 transition hover:bg-white/[0.08] disabled:opacity-50">
+                                <svg class="h-3.5 w-3.5" :class="onlineAiUsageLoading ? 'animate-spin' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v6h6M20 20v-6h-6M5.5 15a7 7 0 0011.8 2.5L20 14M4 10l2.7-3.5A7 7 0 0118.5 9"></path>
+                                </svg>
+                                <span x-text="onlineAiUsageLoading ? 'Refreshing…' : 'Refresh log'"></span>
+                            </button>
+                        </div>
+
+                        <div x-show="onlineAiUsageError"
+                            class="mb-4 rounded-xl border border-amber-400/20 bg-amber-500/[0.07] px-4 py-3 text-xs leading-relaxed text-amber-200/90"
+                            x-text="onlineAiUsageError"></div>
+
+                        <div x-show="onlineAiUsageLoading && !onlineAiUsage" class="py-10 text-center text-sm text-gray-500">
+                            Reading the service journal…
+                        </div>
+
+                        <div x-show="onlineAiUsage" class="space-y-4">
+                            <div class="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+                                <div class="rounded-xl border border-white/[0.07] bg-black/10 p-3">
+                                    <div class="text-[10px] font-bold uppercase tracking-wider text-gray-500">Requests</div>
+                                    <div class="mt-1 text-xl font-black text-white" x-text="formatAiUsageNumber(onlineAiUsage?.summary?.totalRequests)"></div>
+                                </div>
+                                <div class="rounded-xl border border-emerald-400/15 bg-emerald-500/[0.05] p-3">
+                                    <div class="text-[10px] font-bold uppercase tracking-wider text-emerald-400/70">Success</div>
+                                    <div class="mt-1 text-xl font-black text-emerald-300" x-text="formatAiUsageNumber(onlineAiUsage?.summary?.successful)"></div>
+                                </div>
+                                <div class="rounded-xl border border-red-400/15 bg-red-500/[0.05] p-3">
+                                    <div class="text-[10px] font-bold uppercase tracking-wider text-red-400/70">Failed</div>
+                                    <div class="mt-1 text-xl font-black text-red-300" x-text="formatAiUsageNumber(onlineAiUsage?.summary?.failed)"></div>
+                                </div>
+                                <div class="rounded-xl border border-white/[0.07] bg-black/10 p-3">
+                                    <div class="text-[10px] font-bold uppercase tracking-wider text-gray-500">Success rate</div>
+                                    <div class="mt-1 text-xl font-black text-white" x-text="(onlineAiUsage?.summary?.successRate || 0) + '%'"></div>
+                                </div>
+                                <div class="rounded-xl border border-white/[0.07] bg-black/10 p-3">
+                                    <div class="text-[10px] font-bold uppercase tracking-wider text-gray-500">Tokens</div>
+                                    <div class="mt-1 text-xl font-black text-white" x-text="formatAiUsageNumber(onlineAiUsage?.summary?.totalTokens)"></div>
+                                    <div class="mt-1 text-[10px] text-gray-500">
+                                        <span x-text="formatAiUsageNumber(onlineAiUsage?.summary?.promptTokens)"></span> in ·
+                                        <span x-text="formatAiUsageNumber(onlineAiUsage?.summary?.outputTokens)"></span> out
+                                    </div>
+                                </div>
+                                <div class="rounded-xl border border-white/[0.07] bg-black/10 p-3">
+                                    <div class="text-[10px] font-bold uppercase tracking-wider text-gray-500">Avg / P95</div>
+                                    <div class="mt-1 text-sm font-black text-white" x-text="formatAiUsageDuration(onlineAiUsage?.summary?.averageDurationMs)"></div>
+                                    <div class="mt-1 text-[10px] text-gray-500" x-text="'P95 ' + formatAiUsageDuration(onlineAiUsage?.summary?.p95DurationMs)"></div>
+                                </div>
+                            </div>
+
+                            <div class="grid gap-3 lg:grid-cols-2">
+                                <div class="rounded-xl border border-white/[0.07] bg-black/10 p-3">
+                                    <div class="mb-2 text-[10px] font-bold uppercase tracking-wider text-gray-500">Requests by model</div>
+                                    <div class="space-y-2">
+                                        <template x-for="model in onlineAiUsage?.summary?.models || []" :key="model.name">
+                                            <div class="flex items-center justify-between gap-3 text-xs">
+                                                <span class="min-w-0 truncate font-semibold text-gray-300" x-text="model.name"></span>
+                                                <span class="shrink-0 text-gray-500">
+                                                    <strong class="text-white" x-text="formatAiUsageNumber(model.total)"></strong>
+                                                    · <span class="text-emerald-400" x-text="model.success + ' ok'"></span>
+                                                    · <span class="text-red-400" x-text="model.failed + ' failed'"></span>
+                                                </span>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
+                                <div class="rounded-xl border border-white/[0.07] bg-black/10 p-3">
+                                    <div class="mb-2 text-[10px] font-bold uppercase tracking-wider text-gray-500">Failure status codes</div>
+                                    <div class="flex flex-wrap gap-2">
+                                        <template x-for="status in onlineAiUsage?.summary?.httpStatuses || []" :key="status.name">
+                                            <span class="rounded-lg border border-red-400/15 bg-red-500/[0.06] px-2.5 py-1.5 text-xs font-bold text-red-200">
+                                                HTTP <span x-text="status.name"></span> · <span x-text="formatAiUsageNumber(status.total)"></span>
+                                            </span>
+                                        </template>
+                                        <span x-show="!(onlineAiUsage?.summary?.httpStatuses || []).length" class="text-xs text-gray-500">No HTTP failures recorded.</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="rounded-xl border border-white/[0.07] bg-black/10 p-3 text-[11px] leading-relaxed text-gray-500">
+                                <div class="flex flex-wrap gap-x-4 gap-y-1">
+                                    <span>Exact detailed requests: <strong class="text-gray-300" x-text="formatAiUsageNumber(onlineAiUsage?.summary?.exactRequests)"></strong></span>
+                                    <span>Historical/legacy requests: <strong class="text-gray-300" x-text="formatAiUsageNumber(onlineAiUsage?.summary?.legacyRequests)"></strong></span>
+                                    <span>Blocked/diagnostic events: <strong class="text-gray-300" x-text="formatAiUsageNumber((onlineAiUsage?.summary?.blocked || 0) + (onlineAiUsage?.summary?.diagnostics || 0))"></strong></span>
+                                    <span>Source: <strong class="text-gray-300" x-text="onlineAiUsage?.source"></strong></span>
+                                </div>
+                                <p class="mt-1" x-text="onlineAiUsage?.coverage?.note"></p>
+                                <p class="mt-1" x-text="'Updated ' + formatVietnamDateTime(onlineAiUsage?.generatedAt)"></p>
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-2 lg:grid-cols-6">
+                                <select x-model="onlineAiUsageStatus" class="rounded-lg border border-white/10 bg-[#0B101E] px-2.5 py-2 text-xs text-gray-300">
+                                    <option value="all">All outcomes</option>
+                                    <template x-for="status in onlineAiUsage?.filters?.statuses || []" :key="status">
+                                        <option :value="status" x-text="status"></option>
+                                    </template>
+                                </select>
+                                <select x-model="onlineAiUsageProvider" class="rounded-lg border border-white/10 bg-[#0B101E] px-2.5 py-2 text-xs text-gray-300">
+                                    <option value="all">All providers</option>
+                                    <template x-for="provider in onlineAiUsage?.filters?.providers || []" :key="provider">
+                                        <option :value="provider" x-text="provider"></option>
+                                    </template>
+                                </select>
+                                <select x-model="onlineAiUsageOperation" class="rounded-lg border border-white/10 bg-[#0B101E] px-2.5 py-2 text-xs text-gray-300">
+                                    <option value="all">All operations</option>
+                                    <template x-for="operation in onlineAiUsage?.filters?.operations || []" :key="operation">
+                                        <option :value="operation" x-text="operation"></option>
+                                    </template>
+                                </select>
+                                <select x-model="onlineAiUsageModel" class="rounded-lg border border-white/10 bg-[#0B101E] px-2.5 py-2 text-xs text-gray-300">
+                                    <option value="all">All models</option>
+                                    <template x-for="model in onlineAiUsage?.filters?.models || []" :key="model">
+                                        <option :value="model" x-text="model"></option>
+                                    </template>
+                                </select>
+                                <select x-model.number="onlineAiUsageLimit" @change="onlineAiUsageOffset = 0; fetchOnlineAiUsage()" class="rounded-lg border border-white/10 bg-[#0B101E] px-2.5 py-2 text-xs text-gray-300">
+                                    <option :value="100">Newest 100</option>
+                                    <option :value="500">Newest 500</option>
+                                    <option :value="1000">Newest 1,000</option>
+                                    <option :value="2000">Newest 2,000</option>
+                                    <option :value="5000">Newest 5,000</option>
+                                </select>
+                                <input x-model.debounce.200ms="onlineAiUsageSearch" type="search" placeholder="Search details…"
+                                    class="col-span-2 rounded-lg border border-white/10 bg-[#0B101E] px-3 py-2 text-xs text-gray-200 placeholder:text-gray-600 lg:col-span-1">
+                            </div>
+
+                            <div class="flex flex-wrap items-center justify-between gap-3 text-[11px] text-gray-500">
+                                <div>
+                                    Showing <strong class="text-gray-300" x-text="formatAiUsageNumber(filteredOnlineAiUsageEvents().length)"></strong> matching events · records
+                                    <strong class="text-gray-300" x-text="formatAiUsageNumber(onlineAiUsage?.rangeStart)"></strong>–<strong class="text-gray-300" x-text="formatAiUsageNumber(onlineAiUsage?.rangeEnd)"></strong>
+                                    of <strong class="text-gray-300" x-text="formatAiUsageNumber(onlineAiUsage?.totalEvents)"></strong>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <button @click="changeOnlineAiUsagePage('newer')" :disabled="onlineAiUsageLoading || !onlineAiUsage?.hasNewer"
+                                        class="rounded-lg border border-white/10 px-2.5 py-1.5 font-bold text-gray-300 transition hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-30">← Newer</button>
+                                    <button @click="changeOnlineAiUsagePage('older')" :disabled="onlineAiUsageLoading || !onlineAiUsage?.hasOlder"
+                                        class="rounded-lg border border-white/10 px-2.5 py-1.5 font-bold text-gray-300 transition hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-30">Older →</button>
+                                </div>
+                            </div>
+
+                            <div class="max-h-[38rem] space-y-2 overflow-y-auto pr-1">
+                                <template x-for="event in filteredOnlineAiUsageEvents()" :key="event.id">
+                                    <article class="rounded-xl border border-white/[0.07] bg-[#0B101E]/70 p-3">
+                                        <div class="flex items-start gap-3">
+                                            <span class="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full"
+                                                :class="event.status === 'success' ? 'bg-emerald-400' : (event.status === 'failed' ? 'bg-red-400' : (event.status === 'blocked' ? 'bg-amber-400' : 'bg-gray-500'))"></span>
+                                            <div class="min-w-0 flex-1">
+                                                <div class="flex flex-wrap items-start justify-between gap-2">
+                                                    <div>
+                                                        <div class="flex flex-wrap items-center gap-2">
+                                                            <span class="text-xs font-black uppercase tracking-wide"
+                                                                :class="event.status === 'success' ? 'text-emerald-300' : (event.status === 'failed' ? 'text-red-300' : 'text-amber-200')"
+                                                                x-text="event.status"></span>
+                                                            <span class="text-sm font-bold text-white" x-text="event.operation"></span>
+                                                            <span x-show="event.httpStatus" class="rounded border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-[10px] font-black text-gray-300" x-text="'HTTP ' + event.httpStatus"></span>
+                                                            <span class="rounded border border-white/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-gray-500" x-text="event.precision"></span>
+                                                        </div>
+                                                        <div class="mt-1 text-[11px] text-gray-500">
+                                                            <span class="text-gray-300" x-text="event.provider"></span>
+                                                            <span x-show="event.providerId"> · <span x-text="event.providerId"></span></span>
+                                                            <span x-show="event.model"> · <span x-text="event.model"></span></span>
+                                                        </div>
+                                                    </div>
+                                                    <time class="shrink-0 text-[10px] text-gray-600" x-text="formatVietnamDateTime(event.timestamp)"></time>
+                                                </div>
+
+                                                <div class="mt-2 flex flex-wrap gap-1.5 text-[10px] text-gray-400">
+                                                    <span x-show="event.keyIndex" class="rounded-md bg-white/[0.04] px-2 py-1" x-text="'Key ' + event.keyIndex"></span>
+                                                    <span x-show="event.attempt" class="rounded-md bg-white/[0.04] px-2 py-1" x-text="'Attempt ' + event.attempt"></span>
+                                                    <span x-show="event.durationMs !== null" class="rounded-md bg-white/[0.04] px-2 py-1" x-text="formatAiUsageDuration(event.durationMs)"></span>
+                                                    <span x-show="event.totalTokens" class="rounded-md bg-white/[0.04] px-2 py-1" x-text="formatAiUsageNumber(event.totalTokens) + ' tokens (' + formatAiUsageNumber(event.promptTokens) + ' in / ' + formatAiUsageNumber(event.outputTokens) + ' out)' "></span>
+                                                    <span x-show="event.articleCount !== null" class="rounded-md bg-white/[0.04] px-2 py-1" x-text="event.articleCount + ' articles'"></span>
+                                                    <span x-show="event.errorCode" class="rounded-md bg-red-500/[0.07] px-2 py-1 text-red-300/80" x-text="event.errorCode"></span>
+                                                </div>
+
+                                                <div x-show="event.error || event.message" class="mt-2 whitespace-normal break-words rounded-lg border border-red-400/10 bg-red-500/[0.04] px-3 py-2 text-[11px] leading-relaxed text-red-200/80" x-text="event.error || event.message"></div>
+
+                                                <details x-show="event.groupId || event.source" class="mt-2 text-[10px] text-gray-500">
+                                                    <summary class="cursor-pointer select-none hover:text-gray-300">Technical details</summary>
+                                                    <div class="mt-1 space-y-0.5 border-l border-white/10 pl-2 font-mono break-all">
+                                                        <div x-show="event.groupId">Group: <span x-text="event.groupId"></span></div>
+                                                        <div>Record source: <span x-text="event.source"></span></div>
+                                                        <div>Event ID: <span x-text="event.id"></span></div>
+                                                    </div>
+                                                </details>
+                                            </div>
+                                        </div>
+                                    </article>
+                                </template>
+                                <div x-show="!filteredOnlineAiUsageEvents().length" class="rounded-xl border border-dashed border-white/10 px-4 py-8 text-center text-xs text-gray-500">
+                                    No events match these filters.
+                                </div>
+                            </div>
+                        </div>
+                    </section>
 
                     <!-- Background AI Debug Stats -->
                     <div x-show="geminiDebugStats" class="ai-status-debug mt-8 border-t border-white/10 pt-6">
@@ -4507,7 +4712,7 @@
                             </div>
                             <span class="transition-opacity duration-300 truncate delay-75 flex items-center gap-2"
                                 :class="!sidebarExpanded && !isMobile ? 'opacity-0' : 'opacity-100'">
-                                AI API Keys
+                                AI Usage &amp; Keys
                             </span>
                         </div>
                         <span
@@ -6079,7 +6284,7 @@
         </div>
     </div>
     
-    <script src="/script.js?v=20_full_height_x_embeds"></script>
+    <script src="/script.js?v=22_ai_usage_log_paging"></script>
 </body>
 
 </html>

@@ -69,6 +69,7 @@ import sourceRegistry from './src/sources/index.js';
 import GoogleDecoderPkg from 'google-news-url-decoder';
 import { decodeHTMLEntities, normalizeArticleTitle, fastParseRSS } from './feed-parsers.js';
 import { normalizeArticleMediaMarkup } from './article-media.js';
+import { parseOnlineAiUsageLog } from './src/online-ai-usage.js';
 import { isDeletedVozThreadPayload, isUnsafeVozThreadPayload, isVozThreadUrl } from './src/voz-thread-state.js';
 import {
     deletedSourceKind,
@@ -883,6 +884,36 @@ const DB_BACKUP_DIR = './db_backups';
 const MAX_RECOVERY_SNAPSHOTS = 12;
 const RECOVERY_SNAPSHOT_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const CF_PROXY_BASE = 'https://rss-proxy.k1d.workers.dev/?url=';
+const ONLINE_AI_USAGE_LOG_FILE = '/home/ubuntu/script/logs/online-ai-usage-last-24h.log';
+
+async function readOnlineAiUsageWindow() {
+    try {
+        const { stdout } = await execFileAsync('/usr/bin/journalctl', [
+            '--unit=rss-reader.service',
+            '--since=24 hours ago',
+            '--no-pager',
+            '--output=short-iso',
+            '--grep=\\[ONLINE AI\\]|\\[SMART VERIFY\\].*(gemini|qwen)|\\[SUMMARY\\].*(Gemini|Qwen)'
+        ], {
+            timeout: 15_000,
+            maxBuffer: 32 * 1024 * 1024,
+            env: { ...process.env, TZ: 'Asia/Ho_Chi_Minh' }
+        });
+        return { rawLog: stdout, source: 'live service journal' };
+    } catch (journalError) {
+        try {
+            return {
+                rawLog: await fs.readFile(ONLINE_AI_USAGE_LOG_FILE, 'utf8'),
+                source: 'rolling log file',
+                warning: `Live journal unavailable: ${String(journalError.message || journalError).slice(0, 240)}`
+            };
+        } catch (fileError) {
+            const error = new Error('The online AI usage journal and rolling log file are unavailable.');
+            error.cause = fileError;
+            throw error;
+        }
+    }
+}
 
 async function acquireDatabaseWriterLock() {
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -4038,6 +4069,22 @@ app.get('/api/gemini-key-status', authMiddleware, async (req, res) => {
         return res.json({ ...base, valid: false, state: 'unreachable', httpStatus: null, testedKey: (activeKey?.index || 0) + 1, error: String(error.message || error).slice(0, 240) });
     } finally {
         clearTimeout(timeout);
+    }
+});
+
+app.get('/api/online-ai-usage', authMiddleware, async (req, res) => {
+    try {
+        const limit = Math.max(1, Math.min(5000, Number(req.query.limit) || 500));
+        const offset = Math.max(0, Number(req.query.offset) || 0);
+        const { rawLog, source, warning } = await readOnlineAiUsageWindow();
+        const report = parseOnlineAiUsageLog(rawLog, { limit, offset });
+        res.setHeader('Cache-Control', 'no-store');
+        res.json({ ...report, source, warning: warning || null });
+    } catch (error) {
+        res.status(503).json({
+            error: 'Could not load the last 24 hours of online AI activity.',
+            detail: String(error.message || error).slice(0, 300)
+        });
     }
 });
 

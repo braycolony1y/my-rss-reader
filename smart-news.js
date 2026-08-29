@@ -5061,7 +5061,8 @@ async function requestGeminiPartition(
   articles,
   apiKey,
   model,
-  timeoutMs
+  timeoutMs,
+  keyIndex
 ) {
   if (!apiKey) {
     const error =
@@ -5141,6 +5142,8 @@ async function requestGeminiPartition(
 
       error.status =
         response.status;
+      error.keyIndex =
+        Number(keyIndex) || null;
 
       throw error;
     }
@@ -5163,10 +5166,34 @@ async function requestGeminiPartition(
       );
     }
 
-    return parsePartitionResponse(
+    const parsed = parsePartitionResponse(
       text,
       model
     );
+
+    parsed.onlineAiUsage = {
+      keyIndex:
+        Number(keyIndex) || null,
+      httpStatus:
+        response.status,
+      promptTokens:
+        Number(
+          payload?.usageMetadata
+            ?.promptTokenCount
+        ) || 0,
+      outputTokens:
+        Number(
+          payload?.usageMetadata
+            ?.candidatesTokenCount
+        ) || 0,
+      totalTokens:
+        Number(
+          payload?.usageMetadata
+            ?.totalTokenCount
+        ) || 0
+    };
+
+    return parsed;
   } finally {
     clearTimeout(timeout);
   }
@@ -5338,7 +5365,8 @@ async function callVerificationProvider(
       group.articles,
       keyObject?.key,
       provider.model,
-      provider.timeoutMs
+      provider.timeoutMs,
+      Number(keyObject?.index) + 1
     );
   }
 
@@ -5851,6 +5879,16 @@ async function attemptProviderVerification(
               provider.model,
             status:
               'success',
+            httpStatus:
+              Number(
+                parsed?.onlineAiUsage
+                  ?.httpStatus
+              ) || 200,
+            keyIndex:
+              Number(
+                parsed?.onlineAiUsage
+                  ?.keyIndex
+              ) || null,
             attempt,
             durationMs:
               Date.now() -
@@ -5862,7 +5900,22 @@ async function attemptProviderVerification(
                 group?.articles
               )
                 ? group.articles.length
-                : 0
+                : 0,
+            promptTokens:
+              Number(
+                parsed?.onlineAiUsage
+                  ?.promptTokens
+              ) || 0,
+            outputTokens:
+              Number(
+                parsed?.onlineAiUsage
+                  ?.outputTokens
+              ) || 0,
+            totalTokens:
+              Number(
+                parsed?.onlineAiUsage
+                  ?.totalTokens
+              ) || 0
           })
         );
       }
@@ -5910,6 +5963,18 @@ async function attemptProviderVerification(
                 error?.name ||
                 'UNKNOWN'
               ).slice(0, 80),
+            error:
+              String(
+                error?.message ||
+                error ||
+                'Unknown Gemini error'
+              )
+                .replace(/\s+/g, ' ')
+                .slice(0, 800),
+            keyIndex:
+              Number(
+                error?.keyIndex
+              ) || null,
             attempt,
             durationMs:
               Date.now() -

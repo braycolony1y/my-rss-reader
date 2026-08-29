@@ -225,6 +225,17 @@
                 geminiDebugStats: null,
                 geminiDebugTimer: null,
                 smartAiStatusTimer: null,
+                onlineAiUsage: null,
+                onlineAiUsageLoading: false,
+                onlineAiUsageError: '',
+                onlineAiUsageTimer: null,
+                onlineAiUsageLimit: 500,
+                onlineAiUsageOffset: 0,
+                onlineAiUsageStatus: 'all',
+                onlineAiUsageProvider: 'all',
+                onlineAiUsageOperation: 'all',
+                onlineAiUsageModel: 'all',
+                onlineAiUsageSearch: '',
                 vozSummaryController: null,
                 vozScrollRaf: 0,
                 lastVozMeasureAt: 0,
@@ -635,12 +646,18 @@
                     this.mobileSidebarOpen = false;
                     this.fetchGeminiKeyStatus();
                     this.fetchSmartAiProgress();
+                    this.fetchOnlineAiUsage();
                     if (!this.smartAiStatusTimer) {
                         this.smartAiStatusTimer = setInterval(() => this.fetchSmartAiProgress(), 2000);
                     }
                     if (!this.geminiDebugTimer) {
                         this.fetchGeminiDebugStats();
                         this.geminiDebugTimer = setInterval(() => this.fetchGeminiDebugStats(), 5000);
+                    }
+                    if (!this.onlineAiUsageTimer) {
+                        this.onlineAiUsageTimer = setInterval(() => {
+                            if (this.onlineAiUsageOffset === 0) this.fetchOnlineAiUsage(true);
+                        }, 60000);
                     }
                 },
 
@@ -654,6 +671,78 @@
                         clearInterval(this.smartAiStatusTimer);
                         this.smartAiStatusTimer = null;
                     }
+                    if (this.onlineAiUsageTimer) {
+                        clearInterval(this.onlineAiUsageTimer);
+                        this.onlineAiUsageTimer = null;
+                    }
+                },
+
+                async fetchOnlineAiUsage(silent = false) {
+                    if (this.onlineAiUsageLoading) return;
+                    this.onlineAiUsageLoading = true;
+                    if (!silent) this.onlineAiUsageError = '';
+                    try {
+                        const response = await fetch(`/api/online-ai-usage?limit=${encodeURIComponent(this.onlineAiUsageLimit)}&offset=${encodeURIComponent(this.onlineAiUsageOffset)}`, {
+                            cache: 'no-store'
+                        });
+                        const data = await response.json().catch(() => ({}));
+                        if (!response.ok) throw new Error(data.detail || data.error || 'Could not load online AI activity');
+                        this.onlineAiUsage = data;
+                        this.onlineAiUsageError = data.warning || '';
+                    } catch (error) {
+                        this.onlineAiUsageError = error.message || 'Could not load online AI activity';
+                    } finally {
+                        this.onlineAiUsageLoading = false;
+                    }
+                },
+
+                async changeOnlineAiUsagePage(direction) {
+                    const pageSize = Number(this.onlineAiUsageLimit) || 500;
+                    if (direction === 'older' && this.onlineAiUsage?.hasOlder) {
+                        this.onlineAiUsageOffset += pageSize;
+                    } else if (direction === 'newer' && this.onlineAiUsage?.hasNewer) {
+                        this.onlineAiUsageOffset = Math.max(0, this.onlineAiUsageOffset - pageSize);
+                    } else {
+                        return;
+                    }
+                    await this.fetchOnlineAiUsage();
+                },
+
+                filteredOnlineAiUsageEvents() {
+                    const events = Array.isArray(this.onlineAiUsage?.events) ? this.onlineAiUsage.events : [];
+                    const query = String(this.onlineAiUsageSearch || '').trim().toLowerCase();
+                    return events.filter(event => {
+                        if (this.onlineAiUsageStatus !== 'all' && event.status !== this.onlineAiUsageStatus) return false;
+                        if (this.onlineAiUsageProvider !== 'all' && event.provider !== this.onlineAiUsageProvider) return false;
+                        if (this.onlineAiUsageOperation !== 'all' && event.operation !== this.onlineAiUsageOperation) return false;
+                        if (this.onlineAiUsageModel !== 'all' && event.model !== this.onlineAiUsageModel) return false;
+                        if (!query) return true;
+                        return [
+                            event.provider,
+                            event.providerId,
+                            event.operation,
+                            event.model,
+                            event.status,
+                            event.httpStatus,
+                            event.errorCode,
+                            event.error,
+                            event.message,
+                            event.groupId,
+                            event.keyIndex
+                        ].filter(value => value !== null && value !== undefined).join(' ').toLowerCase().includes(query);
+                    });
+                },
+
+                formatAiUsageDuration(value) {
+                    const milliseconds = Number(value);
+                    if (!Number.isFinite(milliseconds)) return 'not recorded';
+                    if (milliseconds < 1000) return `${milliseconds} ms`;
+                    if (milliseconds < 60000) return `${(milliseconds / 1000).toFixed(milliseconds < 10000 ? 2 : 1)} s`;
+                    return `${(milliseconds / 60000).toFixed(1)} min`;
+                },
+
+                formatAiUsageNumber(value) {
+                    return new Intl.NumberFormat().format(Number(value) || 0);
                 },
 
                 async saveClusteringModel() {

@@ -222,7 +222,19 @@ function detectLanguage(text) {
 async function geminiGenerate(model, prompt, options = {}) {
     await geminiKeyManager.waitForRateSlot(6000);
     const keyObj = geminiKeyManager.getCurrentKeyObj();
-    if (!keyObj) throw new Error("No Gemini API key available");
+    if (!keyObj) {
+        logOnlineAiUsage({
+            operation: options.operation || 'summary',
+            model,
+            keyIndex: null,
+            status: 'failed',
+            httpStatus: null,
+            durationMs: 0,
+            errorCode: 'NOT_CONFIGURED',
+            error: 'No Gemini API key is currently available; all configured keys may be cooling down.'
+        });
+        throw new Error("No Gemini API key available");
+    }
     geminiKeyManager.recordUsage();
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${keyObj.key}`;
 
@@ -254,7 +266,9 @@ async function geminiGenerate(model, prompt, options = {}) {
                 keyIndex: Number(keyObj.index) + 1,
                 status: 'failed',
                 httpStatus: res.status,
-                durationMs: Date.now() - startTime
+                durationMs: Date.now() - startTime,
+                errorCode: `HTTP_${res.status}`,
+                error: String(body || `Gemini returned HTTP ${res.status}`).replace(/\s+/g, ' ').slice(0, 800)
             });
             usageLogged = true;
             geminiKeyManager.reportError(err);
@@ -294,7 +308,9 @@ async function geminiGenerate(model, prompt, options = {}) {
                 keyIndex: Number(keyObj.index) + 1,
                 status: 'failed',
                 httpStatus: 504,
-                durationMs: Date.now() - startTime
+                durationMs: Date.now() - startTime,
+                errorCode: 'TIMEOUT',
+                error: 'Gemini generation request timed out.'
             });
             usageLogged = true;
             geminiKeyManager.reportError(err);
@@ -308,7 +324,8 @@ async function geminiGenerate(model, prompt, options = {}) {
                 status: 'failed',
                 httpStatus: Number(error.status) || null,
                 durationMs: Date.now() - startTime,
-                errorCode: String(error.code || error.name || 'UNKNOWN').slice(0, 80)
+                errorCode: String(error.code || error.name || 'UNKNOWN').slice(0, 80),
+                error: String(error.message || error).replace(/\s+/g, ' ').slice(0, 800)
             });
         }
         throw error;
