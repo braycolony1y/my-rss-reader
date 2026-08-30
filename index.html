@@ -5785,7 +5785,7 @@
                 </div>
 
                 <!-- Article content -->
-                <div x-show="!isLoadingOverlay && !overlayError && overlayContent"
+                <div x-show="!isLoadingOverlay && !overlayError && (overlayContent || (overlayArticle && overlayArticle.sourceDeleted))"
                     class="px-6 md:px-10 py-8 mx-auto max-w-[760px]"
                     :class="theme === 'glass-light' ? '!text-gray-900' : ''">
                     <!-- VOZ Thread Notice / Position Banner -->

@@ -70,6 +70,7 @@ test('canonical publisher URLs cannot be overwritten by their malformed request 
 });
 
 test('deleted-source warning is a dedicated subdued liquid-glass alert', () => {
+    assert.match(html, /x-show="!isLoadingOverlay && !overlayError && \(overlayContent \|\| \(overlayArticle && overlayArticle\.sourceDeleted\)\)"/);
     assert.match(html, /class="source-deleted-warning" role="alert" aria-live="polite"/);
     assert.match(html, /class="source-deleted-warning__icon"/);
     assert.match(html, /class="source-deleted-warning__title"/);
