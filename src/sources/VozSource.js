@@ -58,6 +58,37 @@ export function renderVozTwitterEmbed(mediaKey) {
     return `<div class="voz-twitter-embed" data-tweet-id="${tweetId}"><iframe class="voz-twitter-embed__fallback" src="https://platform.twitter.com/embed/Tweet.html?id=${tweetId}" title="Embedded X post" frameborder="0" scrolling="no" allow="fullscreen" sandbox="allow-scripts allow-popups allow-same-origin"></iframe></div>`;
 }
 
+export function renderVozRedditEmbed(mediaKey) {
+    const match = String(mediaKey || '').trim().match(
+        /^(?:r\/)?([a-zA-Z0-9_]{2,30})\/comments\/([a-zA-Z0-9]{3,16})(?:\/([a-zA-Z0-9_-]{1,160}))?\/?$/
+    );
+    if (!match) return '';
+
+    const subreddit = match[1];
+    const postId = match[2];
+    const slug = match[3] || 'post';
+    const postPath = `r/${subreddit}/comments/${postId}/${slug}/`;
+    const canonicalUrl = `https://www.reddit.com/${postPath}`;
+    const embedUrl = `https://embed.reddit.com/${postPath}?embed=true&amp;ref_source=embed&amp;ref=share`;
+
+    return `<div class="voz-reddit-embed" data-reddit-post-id="${postId}"><iframe class="voz-reddit-embed__frame" src="${embedUrl}" title="Embedded Reddit post" loading="lazy" frameborder="0" scrolling="no" allow="fullscreen; clipboard-write" sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms"></iframe><a class="voz-reddit-embed__fallback" href="${canonicalUrl}" target="_blank" rel="noopener noreferrer external"><span aria-hidden="true">↗</span> Open this post on Reddit</a></div>`;
+}
+
+export function transformVozRedditEmbeds(markup) {
+    const source = String(markup || '');
+    if (!source || !/data-media-site-id\s*=\s*["']reddit["']/i.test(source)) return source;
+
+    return source.replace(
+        /<div\b(?=[^>]*\bclass\s*=\s*["'][^"']*\bbbOembed\b[^"']*["'])(?=[^>]*\bdata-media-site-id\s*=\s*["']reddit["'])[^>]*>[\s\S]*?<\/div>/gi,
+        block => {
+            const openingTag = block.match(/^<div\b[^>]*>/i)?.[0] || '';
+            const mediaKey = findHtmlAttribute(openingTag, 'data-media-key')?.value
+                || findHtmlAttribute(openingTag, 'data-id')?.value;
+            return renderVozRedditEmbed(mediaKey) || block;
+        }
+    );
+}
+
 export default class VozSource {
 
     async getBestImage(targetUrl, fetchFn, rssFallback, utils) {
@@ -438,6 +469,11 @@ export default class VozSource {
                 bbContent = bbContent.replace(/<div\b[^>]*data-media-site-id=["']twitter["'][^>]*data-media-key=["']([^"']+)["'][^>]*>[\s\S]*?<\/div>/gi, (match, mediaKey) => {
                     return renderVozTwitterEmbed(mediaKey) || match;
                 });
+
+                // XenForo leaves Reddit oEmbeds as a link containing an inline
+                // SVG logo. Convert the whole block so the icon cannot expand
+                // to the width of the reader when XenForo's JS is absent.
+                bbContent = transformVozRedditEmbeds(bbContent);
 
                 bbContent = bbContent.replace(/<video\b[^>]*>[\s\S]*?<\/video>/gi, (videoMatch) => {
                     let wMatch = videoMatch.match(/\bwidth=(["'])([^"']*)\1/i);

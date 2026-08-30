@@ -66,6 +66,7 @@ import { promisify } from 'util';
 import { createHash } from 'crypto';
 import { createSmartNewsEngine, cleanStoredCluster, calculateHotness, startSmartSyncLoop, scheduleMonthlySourceEvaluation, setClusteringModel } from './smart-news.js';
 import sourceRegistry from './src/sources/index.js';
+import { transformVozRedditEmbeds } from './src/sources/VozSource.js';
 import GoogleDecoderPkg from 'google-news-url-decoder';
 import { decodeHTMLEntities, normalizeArticleTitle, fastParseRSS } from './feed-parsers.js';
 import { normalizeArticleMediaMarkup } from './article-media.js';
@@ -4755,7 +4756,10 @@ function trimArticleMarkupAtSemanticBoundary(markup) {
 }
 
 function cleanArticleMarkup(markup) {
-    let cleaned = String(markup || '');
+    // This also migrates already-cached VOZ pages at read time. Older cache
+    // entries contain XenForo's enormous inline Reddit SVG instead of an
+    // actual embed because the publisher normally upgrades it with JS.
+    let cleaned = transformVozRedditEmbeds(String(markup || ''));
     const threadCommentIdx = cleaned.search(/<div[^>]*class=["'][^"']*(?:thread-comment|comment-list|bdPostTree|replies|comments-area)[^"']*["']/i);
     if (threadCommentIdx > -1) {
         cleaned = cleaned.slice(0, threadCommentIdx);
