@@ -26,6 +26,17 @@ export function getVozThreadPageNumber(url = '') {
     }
 }
 
+export function getVozPaginationMaxPage(pagination, fallback = 1) {
+    const candidates = [Number.parseInt(pagination?.currentPage, 10)];
+    for (const entry of Array.isArray(pagination?.pages) ? pagination.pages : []) {
+        candidates.push(Number.parseInt(entry?.page, 10));
+    }
+    const valid = candidates.filter(page => Number.isSafeInteger(page) && page > 0);
+    const fallbackPage = Number.parseInt(fallback, 10);
+    if (Number.isSafeInteger(fallbackPage) && fallbackPage > 0) valid.push(fallbackPage);
+    return valid.length ? Math.max(...valid) : 1;
+}
+
 export function alignVozPaginationToRequestedPage(pagination, requestedUrl, threadUrl) {
     const requestedPage = getVozThreadPageNumber(requestedUrl);
     if (!requestedPage) return pagination || null;

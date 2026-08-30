@@ -72,6 +72,7 @@ import { normalizeArticleMediaMarkup } from './article-media.js';
 import { parseOnlineAiUsageLog } from './src/online-ai-usage.js';
 import {
     alignVozPaginationToRequestedPage,
+    getVozPaginationMaxPage,
     getVozThreadPageNumber,
     isDeletedVozThreadPayload,
     isUnsafeVozThreadPayload,
@@ -99,7 +100,9 @@ const googleDecoder = new GoogleDecoder();
 const deletedVozThreads = new Set();
 const vozBackgroundUpdatesInFlight = new Set();
 const vozBackgroundLastCheck = new Map();
+const vozCacheBoardLastCheck = new Map();
 const VOZ_BACKGROUND_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
+const VOZ_CACHE_BOARD_REFRESH_INTERVAL_MS = 55 * 1000;
 async function decodeGoogleNews(url) {
     if (url && typeof url === 'string' && url.includes('news.google.com/rss/articles/')) {
         try { 
@@ -5114,6 +5117,135 @@ app.post('/api/article-fetch-preference', authMiddleware, async (req, res) => {
     }
 });
 
+const VOZ_CACHE_BOARD_CRAWL_CONCURRENCY = 2;
+const VOZ_CACHE_BOARD_CRAWL_BATCH_FETCHES = 4;
+const VOZ_CACHE_BOARD_CRAWL_PAGE_DELAY_MS = 250;
+const VOZ_CACHE_BOARD_MAX_PAGES = 10000;
+const vozCacheBoardCrawlJobs = new Map();
+const vozCacheBoardCrawlQueue = [];
+let activeVozCacheBoardCrawls = 0;
+
+function vozThreadPageUrl(baseUrl, page) {
+    return page === 1 ? baseUrl : `${baseUrl}/page-${page}`;
+}
+
+function hasUsableCachedVozPage(cached, expectedPage) {
+    if (!cached?.content || cached.sourceDeletedHasCache === false) return false;
+    if (cached.content.includes(DELETED_SOURCE_TOMBSTONE)) return false;
+    if (isUnsafeVozThreadPayload(cached.url || '', cached) && cached.sourceDeleted !== true) return false;
+    const cachedPage = Number.parseInt(cached.pagination?.currentPage, 10);
+    return !Number.isSafeInteger(cachedPage) || cachedPage === expectedPage;
+}
+
+function enqueueVozCacheBoardCrawl(url, pagination, feedUrl = '') {
+    if (!isVozThreadUrl(url)) return;
+    const baseUrl = normalizeStateUrl(url);
+    if (!baseUrl || deletedVozThreads.has(baseUrl)) return;
+    const discoveredMaxPage = Math.min(
+        VOZ_CACHE_BOARD_MAX_PAGES,
+        getVozPaginationMaxPage(pagination, 1)
+    );
+    let job = vozCacheBoardCrawlJobs.get(baseUrl);
+    if (job) {
+        job.maxPage = Math.max(job.maxPage, discoveredMaxPage);
+        if (feedUrl) job.feedUrl = feedUrl;
+        return;
+    }
+
+    job = {
+        baseUrl,
+        feedUrl,
+        nextPage: 1,
+        maxPage: discoveredMaxPage,
+        status: 'queued'
+    };
+    vozCacheBoardCrawlJobs.set(baseUrl, job);
+    vozCacheBoardCrawlQueue.push(job);
+    pumpVozCacheBoardCrawls();
+}
+
+function pumpVozCacheBoardCrawls() {
+    while (activeVozCacheBoardCrawls < VOZ_CACHE_BOARD_CRAWL_CONCURRENCY && vozCacheBoardCrawlQueue.length) {
+        const job = vozCacheBoardCrawlQueue.shift();
+        if (!job || job.status !== 'queued' || deletedVozThreads.has(job.baseUrl)) {
+            if (job) vozCacheBoardCrawlJobs.delete(job.baseUrl);
+            continue;
+        }
+        job.status = 'running';
+        activeVozCacheBoardCrawls++;
+        runVozCacheBoardCrawlBatch(job).catch(error => {
+            console.warn(`[VOZ CACHE BOARD CRAWL] ${job.baseUrl}: ${error.message}`);
+        }).finally(() => {
+            activeVozCacheBoardCrawls--;
+            if (!deletedVozThreads.has(job.baseUrl) && job.nextPage <= job.maxPage) {
+                job.status = 'queued';
+                vozCacheBoardCrawlQueue.push(job);
+            } else {
+                vozCacheBoardCrawlJobs.delete(job.baseUrl);
+            }
+            setTimeout(pumpVozCacheBoardCrawls, 0);
+        });
+    }
+}
+
+async function runVozCacheBoardCrawlBatch(job) {
+    let fetchedPages = 0;
+    while (job.nextPage <= job.maxPage && fetchedPages < VOZ_CACHE_BOARD_CRAWL_BATCH_FETCHES) {
+        if (deletedVozThreads.has(job.baseUrl)) return;
+        const requestedPage = job.nextPage++;
+        const pageUrl = vozThreadPageUrl(job.baseUrl, requestedPage);
+        const cached = await getCachedArticle(pageUrl);
+        if (hasUsableCachedVozPage(cached, requestedPage)) {
+            job.maxPage = Math.min(
+                VOZ_CACHE_BOARD_MAX_PAGES,
+                Math.max(job.maxPage, getVozPaginationMaxPage(cached.pagination, requestedPage))
+            );
+            continue;
+        }
+
+        fetchedPages++;
+        console.log(`[VOZ CACHE BOARD CRAWL] Caching page ${requestedPage}/${job.maxPage}: ${pageUrl}`);
+        const policy = await getArticleFetchPolicy(pageUrl, job.feedUrl);
+        for (const strategy of policy.strategyOrder) {
+            try {
+                const result = await fetchParsedArticleByStrategy(strategy, pageUrl, policy, job.feedUrl);
+                if (isDeletedArticlePayload(pageUrl, result)) {
+                    await buildDeletedSourceResponse(pageUrl);
+                    deletedVozThreads.add(job.baseUrl);
+                    return;
+                }
+                if (!result?.content) continue;
+
+                const parsedCurrentPage = Number.parseInt(result.pagination?.currentPage, 10);
+                const actualPage = Number.isSafeInteger(parsedCurrentPage) && parsedCurrentPage > 0
+                    ? parsedCurrentPage
+                    : requestedPage;
+                const discoveredMaxPage = Math.min(
+                    VOZ_CACHE_BOARD_MAX_PAGES,
+                    getVozPaginationMaxPage(result.pagination, actualPage)
+                );
+                if (actualPage < requestedPage && discoveredMaxPage < requestedPage) {
+                    job.maxPage = discoveredMaxPage;
+                } else {
+                    job.maxPage = Math.max(job.maxPage, discoveredMaxPage);
+                }
+
+                const cacheUrl = vozThreadPageUrl(job.baseUrl, actualPage);
+                result.url = cacheUrl;
+                result.cached = true;
+                await cacheArticleResult(cacheUrl, result);
+                console.log(`[VOZ CACHE BOARD CRAWL] Cached page ${actualPage}/${job.maxPage} via ${strategy}`);
+                break;
+            } catch (error) {
+                // Continue through this source's configured reader methods.
+            }
+        }
+        if (job.nextPage <= job.maxPage) {
+            await new Promise(resolve => setTimeout(resolve, VOZ_CACHE_BOARD_CRAWL_PAGE_DELAY_MS));
+        }
+    }
+}
+
 function triggerVozNextPagePrefetch(nextUrl, depth = 1, feedUrl = '') {
     if (!nextUrl || !nextUrl.includes('voz.vn') || depth > 2) return Promise.resolve();
     return new Promise(resolve => {
@@ -5149,20 +5281,24 @@ function triggerVozNextPagePrefetch(nextUrl, depth = 1, feedUrl = '') {
     });
 }
 
-function triggerVozCurrentPageBackgroundUpdate(url, cachedArticle, feedUrl = '') {
+function triggerVozCurrentPageBackgroundUpdate(url, cachedArticle, feedUrl = '', options = {}) {
     if (!url || !url.includes('voz.vn')) return;
     const canonicalUrl = normalizeStateUrl(url);
     if (cachedArticle?.sourceDeleted) {
         deletedVozThreads.add(canonicalUrl);
         return;
     }
-    const lastCheckedAt = vozBackgroundLastCheck.get(canonicalUrl) || 0;
-    if (vozBackgroundUpdatesInFlight.has(canonicalUrl) || Date.now() - lastCheckedAt < VOZ_BACKGROUND_REFRESH_INTERVAL_MS) return;
+    const minimumIntervalMs = Number.isFinite(options.minimumIntervalMs)
+        ? Math.max(0, options.minimumIntervalMs)
+        : VOZ_BACKGROUND_REFRESH_INTERVAL_MS;
+    const lastCheckStore = options.cacheAllPages ? vozCacheBoardLastCheck : vozBackgroundLastCheck;
+    const lastCheckedAt = lastCheckStore.get(canonicalUrl) || 0;
+    if (vozBackgroundUpdatesInFlight.has(canonicalUrl) || Date.now() - lastCheckedAt < minimumIntervalMs) return;
     vozBackgroundUpdatesInFlight.add(canonicalUrl);
-    vozBackgroundLastCheck.set(canonicalUrl, Date.now());
-    if (vozBackgroundLastCheck.size > 2000) {
-        const oldestKey = vozBackgroundLastCheck.keys().next().value;
-        vozBackgroundLastCheck.delete(oldestKey);
+    lastCheckStore.set(canonicalUrl, Date.now());
+    if (lastCheckStore.size > 2000) {
+        const oldestKey = lastCheckStore.keys().next().value;
+        lastCheckStore.delete(oldestKey);
     }
     setTimeout(async () => {
         try {
@@ -5178,18 +5314,32 @@ function triggerVozCurrentPageBackgroundUpdate(url, cachedArticle, feedUrl = '')
                             console.log(`[VOZ BACKGROUND UPDATE] Thread ${url} is deleted. Marked to skip future background fetches.`);
                             break;
                         }
-                        if (result && result.content && result.content !== cachedArticle.content) {
-                            result.cached = true;
-                            await cacheArticleResult(url, result);
-                            console.log(`[VOZ BACKGROUND UPDATE] Updated cache for ${url} (found new posts)`);
-                            
-                            // Also trigger next page prefetch if it has a new next page
-                            if (result.pagination && result.pagination.nextUrl) {
+                        if (result && result.content) {
+                            const parsedCurrentPage = Number.parseInt(result.pagination?.currentPage, 10);
+                            const currentPage = Number.isSafeInteger(parsedCurrentPage) && parsedCurrentPage > 0
+                                ? parsedCurrentPage
+                                : 1;
+                            const cacheTargetUrl = options.cacheAllPages
+                                ? vozThreadPageUrl(canonicalUrl, currentPage)
+                                : url;
+                            const comparableCache = options.cacheAllPages
+                                ? await getCachedArticle(cacheTargetUrl)
+                                : cachedArticle;
+                            const contentChanged = result.content !== comparableCache?.content;
+                            if (contentChanged) {
+                                result.url = cacheTargetUrl;
+                                result.cached = true;
+                                await cacheArticleResult(cacheTargetUrl, result);
+                                console.log(`[VOZ BACKGROUND UPDATE] Updated cache for ${cacheTargetUrl} (found new posts)`);
+                            } else {
+                                console.log(`[VOZ BACKGROUND UPDATE] No new posts for ${cacheTargetUrl}`);
+                            }
+
+                            if (options.cacheAllPages) {
+                                enqueueVozCacheBoardCrawl(canonicalUrl, result.pagination, effectiveFeedUrl);
+                            } else if (contentChanged && result.pagination?.nextUrl) {
                                 triggerVozNextPagePrefetch(result.pagination.nextUrl, 1, effectiveFeedUrl);
                             }
-                            break;
-                        } else if (result && result.content) {
-                            console.log(`[VOZ BACKGROUND UPDATE] No new posts for ${url}`);
                             break;
                         }
                     }
@@ -7101,7 +7251,11 @@ if (isMainModule) {
                     const baseUrl = normalizeStateUrl(link);
                     if (deletedVozThreads.has(baseUrl)) continue;
                     const cached = await getCachedArticle(link) || { content: '' };
-                    triggerVozCurrentPageBackgroundUpdate(link, cached, cached.feedUrl || '');
+                    enqueueVozCacheBoardCrawl(baseUrl, cached.pagination, cached.feedUrl || '');
+                    triggerVozCurrentPageBackgroundUpdate(link, cached, cached.feedUrl || '', {
+                        minimumIntervalMs: VOZ_CACHE_BOARD_REFRESH_INTERVAL_MS,
+                        cacheAllPages: true
+                    });
                 }
             } catch (error) {
                 console.warn('[VOZ CACHE BOARD] Could not schedule refresh:', error.message);

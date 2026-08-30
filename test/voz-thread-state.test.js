@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
     alignVozPaginationToRequestedPage,
+    getVozPaginationMaxPage,
     getVozThreadPageNumber,
     hasVozDeletedThreadMarker,
     isDeletedVozThreadPayload,
@@ -26,6 +27,14 @@ test('recognizes every numbered VOZ page without coupling to one thread or page 
     assert.equal(getVozThreadPageNumber('https://sub.voz.vn/t/third.333/page-904?x=1'), 904);
     assert.equal(getVozThreadPageNumber('https://voz.vn/t/first.111/unread'), null);
     assert.equal(getVozThreadPageNumber('https://example.com/t/first.111/page-2'), null);
+});
+
+test('discovers the final VOZ page from sparse pagination metadata', () => {
+    assert.equal(getVozPaginationMaxPage({
+        currentPage: 5,
+        pages: [{ page: 1 }, { page: 4 }, { page: 5 }, { page: 6 }, { page: 904 }]
+    }), 904);
+    assert.equal(getVozPaginationMaxPage(null, 37), 37);
 });
 
 test('aligns deleted-thread pagination to any requested archived page', () => {
@@ -143,4 +152,26 @@ test('VOZ background polling carries feed policy instead of silently enabling Ji
     assert.match(script, /new URLSearchParams\(\{ url, feedUrl, bypassCache: 'true' \}\)/);
     assert.match(script, /this\.overlayArticle\.sourceDeleted = data\.sourceDeleted === true/);
     assert.match(script, /this\.overlayFetchedFromCache && !this\.overlayArticle\.sourceDeleted/);
+});
+
+test('Cache Board refreshes VOZ every minute and crawls past cached pages to the final page', () => {
+    const server = readFileSync(new URL('../server.js', import.meta.url), 'utf8');
+    const crawlerStart = server.indexOf('async function runVozCacheBoardCrawlBatch');
+    const crawlerEnd = server.indexOf('\nfunction triggerVozNextPagePrefetch', crawlerStart);
+    const crawler = server.slice(crawlerStart, crawlerEnd);
+    const cronStart = server.indexOf("cron.schedule('* * * * *'");
+    const cronEnd = server.indexOf('\n        console.log(`[STAGGERED BOOT]', cronStart);
+    const cacheBoardCron = server.slice(cronStart, cronEnd);
+
+    assert.match(server, /const VOZ_CACHE_BOARD_REFRESH_INTERVAL_MS = 55 \* 1000/);
+    assert.match(server, /const vozCacheBoardLastCheck = new Map\(\)/);
+    assert.match(server, /options\.cacheAllPages \? vozCacheBoardLastCheck : vozBackgroundLastCheck/);
+    assert.match(cacheBoardCron, /minimumIntervalMs: VOZ_CACHE_BOARD_REFRESH_INTERVAL_MS/);
+    assert.match(cacheBoardCron, /cacheAllPages: true/);
+    assert.match(cacheBoardCron, /enqueueVozCacheBoardCrawl\(baseUrl, cached\.pagination/);
+    assert.match(crawler, /while \(job\.nextPage <= job\.maxPage/);
+    assert.match(crawler, /if \(hasUsableCachedVozPage\(cached, requestedPage\)\) \{[\s\S]*continue;/);
+    assert.doesNotMatch(crawler, /if \(hasUsableCachedVozPage\(cached, requestedPage\)\) \{[\s\S]{0,300}return;/);
+    assert.match(crawler, /getVozPaginationMaxPage\(result\.pagination, actualPage\)/);
+    assert.match(server, /const VOZ_CACHE_BOARD_CRAWL_CONCURRENCY = 2/);
 });
