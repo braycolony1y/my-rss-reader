@@ -60,3 +60,8 @@
 [2026-08-30 14:43:11 +07] SUCCESS: website backup completed
 [2026-08-30 15:02:50 +07] Starting sanitized GitHub backup
 [2026-08-30 15:02:55 +07] Source and systemd snapshots prepared
+[2026-08-30 15:02:55 +07] Created backup commit: c814332
+[2026-08-30 15:02:59 +07] Pushed sanitized snapshot to GitHub main
+[2026-08-30 15:02:59 +07] SUCCESS: website backup completed
+[2026-08-30 15:07:27 +07] Starting sanitized GitHub backup
+[2026-08-30 15:07:33 +07] Source and systemd snapshots prepared

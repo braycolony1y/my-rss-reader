@@ -26,9 +26,9 @@ export function getVozThreadPageNumber(url = '') {
     }
 }
 
-export function alignVozPaginationToRequestedPage(pagination, requestedUrl, threadUrl, fallbackPagination = null) {
+export function alignVozPaginationToRequestedPage(pagination, requestedUrl, threadUrl) {
     const requestedPage = getVozThreadPageNumber(requestedUrl);
-    if (!requestedPage) return pagination || fallbackPagination || null;
+    if (!requestedPage) return pagination || null;
 
     const baseUrl = String(threadUrl || requestedUrl)
         .replace(/[?#].*$/, '')
@@ -37,20 +37,15 @@ export function alignVozPaginationToRequestedPage(pagination, requestedUrl, thre
     const pageUrl = page => page === 1 ? baseUrl : `${baseUrl}/page-${page}`;
     const knownPages = new Map();
 
-    // A page-specific cache can contain a shortened paginator while the base
-    // thread snapshot still knows the other pages. Merge both, preferring the
-    // exact page's URLs and metadata when the same page appears in each.
-    for (const source of [fallbackPagination, pagination]) {
-        for (const entry of Array.isArray(source?.pages) ? source.pages : []) {
-            const page = Number.parseInt(entry?.page, 10);
-            if (!Number.isSafeInteger(page) || page < 1) continue;
-            knownPages.set(page, {
-                ...entry,
-                page,
-                url: entry.url || pageUrl(page),
-                isCurrent: page === requestedPage
-            });
-        }
+    for (const entry of Array.isArray(pagination?.pages) ? pagination.pages : []) {
+        const page = Number.parseInt(entry?.page, 10);
+        if (!Number.isSafeInteger(page) || page < 1 || knownPages.has(page)) continue;
+        knownPages.set(page, {
+            ...entry,
+            page,
+            url: entry.url || pageUrl(page),
+            isCurrent: page === requestedPage
+        });
     }
     if (!knownPages.has(requestedPage)) {
         knownPages.set(requestedPage, {
@@ -68,7 +63,6 @@ export function alignVozPaginationToRequestedPage(pagination, requestedUrl, thre
     const sourceAlreadyDescribedRequestedPage = Number(pagination?.currentPage) === requestedPage;
 
     return {
-        ...(fallbackPagination || {}),
         ...(pagination || {}),
         currentPage: requestedPage,
         pages,

@@ -5351,6 +5351,36 @@ app.post('/api/clear-article-cache', authMiddleware, async (req, res) => {
 
 const DELETED_SOURCE_TOMBSTONE = '<!-- deleted-source-no-cached-content -->';
 
+async function getArchivedVozPaginationSeed(baseUrl) {
+    await _initArticleCacheIndex();
+    const archivedPages = new Map();
+    const canonicalBaseUrl = normalizeStateUrl(baseUrl);
+
+    for (const meta of _articleCacheIndex.values()) {
+        if (!meta?.url || !isVozThreadUrl(meta.url)) continue;
+        if (normalizeStateUrl(meta.url) !== canonicalBaseUrl) continue;
+
+        const cached = await getLastKnownCachedArticle(meta.url);
+        const hasArchivedPosts = Boolean(
+            cached?.content
+            && cached.sourceDeletedHasCache !== false
+            && !cached.content.includes(DELETED_SOURCE_TOMBSTONE)
+            && !(isUnsafeVozThreadPayload(meta.url, cached) && cached.sourceDeleted !== true)
+        );
+        if (!hasArchivedPosts) continue;
+
+        const urlPage = getVozThreadPageNumber(meta.url);
+        const cachedPage = Number.parseInt(cached?.pagination?.currentPage, 10);
+        const page = urlPage
+            || (Number.isSafeInteger(cachedPage) && cachedPage > 0 ? cachedPage : 1);
+        const pageUrl = page === 1 ? canonicalBaseUrl : `${canonicalBaseUrl}/page-${page}`;
+        archivedPages.set(page, { page, url: pageUrl, isCurrent: false });
+    }
+
+    const pages = [...archivedPages.values()].sort((a, b) => a.page - b.page);
+    return pages.length ? { pages } : null;
+}
+
 async function buildDeletedSourceResponse(url, responseMetadata = {}) {
     const requestedCacheUrl = normalizeArticleSourceUrl(url);
     const baseUrl = normalizeStateUrl(url);
@@ -5369,14 +5399,15 @@ async function buildDeletedSourceResponse(url, responseMetadata = {}) {
     const threadMetadataCache = isSpecificVozPage
         ? await getLastKnownCachedArticle(baseUrl)
         : lastCache;
-    const alignedPagination = requestedVozPage === null
-        ? (lastCache?.pagination || null)
-        : alignVozPaginationToRequestedPage(
-            lastCache?.pagination,
-            requestedCacheUrl,
-            baseUrl,
-            threadMetadataCache?.pagination
-        );
+    const archivedVozPagination = kind === 'thread'
+        ? await getArchivedVozPaginationSeed(baseUrl)
+        : null;
+    const paginationRequestedUrl = requestedVozPage === null && kind === 'thread'
+        ? `${baseUrl}/page-1`
+        : requestedCacheUrl;
+    const alignedPagination = kind === 'thread'
+        ? alignVozPaginationToRequestedPage(archivedVozPagination, paginationRequestedUrl, baseUrl)
+        : (lastCache?.pagination || null);
     const cachedPayloadIsOnlyDeletionPage = Boolean(
         lastCache
         && lastCache.sourceDeleted !== true

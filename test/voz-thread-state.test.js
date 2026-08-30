@@ -48,38 +48,25 @@ test('aligns deleted-thread pagination to any requested archived page', () => {
     assert.equal(aligned.nextUrl, `${baseUrl}/page-4`);
 });
 
-test('merges shortened page cache pagination with all pages known by the thread snapshot', () => {
-    const baseUrl = 'https://voz.vn/t/merged-thread.999';
-    const exactPagePagination = {
-        currentPage: 2,
+test('does not invent links beyond the pages present in the archived-page inventory', () => {
+    const baseUrl = 'https://voz.vn/t/archived-thread.999';
+    const archivedPagination = {
         pages: [1, 2].map(page => ({
             page,
             url: page === 1 ? baseUrl : `${baseUrl}/page-${page}`,
-            isCurrent: page === 2
-        })),
-        prevUrl: baseUrl,
-        nextUrl: null
-    };
-    const threadPagination = {
-        currentPage: 1,
-        pages: [1, 2, 3, 4, 5].map(page => ({
-            page,
-            url: page === 1 ? baseUrl : `${baseUrl}/page-${page}`,
-            isCurrent: page === 1
-        })),
-        nextUrl: `${baseUrl}/page-2`
+            isCurrent: false
+        }))
     };
     const aligned = alignVozPaginationToRequestedPage(
-        exactPagePagination,
+        archivedPagination,
         `${baseUrl}/page-2`,
-        baseUrl,
-        threadPagination
+        baseUrl
     );
 
-    assert.deepEqual(aligned.pages.map(page => page.page), [1, 2, 3, 4, 5]);
+    assert.deepEqual(aligned.pages.map(page => page.page), [1, 2]);
     assert.deepEqual(aligned.pages.filter(page => page.isCurrent).map(page => page.page), [2]);
     assert.equal(aligned.prevUrl, baseUrl);
-    assert.equal(aligned.nextUrl, `${baseUrl}/page-3`);
+    assert.equal(aligned.nextUrl, null);
 });
 
 test('an uncached high VOZ page is represented as itself instead of page one', () => {
