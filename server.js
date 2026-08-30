@@ -5302,9 +5302,13 @@ async function triggerNextFiveArticlesPrefetch(currentUrl, dryRun = false, prefe
 async function isProtectedDeletedSourceSnapshot(url) {
     const canonicalUrl = normalizeStateUrl(url);
     if (isVozThreadUrl(url) && deletedVozThreads.has(canonicalUrl)) return true;
-    const cachedArticle = await getCachedArticle(url)
-        || (canonicalUrl !== url ? await getCachedArticle(canonicalUrl) : null);
-    return cachedArticle?.sourceDeleted === true;
+    const exactCachedArticle = await getCachedArticle(url);
+    if (exactCachedArticle?.sourceDeleted === true) return true;
+    if (canonicalUrl !== url) {
+        const threadCachedArticle = await getCachedArticle(canonicalUrl);
+        if (threadCachedArticle?.sourceDeleted === true) return true;
+    }
+    return false;
 }
 
 app.post('/api/clear-article-cache', authMiddleware, async (req, res) => {
@@ -5342,13 +5346,23 @@ app.post('/api/clear-article-cache', authMiddleware, async (req, res) => {
 const DELETED_SOURCE_TOMBSTONE = '<!-- deleted-source-no-cached-content -->';
 
 async function buildDeletedSourceResponse(url, responseMetadata = {}) {
+    const requestedCacheUrl = normalizeArticleSourceUrl(url);
     const baseUrl = normalizeStateUrl(url);
+    const isSpecificVozPage = isVozThreadUrl(url)
+        && /\/page-\d+\/?(?:[?#].*)?$/i.test(requestedCacheUrl);
+    // Board membership intentionally collapses every VOZ page to one thread
+    // identity. Content caching must not: a cached /page-2 is distinct from
+    // page 1 and must be served before the thread-level deleted snapshot.
+    const snapshotUrl = isSpecificVozPage ? requestedCacheUrl : baseUrl;
     const kind = deletedSourceKind(url);
     if (kind === 'thread') {
         if (deletedVozThreads.size > 2000) deletedVozThreads.clear();
         deletedVozThreads.add(baseUrl);
     }
-    const lastCache = await getLastKnownCachedArticle(baseUrl);
+    const lastCache = await getLastKnownCachedArticle(snapshotUrl);
+    const threadMetadataCache = isSpecificVozPage
+        ? await getLastKnownCachedArticle(baseUrl)
+        : lastCache;
     const cachedPayloadIsOnlyDeletionPage = Boolean(
         lastCache
         && lastCache.sourceDeleted !== true
@@ -5361,17 +5375,25 @@ async function buildDeletedSourceResponse(url, responseMetadata = {}) {
         && !lastCache.content.includes(DELETED_SOURCE_TOMBSTONE)
         && !(isUnsafeVozThreadPayload(url, lastCache) && lastCache.sourceDeleted !== true)
     );
-    const deletedDetectedAt = lastCache?.deletedDetectedAt || new Date().toISOString();
-    let sourceSiteName = lastCache?.siteName || responseMetadata.sourceSiteName || '';
+    const deletedDetectedAt = lastCache?.deletedDetectedAt
+        || threadMetadataCache?.deletedDetectedAt
+        || new Date().toISOString();
+    let sourceSiteName = lastCache?.siteName
+        || threadMetadataCache?.siteName
+        || responseMetadata.sourceSiteName
+        || '';
     if (!sourceSiteName) {
         try { sourceSiteName = new URL(url).hostname.replace(/^www\./, ''); } catch (error) { }
     }
     const preserved = {
         ...(lastCache || {}),
-        url: baseUrl,
+        url: snapshotUrl,
         title: hasCachedContent
             ? lastCache.title
-            : (responseMetadata.fallbackTitle || lastCache?.title || deletedSourceTitle(url)),
+            : (responseMetadata.fallbackTitle
+                || lastCache?.title
+                || threadMetadataCache?.title
+                || deletedSourceTitle(url)),
         content: hasCachedContent ? lastCache.content : DELETED_SOURCE_TOMBSTONE,
         siteName: sourceSiteName,
         sourceDeleted: true,
@@ -5381,11 +5403,11 @@ async function buildDeletedSourceResponse(url, responseMetadata = {}) {
         isDeletedThread: kind === 'thread',
         deletedDetectedAt
     };
-    await cacheArticleResult(baseUrl, preserved);
+    await cacheArticleResult(snapshotUrl, preserved);
     return {
-        url,
         ...preserved,
         ...responseMetadata,
+        url: snapshotUrl,
         content: hasCachedContent ? cleanArticleMarkup(preserved.content) : '',
         title: normalizeArticleTitle(preserved.title),
         cached: hasCachedContent,

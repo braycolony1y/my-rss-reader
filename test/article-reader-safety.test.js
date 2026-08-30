@@ -11,7 +11,8 @@ test('cache clearing stays available except for confirmed deleted-source snapsho
     assert.notEqual(routeStart, -1);
     const routeBody = server.slice(routeStart, server.indexOf('\nasync function buildDeletedSourceResponse', routeStart));
     assert.match(server, /async function isProtectedDeletedSourceSnapshot\(url\)/);
-    assert.match(server, /cachedArticle\?\.sourceDeleted === true/);
+    assert.match(server, /exactCachedArticle\?\.sourceDeleted === true/);
+    assert.match(server, /threadCachedArticle\?\.sourceDeleted === true/);
     assert.match(routeBody, /await isProtectedDeletedSourceSnapshot\(url\)/);
     assert.match(routeBody, /status\(403\)/);
     assert.match(routeBody, /Deleted-source snapshots are protected from cache clearing/);
@@ -37,6 +38,19 @@ test('reader-method rejection stays available except for confirmed deleted-sourc
     assert.match(script, /if \(this\.overlayArticle\.sourceDeleted\) \{[\s\S]*protected and cannot reject reader methods/);
     assert.match(html, /x-show="overlayArticle && !overlayArticle\.sourceDeleted"[\s\S]*@click="rejectAndTryNextArticleMethod\(\)"/);
     assert.match(html, /overlayRejectedStrategies\.includes\(strategy\)/);
+});
+
+test('deleted VOZ pagination serves the exact cached page instead of page one', () => {
+    const functionStart = server.indexOf('async function buildDeletedSourceResponse');
+    const functionEnd = server.indexOf('\n// --- ARTICLE CONTENT EXTRACTION ENDPOINT ---', functionStart);
+    const functionBody = server.slice(functionStart, functionEnd);
+
+    assert.match(functionBody, /const requestedCacheUrl = normalizeArticleSourceUrl\(url\)/);
+    assert.match(functionBody, /const isSpecificVozPage = isVozThreadUrl\(url\)[\s\S]*\/\\\/page-\\d\+/);
+    assert.match(functionBody, /const snapshotUrl = isSpecificVozPage \? requestedCacheUrl : baseUrl/);
+    assert.match(functionBody, /getLastKnownCachedArticle\(snapshotUrl\)/);
+    assert.match(functionBody, /cacheArticleResult\(snapshotUrl, preserved\)/);
+    assert.match(functionBody, /url: snapshotUrl/);
 });
 
 test('canonical publisher URLs cannot be overwritten by their malformed request form', () => {
