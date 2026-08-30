@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
+    alignVozPaginationToRequestedPage,
+    getVozThreadPageNumber,
     hasVozDeletedThreadMarker,
     isDeletedVozThreadPayload,
     isUnsafeVozThreadPayload,
@@ -16,6 +18,82 @@ test('recognizes VOZ thread URLs and its authoritative deletion marker', () => {
     assert.equal(isVozThreadUrl('https://example.com/t/example-thread.1268127'), false);
     assert.equal(hasVozDeletedThreadMarker('The requested thread could not be found.'), true);
     assert.equal(hasVozDeletedThreadMarker('Chủ đề yêu cầu không tìm thấy'), true);
+});
+
+test('recognizes every numbered VOZ page without coupling to one thread or page two', () => {
+    assert.equal(getVozThreadPageNumber('https://voz.vn/t/first.111/page-1'), 1);
+    assert.equal(getVozThreadPageNumber('https://voz.vn/t/second.222/page-37/'), 37);
+    assert.equal(getVozThreadPageNumber('https://sub.voz.vn/t/third.333/page-904?x=1'), 904);
+    assert.equal(getVozThreadPageNumber('https://voz.vn/t/first.111/unread'), null);
+    assert.equal(getVozThreadPageNumber('https://example.com/t/first.111/page-2'), null);
+});
+
+test('aligns deleted-thread pagination to any requested archived page', () => {
+    const baseUrl = 'https://voz.vn/t/example.777';
+    const sourcePagination = {
+        currentPage: 1,
+        pages: [1, 2, 3, 4].map(page => ({
+            page,
+            url: page === 1 ? baseUrl : `${baseUrl}/page-${page}`,
+            isCurrent: page === 1
+        })),
+        prevUrl: null,
+        nextUrl: `${baseUrl}/page-2`
+    };
+    const aligned = alignVozPaginationToRequestedPage(sourcePagination, `${baseUrl}/page-3`, baseUrl);
+
+    assert.equal(aligned.currentPage, 3);
+    assert.deepEqual(aligned.pages.filter(page => page.isCurrent).map(page => page.page), [3]);
+    assert.equal(aligned.prevUrl, `${baseUrl}/page-2`);
+    assert.equal(aligned.nextUrl, `${baseUrl}/page-4`);
+});
+
+test('merges shortened page cache pagination with all pages known by the thread snapshot', () => {
+    const baseUrl = 'https://voz.vn/t/merged-thread.999';
+    const exactPagePagination = {
+        currentPage: 2,
+        pages: [1, 2].map(page => ({
+            page,
+            url: page === 1 ? baseUrl : `${baseUrl}/page-${page}`,
+            isCurrent: page === 2
+        })),
+        prevUrl: baseUrl,
+        nextUrl: null
+    };
+    const threadPagination = {
+        currentPage: 1,
+        pages: [1, 2, 3, 4, 5].map(page => ({
+            page,
+            url: page === 1 ? baseUrl : `${baseUrl}/page-${page}`,
+            isCurrent: page === 1
+        })),
+        nextUrl: `${baseUrl}/page-2`
+    };
+    const aligned = alignVozPaginationToRequestedPage(
+        exactPagePagination,
+        `${baseUrl}/page-2`,
+        baseUrl,
+        threadPagination
+    );
+
+    assert.deepEqual(aligned.pages.map(page => page.page), [1, 2, 3, 4, 5]);
+    assert.deepEqual(aligned.pages.filter(page => page.isCurrent).map(page => page.page), [2]);
+    assert.equal(aligned.prevUrl, baseUrl);
+    assert.equal(aligned.nextUrl, `${baseUrl}/page-3`);
+});
+
+test('an uncached high VOZ page is represented as itself instead of page one', () => {
+    const baseUrl = 'https://voz.vn/t/another-thread.888';
+    const aligned = alignVozPaginationToRequestedPage(null, `${baseUrl}/page-128`, baseUrl);
+
+    assert.equal(aligned.currentPage, 128);
+    assert.deepEqual(aligned.pages, [{
+        page: 128,
+        url: `${baseUrl}/page-128`,
+        isCurrent: true
+    }]);
+    assert.equal(aligned.prevUrl, null);
+    assert.equal(aligned.nextUrl, null);
 });
 
 test('distinguishes confirmed deletion from a retryable generic VOZ error', () => {

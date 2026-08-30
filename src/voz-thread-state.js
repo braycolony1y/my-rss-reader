@@ -10,6 +10,75 @@ export function isVozThreadUrl(url = '') {
     }
 }
 
+export function getVozThreadPageNumber(url = '') {
+    if (!isVozThreadUrl(url)) return null;
+    try {
+        const parsed = new URL(String(url));
+        const match = parsed.pathname.match(/\/page-(\d+)\/?$/i);
+        if (!match) return null;
+        const page = Number.parseInt(match[1], 10);
+        return Number.isSafeInteger(page) && page > 0 ? page : null;
+    } catch (error) {
+        const match = String(url).match(/\/page-(\d+)\/?(?:[?#].*)?$/i);
+        if (!match) return null;
+        const page = Number.parseInt(match[1], 10);
+        return Number.isSafeInteger(page) && page > 0 ? page : null;
+    }
+}
+
+export function alignVozPaginationToRequestedPage(pagination, requestedUrl, threadUrl, fallbackPagination = null) {
+    const requestedPage = getVozThreadPageNumber(requestedUrl);
+    if (!requestedPage) return pagination || fallbackPagination || null;
+
+    const baseUrl = String(threadUrl || requestedUrl)
+        .replace(/[?#].*$/, '')
+        .replace(/\/(?:unread|latest|page-\d+|post-\d+)\/?$/i, '')
+        .replace(/\/+$/, '');
+    const pageUrl = page => page === 1 ? baseUrl : `${baseUrl}/page-${page}`;
+    const knownPages = new Map();
+
+    // A page-specific cache can contain a shortened paginator while the base
+    // thread snapshot still knows the other pages. Merge both, preferring the
+    // exact page's URLs and metadata when the same page appears in each.
+    for (const source of [fallbackPagination, pagination]) {
+        for (const entry of Array.isArray(source?.pages) ? source.pages : []) {
+            const page = Number.parseInt(entry?.page, 10);
+            if (!Number.isSafeInteger(page) || page < 1) continue;
+            knownPages.set(page, {
+                ...entry,
+                page,
+                url: entry.url || pageUrl(page),
+                isCurrent: page === requestedPage
+            });
+        }
+    }
+    if (!knownPages.has(requestedPage)) {
+        knownPages.set(requestedPage, {
+            page: requestedPage,
+            url: requestedUrl || pageUrl(requestedPage),
+            isCurrent: true
+        });
+    }
+
+    const pages = [...knownPages.values()]
+        .sort((a, b) => a.page - b.page)
+        .map(entry => ({ ...entry, isCurrent: entry.page === requestedPage }));
+    const previousPage = knownPages.get(requestedPage - 1);
+    const nextPage = knownPages.get(requestedPage + 1);
+    const sourceAlreadyDescribedRequestedPage = Number(pagination?.currentPage) === requestedPage;
+
+    return {
+        ...(fallbackPagination || {}),
+        ...(pagination || {}),
+        currentPage: requestedPage,
+        pages,
+        prevUrl: requestedPage > 1
+            ? (previousPage?.url || (sourceAlreadyDescribedRequestedPage ? pagination?.prevUrl : null) || null)
+            : null,
+        nextUrl: nextPage?.url || (sourceAlreadyDescribedRequestedPage ? pagination?.nextUrl : null) || null
+    };
+}
+
 export function hasVozDeletedThreadMarker(value = '') {
     const text = typeof value === 'string'
         ? value

@@ -70,7 +70,13 @@ import GoogleDecoderPkg from 'google-news-url-decoder';
 import { decodeHTMLEntities, normalizeArticleTitle, fastParseRSS } from './feed-parsers.js';
 import { normalizeArticleMediaMarkup } from './article-media.js';
 import { parseOnlineAiUsageLog } from './src/online-ai-usage.js';
-import { isDeletedVozThreadPayload, isUnsafeVozThreadPayload, isVozThreadUrl } from './src/voz-thread-state.js';
+import {
+    alignVozPaginationToRequestedPage,
+    getVozThreadPageNumber,
+    isDeletedVozThreadPayload,
+    isUnsafeVozThreadPayload,
+    isVozThreadUrl
+} from './src/voz-thread-state.js';
 import {
     deletedSourceKind,
     deletedSourceTitle,
@@ -5348,11 +5354,11 @@ const DELETED_SOURCE_TOMBSTONE = '<!-- deleted-source-no-cached-content -->';
 async function buildDeletedSourceResponse(url, responseMetadata = {}) {
     const requestedCacheUrl = normalizeArticleSourceUrl(url);
     const baseUrl = normalizeStateUrl(url);
-    const isSpecificVozPage = isVozThreadUrl(url)
-        && /\/page-\d+\/?(?:[?#].*)?$/i.test(requestedCacheUrl);
+    const requestedVozPage = getVozThreadPageNumber(requestedCacheUrl);
+    const isSpecificVozPage = requestedVozPage !== null && requestedVozPage > 1;
     // Board membership intentionally collapses every VOZ page to one thread
-    // identity. Content caching must not: a cached /page-2 is distinct from
-    // page 1 and must be served before the thread-level deleted snapshot.
+    // identity. Content caching must not: every cached /page-N is distinct
+    // from page 1 and must be served before the thread-level deleted snapshot.
     const snapshotUrl = isSpecificVozPage ? requestedCacheUrl : baseUrl;
     const kind = deletedSourceKind(url);
     if (kind === 'thread') {
@@ -5363,6 +5369,14 @@ async function buildDeletedSourceResponse(url, responseMetadata = {}) {
     const threadMetadataCache = isSpecificVozPage
         ? await getLastKnownCachedArticle(baseUrl)
         : lastCache;
+    const alignedPagination = requestedVozPage === null
+        ? (lastCache?.pagination || null)
+        : alignVozPaginationToRequestedPage(
+            lastCache?.pagination,
+            requestedCacheUrl,
+            baseUrl,
+            threadMetadataCache?.pagination
+        );
     const cachedPayloadIsOnlyDeletionPage = Boolean(
         lastCache
         && lastCache.sourceDeleted !== true
@@ -5395,6 +5409,7 @@ async function buildDeletedSourceResponse(url, responseMetadata = {}) {
                 || threadMetadataCache?.title
                 || deletedSourceTitle(url)),
         content: hasCachedContent ? lastCache.content : DELETED_SOURCE_TOMBSTONE,
+        pagination: alignedPagination,
         siteName: sourceSiteName,
         sourceDeleted: true,
         sourceDeletedHasCache: hasCachedContent,

@@ -46,9 +46,11 @@ test('deleted VOZ pagination serves the exact cached page instead of page one', 
     const functionBody = server.slice(functionStart, functionEnd);
 
     assert.match(functionBody, /const requestedCacheUrl = normalizeArticleSourceUrl\(url\)/);
-    assert.match(functionBody, /const isSpecificVozPage = isVozThreadUrl\(url\)[\s\S]*\/\\\/page-\\d\+/);
+    assert.match(functionBody, /const requestedVozPage = getVozThreadPageNumber\(requestedCacheUrl\)/);
+    assert.match(functionBody, /const isSpecificVozPage = requestedVozPage !== null && requestedVozPage > 1/);
     assert.match(functionBody, /const snapshotUrl = isSpecificVozPage \? requestedCacheUrl : baseUrl/);
     assert.match(functionBody, /getLastKnownCachedArticle\(snapshotUrl\)/);
+    assert.match(functionBody, /alignVozPaginationToRequestedPage/);
     assert.match(functionBody, /cacheArticleResult\(snapshotUrl, preserved\)/);
     assert.match(functionBody, /url: snapshotUrl/);
 });
