@@ -158,7 +158,7 @@ const ARTICLE_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;// NOTE: If you change anyt
 // Normal reads expire after seven days, but the underlying last-known-good
 // file remains available longer in case the publisher later removes the page.
 const ARTICLE_CACHE_LAST_KNOWN_TTL_MS = 90 * 24 * 60 * 60 * 1000;
-const ARTICLE_CACHE_VERSION = 28;
+const ARTICLE_CACHE_VERSION = 29;
 const execFileAsync = promisify(execFile);
 
 let _articleCacheIndex = null;
@@ -170,6 +170,19 @@ function articleCacheBasename(url) {
 
 function articleCacheFilename(url) {
     return path.join(ARTICLE_CACHE_DIR, articleCacheBasename(url));
+}
+
+function normalizeCachedArticleForSource(url, result) {
+    if (!result?.content) return result;
+    try {
+        const sourceHandler = sourceRegistry.getHandler(url);
+        if (!sourceHandler?.cleanCachedArticleContent) return result;
+        const content = sourceHandler.cleanCachedArticleContent(result.content, result);
+        return content === result.content ? result : { ...result, content };
+    } catch (error) {
+        console.warn(`[ARTICLE CACHE] Source-specific cleanup failed for ${url}: ${error.message}`);
+        return result;
+    }
 }
 
 async function _initArticleCacheIndex() {
@@ -244,7 +257,7 @@ async function getCachedArticle(url) {
                 return null;
             }
         }
-        return cached.result;
+        return normalizeCachedArticleForSource(url, cached.result);
     } catch (e) {
         return null;
     }
@@ -256,13 +269,14 @@ async function getLastKnownCachedArticle(url) {
         const result = cached?.result;
         if (!result?.content) return null;
         if (isUnsafeVozThreadPayload(url, result) && result.sourceDeleted !== true) return null;
-        return result;
+        return normalizeCachedArticleForSource(url, result);
     } catch (error) {
         return null;
     }
 }
 
 async function cacheArticleResult(url, result) {
+    result = normalizeCachedArticleForSource(url, result);
     if (!result?.content) return false;
     if (isUnsafeVozThreadPayload(url, result) && result.sourceDeleted !== true) {
         console.warn(`[ARTICLE CACHE] Refusing to overwrite ${url} with a VOZ error page.`);
@@ -374,6 +388,12 @@ function renderJinaInline(text = '') {
     // Empty Markdown links are icon-only share/comment controls after reader
     // extraction. They have no article text and are never useful in Reader.
     rendered = rendered.replace(/\[\]\([^\n)]*\)/g, '');
+    rendered = rendered.replace(/\\\[\s*([a-z])\s*\\\]/gi, (match, marker) => {
+        return stash('<sup class="article-reference-marker" aria-label="Reference ' + escapeHtml(marker) + '">[' + escapeHtml(marker) + ']</sup>');
+    });
+    rendered = rendered.replace(/\[([a-z])\]\((#[^)\s]+)\)/gi, (match, marker, anchor) => {
+        return stash('<sup class="article-reference-marker"><a class="article-inline-link" href="' + escapeHtml(anchor) + '">[' + escapeHtml(marker) + ']</a></sup>');
+    });
     rendered = rendered.replace(/<audio\b[^>]*\bsrc=(['"])([^'"]+)\1[^>]*>[\s\S]*?<\/audio>/gi, (match, quote, audioUrl) => {
         const safeAudio = safeHttpUrl(decodeHTMLEntities(audioUrl));
         if (!safeAudio || !/\.(?:mp3|m4a|aac|ogg|oga|wav|flac)(?:$|[?#])/i.test(safeAudio)) return '';
@@ -405,12 +425,15 @@ function renderJinaInline(text = '') {
         return stash('<div class="article-audio-player"><audio controls playsinline preload="metadata" src="' + escapeHtml(safeAudio) + '">Audio playback is not supported by this browser.</audio></div>');
     });
     rendered = rendered.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)(?:\s+"[^"]*")?\)/g, (match, label, linkUrl) => {
-        return label;
+        const safeLink = safeHttpUrl(decodeHTMLEntities(linkUrl));
+        if (!safeLink) return label;
+        return stash('<a class="article-inline-link" href="' + escapeHtml(safeLink) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(label) + '</a>');
     });
 
     rendered = escapeHtml(rendered)
         .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
         .replace(/__([^_]+)__/g, '<strong>$1</strong>')
+        .replace(/(^|[\s(])_([^_\n]+)_(?=$|[\s).,;:!?])/g, '$1<em>$2</em>')
         .replace(/\x60([^\x60]+)\x60/g, '<code>$1</code>');
 
     // A linked image can create a placeholder inside another placeholder.
@@ -774,9 +797,24 @@ function parseOpenCliMarkdown(markdown, url) {
         const escaped = title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         source = source.replace(new RegExp('^#\\s+' + escaped + '\\s*$', 'gm'), '').trim();
     }
+    let sourceHandler = null;
+    let readerType = 'browser-reader';
+    try {
+        sourceHandler = sourceRegistry.getHandler(url);
+        if (sourceHandler?.parseOpenCliMarkdown) {
+            const handled = sourceHandler.parseOpenCliMarkdown(source);
+            if (handled?.markdown) source = handled.markdown;
+            if (handled?.readerType) readerType = handled.readerType;
+        }
+    } catch (error) {
+        console.warn(`[OPENCLI] Source-specific Markdown cleanup failed for ${url}: ${error.message}`);
+    }
     const trimmed = trimJinaArticleMarkdown(source);
     source = trimmed.markdown;
-    const content = normalizeArticleMediaMarkup(cleanArticleMarkup(jinaMarkdownToHtml(source)), url);
+    let content = normalizeArticleMediaMarkup(cleanArticleMarkup(jinaMarkdownToHtml(source)), url);
+    if (sourceHandler?.cleanCachedArticleContent) {
+        content = sourceHandler.cleanCachedArticleContent(content);
+    }
     const allImages = [...source.matchAll(/!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/g)].map(m => m[1]);
     const validImage = allImages.find(img => !isInvalidImage(img) && !img.includes('avplayer.com')) || allImages.find(img => !isInvalidImage(img)) || '';
     return {
@@ -786,7 +824,7 @@ function parseOpenCliMarkdown(markdown, url) {
         image: validImage ? safeHttpUrl(validImage) : '',
         siteName: new URL(url).hostname.replace(/^www\./, ''),
         content,
-        readerType: 'browser-reader',
+        readerType,
         source: 'opencli'
     };
 }
@@ -4908,8 +4946,8 @@ function cleanArticleMarkup(markup) {
         if (!isVozPost) {
             $('a').each((i, el) => {
                 const node = $(el);
-                if (node.closest('.tuoitre-event-stream, .embedded-suggested-articles').length > 0 || node.hasClass('styled-rel-card')) return;
-                if (!node.hasClass('font-bold') && !node.hasClass('embedded-suggested-card')) {
+                if (node.closest('.tuoitre-event-stream, .tuoitre-info-card, .embedded-suggested-articles').length > 0 || node.hasClass('styled-rel-card')) return;
+                if (!node.hasClass('font-bold') && !node.hasClass('embedded-suggested-card') && !node.hasClass('article-inline-link')) {
                     node.replaceWith(node.html());
                 }
             });
@@ -7272,6 +7310,7 @@ if (isMainModule) {
 
 export {
     parseJinaReaderText,
+    parseOpenCliMarkdown,
     trimJinaArticleMarkdown,
     stripJinaLeadingNavigation,
     cleanArticleMarkup,

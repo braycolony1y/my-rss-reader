@@ -19,6 +19,21 @@ function escapeHtml(value) {
         .replace(/'/g, '&#039;');
 }
 
+function isLikelyImageCaption(text = '') {
+    const value = String(text || '').replace(/\s+/g, ' ').trim();
+    if (!value || value.length > 360) return false;
+    return (
+        /(?:^|\s)(?:©|\(c\)|credit(?:s)?\s*:|photo\s*:|image\s*:|source\s*:|ảnh\s*:|nguồn\s*:|đồ họa\s*:|graphic\s*:|video\s*:)/iu.test(value) ||
+        /(?:Getty Images|Reuters|Bloomberg|AFP|AP Photo|Financial Times|TTXVN|Tuổi Trẻ|Dân Trí|VnExpress|Thanh Niên)\s*$/iu.test(value)
+    );
+}
+
+function addClass(node, className) {
+    const classes = new Set(String(node.attr('class') || '').split(/\s+/).filter(Boolean));
+    classes.add(className);
+    node.attr('class', [...classes].join(' '));
+}
+
 export function normalizeArticleMediaMarkup(markup, pageUrl = '') {
     const source = String(markup || '');
     if (!source || !/<(?:img|picture|figure)\b/i.test(source)) return source;
@@ -136,6 +151,35 @@ export function normalizeArticleMediaMarkup(markup, pageUrl = '') {
             image.attr('loading', 'lazy');
             image.attr('decoding', 'async');
             image.attr('referrerpolicy', 'no-referrer');
+
+            if (/images\.ft\.com\/v3\/image\/raw\/https%3a%2f%2f[^?]+-standard\.png/i.test(selected)) {
+                addClass(image, 'ft-chart-image');
+                const container = image.closest('figure, p');
+                if (container.length) addClass(container, 'ft-chart-figure');
+            }
+        });
+
+        // Reader services commonly flatten a semantic <figure> into two
+        // adjacent paragraphs: one containing only the image, followed by its
+        // caption. Restore the relationship so captions receive the same
+        // typography and spacing across publishers.
+        $('p').each((_, element) => {
+            const imageParagraph = $(element);
+            if (!imageParagraph.parent().length || imageParagraph.closest('figure').length) return;
+            const images = imageParagraph.children('img');
+            if (images.length !== 1 || imageParagraph.clone().children('img').remove().end().text().trim()) return;
+
+            const captionParagraph = imageParagraph.next('p');
+            const captionText = captionParagraph.text().replace(/\s+/g, ' ').trim();
+            if (!captionParagraph.length || captionParagraph.find('img,video,audio,iframe').length || !isLikelyImageCaption(captionText)) return;
+
+            const figureClasses = ['article-media-figure'];
+            if (images.first().hasClass('ft-chart-image')) figureClasses.push('ft-chart-figure');
+            const figure = $(`<figure class="${figureClasses.join(' ')}"></figure>`);
+            figure.append(images.first());
+            figure.append(`<figcaption>${captionParagraph.html() || escapeHtml(captionText)}</figcaption>`);
+            imageParagraph.replaceWith(figure);
+            captionParagraph.remove();
         });
 
         return $.html();
