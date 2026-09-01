@@ -1,3 +1,15 @@
+import * as cheerio from 'cheerio/slim';
+
+function escapeHtml(value = '') {
+    return String(value).replace(/[&<>"']/g, character => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+    })[character]);
+}
+
 function readAttribute(tag, name) {
     const match = String(tag || '').match(new RegExp(`\\b${name}=["']([^"']+)["']`, 'i'));
     return match ? match[1].replace(/&amp;/gi, '&').trim() : '';
@@ -65,6 +77,24 @@ export default class ThanhNienSource {
         // Clean up some noise
         articleHtml = articleHtml.replace(/<script[\s\S]*?<\/script>/gi, '');
         articleHtml = articleHtml.replace(/<div[^>]*data-type=["']_mgwidget["'][^>]*>[\s\S]*?<\/div>/gi, '');
+
+        // A normal Thanh Nien story can include the same VideoStream block
+        // that is also advertised in structured page metadata. Turn the
+        // in-body block into the native player here so the shared renderer
+        // does not prepend a second copy of the same video.
+        if (primaryVideo && /type=["']VideoStream["'][^>]*data-vid=|data-vid=["'][^"']+["'][^>]*type=["']VideoStream["']/i.test(articleHtml)) {
+            const $media = cheerio.load(`<main id="thanhnien-reader-root">${articleHtml}</main>`, null, false);
+            const mediaRoot = $media('#thanhnien-reader-root');
+            mediaRoot.find('[type="VideoStream"][data-vid]').each((_, element) => {
+                const player = $media(element);
+                const playerUrl = normalizeVideoAssetUrl(player.attr('data-vid'));
+                if (playerUrl !== primaryVideo.url) return;
+                const caption = player.find('.VideoCMS_Caption').first().text().replace(/\s+/g, ' ').trim();
+                const poster = primaryVideo.poster ? ` poster="${escapeHtml(primaryVideo.poster)}"` : '';
+                player.replaceWith(`<figure class="article-media-figure article-video-figure"><video controls playsinline preload="metadata" src="${escapeHtml(primaryVideo.url)}"${poster}>Your browser does not support HTML5 video.</video>${caption ? `<figcaption>${escapeHtml(caption)}</figcaption>` : ''}</figure>`);
+            });
+            articleHtml = mediaRoot.html();
+        }
 
         const allRelatedItems = [];
         const addItem = (href, title, img, desc) => {

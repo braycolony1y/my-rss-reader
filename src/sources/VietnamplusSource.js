@@ -1,6 +1,49 @@
+import * as cheerio from 'cheerio/slim';
+
+export function trimVietnamplusMarkdown(markdown = '') {
+    let source = String(markdown || '').trim();
+    if (!source) return source;
+    const attribution = source.match(/^\s*\((?:TTXVN|Vietnam\+)[^\n)]*\)\s*$/im)?.[0]?.trim() || '';
+    const boundaries = [
+        source.search(/\n\s*\[!\[[^\]]*\]\(https?:\/\/[^)]+\)\]\(https?:\/\/(?:www\.)?vietnamplus\.vn\/[^)\s]+\.vnp[^)]*\)\s*\n\s*#{2,4}\s*\[/i),
+        source.search(/\n\s*#{2,4}\s*\[Tin c(?:ù|u)ng chuyên m(?:ụ|u)c\]/iu),
+        source.search(/\n\s*#{2,4}\s*Tin c(?:ù|u)ng chuyên m(?:ụ|u)c\s*$/imu)
+    ].filter(index => index >= 650);
+    if (boundaries.length) {
+        source = source.slice(0, Math.min(...boundaries)).trim();
+        if (attribution && !source.includes(attribution)) source += `\n\n${attribution}`;
+    }
+    return source;
+}
+
 export default class VietnamplusSource {
     match(hostname) {
         return hostname.includes('vietnamplus.vn');
+    }
+
+    isUsableArticleResult(result) {
+        const content = String(result?.content || '');
+        if (!content) return false;
+        const $ = cheerio.load(content, null, false);
+        const textLength = $.root().text().replace(/\s+/g, ' ').trim().length;
+        const paragraphCount = $('p').length;
+        const imageCount = $('img').length;
+        const hasVideo = $('video, iframe').length > 0;
+
+        // OpenCLI can occasionally land on a trailing recommendation card
+        // instead of the VietnamPlus body. A real article has sustained prose;
+        // photo/video stories may be shorter but contain multiple media items.
+        return (textLength >= 700 && paragraphCount >= 5)
+            || (textLength >= 300 && imageCount >= 2)
+            || (textLength >= 250 && hasVideo);
+    }
+
+    parseJinaReaderText(markdown) {
+        return { markdown: trimVietnamplusMarkdown(markdown), readerType: 'vietnamplus-article' };
+    }
+
+    parseOpenCliMarkdown(markdown) {
+        return { markdown: trimVietnamplusMarkdown(markdown), readerType: 'vietnamplus-article' };
     }
 
     parseArticleHtmlContent(html, url, result, utils) {
@@ -14,17 +57,13 @@ export default class VietnamplusSource {
             }
         }
 
-        const articleBodyMatch = html.match(/<div\b[^>]*class=["'][^"']*article__body[^"']*["'][^>]*>([\s\S]*?)(?:<div\b[^>]*class=["'][^"']*article__tag|<div\b[^>]*class=["'][^"']*article__author)/i);
-        if (articleBodyMatch) {
-            articleHtml = articleBodyMatch[1];
-            // Remove the last </div> if it is unmatched due to regex stopping at article__tag
-            const lastDiv = articleHtml.lastIndexOf('</div>');
-            if (lastDiv !== -1) {
-                articleHtml = articleHtml.substring(0, lastDiv);
-            }
-            if (avatarHtml) {
-                articleHtml = avatarHtml + articleHtml;
-            }
+        const balancedBody = utils?.extractBalancedElementByClass?.(html, 'article__body') || '';
+        const articleBodyMatch = balancedBody
+            ? null
+            : html.match(/<div\b[^>]*class=["'][^"']*article__body[^"']*["'][^>]*>([\s\S]*?)(?:<div\b[^>]*class=["'][^"']*article__tag|<div\b[^>]*class=["'][^"']*article__author)/i);
+        if (balancedBody || articleBodyMatch) {
+            articleHtml = balancedBody || articleBodyMatch[1];
+            if (avatarHtml) articleHtml = avatarHtml + articleHtml;
         } else if (avatarHtml) {
             articleHtml = avatarHtml;
         } else {
@@ -67,29 +106,23 @@ export default class VietnamplusSource {
             }
         };
 
-        articleHtml = articleHtml.replace(/<div\b[^>]*class=["'][^"']*article-relate[^"']*["'][^>]*>([\s\S]*?)<\/article>\s*<\/div>/gi, (m, inner) => {
-            const fullInner = inner + '</article>';
-            const items = fullInner.split(/<article\b[^>]*>/i).slice(1);
-            for (const itemHtml of items) {
-                const linkMatch = itemHtml.match(/<a\b[^>]*href=["']([^"']+)["'][^>]*title=["']([^"']+)["']/i) || itemHtml.match(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/i);
-                if (linkMatch) {
-                    const relUrl = linkMatch[1];
-                    const relTitle = (linkMatch[2] || '').replace(/<[^>]+>/g, '').trim();
-                    
-                    let imgSrc = '';
-                    const dataSrcMatch = itemHtml.match(/data-src=["']([^"']+)["']/i);
-                    if (dataSrcMatch) {
-                        imgSrc = dataSrcMatch[1];
-                    } else {
-                        const imgMatch = itemHtml.match(/<img\b[^>]*src=["']([^"']+)["']/i);
-                        if (imgMatch) imgSrc = imgMatch[1];
-                    }
-
-                    addItem(relUrl, relTitle, imgSrc, '');
-                }
-            }
-            return '';
+        const $ = cheerio.load(`<main id="vietnamplus-reader-root">${articleHtml}</main>`, null, false);
+        const root = $('#vietnamplus-reader-root');
+        root.find('.article__social, .sda_middle, .rennab, script, style, template, form').remove();
+        root.find('.article-relate').each((_, element) => {
+            const related = $(element);
+            related.find('article').each((__, itemElement) => {
+                const item = $(itemElement);
+                const link = item.find('a[href]').first();
+                const href = link.attr('href') || '';
+                const title = link.attr('title') || item.find('h2,h3,h4').first().text() || link.text();
+                const image = item.find('img').first();
+                const imageUrl = image.attr('data-src') || image.attr('src') || '';
+                if (href && title.trim()) addItem(href, title.replace(/<[^>]+>/g, '').trim(), imageUrl, '');
+            });
+            related.remove();
         });
+        articleHtml = root.html();
 
         if (allRelatedItems.length > 0) {
             let itemsHtml = '';

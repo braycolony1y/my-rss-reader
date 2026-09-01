@@ -761,6 +761,64 @@ function canonicalSourceUrl(
   }
 }
 
+function normalizedSourceHostname(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+
+  try {
+    return new URL(
+      raw.includes('://')
+        ? raw
+        : `https://${raw}`
+    )
+      .hostname
+      .toLowerCase()
+      .replace(/^www\./, '')
+      .replace(/\.$/, '');
+  } catch {
+    return '';
+  }
+}
+
+function googleNewsPublisherHostname(value) {
+  try {
+    const url = new URL(String(value || '').trim());
+    if (url.hostname.toLowerCase().replace(/^www\./, '') !== 'news.google.com') return '';
+    const query = url.searchParams.get('q') || '';
+    const match = query.match(/(?:^|\s)site:([^\s]+)/i);
+    return normalizedSourceHostname(match?.[1] || '');
+  } catch {
+    return '';
+  }
+}
+
+function rootSourceHostname(value) {
+  const hostname = normalizedSourceHostname(value);
+  if (!hostname) return '';
+  const parts = hostname.split('.').filter(Boolean);
+  if (parts.length <= 2) return hostname;
+  const secondToLast = parts[parts.length - 2];
+  const knownSecondLevel = new Set(['co', 'com', 'net', 'org', 'gov', 'edu', 'ac']);
+  return knownSecondLevel.has(secondToLast)
+    ? parts.slice(-3).join('.')
+    : parts.slice(-2).join('.');
+}
+
+// Fetch-method choices are publisher settings, not individual feed settings.
+// Prefer Smart's publisher domain because many Smart feeds are Google News
+// wrappers whose URL host is unrelated to the publisher being configured.
+export function sourceFetchPolicyIdentity(source) {
+  const sourceObject = source && typeof source === 'object' ? source : null;
+  const sourceUrl = sourceObject?.url || sourceObject?.feedUrl || String(source || '');
+  let hostname = normalizedSourceHostname(sourceObject?.domain || '');
+
+  if (!hostname || hostname === 'news.google.com') {
+    hostname = googleNewsPublisherHostname(sourceUrl) || normalizedSourceHostname(sourceUrl);
+  }
+
+  return rootSourceHostname(hostname);
+}
+
 export function canonicalSourceIdentity(article) {
   return (
     article?.domain ||
@@ -1253,6 +1311,8 @@ function inferCategory(
   );
 }
 
+const SMART_SOURCE_FETCH_METHODS = new Set(['jina', 'cloudflare', 'vietserver', 'opencli', 'direct', 'allorigins']);
+
 function normalizeSmartSource(source) {
   const url = canonicalSourceUrl(
     source?.url
@@ -1315,6 +1375,10 @@ function normalizeSmartSource(source) {
       canonicalSourceUrl(
         source.fallbackUrl || ''
       ),
+
+    fetchMethods: Array.isArray(source.fetchMethods)
+      ? [...new Set(source.fetchMethods.filter(method => SMART_SOURCE_FETCH_METHODS.has(method)))]
+      : [],
 
     weight:
       Number.isFinite(weight)
@@ -7117,6 +7181,47 @@ async function putManySafe(
   }
 }
 
+function hasOnlyOpenCliFetchMethod(methods) {
+  if (!Array.isArray(methods)) return false;
+  const normalized = [
+    ...new Set(
+      methods
+        .map(method => String(method || '').trim().toLowerCase())
+        .filter(Boolean)
+    )
+  ];
+  return normalized.length === 1 && normalized[0] === 'opencli';
+}
+
+function smartArticleIdentity(article) {
+  const value = String(article?.link || article?.url || '').trim();
+  if (!value) return '';
+  try {
+    const url = new URL(value);
+    url.hash = '';
+    return url.href;
+  } catch (error) {
+    return value;
+  }
+}
+
+async function prefetchNewOpenCliOnlySmartArticles(results, previousArticles, helpers) {
+  if (typeof helpers?.prefetchOpenCliOnlyArticles !== 'function') return;
+  const previousLinks = new Set((previousArticles || []).map(smartArticleIdentity).filter(Boolean));
+  const jobs = [];
+  for (const result of results || []) {
+    if (!hasOnlyOpenCliFetchMethod(result?.source?.fetchMethods)) continue;
+    const newArticles = (result.articles || []).filter(article => {
+      const identity = smartArticleIdentity(article);
+      return identity && !previousLinks.has(identity);
+    });
+    if (newArticles.length) {
+      jobs.push(helpers.prefetchOpenCliOnlyArticles(newArticles, result.source.url));
+    }
+  }
+  await Promise.all(jobs);
+}
+
 export async function startSmartSyncLoop(
   helpers,
   headers,
@@ -7137,6 +7242,14 @@ export async function startSmartSyncLoop(
       }
       const configuredSources =
         await getSources();
+
+      const previousArticles =
+        (
+          await db.get(
+            'smartRawArticles',
+            { type: 'json', shared: true }
+          )
+        ) || [];
 
       const uniqueSources =
         [
@@ -7168,6 +7281,12 @@ export async function startSmartSyncLoop(
             result.articles ||
             []
         );
+
+      await prefetchNewOpenCliOnlySmartArticles(
+        results,
+        previousArticles,
+        helpers
+      );
 
       await db.put(
         'smartRawArticles',
@@ -7539,7 +7658,34 @@ export function createSmartNewsEngine({
       }
     }
 
-    if (defaultsAdded) {
+    // Older data may contain the same publisher in several Smart sections
+    // with different fetch policies. A strict (non-empty) policy is the only
+    // unambiguous legacy user choice, so use it for every Smart copy.
+    const strictPolicyByPublisher = new Map();
+    for (const source of sources) {
+      const publisherIdentity = sourceFetchPolicyIdentity(source);
+      if (
+        publisherIdentity &&
+        source.fetchMethods.length &&
+        !strictPolicyByPublisher.has(publisherIdentity)
+      ) {
+        strictPolicyByPublisher.set(publisherIdentity, [...source.fetchMethods]);
+      }
+    }
+
+    let policiesSynchronized = false;
+    for (const source of sources) {
+      const sharedMethods = strictPolicyByPublisher.get(sourceFetchPolicyIdentity(source));
+      if (
+        sharedMethods &&
+        JSON.stringify(source.fetchMethods) !== JSON.stringify(sharedMethods)
+      ) {
+        source.fetchMethods = [...sharedMethods];
+        policiesSynchronized = true;
+      }
+    }
+
+    if (defaultsAdded || policiesSynchronized) {
       await db.put(
         'smartSources',
         JSON.stringify(sources)
@@ -7630,6 +7776,18 @@ export function createSmartNewsEngine({
 
     const sources =
       await getSourceSettings();
+
+    const publisherIdentity = sourceFetchPolicyIdentity(source);
+    const sharedPolicySource = publisherIdentity
+      ? sources.find(current =>
+        sourceFetchPolicyIdentity(current) === publisherIdentity &&
+        Array.isArray(current.fetchMethods) &&
+        current.fetchMethods.length
+      )
+      : null;
+    if (sharedPolicySource) {
+      source.fetchMethods = [...sharedPolicySource.fetchMethods];
+    }
 
     const key =
       canonicalSourceUrl(
@@ -7741,6 +7899,35 @@ export function createSmartNewsEngine({
     );
   }
 
+  async function updateSourceFetchMethodsByIdentity(sources, identity, fetchMethods = []) {
+    const publisherIdentity = sourceFetchPolicyIdentity(identity);
+    if (!publisherIdentity) throw new Error('Invalid source identity.');
+    const normalizedMethods = Array.isArray(fetchMethods)
+      ? [...new Set(fetchMethods.filter(method => SMART_SOURCE_FETCH_METHODS.has(method)))]
+      : [];
+    const updated = sources.map(source =>
+      sourceFetchPolicyIdentity(source) === publisherIdentity
+        ? { ...source, fetchMethods: [...normalizedMethods] }
+        : source
+    );
+    await db.put('smartSources', JSON.stringify(updated));
+    return updated;
+  }
+
+  async function setSourceFetchMethodsByIdentity(identity, fetchMethods = []) {
+    const sources = await getSourceSettings();
+    return updateSourceFetchMethodsByIdentity(sources, identity, fetchMethods);
+  }
+
+  async function setSourceFetchMethods(url, fetchMethods = []) {
+    const key = canonicalSourceUrl(url);
+    if (!key) throw new Error('Invalid Smart source URL.');
+    const sources = await getSourceSettings();
+    const source = sources.find(current => canonicalSourceUrl(current.url) === key);
+    if (!source) throw new Error('Smart source not found.');
+    return updateSourceFetchMethodsByIdentity(sources, source, fetchMethods);
+  }
+
   async function discoverSources(
     input = {}
   ) {
@@ -7842,6 +8029,15 @@ export function createSmartNewsEngine({
   }
 
   async function resetSources() {
+    const existingSources = await getSourceSettings();
+    const strictPolicyByPublisher = new Map();
+    for (const source of existingSources) {
+      const identity = sourceFetchPolicyIdentity(source);
+      if (identity && source.fetchMethods.length && !strictPolicyByPublisher.has(identity)) {
+        strictPolicyByPublisher.set(identity, [...source.fetchMethods]);
+      }
+    }
+
     const sources =
       DEFAULT_SMART_SOURCES
         .map(source =>
@@ -7850,7 +8046,13 @@ export function createSmartNewsEngine({
             enabled: true
           })
         )
-        .filter(Boolean);
+        .filter(Boolean)
+        .map(source => ({
+          ...source,
+          fetchMethods: [
+            ...(strictPolicyByPublisher.get(sourceFetchPolicyIdentity(source)) || source.fetchMethods)
+          ]
+        }));
 
     await db.put(
       'smartSources',
@@ -8133,8 +8335,16 @@ export function createSmartNewsEngine({
               !isInvestingComSource(
                 source
               )
-          );
+        );
       }
+
+      const previousSmartArticlesForPrefetch =
+        (
+          await db.get(
+            'smartRawArticles',
+            { type: 'json', shared: true }
+          )
+        ) || [];
 
       const sourceResults =
         await fetchInBatches(
@@ -8171,6 +8381,12 @@ export function createSmartNewsEngine({
             []
         );
 
+      await prefetchNewOpenCliOnlySmartArticles(
+        sourceResults,
+        previousSmartArticlesForPrefetch,
+        helpers
+      );
+
       const sourceErrors =
         sourceResults
           .filter(
@@ -8190,15 +8406,7 @@ export function createSmartNewsEngine({
 
       const previousHidden =
         isTargeted
-          ? (
-            await db.get(
-              'smartRawArticles',
-              {
-                type: 'json',
-                shared: true
-              }
-            )
-          ) || []
+          ? previousSmartArticlesForPrefetch
           : [];
 
       const preservedHidden =
@@ -9670,6 +9878,8 @@ export function createSmartNewsEngine({
     addSource,
     removeSource,
     setSourceEnabled,
+    setSourceFetchMethods,
+    setSourceFetchMethodsByIdentity,
     discoverSources,
     resetSources,
     sync,

@@ -60,6 +60,19 @@ test('every background worker dispatches only through the resolved policy', () =
     }
 });
 
+test('OpenCLI-only feed and Smart sources prefetch new article content during ingestion', () => {
+    assert.match(server, /function hasOnlyOpenCliFetchMethod\(methods\)/);
+    assert.match(server, /openCliOnlyNewArticles\.push\(articleRecord\)/);
+    assert.match(server, /await prefetchOpenCliOnlyArticles\(openCliOnlyNewArticles, feed\.url\)/);
+    assert.match(server, /fetchParsedArticleByStrategy\([\s\S]*'opencli'[\s\S]*cacheArticleResult/);
+
+    const smartNews = readFileSync(new URL('../smart-news.js', import.meta.url), 'utf8');
+    assert.match(smartNews, /prefetchNewOpenCliOnlySmartArticles/);
+    assert.match(smartNews, /result\?\.source\?\.fetchMethods/);
+    assert.match(smartNews, /helpers\.prefetchOpenCliOnlyArticles\(newArticles, result\.source\.url\)/);
+    assert.match(server, /helpers: \{ fastParseRSS, waitForHttpIdle, prefetchOpenCliOnlyArticles \}/);
+});
+
 test('Edit Source uses light liquid glass controls with a complete checkbox border', () => {
     assert.match(html, /class="edit-source-backdrop/);
     assert.match(html, /class="edit-source-panel/);
@@ -71,4 +84,28 @@ test('Edit Source uses light liquid glass controls with a complete checkbox bord
     assert.match(html, /\.theme-glass-light \.edit-source-primary-button \{[\s\S]*color: #ffffff !important/);
     assert.match(html, /Strict allowlist/);
     assert.match(html, /only those methods are allowed for this source/);
+});
+
+test('Smart sources expose and enforce their own article fetch allowlists', () => {
+    assert.match(html, /smartSourceFetchOpenUrl/);
+    assert.match(html, /Fetch · Auto/);
+    assert.match(html, /@click\.stop="toggleSmartSourceFetchPanel\(source\)"/);
+    assert.match(html, /toggleSmartSourceFetchMethod\(source, method\.value\)/);
+    assert.match(script, /toggleSmartSourceFetchPanel\(source\)/);
+    assert.match(script, /async toggleSmartSourceFetchMethod\(source, method\)/);
+    assert.match(html, /script\.js\?v=30_shared_fetch_policy/);
+    assert.match(server, /smartNews\.getSourceSettings\(\)/);
+    assert.match(server, /configuredSources = \[\.\.\.feeds, \.\.\.smartSources\]/);
+    assert.match(server, /smartNews\.setSourceFetchMethods/);
+});
+
+test('publisher fetch policies synchronize between normal feeds and every Smart category', () => {
+    assert.match(server, /sourceFetchPolicyIdentity/);
+    assert.match(server, /async function synchronizeConfiguredSourceFetchMethods/);
+    assert.match(server, /smartNews\.setSourceFetchMethodsByIdentity/);
+    assert.match(server, /reconcileAllConfiguredSourceFetchMethods/);
+    assert.match(server, /if \(!targetFeedUrl\) \{\s*await reconcileAllConfiguredSourceFetchMethods\(\)/);
+    assert.match(server, /res\.status\(200\)\.json\(\{ ok: true, \.\.\.synchronized \}\)/);
+    assert.match(script, /if \(Array\.isArray\(data\.feeds\)\) this\.feeds = data\.feeds/);
+    assert.match(script, /if \(Array\.isArray\(data\?\.sources\)\) this\.smartSources = data\.sources/);
 });

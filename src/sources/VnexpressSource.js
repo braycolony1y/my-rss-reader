@@ -230,6 +230,7 @@ export default class VnexpressSource {
             // Unhide embedded videos and strip their duplicate thumbnails
             articleHtml = articleHtml.replace(/<div\b[^>]*class=["'][^"']*box_img_video[^"']*["'][^>]*>[\s\S]*?(?=<div\b[^>]*id=["']embed_video_)/gi, '');
             articleHtml = articleHtml.replace(/(<div\b[^>]*id=["']embed_video_[^>]*?)style=["']([^"']*)display:\s*none;?([^"']*)["']([^>]*>)/gi, '$1style="$2$3"$4');
+            articleHtml = articleHtml.replace(/(<div\b[^>]*id=["']parser_player_[^>]*?)style=["']([^"']*)display:\s*none;?([^"']*)["']([^>]*>)/gi, '$1style="$2$3 display: block;"$4');
 
             return articleHtml;
         }

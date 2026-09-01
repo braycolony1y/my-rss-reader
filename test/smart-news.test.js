@@ -24,6 +24,61 @@ test('Smart News tests', async (t) => {
     });
 });
 
+test('fetch methods are shared by publisher across Smart categories', async () => {
+    const storedSources = [
+        {
+            title: 'FT World',
+            domain: 'ft.com',
+            category: 'news_world',
+            region: 'foreign',
+            url: 'https://news.google.com/rss/search?q=site%3Aft.com+world',
+            fetchMethods: []
+        },
+        {
+            title: 'FT Markets',
+            domain: 'www.ft.com',
+            category: 'finance_global',
+            region: 'foreign',
+            url: 'https://www.ft.com/markets?format=rss',
+            fetchMethods: []
+        },
+        {
+            title: 'Reuters',
+            domain: 'reuters.com',
+            category: 'news_world',
+            region: 'foreign',
+            url: 'https://www.reuters.com/rssFeed/worldNews',
+            fetchMethods: []
+        }
+    ];
+    const store = new Map([['smartSources', storedSources]]);
+    const db = {
+        get: async key => store.get(key) ?? null,
+        put: async (key, value) => store.set(key, JSON.parse(value)),
+        putMany: async () => {}
+    };
+    const engine = createSmartNewsEngine({ db, helpers: {} });
+
+    const updated = await engine.setSourceFetchMethods(
+        'https://news.google.com/rss/search?q=site%3Aft.com+world',
+        ['opencli']
+    );
+    const ftSources = updated.filter(source => source.domain?.replace(/^www\./, '') === 'ft.com');
+    assert.ok(ftSources.length >= 2);
+    assert.ok(ftSources.every(source => assert.deepEqual(source.fetchMethods, ['opencli']) === undefined));
+    assert.deepEqual(updated.find(source => source.domain === 'reuters.com')?.fetchMethods, []);
+});
+
+test('fetch policy identity resolves direct feeds and Google News wrappers to the publisher', async () => {
+    const { sourceFetchPolicyIdentity } = await import('../smart-news.js');
+    assert.equal(sourceFetchPolicyIdentity('https://www.ft.com/markets?format=rss'), 'ft.com');
+    assert.equal(sourceFetchPolicyIdentity({
+        domain: 'news.google.com',
+        url: 'https://news.google.com/rss/search?q=site%3Aft.com+markets'
+    }), 'ft.com');
+    assert.equal(sourceFetchPolicyIdentity({ domain: 'www.bbc.co.uk' }), 'bbc.co.uk');
+});
+
 test('Coverage-First Hotness and Canonical Source Identity', async (t) => {
     const { calculateHotness, canonicalSourceIdentity } = await import('../smart-news.js');
 

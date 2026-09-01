@@ -28,6 +28,24 @@ function isLikelyImageCaption(text = '') {
     );
 }
 
+function isLikelyGraphicImage(image, selected = '') {
+    const hint = [
+        selected,
+        image.attr('alt'),
+        image.attr('title'),
+        image.attr('class'),
+        image.closest('figure').attr('class')
+    ].filter(Boolean).join(' ');
+    const isDecorativeAsset = /(?:logo|avatar|icon|badge|emoji|smilie)/i.test(hint);
+    if (isDecorativeAsset) return false;
+
+    return (
+        /(?:chart|graphic|infographic|visuali[sz]ation|diagram|plot|datawrapper|flourish)/i.test(hint) ||
+        /images\.ft\.com\/v3\/image\/raw\/https%3a%2f%2f[^?]+-standard\.png/i.test(selected) ||
+        /\.(?:svg)(?:$|[?#])/i.test(selected)
+    );
+}
+
 function addClass(node, className) {
     const classes = new Set(String(node.attr('class') || '').split(/\s+/).filter(Boolean));
     classes.add(className);
@@ -46,6 +64,10 @@ export function normalizeArticleMediaMarkup(markup, pageUrl = '') {
         const resolveImageUrl = value => {
             const decoded = decodeHTMLEntities(String(value || '').trim());
             if (!decoded || /^data:/i.test(decoded) || /^blob:/i.test(decoded)) return '';
+            // Reader-owned image endpoints must stay relative to this app.
+            // Resolving them against the publisher URL would incorrectly turn
+            // /api/og-image into https://publisher.example/api/og-image.
+            if (/^\/api\/(?:og-image|proxy-image)\?/i.test(decoded)) return decoded;
             try {
                 return safeHttpUrl(baseUrl ? new URL(decoded, baseUrl).href : decoded);
             } catch (e) {
@@ -109,6 +131,12 @@ export function normalizeArticleMediaMarkup(markup, pageUrl = '') {
             const figure = $(element);
             figure.removeAttr('style');
             figure.find('.fig-picture').removeAttr('style');
+            if (!figure.find('figcaption').length) {
+                const caption = figure.find('[class*="caption"], [data-testid*="caption"]').first();
+                if (caption.length && isLikelyImageCaption(caption.text())) {
+                    caption.replaceWith(`<figcaption>${caption.html() || escapeHtml(caption.text().trim())}</figcaption>`);
+                }
+            }
             if (!figure.find('img').length) {
                 const metadataUrl = resolveImageUrl(figure.find('meta[itemprop="url"]').first().attr('content'));
                 if (metadataUrl) {
@@ -152,10 +180,34 @@ export function normalizeArticleMediaMarkup(markup, pageUrl = '') {
             image.attr('decoding', 'async');
             image.attr('referrerpolicy', 'no-referrer');
 
+            if (isLikelyGraphicImage(image, selected)) {
+                addClass(image, 'article-graphic-image');
+                const graphicContainer = image.closest('figure, p');
+                if (graphicContainer.length) addClass(graphicContainer, 'article-graphic-figure');
+            }
+
             if (/images\.ft\.com\/v3\/image\/raw\/https%3a%2f%2f[^?]+-standard\.png/i.test(selected)) {
                 addClass(image, 'ft-chart-image');
                 const container = image.closest('figure, p');
                 if (container.length) addClass(container, 'ft-chart-figure');
+            }
+        });
+
+        $('figure').each((_, element) => {
+            const figure = $(element);
+            if (!figure.find('img, video, iframe').length) return;
+            addClass(figure, 'article-media-figure');
+            if (figure.find('.article-graphic-image, .article-graphic-embed').length) {
+                addClass(figure, 'article-graphic-figure');
+            }
+
+            if (!figure.find('figcaption').length) {
+                const captionNode = figure.next('p, div').first();
+                const captionText = captionNode.text().replace(/\s+/g, ' ').trim();
+                if (captionNode.length && !captionNode.find('img,video,audio,iframe').length && isLikelyImageCaption(captionText)) {
+                    figure.append(`<figcaption>${captionNode.html() || escapeHtml(captionText)}</figcaption>`);
+                    captionNode.remove();
+                }
             }
         });
 
@@ -165,18 +217,19 @@ export function normalizeArticleMediaMarkup(markup, pageUrl = '') {
         // typography and spacing across publishers.
         $('p').each((_, element) => {
             const imageParagraph = $(element);
-            if (!imageParagraph.parent().length || imageParagraph.closest('figure').length) return;
-            const images = imageParagraph.children('img');
-            if (images.length !== 1 || imageParagraph.clone().children('img').remove().end().text().trim()) return;
+            if (imageParagraph.closest('figure').length) return;
+            const images = imageParagraph.find('img');
+            if (images.length !== 1 || imageParagraph.text().trim()) return;
 
             const captionParagraph = imageParagraph.next('p');
             const captionText = captionParagraph.text().replace(/\s+/g, ' ').trim();
             if (!captionParagraph.length || captionParagraph.find('img,video,audio,iframe').length || !isLikelyImageCaption(captionText)) return;
 
             const figureClasses = ['article-media-figure'];
+            if (images.first().hasClass('article-graphic-image')) figureClasses.push('article-graphic-figure');
             if (images.first().hasClass('ft-chart-image')) figureClasses.push('ft-chart-figure');
             const figure = $(`<figure class="${figureClasses.join(' ')}"></figure>`);
-            figure.append(images.first());
+            figure.append(imageParagraph.contents());
             figure.append(`<figcaption>${captionParagraph.html() || escapeHtml(captionText)}</figcaption>`);
             imageParagraph.replaceWith(figure);
             captionParagraph.remove();

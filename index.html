@@ -7,7 +7,7 @@
     <title>My RSS Reader</title>
     <link rel="icon"
         href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22%238b5cf6%22/><circle cx=%2230%22 cy=%2270%22 r=%2210%22 fill=%22white%22/><path d=%22M30 40a30 30 0 0 1 30 30M30 20a50 50 0 0 1 50 50%22 fill=%22none%22 stroke=%22white%22 stroke-width=%2210%22 stroke-linecap=%22round%22/></svg>">
-    <link rel="stylesheet" href="/public/styles.css?v=20260829_gemini_hybrid">
+    <link rel="stylesheet" href="/public/styles.css?v=20260901_opencli_source_media">
     <script>
         // Start the first Smart News request while the browser is still parsing
         // the page. Returning visitors paint saved cards immediately instead.
@@ -986,11 +986,96 @@
             margin: 1.7em 0;
         }
 
+        .article-rendered-content figure.article-media-figure>img,
+        .article-rendered-content figure.article-media-figure>a>img {
+            margin-top: 0;
+        }
+
         .article-rendered-content figcaption {
             font-size: 0.85em;
             color: #6b7280;
             text-align: center;
             margin-top: 0.5em;
+            line-height: 1.45;
+        }
+
+        .article-rendered-content figure.article-graphic-figure {
+            margin: 2.7em 0 2em;
+            padding: 1.5em 1.15em;
+            border-radius: 12px;
+            background: transparent;
+            box-shadow: none;
+            overflow: visible;
+        }
+
+        .article-rendered-content figure.article-graphic-figure img {
+            margin: 0 auto;
+            box-shadow: none;
+        }
+
+        .article-rendered-content .article-graphic-embed {
+            display: block;
+            width: 100%;
+            min-height: 520px;
+            border: 0;
+            background: transparent;
+        }
+
+        .article-rendered-content .ft-chart-embed {
+            height: clamp(560px, 67vw, 650px);
+            min-height: 560px;
+            background: #fff1e5;
+        }
+
+        .article-rendered-content figure.ft-chart-figure {
+            margin-top: 2.5em;
+            margin-bottom: 1.6em;
+            padding: 2.4em 2.25em 1.8em;
+            background: #fff1e5;
+            overflow: hidden;
+        }
+
+        .article-rendered-content .ft-multi-paragraph-quote p {
+            margin: 0 0 1.1em;
+        }
+
+        .article-rendered-content .ft-multi-paragraph-quote p:last-child {
+            margin-bottom: 0;
+        }
+
+        .article-rendered-content .article-reference-marker {
+            display: inline-block;
+            margin: 0 0.08em;
+            font-size: 0.72em;
+            font-weight: 700;
+            line-height: 1;
+            vertical-align: super;
+        }
+
+        .article-rendered-content .article-reference-marker a {
+            font-weight: inherit;
+            text-decoration: none;
+        }
+
+        @media (max-width: 640px) {
+            .article-rendered-content figure.article-graphic-figure {
+                margin: 2.35em -0.35em 1.65em;
+                padding: 1.15em 0.35em;
+            }
+
+            .article-rendered-content .article-graphic-embed {
+                min-height: 430px;
+            }
+
+            .article-rendered-content .ft-chart-embed {
+                height: clamp(520px, 118vw, 640px);
+                min-height: 520px;
+            }
+
+            .article-rendered-content figure.ft-chart-figure {
+                margin: 2.15em -0.35em 1.35em;
+                padding: 1.5em 1.25em 1.2em;
+            }
         }
 
         .article-rendered-content table {
@@ -1263,6 +1348,242 @@
             -webkit-box-orient: vertical;
             overflow: hidden;
             word-break: normal;
+        }
+
+        .article-rendered-content .techmeme-main-story {
+            margin: 0 0 2rem;
+            padding: 1.35rem 1.45rem;
+            border: 1px solid rgba(148, 163, 184, 0.18);
+            border-radius: 18px;
+            background: rgba(255, 255, 255, 0.045);
+        }
+
+        .article-rendered-content .techmeme-main-story__source {
+            margin-bottom: 0.55rem;
+            color: #94a3b8;
+            font-size: 0.8rem;
+            font-weight: 750;
+            letter-spacing: 0.035em;
+        }
+
+        .article-rendered-content .techmeme-main-story h2 {
+            margin: 0 0 0.7rem;
+            font-size: clamp(1.2rem, 3vw, 1.65rem);
+            line-height: 1.28;
+        }
+
+        .article-rendered-content .techmeme-main-story p {
+            margin: 0;
+            color: #cbd5e1;
+        }
+
+        .article-rendered-content .techmeme-related-card {
+            min-height: 238px;
+        }
+
+        .article-rendered-content .techmeme-related-card__image {
+            height: 132px !important;
+            background: rgba(148, 163, 184, 0.12);
+        }
+
+        .article-rendered-content .techmeme-primary-article {
+            margin: 0 0 2rem;
+            padding: 1.15rem 1.35rem 1.35rem;
+            border: 1px solid rgba(148, 163, 184, 0.18);
+            border-radius: 18px;
+            background: rgba(255, 255, 255, 0.035);
+        }
+
+        .article-rendered-content .techmeme-primary-article__header {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.35rem;
+            margin-bottom: 1.15rem;
+            padding-bottom: 0.75rem;
+            color: #94a3b8;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+            font-size: 0.75rem;
+            font-weight: 760;
+            letter-spacing: 0.025em;
+        }
+
+        .article-rendered-content .techmeme-primary-article__content > :first-child {
+            margin-top: 0;
+        }
+
+        .article-rendered-content .techmeme-x-posts {
+            margin: 2.25rem 0;
+            padding: 1.15rem;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            border-radius: 24px;
+            background: linear-gradient(145deg, rgba(30, 41, 59, 0.62), rgba(15, 23, 42, 0.4));
+            box-shadow: 0 24px 60px -42px rgba(2, 6, 23, 0.92), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+            backdrop-filter: blur(28px) saturate(135%);
+        }
+
+        .article-rendered-content .techmeme-section-title {
+            display: flex;
+            align-items: center;
+            gap: 0.55rem;
+            margin: 0 0 1.1rem 0.15rem;
+            font-size: 1.08rem;
+            font-weight: 800;
+        }
+
+        .article-rendered-content .techmeme-x-posts ul {
+            display: grid;
+            gap: 0.78rem;
+            margin: 0;
+            padding: 0;
+            list-style: none;
+        }
+
+        .article-rendered-content .techmeme-x-post {
+            margin: 0;
+        }
+
+        .article-rendered-content .techmeme-x-post a {
+            display: grid;
+            grid-template-columns: 46px minmax(0, 1fr);
+            align-items: start;
+            gap: 0.9rem;
+            padding: 1rem 1.05rem 1.1rem;
+            color: #e2e8f0;
+            border: 1px solid rgba(148, 163, 184, 0.18);
+            border-radius: 18px;
+            background: rgba(255, 255, 255, 0.055);
+            box-shadow: 0 14px 34px -28px rgba(2, 6, 23, 0.92), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+            text-decoration: none;
+            transition: transform 160ms ease, border-color 160ms ease, background-color 160ms ease;
+        }
+
+        .article-rendered-content .techmeme-x-post a:hover {
+            transform: translateY(-1px);
+            border-color: rgba(96, 165, 250, 0.3);
+            background: rgba(255, 255, 255, 0.085);
+        }
+
+        .article-rendered-content .techmeme-x-post__profile {
+            position: relative;
+            display: grid;
+            place-items: center;
+            width: 46px;
+            height: 46px;
+            color: #dbeafe;
+            border: 1px solid rgba(96, 165, 250, 0.24);
+            border-radius: 50%;
+            background: linear-gradient(145deg, rgba(59, 130, 246, 0.28), rgba(14, 165, 233, 0.12));
+            font-size: 1rem;
+            font-weight: 850;
+            overflow: hidden;
+        }
+
+        .article-rendered-content .techmeme-x-post__profile-image {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: inherit;
+            background: inherit;
+        }
+
+        .article-rendered-content .techmeme-x-post__body {
+            display: grid;
+            gap: 0.38rem;
+            min-width: 0;
+        }
+
+        .article-rendered-content .techmeme-x-post__identity {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: baseline;
+            gap: 0.38rem;
+            line-height: 1.25;
+        }
+
+        .article-rendered-content .techmeme-x-post__author {
+            color: #f8fafc;
+            font-size: 0.88rem;
+            font-weight: 800;
+        }
+
+        .article-rendered-content .techmeme-x-post__handle {
+            color: #94a3b8;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .article-rendered-content .techmeme-x-post__text {
+            color: inherit;
+            font-size: 0.94rem;
+            font-weight: 500;
+            line-height: 1.55;
+        }
+
+        .theme-glass-light .article-rendered-content .techmeme-main-story {
+            background: rgba(255, 255, 255, 0.72);
+            border-color: rgba(148, 163, 184, 0.2);
+        }
+
+        .theme-glass-light .article-rendered-content .techmeme-primary-article {
+            background: rgba(255, 255, 255, 0.72);
+            border-color: rgba(148, 163, 184, 0.2);
+            box-shadow: 0 16px 36px -32px rgba(15, 23, 42, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.86);
+        }
+
+        .theme-glass-light .article-rendered-content .techmeme-main-story__source {
+            color: #64748b;
+        }
+
+        .theme-glass-light .article-rendered-content .techmeme-main-story p {
+            color: #334155;
+        }
+
+        .theme-glass-light .article-rendered-content .techmeme-x-post a {
+            color: #1f2937;
+            background: rgba(255, 255, 255, 0.78);
+            border-color: rgba(148, 163, 184, 0.24);
+            box-shadow: 0 16px 38px -30px rgba(15, 23, 42, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.98);
+        }
+
+        .theme-glass-light .article-rendered-content .techmeme-x-posts {
+            background: linear-gradient(145deg, rgba(255, 255, 255, 0.78), rgba(239, 246, 255, 0.67));
+            border-color: rgba(148, 163, 184, 0.22);
+            box-shadow: 0 22px 48px -36px rgba(15, 23, 42, 0.48), inset 0 1px 0 rgba(255, 255, 255, 0.96);
+        }
+
+        .theme-glass-light .article-rendered-content .techmeme-x-post__profile {
+            color: #1d4ed8;
+            background: linear-gradient(145deg, rgba(219, 234, 254, 0.96), rgba(224, 242, 254, 0.82));
+            border-color: rgba(96, 165, 250, 0.28);
+        }
+
+        .theme-glass-light .article-rendered-content .techmeme-x-post__author {
+            color: #111827;
+        }
+
+        .theme-glass-light .article-rendered-content .techmeme-x-post__handle {
+            color: #64748b;
+        }
+
+        @media (max-width: 640px) {
+            .article-rendered-content .techmeme-x-posts {
+                padding: 0.85rem;
+                border-radius: 20px;
+            }
+
+            .article-rendered-content .techmeme-x-post a {
+                grid-template-columns: 40px minmax(0, 1fr);
+                gap: 0.75rem;
+                padding: 0.9rem;
+            }
+
+            .article-rendered-content .techmeme-x-post__profile {
+                width: 40px;
+                height: 40px;
+            }
         }
 
         /* Tinhte Photo Compare & Info Box */
@@ -2005,6 +2326,52 @@
             color: #7dd3fc !important;
         }
 
+        .article-rendered-content .ft-latest-stream__item {
+            grid-template-columns: 104px minmax(0, 1fr);
+            align-items: center;
+        }
+
+        .article-rendered-content .ft-latest-stream__thumbnail {
+            display: block;
+            width: 104px;
+            aspect-ratio: 16 / 10;
+            overflow: hidden;
+            border-radius: 10px;
+            background: rgba(148, 163, 184, 0.12);
+            text-decoration: none !important;
+        }
+
+        .article-rendered-content .ft-latest-stream__thumbnail img {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            object-fit: cover;
+        }
+
+        .article-rendered-content .ft-latest-stream__thumbnail--empty {
+            display: grid;
+            place-items: center;
+            color: #9f1239 !important;
+            background: #fff1e5;
+            font-family: Georgia, serif;
+            font-size: 1.15rem;
+            font-weight: 800;
+        }
+
+        .article-rendered-content .ft-latest-stream__content {
+            display: grid;
+            gap: 0.3rem;
+            min-width: 0;
+        }
+
+        .article-rendered-content .ft-latest-stream__category {
+            color: #94a3b8 !important;
+            font-size: 0.72rem;
+            font-weight: 780;
+            line-height: 1.25;
+            letter-spacing: 0.025em;
+        }
+
         .article-rendered-content .tuoitre-event-stream__footer {
             display: flex;
             justify-content: flex-end;
@@ -2235,6 +2602,15 @@
                 grid-template-columns: 48px minmax(0, 1fr);
                 gap: 10px;
                 padding: 0.82rem 1.05rem;
+            }
+
+            .article-rendered-content .ft-latest-stream__item {
+                grid-template-columns: 82px minmax(0, 1fr);
+            }
+
+            .article-rendered-content .ft-latest-stream__thumbnail {
+                width: 82px;
+                border-radius: 8px;
             }
 
             .article-rendered-content .tuoitre-event-stream__item-link {
@@ -4014,25 +4390,56 @@
                 <div x-show="!loadingSmartSources" class="space-y-2">
                     <template x-for="source in filteredSmartSources()" :key="source.url">
                         <div
-                            class="flex items-center gap-3 rounded-2xl border border-gray-200/60 bg-white/60 hover:bg-white/80 transition px-3.5 py-3 shadow-sm">
-                            <img :src="smartSourceIcon(source)" class="w-7 h-7 rounded-md bg-gray-100 flex-shrink-0"
-                                @error="$el.style.display='none'">
-                            <div class="min-w-0 flex-1">
-                                <div class="text-sm font-bold text-gray-900 truncate" x-text="source.title"></div>
-                                <div class="flex flex-wrap items-center gap-x-2 text-[11px] text-gray-500 mt-0.5 font-medium">
-                                    <span x-text="smartSourceHost(source.url)"></span>
-                                    <span>•</span>
-                                    <span class="text-violet-600/80" x-text="smartSourceCategoryLabel(source)"></span>
-                                    <span x-show="source.weight !== undefined">•</span>
-                                    <span class="text-emerald-600 font-bold" x-show="source.weight !== undefined" x-text="`Score: ${source.weight}`"></span>
+                            class="rounded-2xl border border-gray-200/60 bg-white/60 hover:bg-white/80 transition px-3.5 py-3 shadow-sm">
+                            <div class="flex items-center gap-3">
+                                <img :src="smartSourceIcon(source)" class="w-7 h-7 rounded-md bg-gray-100 flex-shrink-0"
+                                    @error="$el.style.display='none'">
+                                <div class="min-w-0 flex-1">
+                                    <div class="text-sm font-bold text-gray-900 truncate" x-text="source.title"></div>
+                                    <div class="flex flex-wrap items-center gap-x-2 text-[11px] text-gray-500 mt-0.5 font-medium">
+                                        <span x-text="smartSourceHost(source.url)"></span>
+                                        <span>•</span>
+                                        <span class="text-violet-600/80" x-text="smartSourceCategoryLabel(source)"></span>
+                                        <span x-show="source.weight !== undefined">•</span>
+                                        <span class="text-emerald-600 font-bold" x-show="source.weight !== undefined" x-text="`Score: ${source.weight}`"></span>
+                                    </div>
                                 </div>
+                                <button type="button" @click.stop="toggleSmartSourceFetchPanel(source)"
+                                    class="px-2.5 py-1.5 rounded-lg text-[11px] font-bold text-violet-700 bg-violet-50 hover:bg-violet-100 transition whitespace-nowrap"
+                                    :aria-expanded="smartSourceFetchOpenUrl === source.url"
+                                    x-text="source.fetchMethods?.length ? `Fetch · ${source.fetchMethods.length}` : 'Fetch · Auto'"></button>
+                                <button type="button" @click="toggleSmartSource(source)" :disabled="removingSmartSourceUrl === source.url"
+                                    class="px-3 py-1.5 rounded-lg text-xs font-bold transition disabled:opacity-40"
+                                    :class="source.enabled === false ? 'text-violet-700 bg-violet-100 hover:bg-violet-200 shadow-sm' : 'text-gray-500 bg-gray-100 hover:bg-gray-200 hover:text-gray-800 shadow-sm'"
+                                    x-text="source.enabled === false ? 'Use source' : 'Do not use'"
+                                    :aria-label="(source.enabled === false ? 'Use ' : 'Do not use ') + source.title">
+                                </button>
                             </div>
-                            <button @click="toggleSmartSource(source)" :disabled="removingSmartSourceUrl === source.url"
-                                class="px-3 py-1.5 rounded-lg text-xs font-bold transition disabled:opacity-40"
-                                :class="source.enabled === false ? 'text-violet-700 bg-violet-100 hover:bg-violet-200 shadow-sm' : 'text-gray-500 bg-gray-100 hover:bg-gray-200 hover:text-gray-800 shadow-sm'"
-                                x-text="source.enabled === false ? 'Use source' : 'Do not use'"
-                                :aria-label="(source.enabled === false ? 'Use ' : 'Do not use ') + source.title">
-                            </button>
+                            <div x-show="smartSourceFetchOpenUrl === source.url" x-collapse
+                                class="mt-3 pt-3 border-t border-gray-200/60">
+                                <div class="flex items-center justify-between gap-3 mb-2">
+                                    <span class="text-[11px] font-bold text-gray-700">Fetch methods</span>
+                                    <span class="text-[10px] font-bold text-violet-600"
+                                        x-text="source.fetchMethods?.length ? 'Strict allowlist' : 'Default auto-detect'"></span>
+                                </div>
+                                <div class="grid grid-cols-2 md:grid-cols-3 gap-1.5">
+                                    <template x-for="method in [
+                                        { value: 'jina', label: 'Jina Reader' },
+                                        { value: 'cloudflare', label: 'Cloudflare Proxy' },
+                                        { value: 'vietserver', label: 'Vietserver Proxy' },
+                                        { value: 'opencli', label: 'OpenCLI (Reddit/X)' },
+                                        { value: 'direct', label: 'Direct Fetch' }
+                                    ]" :key="method.value">
+                                        <label class="flex items-center gap-2 px-2.5 py-2 rounded-xl border border-gray-200/70 bg-white/65 text-[11px] font-semibold text-gray-700 cursor-pointer hover:bg-white transition">
+                                            <input type="checkbox" class="edit-source-checkbox"
+                                                :checked="smartSourceHasFetchMethod(source, method.value)"
+                                                @change.stop="toggleSmartSourceFetchMethod(source, method.value)">
+                                            <span x-text="method.label"></span>
+                                        </label>
+                                    </template>
+                                </div>
+                                <p class="mt-2 text-[10px] leading-relaxed text-gray-500">Leave all unchecked for automatic selection. Selecting methods limits article reads, refreshes, and background prefetch for this Smart source.</p>
+                            </div>
                         </div>
                     </template>
                     <div x-show="filteredSmartSources().length === 0" class="py-10 text-center text-sm text-gray-400">No
@@ -5393,6 +5800,18 @@
                                     <span x-text="stripHtml(article.feedTitle)"
                                         class="truncate max-w-[80px] md:max-w-none"></span>
                                 </span>
+                                <template x-if="article.primarySource && article.primarySource.domain">
+                                    <a :href="article.primarySource.url || article.primaryArticleUrl" target="_blank"
+                                        rel="noopener noreferrer" @click.stop
+                                        class="flex items-center gap-1.5 bg-sky-950/75 px-2 py-1 rounded-md text-sky-300 border border-sky-400/15 no-underline"
+                                        :title="'Main article from ' + (article.primarySource.name || article.primarySource.domain)">
+                                        <img :src="article.primarySource.icon || smartSourceIcon({ domain: article.primarySource.domain })"
+                                            class="w-3.5 h-3.5 md:w-4 md:h-4 rounded" @error="$el.style.display='none'"
+                                            referrerpolicy="no-referrer">
+                                        <span x-text="article.primarySource.name || article.primarySource.domain"
+                                            class="truncate max-w-[78px] md:max-w-[120px]"></span>
+                                    </a>
+                                </template>
                                 <span class="text-white/20 hidden md:inline">•</span>
                                 <span class="text-gray-400 whitespace-nowrap"
                                     x-text="article.publicationTimeReliable === false ? 'Time unavailable' : timeAgo(article.pubDate)"></span>
@@ -5699,7 +6118,7 @@
                         </svg>
                     </button>
                     <div class="min-w-0 flex-1 flex items-center">
-                        <span class="inline-flex items-center gap-1.5 md:gap-2 transition-all"
+                        <span class="inline-flex min-w-0 items-center gap-1.5 md:gap-2 transition-all"
                             :class="theme === 'glass-light' ? 'text-emerald-700' : 'text-emerald-400'">
                             <template x-if="overlayArticle">
                                 <img :src="overlayArticle.feedIcon || smartSourceIcon({ domain: overlayArticle.link ? new URL(overlayArticle.link).hostname : '' })"
@@ -5709,9 +6128,22 @@
                                 class="text-[13px] font-bold tracking-tight uppercase truncate max-w-[150px] md:max-w-[250px]"
                                 x-text="(overlayArticle && overlayArticle.siteName) || (overlayArticle && overlayArticle.feedTitle) || 'Article'"></span>
                         </span>
+                        <template x-if="overlayArticle && overlayArticle.primarySource && overlayArticle.primarySource.domain">
+                            <span class="inline-flex min-w-0 items-center gap-1.5 ml-2 pl-2 border-l border-gray-300/40"
+                                :title="'Main article from ' + (overlayArticle.primarySource.name || overlayArticle.primarySource.domain)">
+                                <a :href="overlayArticle.primarySource.url || overlayArticle.primaryArticleUrl" target="_blank" rel="noopener noreferrer"
+                                    @click.stop class="inline-flex min-w-0 items-center gap-1.5 no-underline"
+                                    :class="theme === 'glass-light' ? 'text-sky-700' : 'text-sky-300'">
+                                    <img :src="overlayArticle.primarySource.icon || smartSourceIcon({ domain: overlayArticle.primarySource.domain })"
+                                        class="w-4 h-4 rounded-sm object-cover flex-shrink-0" @error="$el.style.display='none'" referrerpolicy="no-referrer">
+                                    <span class="hidden sm:inline text-[12px] font-bold tracking-tight uppercase truncate max-w-[120px] md:max-w-[190px]"
+                                        x-text="overlayArticle.primarySource.name || overlayArticle.primarySource.domain"></span>
+                                </a>
+                            </span>
+                        </template>
                     </div>
                 </div>
-                <div class="flex items-center gap-2 flex-shrink-0">
+                <div class="flex items-center gap-1 md:gap-2 flex-shrink-0">
                     <!-- Copy Link Button (Moved to leftmost) -->
                     <button @click="navigator.clipboard.writeText(window.location.href); const svg = $el.querySelector('svg'); svg.classList.add('text-green-500', 'dark:text-green-400'); setTimeout(() => svg.classList.remove('text-green-500', 'dark:text-green-400'), 2000)"
                         class="transition p-2 rounded-lg"
@@ -5719,6 +6151,23 @@
                         :title="isMobile ? '' : 'Copy reader link'">
                         <svg class="w-5 h-5 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path>
+                        </svg>
+                    </button>
+                    <!-- Copy Rich Article Content Button -->
+                    <button @click="copyArticleContent()" :disabled="!overlayContent || articleCopyState === 'copying'"
+                        class="transition p-2 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
+                        :class="articleCopyState === 'success'
+                            ? (theme === 'glass-light' ? 'bg-emerald-50 text-emerald-600' : 'bg-emerald-500/10 text-emerald-400')
+                            : (articleCopyState === 'error'
+                                ? (theme === 'glass-light' ? 'bg-red-50 text-red-600' : 'bg-red-500/10 text-red-400')
+                                : (theme === 'glass-light' ? 'hover:bg-black/5 text-gray-500' : 'hover:bg-white/10 text-gray-400'))"
+                        :title="articleCopyState === 'success' ? 'Article copied with images' : (articleCopyState === 'error' ? 'Could not copy article' : 'Copy article content with images')"
+                        :aria-label="articleCopyState === 'success' ? 'Article copied with images' : 'Copy article content with images'">
+                        <svg x-show="articleCopyState !== 'success'" class="w-5 h-5 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-2M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m4 4v6m3-3h-6"></path>
+                        </svg>
+                        <svg x-show="articleCopyState === 'success'" x-cloak class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
                         </svg>
                     </button>
                     <!-- Read Later Button -->
@@ -5815,9 +6264,15 @@
 
                     <!-- Hero image -->
                     <template x-if="overlayArticle && overlayArticle.overlayImage">
-                        <img :src="overlayArticle.overlayImage"
-                            class="w-full h-auto max-h-[40vh] md:max-h-[320px] object-cover rounded-2xl mb-8 shadow-lg"
-                            @error="$el.style.display='none'">
+                        <figure class="w-full mb-8">
+                            <img :src="overlayArticle.overlayImage"
+                                class="w-full h-auto max-h-[40vh] md:max-h-[320px] object-cover rounded-2xl shadow-lg"
+                                @error="$el.closest('figure').style.display='none'">
+                            <figcaption x-show="overlayArticle.overlayImageCaption"
+                                class="mt-2 px-1 text-sm leading-relaxed"
+                                :class="theme === 'glass-light' ? 'text-gray-600' : 'text-gray-400'"
+                                x-text="overlayArticle.overlayImageCaption"></figcaption>
+                        </figure>
                     </template>
 
                     <!-- Title -->
@@ -6462,7 +6917,7 @@
         </div>
     </div>
     
-    <script src="/script.js?v=25_gemini_hybrid"></script>
+    <script src="/script.js?v=30_shared_fetch_policy"></script>
 </body>
 
 </html>

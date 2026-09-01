@@ -3,6 +3,27 @@ export default class NhanDanSource {
         return hostname.includes('nhandan.vn');
     }
 
+    // A proxy or reader can occasionally return Nhân Dân's generic error
+    // shell while the canonical article is still live. Never turn one such
+    // response into a permanent tombstone, and allow old empty tombstones to
+    // be checked again against the publisher.
+    requiresIndependentDeletionConfirmation() {
+        return true;
+    }
+
+    shouldRevalidateDeletedSnapshot(snapshot) {
+        return snapshot?.sourceDeleted === true
+            && snapshot?.sourceDeletedHasCache === false
+            && (!Array.isArray(snapshot?.deletionConfirmedBy) || snapshot.deletionConfirmedBy.length < 2);
+    }
+
+    isUsableArticleResult(result) {
+        const markup = String(result?.content || '');
+        const textLength = markup.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().length;
+        const hasPlayableMedia = /<(?:video|audio|iframe)\b/i.test(markup) || Boolean(result?.videoUrl);
+        return textLength >= 350 || (hasPlayableMedia && textLength >= 80);
+    }
+
     async parseArticleHtmlContent(html, url, result, utils) {
         const fetchOgImage = async (absUrl) => {
             if (!utils || !utils.fetchWithTimeout) return '';

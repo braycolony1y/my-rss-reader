@@ -74,7 +74,7 @@ test('Smart News API bypasses the regular article database path', () => {
     assert.match(server, /if \(filterType === 'smart'\) return serveSmartData\(req, res\);/);
     assert.match(server, /get\('smartClusters', \{ type: 'json', shared: true \}\)/);
     assert.match(server, /Server-Timing.*smart-data/);
-    assert.match(server, /helpers: \{ fastParseRSS, waitForHttpIdle \}/);
+    assert.match(server, /helpers: \{ fastParseRSS, waitForHttpIdle, prefetchOpenCliOnlyArticles \}/);
     assert.match(server, /skipped while HTTP requests are active/);
     assert.match(server, /max-age=31536000, immutable/);
     assert.match(server, /no-cache, must-revalidate/);

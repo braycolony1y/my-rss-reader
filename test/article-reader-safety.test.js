@@ -25,12 +25,13 @@ test('cache clearing stays available except for confirmed deleted-source snapsho
 test('reader-method rejection stays available except for confirmed deleted-source snapshots', () => {
     const endpointStart = server.indexOf("app.get('/api/article-content'");
     assert.notEqual(endpointStart, -1);
-    const endpointPrefix = server.slice(endpointStart, endpointStart + 2200);
+    const endpointPrefix = server.slice(endpointStart, endpointStart + 3200);
     assert.match(endpointPrefix, /const hasProtectedDeletedSnapshot = await isProtectedDeletedSourceSnapshot\(requestedUrl\)/);
     assert.match(endpointPrefix, /hasMethodRejection && hasProtectedDeletedSnapshot/);
     assert.match(endpointPrefix, /status\(403\)/);
     assert.match(endpointPrefix, /Deleted-source snapshots are protected from reader-method rejection/);
-    assert.match(endpointPrefix, /if \(hasProtectedDeletedSnapshot\)[\s\S]*buildDeletedSourceResponse\(requestedUrl\)/);
+    assert.match(endpointPrefix, /shouldRevalidateProtectedSnapshot[\s\S]*clearUnavailableSourceUrl\(requestedUrl\)/);
+    assert.match(endpointPrefix, /if \(hasProtectedDeletedSnapshot && !shouldRevalidateProtectedSnapshot\)[\s\S]*buildDeletedSourceResponse\(requestedUrl\)/);
     assert.match(server, /const rejectedStrategy = String\(req\.query\.reject \|\| ''\)\.trim\(\)/);
     assert.match(server, /String\(req\.query\.exclude \|\| ''\)\.split\(','\)/);
     assert.match(server, /recordArticleFetchOutcome\(hostname, rejectedStrategy, false, 'Rejected by user'\)/);
@@ -38,6 +39,27 @@ test('reader-method rejection stays available except for confirmed deleted-sourc
     assert.match(script, /if \(this\.overlayArticle\.sourceDeleted\) \{[\s\S]*protected and cannot reject reader methods/);
     assert.match(html, /x-show="overlayArticle && !overlayArticle\.sourceDeleted"[\s\S]*@click="rejectAndTryNextArticleMethod\(\)"/);
     assert.match(html, /overlayRejectedStrategies\.includes\(strategy\)/);
+});
+
+test('ordinary articles need two independent deletion signals before a tombstone is created', () => {
+    const endpointStart = server.indexOf("app.get('/api/article-content'");
+    const endpointEnd = server.indexOf('\nasync function parseArticleHtmlContent', endpointStart);
+    const endpoint = server.slice(endpointStart, endpointEnd);
+    assert.match(server, /return !isVozThreadUrl\(url\)/);
+    assert.match(endpoint, /const deletionEvidence = new Set\(\)/);
+    assert.match(endpoint, /deletionEvidence\.size >= 2/);
+    assert.match(endpoint, /deletionConfirmedBy: \[\.\.\.deletionEvidence\]/);
+    assert.match(server, /shouldRevalidateUnconfirmedArticle/);
+    assert.match(server, /protectedDeletedSnapshot\.deletionConfirmedBy\.length < 2/);
+});
+
+test('Techmeme related links and X cards survive shared article cleaning', () => {
+    assert.match(server, /isTechmemeStory/);
+    assert.match(server, /\.techmeme-x-posts, \.techmeme-primary-article/);
+    assert.match(server, /if \(!isTechmemeStory\) \{/);
+    assert.match(html, /\.theme-glass-light \.article-rendered-content \.techmeme-x-posts/);
+    assert.match(html, /\.techmeme-x-post__profile/);
+    assert.doesNotMatch(html, /\.techmeme-x-post__avatar/);
 });
 
 test('deleted VOZ pagination serves the exact cached page instead of page one', () => {
@@ -56,6 +78,19 @@ test('deleted VOZ pagination serves the exact cached page instead of page one', 
     assert.match(functionBody, /alignVozPaginationToRequestedPage/);
     assert.match(functionBody, /cacheArticleResult\(snapshotUrl, preserved\)/);
     assert.match(functionBody, /url: snapshotUrl/);
+});
+
+test('deleted articles without a cached copy are removed from active Smart News views', () => {
+    const functionStart = server.indexOf('async function buildDeletedSourceResponse');
+    const functionEnd = server.indexOf('\n// --- ARTICLE CONTENT EXTRACTION ENDPOINT ---', functionStart);
+    const functionBody = server.slice(functionStart, functionEnd);
+
+    assert.match(server, /function markUnavailableSourceUrl\(url\)/);
+    assert.match(functionBody, /if \(!hasCachedContent\) await markUnavailableSourceUrl\(snapshotUrl\)/);
+    assert.match(server, /function removeUnavailableSmartSources\(article, unavailableSet\)/);
+    assert.match(server, /get\('unavailableSourceUrls', \{ type: 'json' \}\)/);
+    assert.match(server, /\.map\(article => removeUnavailableSmartSources\(article, unavailableSet\)\)/);
+    assert.match(script, /data\.sourceDeleted === true && data\.sourceDeletedHasCache === false[\s\S]*closeArticleOverlay\(\{ closeAll: true \}\)[\s\S]*fetchData\(false, true, true\)/);
 });
 
 test('canonical publisher URLs cannot be overwritten by their malformed request form', () => {
@@ -85,6 +120,7 @@ test('article cards retain the original seamless image mask without an overlay s
     assert.match(html, /\.article-card img\.thumbnail-img \{[\s\S]*-webkit-mask-image: linear-gradient\(to right,[\s\S]*transparent 0%,[\s\S]*rgba\(0, 0, 0, 1\) 35%\) !important;/);
     assert.doesNotMatch(html, /article-card-media/);
     assert.doesNotMatch(html, /\.article-card-media::after/);
+    assert.match(script, /url\.startsWith\('\/api\/og-image'\)[\s\S]*versioned\.searchParams\.set\('v', '31'\)/);
 });
 
 test('light article sections share one neutral parent surface between cards', () => {
@@ -104,4 +140,18 @@ test('all Alpine-bound reader settings exist before the first render', () => {
     assert.match(html, /x-for="\(item, idx\) in \(debugData\?\.prefetchQueue \|\| \[\]\)"/);
     assert.match(html, /:title="overlayArticle && savedStates\.includes\(overlayArticle\.link\) \? 'Remove from Read Later' : 'Read Later'"/);
     assert.match(html, /:title="overlayArticle && boardStates\.includes\(overlayArticle\.originalLink \|\| overlayArticle\.link\) \? 'Remove from Board' : 'Save to Board'"/);
+});
+
+test('article reader can copy rich content with images, links, and a plain-text fallback', () => {
+    assert.match(html, /@click="copyArticleContent\(\)"/);
+    assert.match(html, /Copy article content with images/);
+    assert.match(script, /buildArticleClipboardPayload\(\)/);
+    assert.match(script, /content\.querySelectorAll\('img'\)/);
+    assert.match(script, /resolved\.pathname === '\/api\/proxy-image'/);
+    assert.match(script, /const rawHero = this\.overlayArticle\.overlayImage \|\| this\.overlayArticle\.image/);
+    assert.match(script, /!copiedImages\.some\(image => image\.src === portableHero\)/);
+    assert.match(script, /'text\/html': new Blob\(\[payload\.html\]/);
+    assert.match(script, /'text\/plain': new Blob\(\[payload\.text\]/);
+    assert.match(script, /copyArticleHtmlLegacy\(payload\.html\)/);
+    assert.match(script, /navigator\.clipboard\.writeText\(payload\.text\)/);
 });

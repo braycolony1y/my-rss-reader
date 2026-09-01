@@ -50,6 +50,8 @@ import BBCSource from './BBCSource.js';
 import SggpSource from './SggpSource.js';
 import DanvietSource from './DanvietSource.js';
 import BaovanhoaSource from './BaovanhoaSource.js';
+import TechmemeSource from './TechmemeSource.js';
+import CnbcSource from './CnbcSource.js';
 registry.register(new VozSource());
 registry.register(new TinhteSource());
 registry.register(new VietnamplusSource());
@@ -77,5 +79,7 @@ registry.register(new BBCSource());
 registry.register(new SggpSource());
 registry.register(new DanvietSource());
 registry.register(new BaovanhoaSource());
+registry.register(new TechmemeSource());
+registry.register(new CnbcSource());
 
 export default registry;

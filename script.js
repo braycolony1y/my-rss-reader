@@ -44,6 +44,7 @@
                 smartSources: [],
                 smartSourceSearch: '',
                 smartSourceSort: 'score',
+                smartSourceFetchOpenUrl: '',
                 loadingSmartSources: false,
                 savingSmartSource: false,
                 removingSmartSourceUrl: '',
@@ -208,6 +209,8 @@
                 overlayMethodPreferences: {},
                 overlayTryingMethod: false,
                 overlayMethodError: '',
+                articleCopyState: 'idle',
+                articleCopyResetTimer: null,
                 articleSpeechState: 'idle',
                 articleSpeechChunks: [],
                 articleSpeechIndex: 0,
@@ -961,6 +964,7 @@
                         const data = await response.json();
                         if (!response.ok) throw new Error(data.error || 'Could not add this source.');
                         this.smartSources = data.sources || [];
+                        if (Array.isArray(data.feeds)) this.feeds = data.feeds;
                         this.newSmartSource = { title: '', url: '', kind };
                         this.smartSourcePanel = 'sources';
                         this.smartSourceView = 'enabled';
@@ -987,6 +991,37 @@
                         this.smartSourceError = error.message;
                     } finally {
                         this.removingSmartSourceUrl = '';
+                    }
+                },
+
+                smartSourceHasFetchMethod(source, method) {
+                    return Array.isArray(source?.fetchMethods) && source.fetchMethods.includes(method);
+                },
+
+                toggleSmartSourceFetchPanel(source) {
+                    const url = source?.url || '';
+                    this.smartSourceFetchOpenUrl = this.smartSourceFetchOpenUrl === url ? '' : url;
+                },
+
+                async toggleSmartSourceFetchMethod(source, method) {
+                    const current = Array.isArray(source.fetchMethods) ? source.fetchMethods : [];
+                    const fetchMethods = current.includes(method)
+                        ? current.filter(value => value !== method)
+                        : [...current, method];
+                    this.smartSourceError = '';
+                    try {
+                        const response = await fetch('/api/smart-sources', {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ url: source.url, fetchMethods })
+                        });
+                        const data = await response.json();
+                        if (!response.ok) throw new Error(data.error || 'Could not update fetch methods.');
+                        this.smartSources = data.sources || [];
+                        if (Array.isArray(data.feeds)) this.feeds = data.feeds;
+                        if (this.articleContentCache) this.articleContentCache.clear();
+                    } catch (error) {
+                        this.smartSourceError = error.message;
                     }
                 },
 
@@ -1092,6 +1127,7 @@
                         const data = await response.json();
                         if (!response.ok) throw new Error(data.error || 'Could not restore the source list.');
                         this.smartSources = data.sources || [];
+                        if (Array.isArray(data.feeds)) this.feeds = data.feeds;
                     } catch (error) {
                         this.smartSourceError = error.message;
                     }
@@ -1456,6 +1492,7 @@
                         fetch('/api/article-content?' + new URLSearchParams({
                             url,
                             title: article.title || '',
+                            description: String(article.content || '').slice(0, 1200),
                             feedTitle: article.feedTitle || '',
                             feedUrl: article.feedUrl || '',
                             feedIcon: article.feedIcon || '',
@@ -1743,13 +1780,18 @@
                                 excludeFromSmart: this.editFeedExcludeFromSmart
                             })
                         });
+                        const data = await response.json().catch(() => null);
                         if(response.ok) {
+                            if (Array.isArray(data?.feeds)) this.feeds = data.feeds;
+                            if (Array.isArray(data?.sources)) this.smartSources = data.sources;
                             // A changed source policy must take effect on the
                             // very next open, not after an old browser-memory
                             // article result has been reused.
                             if (this.articleContentCache) this.articleContentCache.clear();
-                            this.fetchData();
+                            await this.fetchData();
                             this.editModalOpen = false;
+                        } else {
+                            throw new Error(data?.error || 'Failed to edit feed.');
                         }
                     } catch(e) {
                         alert("Failed to edit feed.");
@@ -2006,6 +2048,15 @@
                     if (!data || data.error) return;
                     if (!this.articleContentCache) this.articleContentCache = new Map();
                     const targetUrl = data.url || fallbackArticle?.originalLink || fallbackArticle?.link || this.overlayArticle?.originalLink || this.overlayArticle?.link;
+                    if (data.sourceDeleted === true && data.sourceDeletedHasCache === false) {
+                        if (targetUrl) this.articleContentCache.delete(targetUrl);
+                        this.articles = (this.articles || []).filter(article =>
+                            ![article?.link, article?.originalLink, article?.resolvedLink].includes(targetUrl)
+                        );
+                        this.closeArticleOverlay({ closeAll: true });
+                        this.fetchData(false, true, true);
+                        return;
+                    }
                     if (targetUrl) {
                         this.articleContentCache.set(targetUrl, data);
                         if (this.articleContentCache.size > 60) {
@@ -2031,11 +2082,16 @@
                     if (!this.overlayHasNativeAudio) this.prepareArticleSpeech();
                     this.overlayArticle.overlayTitle = this.stripHtml(data.title || fallbackArticle?.title || this.overlayArticle.title);
                     this.overlayArticle.overlayImage = data.image || fallbackArticle?.image || this.overlayArticle.image;
+                    this.overlayArticle.overlayImageCaption = data.imageCaption || fallbackArticle?.imageCaption || this.overlayArticle.imageCaption || '';
                     this.overlayArticle.overlayAuthor = data.author || '';
                     this.overlayArticle.overlayAuthorAvatar = data.authorAvatar || fallbackArticle?.authorAvatar || this.overlayArticle.authorAvatar || '';
                     this.overlayArticle.overlayDate = data.date || fallbackArticle?.pubDate || this.overlayArticle.pubDate;
+                    this.overlayArticle.primaryArticleUrl = data.primaryArticleUrl || this.overlayArticle.primaryArticleUrl || '';
+                    this.overlayArticle.primarySource = data.primarySource || this.overlayArticle.primarySource || null;
+                    this.overlayArticle.primaryArticleFetched = data.primaryArticleFetched === true;
                     
                     if (data.image && !this.overlayArticle.image) this.overlayArticle.image = data.image;
+                    if (data.imageCaption && !this.overlayArticle.imageCaption) this.overlayArticle.imageCaption = data.imageCaption;
                     if (data.author && !this.overlayArticle.author) this.overlayArticle.author = data.author;
                     if (data.authorAvatar && !this.overlayArticle.authorAvatar) this.overlayArticle.authorAvatar = data.authorAvatar;
                     this.overlayArticle.siteName = data.siteName || this.overlayArticle.siteName || this.overlayArticle.feedTitle || '';
@@ -2445,6 +2501,7 @@
                             reject: rejected,
                             exclude,
                             title: this.overlayArticle.title || '',
+                            description: String(this.overlayArticle.content || '').slice(0, 1200),
                             feedTitle: this.overlayArticle.feedTitle || '',
                             feedUrl: this.overlayArticle.feedUrl || '',
                             feedIcon: this.overlayArticle.feedIcon || ''
@@ -2468,6 +2525,181 @@
 
                 supportsArticleSpeech() {
                     return typeof window !== 'undefined' && 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window;
+                },
+
+                setArticleCopyState(state) {
+                    if (this.articleCopyResetTimer) clearTimeout(this.articleCopyResetTimer);
+                    this.articleCopyResetTimer = null;
+                    this.articleCopyState = state;
+                    if (state === 'success' || state === 'error') {
+                        this.articleCopyResetTimer = setTimeout(() => {
+                            this.articleCopyState = 'idle';
+                            this.articleCopyResetTimer = null;
+                        }, 2200);
+                    }
+                },
+
+                buildArticleClipboardPayload() {
+                    if (!this.overlayArticle || !this.overlayContent || typeof document === 'undefined') return null;
+
+                    const sourceUrl = this.overlayArticle.originalLink || this.overlayArticle.link || window.location.href;
+                    const clipboardDocument = document.implementation.createHTMLDocument('');
+                    const article = clipboardDocument.createElement('article');
+                    const title = clipboardDocument.createElement('h1');
+                    title.textContent = this.stripHtml(this.overlayArticle.overlayTitle || this.overlayArticle.title || 'Article');
+                    article.appendChild(title);
+
+                    const metadata = [this.overlayArticle.overlayAuthor || this.overlayArticle.author].filter(Boolean);
+                    const publishedAt = this.overlayArticle.overlayDate || this.overlayArticle.pubDate;
+                    if (publishedAt && this.overlayArticle.publicationTimeReliable !== false) {
+                        try { metadata.push(this.formatVietnamDateTime(publishedAt)); } catch (error) { }
+                    }
+                    if (metadata.length) {
+                        const byline = clipboardDocument.createElement('p');
+                        byline.textContent = metadata.join(' · ');
+                        article.appendChild(byline);
+                    }
+
+                    const source = clipboardDocument.createElement('p');
+                    const sourceLink = clipboardDocument.createElement('a');
+                    sourceLink.href = sourceUrl;
+                    sourceLink.textContent = sourceUrl;
+                    source.appendChild(sourceLink);
+                    article.appendChild(source);
+
+                    const portableImageUrl = rawSrc => {
+                        if (!rawSrc) return '';
+                        try {
+                            const baseUrl = rawSrc.startsWith('/api/') ? window.location.origin : sourceUrl;
+                            const resolved = new URL(rawSrc, baseUrl);
+                            if (resolved.pathname === '/api/proxy-image' && resolved.searchParams.get('url')) {
+                                return resolved.searchParams.get('url');
+                            }
+                            return resolved.href;
+                        } catch (error) {
+                            return rawSrc;
+                        }
+                    };
+
+                    const content = clipboardDocument.createElement('div');
+                    content.innerHTML = this.overlayContent;
+                    content.querySelectorAll('script, style, noscript, template, form, button').forEach(node => node.remove());
+                    content.querySelectorAll('iframe').forEach(frame => {
+                        const rawSrc = frame.getAttribute('src');
+                        if (!rawSrc) {
+                            frame.remove();
+                            return;
+                        }
+                        const link = clipboardDocument.createElement('a');
+                        try { link.href = new URL(rawSrc, sourceUrl).href; } catch (error) { link.href = rawSrc; }
+                        link.textContent = frame.getAttribute('title') || 'Interactive graphic';
+                        frame.replaceWith(link);
+                    });
+
+                    const copiedImages = [];
+                    content.querySelectorAll('img').forEach(image => {
+                        const rawSrc = image.getAttribute('src') || image.getAttribute('data-src') || '';
+                        if (!rawSrc) {
+                            image.remove();
+                            return;
+                        }
+                        const portableSrc = portableImageUrl(rawSrc);
+                        image.setAttribute('src', portableSrc);
+                        image.removeAttribute('srcset');
+                        image.removeAttribute('data-src');
+                        image.removeAttribute('loading');
+                        image.style.maxWidth = '100%';
+                        image.style.height = 'auto';
+                        copiedImages.push({ src: portableSrc, alt: image.getAttribute('alt') || 'Article image' });
+                    });
+                    content.querySelectorAll('a[href]').forEach(link => {
+                        const href = link.getAttribute('href') || '';
+                        if (!href || href.startsWith('#')) return;
+                        try { link.setAttribute('href', new URL(href, sourceUrl).href); } catch (error) { }
+                    });
+                    content.querySelectorAll('*').forEach(node => {
+                        for (const attribute of [...node.attributes]) {
+                            if (/^on/i.test(attribute.name) || /^x-|^@|^:/i.test(attribute.name)) {
+                                node.removeAttribute(attribute.name);
+                            }
+                        }
+                    });
+
+                    const rawHero = this.overlayArticle.overlayImage || this.overlayArticle.image || '';
+                    const portableHero = portableImageUrl(rawHero);
+                    const heroIsPortable = portableHero && !portableHero.includes('/api/og-image');
+                    if (heroIsPortable && !copiedImages.some(image => image.src === portableHero)) {
+                        const hero = clipboardDocument.createElement('img');
+                        hero.src = portableHero;
+                        hero.alt = title.textContent;
+                        hero.style.maxWidth = '100%';
+                        hero.style.height = 'auto';
+                        article.appendChild(hero);
+                        copiedImages.unshift({ src: portableHero, alt: hero.alt });
+                    }
+                    article.appendChild(content);
+
+                    const plainBody = (content.innerText || content.textContent || '').replace(/\n{3,}/g, '\n\n').trim();
+                    const imageText = copiedImages.map(image => `[Image: ${image.alt}] ${image.src}`).join('\n');
+                    const plainText = [title.textContent, metadata.join(' · '), sourceUrl, plainBody, imageText]
+                        .filter(Boolean)
+                        .join('\n\n');
+                    return { html: article.outerHTML, text: plainText };
+                },
+
+                copyArticleHtmlLegacy(html) {
+                    if (!html || typeof document === 'undefined' || typeof document.execCommand !== 'function') return false;
+                    const container = document.createElement('div');
+                    container.contentEditable = 'true';
+                    container.setAttribute('aria-hidden', 'true');
+                    container.style.cssText = 'position:fixed;left:-10000px;top:0;width:720px;user-select:text;';
+                    container.innerHTML = html;
+                    document.body.appendChild(container);
+                    const selection = window.getSelection();
+                    const range = document.createRange();
+                    range.selectNodeContents(container);
+                    selection.removeAllRanges();
+                    selection.addRange(range);
+                    let copied = false;
+                    try { copied = document.execCommand('copy'); } catch (error) { }
+                    selection.removeAllRanges();
+                    container.remove();
+                    return copied;
+                },
+
+                async copyArticleContent() {
+                    if (this.articleCopyState === 'copying') return;
+                    const payload = this.buildArticleClipboardPayload();
+                    if (!payload) {
+                        this.setArticleCopyState('error');
+                        return;
+                    }
+                    this.setArticleCopyState('copying');
+                    try {
+                        if (navigator.clipboard?.write && typeof ClipboardItem !== 'undefined') {
+                            await navigator.clipboard.write([new ClipboardItem({
+                                'text/html': new Blob([payload.html], { type: 'text/html' }),
+                                'text/plain': new Blob([payload.text], { type: 'text/plain' })
+                            })]);
+                        } else if (!this.copyArticleHtmlLegacy(payload.html)) {
+                            if (!navigator.clipboard?.writeText) throw new Error('Clipboard access is unavailable');
+                            await navigator.clipboard.writeText(payload.text);
+                        }
+                        this.setArticleCopyState('success');
+                    } catch (error) {
+                        try {
+                            if (this.copyArticleHtmlLegacy(payload.html)) {
+                                this.setArticleCopyState('success');
+                                return;
+                            }
+                            if (navigator.clipboard?.writeText) {
+                                await navigator.clipboard.writeText(payload.text);
+                                this.setArticleCopyState('success');
+                                return;
+                            }
+                        } catch (fallbackError) { }
+                        this.setArticleCopyState('error');
+                    }
                 },
 
                 stopArticleSpeech() {
@@ -2876,6 +3108,7 @@
                             const params = new URLSearchParams({
                                 url,
                                 title: art.title || '',
+                                description: String(art.content || '').slice(0, 1200),
                                 feedTitle: art.feedTitle || '',
                                 feedUrl: art.feedUrl || '',
                                 feedIcon: art.feedIcon || '',
@@ -3029,6 +3262,7 @@
                     this.overlayMethodPreferences = {};
                     this.overlayTryingMethod = false;
                     this.overlayMethodError = '';
+                    this.setArticleCopyState('idle');
                     this.overlayRequestId = requestId;
                     this.overlayProgress = { message: 'Preparing article reader…' };
                     this.overlayArticle = { ...article };
@@ -3066,6 +3300,7 @@
                                 prefetchTargets.push({
                                     url: u,
                                     title: nextArticle?.title || '',
+                                    description: String(nextArticle?.content || '').slice(0, 1200),
                                     feedTitle: nextArticle?.feedTitle || '',
                                     feedUrl: nextArticle?.feedUrl || '',
                                     feedIcon: nextArticle?.feedIcon || ''
@@ -3107,6 +3342,7 @@
                             url: targetUrl,
                             requestId,
                             title: article.title || '',
+                            description: String(article.content || '').slice(0, 1200),
                             feedTitle: article.feedTitle || '',
                             feedUrl: article.feedUrl || '',
                             feedIcon: article.feedIcon || ''
@@ -3196,6 +3432,7 @@
                     this.overlayMethodPreferences = {};
                     this.overlayTryingMethod = false;
                     this.overlayMethodError = '';
+                    this.setArticleCopyState('idle');
                     this.overlayProgress = { message: '' };
                     this.overlayArticle = null;
                     this.isLoadingOverlay = false;
@@ -3514,6 +3751,13 @@
 
                 proxyImageUrl(url) {
                     if (!url) return "";
+                    if (url.startsWith('/api/og-image')) {
+                        try {
+                            const versioned = new URL(url, window.location.origin);
+                            versioned.searchParams.set('v', '31');
+                            return versioned.pathname + versioned.search;
+                        } catch (error) { }
+                    }
                     if (url.includes("baodautu.vn") || url.includes("baoxaydung.com.vn") || url.includes("baoxaydung.vn")) {
                         return "/api/proxy-image?url=" + encodeURIComponent(url);
                     }

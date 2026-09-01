@@ -64,7 +64,7 @@ import dotenv from 'dotenv';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { createHash } from 'crypto';
-import { createSmartNewsEngine, cleanStoredCluster, calculateHotness, startSmartSyncLoop, scheduleMonthlySourceEvaluation, setClusteringModel } from './smart-news.js';
+import { createSmartNewsEngine, cleanStoredCluster, calculateHotness, startSmartSyncLoop, scheduleMonthlySourceEvaluation, setClusteringModel, sourceFetchPolicyIdentity } from './smart-news.js';
 import sourceRegistry from './src/sources/index.js';
 import { transformVozRedditEmbeds } from './src/sources/VozSource.js';
 import GoogleDecoderPkg from 'google-news-url-decoder';
@@ -158,7 +158,7 @@ const ARTICLE_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;// NOTE: If you change anyt
 // Normal reads expire after seven days, but the underlying last-known-good
 // file remains available longer in case the publisher later removes the page.
 const ARTICLE_CACHE_LAST_KNOWN_TTL_MS = 90 * 24 * 60 * 60 * 1000;
-const ARTICLE_CACHE_VERSION = 29;
+const ARTICLE_CACHE_VERSION = 44;
 const execFileAsync = promisify(execFile);
 
 let _articleCacheIndex = null;
@@ -183,6 +183,44 @@ function normalizeCachedArticleForSource(url, result) {
         console.warn(`[ARTICLE CACHE] Source-specific cleanup failed for ${url}: ${error.message}`);
         return result;
     }
+}
+
+function enhanceArticleResultForSource(url, result, context = {}) {
+    if (!result || typeof result !== 'object') return result;
+    try {
+        const sourceHandler = sourceRegistry.getHandler(url);
+        return sourceHandler?.enhanceArticleResult
+            ? sourceHandler.enhanceArticleResult(result, { url, ...context })
+            : result;
+    } catch (error) {
+        console.warn(`[ARTICLE] Source-specific result enhancement failed for ${url}: ${error.message}`);
+        return result;
+    }
+}
+
+async function expandArticleResultForSource(url, result, context = {}) {
+    if (!result || typeof result !== 'object') return result;
+    try {
+        const sourceHandler = sourceRegistry.getHandler(url);
+        return sourceHandler?.expandArticleResult
+            ? await sourceHandler.expandArticleResult(result, {
+                url,
+                fetchPrimaryArticle: fetchPrimaryArticleForAggregate,
+                ...context
+            })
+            : result;
+    } catch (error) {
+        console.warn(`[ARTICLE] Source-specific expansion failed for ${url}: ${error.message}`);
+        return result;
+    }
+}
+
+function assertArticleResultAcceptedBySource(url, result) {
+    const sourceHandler = sourceRegistry.getHandler(url);
+    if (sourceHandler?.isUsableArticleResult?.(result, { url }) === false) {
+        throw new Error('The reader returned only a related-story fragment instead of the article body');
+    }
+    return result;
 }
 
 async function _initArticleCacheIndex() {
@@ -257,7 +295,13 @@ async function getCachedArticle(url) {
                 return null;
             }
         }
-        return normalizeCachedArticleForSource(url, cached.result);
+        const normalizedResult = normalizeCachedArticleForSource(url, cached.result);
+        try {
+            return assertArticleResultAcceptedBySource(url, normalizedResult);
+        } catch (error) {
+            console.warn(`[ARTICLE CACHE] Ignoring source-invalid cache for ${url}: ${error.message}`);
+            return null;
+        }
     } catch (e) {
         return null;
     }
@@ -278,6 +322,12 @@ async function getLastKnownCachedArticle(url) {
 async function cacheArticleResult(url, result) {
     result = normalizeCachedArticleForSource(url, result);
     if (!result?.content) return false;
+    try {
+        assertArticleResultAcceptedBySource(url, result);
+    } catch (error) {
+        console.warn(`[ARTICLE CACHE] Refusing source-invalid result for ${url}: ${error.message}`);
+        return false;
+    }
     if (isUnsafeVozThreadPayload(url, result) && result.sourceDeleted !== true) {
         console.warn(`[ARTICLE CACHE] Refusing to overwrite ${url} with a VOZ error page.`);
         return false;
@@ -376,13 +426,30 @@ function safeHttpUrl(value) {
     }
 }
 
-function renderJinaInline(text = '') {
+function renderJinaInline(text = '', pageUrl = '') {
     const placeholders = [];
     const stash = html => {
         const token = '@@JINA' + placeholders.length + '@@';
         placeholders.push(html);
         return token;
     };
+
+    const resolveLink = value => {
+        const decoded = decodeHTMLEntities(String(value || '').trim());
+        if (/^#[^\s]+$/.test(decoded)) return decoded;
+        try {
+            const resolved = pageUrl ? new URL(decoded, pageUrl).href : decoded;
+            return safeHttpUrl(resolved);
+        } catch (error) {
+            return '';
+        }
+    };
+    const renderLinkLabel = value => escapeHtml(String(value || '').replace(/\\([\\`*_[\]{}()#+\-.!>])/g, '$1'))
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/__([^_]+)__/g, '<strong>$1</strong>')
+        .replace(/(^|[\s(])\*([^*\n]+)\*(?=$|[\s).,;:!?])/g, '$1<em>$2</em>')
+        .replace(/(^|[\s(])_([^_\n]+)_(?=$|[\s).,;:!?])/g, '$1<em>$2</em>')
+        .replace(/\x60([^\x60]+)\x60/g, '<code>$1</code>');
 
     let rendered = String(text);
     // Empty Markdown links are icon-only share/comment controls after reader
@@ -391,8 +458,14 @@ function renderJinaInline(text = '') {
     rendered = rendered.replace(/\\\[\s*([a-z])\s*\\\]/gi, (match, marker) => {
         return stash('<sup class="article-reference-marker" aria-label="Reference ' + escapeHtml(marker) + '">[' + escapeHtml(marker) + ']</sup>');
     });
-    rendered = rendered.replace(/\[([a-z])\]\((#[^)\s]+)\)/gi, (match, marker, anchor) => {
+    rendered = rendered.replace(/\[\\\[\s*([a-z])\s*\\\]\]\((#[^)\s]+)(?:\s+"[^"]*")?\)/gi, (match, marker, anchor) => {
         return stash('<sup class="article-reference-marker"><a class="article-inline-link" href="' + escapeHtml(anchor) + '">[' + escapeHtml(marker) + ']</a></sup>');
+    });
+    rendered = rendered.replace(/\[([a-z])\]\((#[^)\s]+)(?:\s+"[^"]*")?\)/gi, (match, marker, anchor) => {
+        return stash('<sup class="article-reference-marker"><a class="article-inline-link" href="' + escapeHtml(anchor) + '">[' + escapeHtml(marker) + ']</a></sup>');
+    });
+    rendered = rendered.replace(/(^|[\s(])\[([a-z])\](?=$|[\s).,;:!?])/gi, (match, prefix, marker) => {
+        return prefix + stash('<sup class="article-reference-marker" aria-label="Reference ' + escapeHtml(marker) + '">[' + escapeHtml(marker) + ']</sup>');
     });
     rendered = rendered.replace(/<audio\b[^>]*\bsrc=(['"])([^'"]+)\1[^>]*>[\s\S]*?<\/audio>/gi, (match, quote, audioUrl) => {
         const safeAudio = safeHttpUrl(decodeHTMLEntities(audioUrl));
@@ -405,34 +478,43 @@ function renderJinaInline(text = '') {
         return stash('<video controls playsinline preload="metadata" src="' + escapeHtml(safeVideo) + '">Video playback is not supported by this browser.</video>');
     });
     rendered = rendered.replace(/\[!\[([^\]]*)\]\((https?:\/\/[^)\s]+)(?:\s+"[^"]*")?\)\]\((https?:\/\/[^)\s]+)(?:\s+"[^"]*")?\)/g, (match, alt, imageUrl, linkUrl) => {
-        const safeImage = safeHttpUrl(imageUrl);
+        const safeImage = resolveLink(imageUrl);
         if (!safeImage) return alt;
         return stash('<img src="' + escapeHtml(safeImage) + '" alt="' + escapeHtml(alt) + '">');
     });
     rendered = rendered.replace(/!\[([^\]]*)\]\((https?:\/\/[^)\s]+)(?:\s+"[^"]*")?\)/g, (match, alt, imageUrl) => {
-        const safeImage = safeHttpUrl(imageUrl);
+        const safeImage = resolveLink(imageUrl);
         if (!safeImage) return alt;
         return stash('<img src="' + escapeHtml(safeImage) + '" alt="' + escapeHtml(alt) + '">');
     });
     rendered = rendered.replace(/\[(?:Video|Clip)\s+\d+\]\((https?:\/\/[^)\s]+\.(?:m3u8|mp4|webm|ogg)(?:[?#][^)\s]*)?)(?:\s+"[^"]*")?\)/gi, (match, videoUrl) => {
-        const safeVideo = safeHttpUrl(videoUrl);
+        const safeVideo = resolveLink(videoUrl);
         if (!safeVideo) return '';
         return stash('<video controls playsinline preload="metadata" src="' + escapeHtml(safeVideo) + '">Video playback is not supported by this browser.</video>');
     });
     rendered = rendered.replace(/\[([^\]]*)\]\((https?:\/\/[^)\s]+\.(?:mp3|m4a|aac|ogg|oga|wav|flac)(?:[?#][^)\s]*)?)(?:\s+"[^"]*")?\)/gi, (match, label, audioUrl) => {
-        const safeAudio = safeHttpUrl(audioUrl);
+        const safeAudio = resolveLink(audioUrl);
         if (!safeAudio) return label;
         return stash('<div class="article-audio-player"><audio controls playsinline preload="metadata" src="' + escapeHtml(safeAudio) + '">Audio playback is not supported by this browser.</audio></div>');
     });
     rendered = rendered.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)(?:\s+"[^"]*")?\)/g, (match, label, linkUrl) => {
-        const safeLink = safeHttpUrl(decodeHTMLEntities(linkUrl));
+        const safeLink = resolveLink(linkUrl);
         if (!safeLink) return label;
-        return stash('<a class="article-inline-link" href="' + escapeHtml(safeLink) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(label) + '</a>');
+        return stash('<a class="article-inline-link" href="' + escapeHtml(safeLink) + '" target="_blank" rel="noopener noreferrer">' + renderLinkLabel(label) + '</a>');
     });
+    rendered = rendered.replace(/\[([^\]]+)\]\((#[^)\s]+)(?:\s+"[^"]*")?\)/g, (match, label, anchor) => {
+        return stash('<a class="article-inline-link" href="' + escapeHtml(anchor) + '">' + renderLinkLabel(label) + '</a>');
+    });
+
+    // Protect explicitly escaped Markdown punctuation before emphasis parsing.
+    // This keeps identifiers such as \_id\_ literal without leaking the
+    // backslashes into rendered article text.
+    rendered = rendered.replace(/\\([\\`*_[\]{}()#+\-.!>])/g, (match, character) => stash(escapeHtml(character)));
 
     rendered = escapeHtml(rendered)
         .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
         .replace(/__([^_]+)__/g, '<strong>$1</strong>')
+        .replace(/(^|[\s(])\*([^*\n]+)\*(?=$|[\s).,;:!?])/g, '$1<em>$2</em>')
         .replace(/(^|[\s(])_([^_\n]+)_(?=$|[\s).,;:!?])/g, '$1<em>$2</em>')
         .replace(/\x60([^\x60]+)\x60/g, '<code>$1</code>');
 
@@ -444,14 +526,14 @@ function renderJinaInline(text = '') {
     return rendered.replace(/@@JINA\d+@@/g, '');
 }
 
-function jinaMarkdownToHtml(markdown = '') {
+function jinaMarkdownToHtml(markdown = '', pageUrl = '') {
     const html = [];
     let paragraph = [];
     let listType = null;
 
     const flushParagraph = () => {
         if (paragraph.length) {
-            html.push('<p>' + renderJinaInline(paragraph.join(' ')) + '</p>');
+            html.push('<p>' + renderJinaInline(paragraph.join(' '), pageUrl) + '</p>');
             paragraph = [];
         }
     };
@@ -479,7 +561,7 @@ function jinaMarkdownToHtml(markdown = '') {
             flushParagraph();
             closeList();
             const level = Math.min(heading[1].length + 1, 4);
-            html.push('<h' + level + '>' + renderJinaInline(heading[2]) + '</h' + level + '>');
+            html.push('<h' + level + '>' + renderJinaInline(heading[2], pageUrl) + '</h' + level + '>');
         } else if (unordered || ordered) {
             flushParagraph();
             const nextListType = unordered ? 'ul' : 'ol';
@@ -488,11 +570,11 @@ function jinaMarkdownToHtml(markdown = '') {
                 listType = nextListType;
                 html.push('<' + listType + '>');
             }
-            html.push('<li>' + renderJinaInline((unordered || ordered)[1]) + '</li>');
+            html.push('<li>' + renderJinaInline((unordered || ordered)[1], pageUrl) + '</li>');
         } else if (quote) {
             flushParagraph();
             closeList();
-            html.push('<blockquote>' + renderJinaInline(quote[1]) + '</blockquote>');
+            html.push('<blockquote>' + renderJinaInline(quote[1], pageUrl) + '</blockquote>');
         } else if (/^[-*_]{3,}$/.test(line)) {
             flushParagraph();
             closeList();
@@ -738,6 +820,7 @@ function parseJinaReaderText(text, url) {
     }
 
     let readerType = 'article';
+    let sourceMetadata = {};
     try {
         let sourceHandler = sourceRegistry.getHandler(url);
         if (sourceHandler && sourceHandler.parseJinaReaderText) {
@@ -745,6 +828,7 @@ function parseJinaReaderText(text, url) {
             if (handled) {
                 markdown = handled.markdown;
                 readerType = handled.readerType || readerType;
+                sourceMetadata = handled;
             }
         }
     } catch (e) { }
@@ -754,16 +838,17 @@ function parseJinaReaderText(text, url) {
 
     const allImages = [...markdown.matchAll(/!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/g)].map(m => m[1]);
     const validImage = allImages.find(img => !isInvalidImage(img) && !img.includes('avplayer.com')) || allImages.find(img => !isInvalidImage(img)) || '';
-    let content = normalizeArticleMediaMarkup(cleanArticleMarkup(jinaMarkdownToHtml(markdown)), url);
+    let content = normalizeArticleMediaMarkup(cleanArticleMarkup(jinaMarkdownToHtml(markdown, url)), url);
     if (title) {
         const escapedTitle = escapeHtml(title).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         content = content.replace(new RegExp('^<h[1-3]>' + escapedTitle + '<\\/h[1-3]>', 'i'), '');
     }
     return {
         title,
-        author: trimmed.author,
+        author: sourceMetadata.author || trimmed.author,
         date: dateMatch ? dateMatch[1].trim() : trimmed.extractedDate,
-        image: validImage ? safeHttpUrl(validImage) : '',
+        image: sourceMetadata.image || (validImage ? safeHttpUrl(validImage) : ''),
+        imageCaption: sourceMetadata.imageCaption || '',
         siteName: new URL(url).hostname.replace(/^www\./, ''),
         content,
         readerType,
@@ -771,7 +856,7 @@ function parseJinaReaderText(text, url) {
     };
 }
 
-function parseOpenCliMarkdown(markdown, url) {
+function parseOpenCliMarkdown(markdown, url, options = {}) {
     if (isDeletedArticlePayload(url, markdown)) {
         const kind = deletedSourceKind(url);
         return {
@@ -799,33 +884,46 @@ function parseOpenCliMarkdown(markdown, url) {
     }
     let sourceHandler = null;
     let readerType = 'browser-reader';
+    let sourceMetadata = {};
     try {
         sourceHandler = sourceRegistry.getHandler(url);
         if (sourceHandler?.parseOpenCliMarkdown) {
-            const handled = sourceHandler.parseOpenCliMarkdown(source);
+            const handled = sourceHandler.parseOpenCliMarkdown(source, {
+                url,
+                diagnostics: options.diagnostics || ''
+            });
             if (handled?.markdown) source = handled.markdown;
             if (handled?.readerType) readerType = handled.readerType;
+            if (handled) sourceMetadata = handled;
         }
     } catch (error) {
         console.warn(`[OPENCLI] Source-specific Markdown cleanup failed for ${url}: ${error.message}`);
     }
     const trimmed = trimJinaArticleMarkdown(source);
     source = trimmed.markdown;
-    let content = normalizeArticleMediaMarkup(cleanArticleMarkup(jinaMarkdownToHtml(source)), url);
+    let content = normalizeArticleMediaMarkup(cleanArticleMarkup(jinaMarkdownToHtml(source, url)), url);
     if (sourceHandler?.cleanCachedArticleContent) {
-        content = sourceHandler.cleanCachedArticleContent(content);
+        content = sourceHandler.cleanCachedArticleContent(content, {
+            url,
+            source: 'opencli',
+            chartUrls: sourceMetadata.chartUrls || [],
+            latestArticles: sourceMetadata.latestArticles || null
+        });
     }
     const allImages = [...source.matchAll(/!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/g)].map(m => m[1]);
     const validImage = allImages.find(img => !isInvalidImage(img) && !img.includes('avplayer.com')) || allImages.find(img => !isInvalidImage(img)) || '';
     return {
         title,
-        author: trimmed.author,
+        author: sourceMetadata.author || trimmed.author,
         date: trimmed.extractedDate,
-        image: validImage ? safeHttpUrl(validImage) : '',
+        image: sourceMetadata.image || (validImage ? safeHttpUrl(validImage) : ''),
+        imageCaption: sourceMetadata.imageCaption || '',
         siteName: new URL(url).hostname.replace(/^www\./, ''),
         content,
         readerType,
-        source: 'opencli'
+        source: 'opencli',
+        ...(sourceMetadata.chartUrls?.length ? { chartUrls: sourceMetadata.chartUrls } : {}),
+        ...(sourceMetadata.latestArticles?.items?.length ? { latestArticles: sourceMetadata.latestArticles } : {})
     };
 }
 
@@ -834,18 +932,23 @@ async function fetchViaOpenCli(url) {
         return fetchRedditViaOpenCli(url);
     }
     const executable = path.resolve('./node_modules/.bin/opencli');
-    const { stdout } = await execFileAsync(executable, [
+    const sourceHandler = sourceRegistry.getHandler(url);
+    const captureDiagnostics = Boolean(sourceHandler?.needsOpenCliDiagnostics?.());
+    const args = [
         'web', 'read', '--url', url,
         '--stdout', 'true',
         '--download-images', 'false',
         '--wait', '3',
         '--window', 'background'
-    ], {
+    ];
+    if (captureDiagnostics) args.push('--diagnose', 'true');
+    const { stdout, stderr } = await execFileAsync(executable, args, {
         timeout: 45000,
         maxBuffer: 12 * 1024 * 1024
     });
-    const parsed = parseOpenCliMarkdown(stdout, url);
+    const parsed = parseOpenCliMarkdown(stdout, url, { diagnostics: stderr });
     if (parsed.isDeletedSource) return parsed;
+    assertArticleResultAcceptedBySource(url, parsed);
     const textLength = parsed.content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().length;
     if (textLength < 200 && !/<(?:img|video|audio)\b/i.test(parsed.content)) {
         throw new Error('OpenCLI returned too little article content');
@@ -887,6 +990,7 @@ async function fetchViaJina(url) {
         const parsed = parseJinaReaderText(await response.text(), url);
         if (parsed.isDeletedSource) return parsed;
         if (isUnsafeVozThreadPayload(url, parsed)) throw new Error('Jina Reader returned a VOZ error page');
+        assertArticleResultAcceptedBySource(url, parsed);
         const textLength = parsed.content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().length;
         const hasMedia = /<(?:img|video|audio)\b/i.test(parsed.content);
         const minimumLength = parsed.readerType === 'forum-post' ? 40 : 200;
@@ -1052,7 +1156,8 @@ async function acquireDatabaseWriterLock() {
     throw new Error('Could not acquire the database writer lock');
 }
 
-const databaseWriterLock = (!process.env.SKIP_DB_LOCK && isMainThread) ? await acquireDatabaseWriterLock() : null;
+const isMainModule = process.argv[1] && process.argv[1] === fileURLToPath(import.meta.url);
+const databaseWriterLock = (!process.env.SKIP_DB_LOCK && isMainThread && isMainModule) ? await acquireDatabaseWriterLock() : null;
 process.on('exit', () => {
     try {
         const owner = JSON.parse(readFileSync(DB_WRITER_LOCK_FILE, 'utf-8'));
@@ -2082,12 +2187,54 @@ async function getBestImage(targetUrl, fetchFn, rssFallback = null) {
     const trackedFetch = createTrackedFetch(fetchFn);
     try {
         try {
-            let sourceHandler = sourceRegistry.getHandler(targetUrl);
+            const sourceHandler = sourceRegistry.getHandler(targetUrl);
+            const cachedArticle = await getLastKnownCachedArticle(targetUrl);
+            const cachedImage = cachedArticle?.image;
+            if (cachedImage && !isInvalidImage(cachedImage) && !sourceHandler?.isInvalidFeedImage?.(cachedImage)) {
+                return cachedImage;
+            }
             if (sourceHandler && sourceHandler.getBestImage) {
-                let handledImg = await sourceHandler.getBestImage(targetUrl, trackedFetch.fetch, rssFallback, { extractImageFromHtml, fetchWithCookies, isInvalidImage, CF_PROXY_BASE });
+                let handledImg = await sourceHandler.getBestImage(targetUrl, trackedFetch.fetch, rssFallback, {
+                    extractImageFromHtml,
+                    fetchWithCookies,
+                    fetchArticleWithBrowser: async browserUrl => {
+                        const browserArticle = enhanceArticleResultForSource(
+                            browserUrl,
+                            await fetchViaOpenCli(browserUrl)
+                        );
+                        await cacheArticleResult(browserUrl, {
+                            url: browserUrl,
+                            ...browserArticle,
+                            fetchStrategy: 'opencli'
+                        });
+                        return browserArticle;
+                    },
+                    isInvalidImage,
+                    CF_PROXY_BASE
+                });
                 if (handledImg === 'NO_FALLBACK') return null;
                 if (handledImg) return handledImg;
             }
+
+            // Metadata endpoints and documentation sites often allow the
+            // original HTML while proxy mirrors omit or rewrite og:image.
+            // Prefer that canonical metadata before trying the proxy.
+            try {
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), 8000);
+                try {
+                    const directResponse = await trackedFetch.fetch(targetUrl, { signal: controller.signal });
+                    if (directResponse.ok) {
+                        const directHtml = await directResponse.text();
+                        const directImage = extractImageFromHtml(directHtml, targetUrl);
+                        if (directImage) {
+                            return directImage.startsWith('/') ? new URL(directImage, targetUrl).href : directImage;
+                        }
+                    }
+                } finally {
+                    clearTimeout(timeout);
+                }
+            } catch (error) { }
 
             let fetchUrl = CF_PROXY_BASE + encodeURIComponent(targetUrl);
             const res = await trackedFetch.fetch(fetchUrl);
@@ -2111,6 +2258,30 @@ async function getBestImage(targetUrl, fetchFn, rssFallback = null) {
     } finally {
         await trackedFetch.discardUnread();
     }
+}
+
+const EAGER_ARTICLE_IMAGE_CONCURRENCY = 2;
+let activeEagerArticleImages = 0;
+const eagerArticleImageQueue = [];
+
+function scheduleEagerArticleImage(task) {
+    return new Promise((resolve, reject) => {
+        eagerArticleImageQueue.push({ task, resolve, reject });
+        const drain = () => {
+            while (activeEagerArticleImages < EAGER_ARTICLE_IMAGE_CONCURRENCY && eagerArticleImageQueue.length) {
+                const job = eagerArticleImageQueue.shift();
+                activeEagerArticleImages++;
+                Promise.resolve()
+                    .then(job.task)
+                    .then(job.resolve, job.reject)
+                    .finally(() => {
+                        activeEagerArticleImages--;
+                        drain();
+                    });
+            }
+        };
+        drain();
+    });
 }
 
 async function fetchPdfCreationDate(url) {
@@ -2190,7 +2361,14 @@ async function syncFeeds(env, targetFeedUrl = null, onProgress = null, targetCat
     const historyDateMap = new Map();
     const historyStatsMap = new Map();
     for (const article of existingArticles) {
-        if (article.image && !article.image.includes('/api/og-image')) historyImageMap.set(article.link, article.image);
+        let historicalImage = article.image;
+        if (historicalImage && !historicalImage.includes('/api/og-image') && !isInvalidImage(historicalImage)) {
+            try {
+                const articleSource = sourceRegistry.getHandler(article.link);
+                if (articleSource?.isInvalidFeedImage?.(historicalImage)) historicalImage = null;
+            } catch (error) { }
+            if (historicalImage) historyImageMap.set(article.link, historicalImage);
+        }
         if (article.pubDate) historyDateMap.set(article.link, article.pubDate);
         historyStatsMap.set(article.link, {
             replyCount: article.replyCount || 0,
@@ -2755,6 +2933,8 @@ async function syncFeeds(env, targetFeedUrl = null, onProgress = null, targetCat
                     }
                 }
 
+                const eagerImageTasks = [];
+                const openCliOnlyNewArticles = [];
                 for (const item of feedData.items) {
                     let safeLink = cleanUrl(item.link);
                     if (decodedGoogleNewsLinks.has(item.link)) {
@@ -2772,11 +2952,18 @@ async function syncFeeds(env, targetFeedUrl = null, onProgress = null, targetCat
                             item.replyCount = stats.replies;
                         }
                     }
+                    let articleSource = null;
+                    try { articleSource = sourceRegistry.getHandler(safeLink); } catch (error) { }
                     let rssImageUrl = item.imageUrl;
                     if (rssImageUrl && rssImageUrl.startsWith('/')) {
                         try { rssImageUrl = new URL(rssImageUrl, feed.url).href; } catch (e) { }
                     }
                     if (isInvalidImage(rssImageUrl)) rssImageUrl = null;
+                    if (rssImageUrl) {
+                        try {
+                            if (articleSource?.isInvalidFeedImage?.(rssImageUrl)) rssImageUrl = null;
+                        } catch (error) { }
+                    }
                     let finalImage = null;
                     if (!isVoz && rssImageUrl) finalImage = rssImageUrl;
                     if (!finalImage && historyImageMap.has(safeLink)) finalImage = historyImageMap.get(safeLink);
@@ -2854,7 +3041,7 @@ async function syncFeeds(env, targetFeedUrl = null, onProgress = null, targetCat
                         if (!finalCreateDate && histStats.createDate) finalCreateDate = histStats.createDate;
                     }
 
-                    newArticles.push({
+                    const articleRecord = {
                         feedUrl: feed.url,
                         feedTitle: finalTitle,
                         feedIcon: finalIcon,
@@ -2868,8 +3055,28 @@ async function syncFeeds(env, targetFeedUrl = null, onProgress = null, targetCat
                         content: item.content,
                         replyCount: finalReplyCount,
                         viewCount: finalViewCount
-                    });
+                    };
+                    newArticles.push(articleRecord);
+
+                    if (!historyStatsMap.has(safeLink) && hasOnlyOpenCliFetchMethod(feed.fetchMethods)) {
+                        openCliOnlyNewArticles.push(articleRecord);
+                    }
+
+                    if (!finalImage && articleSource?.shouldResolveImageOnIngest?.()) {
+                        eagerImageTasks.push(scheduleEagerArticleImage(async () => {
+                            const resolvedImage = await getBestImage(
+                                safeLink,
+                                (imageUrl, options = {}) => fetch(imageUrl, { headers: BROWSER_HEADERS, ...options }),
+                                rssImageUrl
+                            );
+                            if (resolvedImage) articleRecord.image = resolvedImage;
+                        }).catch(error => {
+                            console.warn(`[IMAGE INGEST] Could not resolve ${safeLink}: ${error.message}`);
+                        }));
+                    }
                 }
+                await Promise.all(eagerImageTasks);
+                await prefetchOpenCliOnlyArticles(openCliOnlyNewArticles, feed.url);
                 recordFetch(feed.url, feed.title || feed.url, 'success', `${feedData.items.length} articles`, Date.now() - feedFetchStart);
             } catch (parseErr) {
                 syncLogs.push({ Feed: feed.title || feed.url, Issue: `XML Parser crashed: ${parseErr.message}` });
@@ -2993,15 +3200,29 @@ async function syncFeeds(env, targetFeedUrl = null, onProgress = null, targetCat
 
     await env.RSS_DATA.putMany(pendingDatabaseUpdates);
 
+    // A full feed refresh rewrites the feed list from its opening snapshot.
+    // Re-apply publisher policies afterward so a concurrent refresh cannot
+    // restore an older per-feed copy of the setting.
+    if (!targetFeedUrl) {
+        await reconcileAllConfiguredSourceFetchMethods();
+    }
+
     return { success: true, logs: syncLogs };
 }
 
 const smartNews = createSmartNewsEngine({
     db: env.RSS_DATA,
-    helpers: { fastParseRSS, waitForHttpIdle },
+    helpers: { fastParseRSS, waitForHttpIdle, prefetchOpenCliOnlyArticles },
     headers: BROWSER_HEADERS,
     geminiKeyManager
 });
+
+const sourceFetchPolicyStartupSync = setTimeout(() => {
+    reconcileAllConfiguredSourceFetchMethods().catch(error => {
+        console.error('[FETCH POLICY] Could not synchronize existing source settings:', error.message);
+    });
+}, 0);
+if (sourceFetchPolicyStartupSync.unref) sourceFetchPolicyStartupSync.unref();
 
 // ============================================================================
 // EXPRESS ROUTES
@@ -3255,14 +3476,19 @@ app.post('/api/content-filter-preview', authMiddleware, async (req, res) => {
 });
 
 app.get('/api/smart-sources', authMiddleware, async (req, res) => {
-    const sources = await smartNews.getSourceSettings();
-    res.json({ sources });
+    try {
+        const { sources } = await reconcileAllConfiguredSourceFetchMethods();
+        res.json({ sources });
+    } catch (error) {
+        res.status(500).json({ sources: [], error: error.message });
+    }
 });
 
 app.post('/api/smart-sources', authMiddleware, async (req, res) => {
     try {
-        const sources = await smartNews.addSource(req.body || {});
-        res.json({ ok: true, sources });
+        await smartNews.addSource(req.body || {});
+        const synchronized = await reconcileAllConfiguredSourceFetchMethods();
+        res.json({ ok: true, ...synchronized });
     } catch (error) {
         res.status(400).json({ ok: false, error: error.message });
     }
@@ -3279,6 +3505,17 @@ app.delete('/api/smart-sources', authMiddleware, async (req, res) => {
 
 app.patch('/api/smart-sources', authMiddleware, async (req, res) => {
     try {
+        if (Array.isArray(req.body?.fetchMethods)) {
+            const currentSources = await smartNews.getSourceSettings();
+            const targetSource = currentSources.find(source => source.url === req.body?.url);
+            if (!targetSource) throw new Error('Smart source not found.');
+            const synchronized = await synchronizeConfiguredSourceFetchMethods(
+                targetSource,
+                req.body.fetchMethods
+            );
+            return res.json({ ok: true, ...synchronized });
+        }
+
         const sources = await smartNews.setSourceEnabled(req.body?.url, req.body?.enabled !== false);
         res.json({ ok: true, sources });
     } catch (error) {
@@ -3297,8 +3534,9 @@ app.post('/api/smart-sources/discover', authMiddleware, async (req, res) => {
 
 app.post('/api/smart-sources/reset', authMiddleware, async (req, res) => {
     try {
-        const sources = await smartNews.resetSources();
-        res.json({ ok: true, sources });
+        await smartNews.resetSources();
+        const synchronized = await reconcileAllConfiguredSourceFetchMethods();
+        res.json({ ok: true, ...synchronized });
     } catch (error) {
         res.status(500).json({ ok: false, error: error.message });
     }
@@ -3572,6 +3810,26 @@ async function prepareArticleForClient(article, isSubItem = false) {
     if (safeHttpUrl(prepared.link) && (!prepared.feedIcon || /icons\.duckduckgo\.com\/ip3\//i.test(prepared.feedIcon))) {
         prepared.feedIcon = publisherIcon(prepared.link);
     }
+
+    // Techmeme's RSS entry points to the Techmeme discussion page, while the
+    // cached expanded article knows the original publisher. Surface that
+    // metadata on list cards without re-fetching anything during tab open.
+    try {
+        const hostname = new URL(prepared.link).hostname.replace(/^www\./, '');
+        if (hostname === 'techmeme.com' && !prepared.primarySource) {
+            let cached = await getLastKnownCachedArticle(prepared.link);
+            if (!cached && new URL(prepared.link).hash) {
+                const unfragmented = new URL(prepared.link);
+                unfragmented.hash = '';
+                cached = await getLastKnownCachedArticle(unfragmented.href);
+            }
+            if (cached?.primarySource) {
+                prepared.primarySource = cached.primarySource;
+                prepared.primaryArticleUrl = cached.primaryArticleUrl || cached.primarySource.url || '';
+                prepared.primaryArticleFetched = cached.primaryArticleFetched === true;
+            }
+        }
+    } catch (error) { }
     
     if (!prepared.originalLink) prepared.originalLink = prepared.link;
     prepared.link = normalizeStateUrl(prepared.link);
@@ -3598,6 +3856,34 @@ class NormalizedMap extends Map {
 
 const smartApiViewCache = new Map();
 let latestSmartApiVersion = '';
+let unavailableSourceMutation = Promise.resolve();
+
+function markUnavailableSourceUrl(url) {
+    const normalizedUrl = normalizeStateUrl(url);
+    if (!normalizedUrl) return Promise.resolve();
+    unavailableSourceMutation = unavailableSourceMutation.catch(() => {}).then(async () => {
+        const urls = await env.RSS_DATA.get('unavailableSourceUrls', { type: 'json' }) || [];
+        const unavailable = new NormalizedSet(urls);
+        if (unavailable.has(normalizedUrl)) return;
+        urls.push(normalizedUrl);
+        await env.RSS_DATA.put('unavailableSourceUrls', JSON.stringify(urls));
+        smartApiViewCache.clear();
+    });
+    return unavailableSourceMutation;
+}
+
+function clearUnavailableSourceUrl(url) {
+    const normalizedUrl = normalizeStateUrl(url);
+    if (!normalizedUrl) return Promise.resolve();
+    unavailableSourceMutation = unavailableSourceMutation.catch(() => {}).then(async () => {
+        const urls = await env.RSS_DATA.get('unavailableSourceUrls', { type: 'json' }) || [];
+        const nextUrls = urls.filter(value => normalizeStateUrl(value) !== normalizedUrl);
+        if (nextUrls.length === urls.length) return;
+        await env.RSS_DATA.put('unavailableSourceUrls', JSON.stringify(nextUrls));
+        smartApiViewCache.clear();
+    });
+    return unavailableSourceMutation;
+}
 
 function isInvestingSmartArticle(article) {
     if (!article) return false;
@@ -3654,6 +3940,24 @@ function buildSmartApiView(rawClusters, filterValue) {
     return clusters;
 }
 
+function removeUnavailableSmartSources(article, unavailableSet) {
+    const available = [article, ...(Array.isArray(article.relatedArticles) ? article.relatedArticles : [])]
+        .filter(candidate => candidate?.link && !unavailableSet.has(candidate.link));
+    if (!available.length) return null;
+
+    const primary = available[0] === article ? article : { ...article, ...available[0] };
+    const relatedArticles = available.slice(1);
+    const sources = [...new Set([primary.feedTitle, ...relatedArticles.map(related => related.feedTitle)].filter(Boolean))];
+    return {
+        ...primary,
+        relatedArticles,
+        clusterCount: relatedArticles.length + 1,
+        sourceCount: sources.length,
+        sources,
+        hotness: calculateHotness([primary, ...relatedArticles])
+    };
+}
+
 async function serveSmartData(req, res) {
     const startedAt = Date.now();
     const filterValue = req.query.filterValue || '';
@@ -3668,7 +3972,8 @@ async function serveSmartData(req, res) {
         hiddenStates,
         categoryOrder,
         userPreferences,
-        blockedKeywords
+        blockedKeywords,
+        unavailableSourceUrls
     ] = await Promise.all([
         env.RSS_DATA.get('feeds', { type: 'json' }),
         env.RSS_DATA.get('readStates', { type: 'json' }),
@@ -3677,7 +3982,8 @@ async function serveSmartData(req, res) {
         env.RSS_DATA.get('hiddenStates', { type: 'json' }),
         env.RSS_DATA.get('categoryOrder', { type: 'json' }),
         env.RSS_DATA.get('userPreferences', { type: 'json' }),
-        env.RSS_DATA.get('blockedArticleKeywords', { type: 'json' })
+        env.RSS_DATA.get('blockedArticleKeywords', { type: 'json' }),
+        env.RSS_DATA.get('unavailableSourceUrls', { type: 'json' })
     ]);
 
     let smartClusterVersion = await env.RSS_DATA.get('smartClusterVersion') || '';
@@ -3711,10 +4017,14 @@ async function serveSmartData(req, res) {
 
     const readSet = new NormalizedSet(readStates || []);
     const hiddenSet = new NormalizedSet(hiddenStates || []);
+    const unavailableSet = new NormalizedSet(unavailableSourceUrls || []);
     const blockedKeywordEntries = normalizeBlockedKeywordEntries(blockedKeywords || []);
     const matchesSearch = value => String(value || '').toLowerCase().includes(searchQuery);
 
-    filteredArticles = filteredArticles.filter(article => {
+    filteredArticles = filteredArticles
+        .map(article => removeUnavailableSmartSources(article, unavailableSet))
+        .filter(Boolean)
+        .filter(article => {
         if (hiddenSet.has(article.link) || articleContentFilterMatches(article, blockedKeywordEntries)) return false;
         if (hideRead && readSet.has(article.link)) return false;
         if (!searchQuery) return true;
@@ -3724,7 +4034,7 @@ async function serveSmartData(req, res) {
             (Array.isArray(article.relatedArticles) && article.relatedArticles.some(related =>
                 matchesSearch(related.title) || matchesSearch(related.feedTitle)
             ));
-    });
+        });
 
     if (hideRead) {
         filteredArticles = filteredArticles.map(article => {
@@ -4529,20 +4839,27 @@ function normalizedHostname(value) {
 
 async function getConfiguredArticleFetchMethods(targetUrl, feedUrl = '') {
     const feeds = await env.RSS_DATA.get('feeds', { type: 'json' }) || [];
+    let smartSources = [];
+    try {
+        smartSources = await smartNews.getSourceSettings();
+    } catch (error) {
+        console.warn('[ARTICLE FETCH] Could not load Smart source policies:', error.message);
+    }
+    const configuredSources = [...feeds, ...smartSources];
     const validMethods = methods => Array.isArray(methods)
         ? [...new Set(methods.filter(method => method in ARTICLE_FETCH_BASE_POINTS))]
         : [];
 
-    const policyForFeedUrl = candidateFeedUrl => {
+    const policyForSourceUrl = candidateFeedUrl => {
         if (!candidateFeedUrl) return null;
-        const exactFeed = feeds.find(feed => feed.url === candidateFeedUrl);
+        const exactFeed = configuredSources.find(feed => feed.url === candidateFeedUrl);
         return exactFeed && Array.isArray(exactFeed.fetchMethods)
             ? validMethods(exactFeed.fetchMethods)
             : null;
     };
 
     if (feedUrl) {
-        const exactPolicy = policyForFeedUrl(feedUrl);
+        const exactPolicy = policyForSourceUrl(feedUrl);
         if (exactPolicy !== null) return exactPolicy;
     }
 
@@ -4559,7 +4876,7 @@ async function getConfiguredArticleFetchMethods(targetUrl, feedUrl = '') {
             .filter(Boolean))];
         if (associatedFeedUrls.length) {
             const associatedPolicies = associatedFeedUrls
-                .map(policyForFeedUrl)
+                .map(policyForSourceUrl)
                 .filter(policy => policy !== null);
             if (associatedPolicies.length === associatedFeedUrls.length) {
                 const signature = JSON.stringify(associatedPolicies[0]);
@@ -4577,7 +4894,7 @@ async function getConfiguredArticleFetchMethods(targetUrl, feedUrl = '') {
     // to the article instead of falling back to the global adaptive list.
     const targetHost = normalizedHostname(targetUrl);
     if (!targetHost) return null;
-    const hostFeeds = feeds.filter(feed => normalizedHostname(feed.url) === targetHost);
+    const hostFeeds = configuredSources.filter(feed => normalizedHostname(feed.url) === targetHost);
     if (!hostFeeds.length || hostFeeds.some(feed => !Array.isArray(feed.fetchMethods) || !feed.fetchMethods.length)) return null;
     const hostPolicies = hostFeeds.map(feed => validMethods(feed.fetchMethods));
     if (hostPolicies.some(methods => !methods.length)) return null;
@@ -4803,13 +5120,14 @@ function cleanArticleMarkup(markup) {
         cleaned = cleaned.slice(0, threadCommentIdx);
     }
     const isVozPost = cleaned.includes('voz-post');
+    const isTechmemeStory = cleaned.includes('class="techmeme-story"') || cleaned.includes("class='techmeme-story'");
 
     try {
         const $ = cheerio.load(cleaned, null, false);
         $('script,style,template,nav,form,noscript,button').remove();
         $('aside').not('.tuoitre-info-card').remove();
         $('[aria-hidden="true"]')
-            .not('.tuoitre-event-stream__icon, .tuoitre-event-stream__arrow')
+            .not('.tuoitre-event-stream__icon, .tuoitre-event-stream__arrow, .techmeme-x-post__avatar')
             .remove();
 
         const noise = /(?:advert|adsbygoogle|ad-container|breadcrumb|pagination|related|recommend|share|social|reaction|signature|message-user|message-attribution|message-footer|message-cell--user|post-meta|author-box|author-info|singular-author|user-info|user-panel|member-header|comment-list|comments-area|newsletter|subscribe|topic-list|trending|popular-post|read-more|tags-list|article__tags|author-area|menu-area|menu-container|action-bar|thread-action|thread-editor|relate-news|box-topic|tinlienquan|knc-relate|box-relate|zone-interlink|article-audio|tts-player|dt-size-6|detail-comment|box-comment|box-bottom|cmbl|detail-tab|admzone|link-source-detail)/i;
@@ -4819,7 +5137,8 @@ function cleanArticleMarkup(markup) {
             const tag = el.tagName;
             const marker = [node.attr('id'), node.attr('class'), node.attr('role')].filter(Boolean).join(' ');
             
-            if (noise.test(marker)) {
+            const isReaderOwnedSection = node.closest('.embedded-suggested-articles, .tuoitre-event-stream, .techmeme-x-posts, .techmeme-primary-article').length > 0;
+            if (noise.test(marker) && !isReaderOwnedSection) {
                 node.remove();
                 return;
             }
@@ -4926,7 +5245,9 @@ function cleanArticleMarkup(markup) {
             const node = $(el);
             if (node.hasClass('embedded-suggested-articles') || node.closest('.embedded-suggested-articles').length > 0 || 
                 node.hasClass('styled-rel-card') || node.closest('.styled-rel-card').length > 0 ||
-                node.hasClass('tuoitre-event-stream') || node.closest('.tuoitre-event-stream').length > 0) return;
+                node.hasClass('tuoitre-event-stream') || node.closest('.tuoitre-event-stream').length > 0 ||
+                node.hasClass('techmeme-x-posts') || node.closest('.techmeme-x-posts').length > 0 ||
+                node.hasClass('techmeme-primary-article') || node.closest('.techmeme-primary-article').length > 0) return;
             const textLength = node.text().replace(/\s+/g, ' ').trim().length;
             const links = node.find('a');
             let linkLength = 0;
@@ -4946,7 +5267,8 @@ function cleanArticleMarkup(markup) {
         if (!isVozPost) {
             $('a').each((i, el) => {
                 const node = $(el);
-                if (node.closest('.tuoitre-event-stream, .tuoitre-info-card, .embedded-suggested-articles').length > 0 || node.hasClass('styled-rel-card')) return;
+                if (node.closest('.tuoitre-event-stream, .embedded-suggested-articles').length > 0 ||
+                    node.closest('.tuoitre-info-card, .techmeme-x-posts, .techmeme-primary-article').length > 0 || node.hasClass('styled-rel-card')) return;
                 if (!node.hasClass('font-bold') && !node.hasClass('embedded-suggested-card') && !node.hasClass('article-inline-link')) {
                     node.replaceWith(node.html());
                 }
@@ -4956,11 +5278,13 @@ function cleanArticleMarkup(markup) {
         let out = $.html();
         out = out.replace(/(?:<br\s*\/?>\s*){3,}/gi, '<br><br>');
         
-        const boundaryPattern = /<(?:p|h[1-6]|div|section|ul|li)\b[^>]*>[\s\S]{0,350}?(?:Đọc tiếp\s*Về trang Chủ đề|Tặng sao cho bài viết hay|Đừng bỏ lỡ|Advertisements|(?:Trở lại|Quay lại)\s+(?:trang chủ|chuyên mục|Trang chủ|Chuyên mục)|(?:Bình luận|Comments)\s*\(\s*\d+\s*\)|Tin liên quan|Related stories|You may also like|Recommended for you|More stories|Read next|Tuổi Trẻ Online Newsletters|Thêm\s+[^\n<]{1,80}\s+trên Google|Chọn\s+[^\n<]{1,80}\s+làm nguồn ưu tiên|Chủ đề liên quan|Xem thêm:|\bTIN LIÊN QUAN\b|\bCHỦ ĐỀ LIÊN QUAN\b|Link bài gốc)[\s\S]{0,350}?<\/(?:p|h[1-6]|div|section|ul|li)>/giu;
-        const candidates = [...out.matchAll(boundaryPattern)]
-            .map(m => m.index || 0)
-            .filter(idx => out.slice(0, idx).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().length >= Math.max(250, Math.min(800, Math.floor(out.length * 0.25))));
-        if (candidates.length) out = out.slice(0, Math.min(...candidates));
+        if (!isTechmemeStory) {
+            const boundaryPattern = /<(?:p|h[1-6]|div|section|ul|li)\b[^>]*>[\s\S]{0,350}?(?:Đọc tiếp\s*Về trang Chủ đề|Tặng sao cho bài viết hay|Đừng bỏ lỡ|Advertisements|(?:Trở lại|Quay lại)\s+(?:trang chủ|chuyên mục|Trang chủ|Chuyên mục)|(?:Bình luận|Comments)\s*\(\s*\d+\s*\)|Tin liên quan|Related stories|You may also like|Recommended for you|More stories|Read next|Tuổi Trẻ Online Newsletters|Thêm\s+[^\n<]{1,80}\s+trên Google|Chọn\s+[^\n<]{1,80}\s+làm nguồn ưu tiên|Chủ đề liên quan|Xem thêm:|\bTIN LIÊN QUAN\b|\bCHỦ ĐỀ LIÊN QUAN\b|Link bài gốc)[\s\S]{0,350}?<\/(?:p|h[1-6]|div|section|ul|li)>/giu;
+            const candidates = [...out.matchAll(boundaryPattern)]
+                .map(m => m.index || 0)
+                .filter(idx => out.slice(0, idx).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().length >= Math.max(250, Math.min(800, Math.floor(out.length * 0.25))));
+            if (candidates.length) out = out.slice(0, Math.min(...candidates));
+        }
 
         out = out.replace(/^(?:\s*<(?:p|div|span)[^>]*>)?\s*([A-ZÀ-Ỹ\s]{3,25})\s+\1\b/u, '$1');
         return out;
@@ -5010,11 +5334,12 @@ async function fetchParsedArticleByStrategy(strategy, url, policy, feedUrl = '',
 
     if (strategy === 'jina') {
         const result = await fetchViaJina(url);
-        return {
+        const accepted = assertArticleResultAcceptedBySource(url, {
             ...commonMetadata,
             ...result,
             title: normalizeArticleTitle(result.title || fallbackTitle || '')
-        };
+        });
+        return expandArticleResultForSource(url, enhanceArticleResultForSource(url, accepted));
     }
 
     if (strategy === 'opencli') {
@@ -5022,11 +5347,12 @@ async function fetchParsedArticleByStrategy(strategy, url, policy, feedUrl = '',
         if (isUnsafeVozThreadPayload(url, result) && !isDeletedVozThreadPayload(url, result)) {
             throw new Error('OpenCLI returned a VOZ error page');
         }
-        return {
+        const accepted = assertArticleResultAcceptedBySource(url, {
             ...commonMetadata,
             ...result,
             title: normalizeArticleTitle(result.title || fallbackTitle || '')
-        };
+        });
+        return expandArticleResultForSource(url, enhanceArticleResultForSource(url, accepted));
     }
 
     const html = await fetchArticleHtmlByStrategy(strategy, url);
@@ -5042,7 +5368,7 @@ async function fetchParsedArticleByStrategy(strategy, url, policy, feedUrl = '',
     if (!html || !isUsableArticlePage(html)) {
         throw new Error('Fetched page did not contain usable article HTML');
     }
-    const result = await parseArticleHtmlContent(
+    let result = await parseArticleHtmlContent(
         html,
         url,
         strategy,
@@ -5055,8 +5381,87 @@ async function fetchParsedArticleByStrategy(strategy, url, policy, feedUrl = '',
     if (result) {
         result.feedUrl = feedUrl || result.feedUrl || '';
         result.title = normalizeArticleTitle(result.title || fallbackTitle || '');
+        result = enhanceArticleResultForSource(url, result);
+        result = await expandArticleResultForSource(url, result);
     }
     return result;
+}
+
+function hasOnlyOpenCliFetchMethod(methods) {
+    if (!Array.isArray(methods)) return false;
+    const normalized = [...new Set(methods.map(method => String(method || '').trim().toLowerCase()).filter(Boolean))];
+    return normalized.length === 1 && normalized[0] === 'opencli';
+}
+
+let openCliIngestPrefetchTail = Promise.resolve();
+const openCliIngestPrefetchInFlight = new Map();
+
+function scheduleOpenCliIngestPrefetch(article, feedUrl = '') {
+    const url = normalizeArticleSourceUrl(article?.link || article?.url || '');
+    if (!safeHttpUrl(url)) return Promise.resolve(false);
+    const key = normalizeStateUrl(url);
+    if (openCliIngestPrefetchInFlight.has(key)) return openCliIngestPrefetchInFlight.get(key);
+
+    const task = openCliIngestPrefetchTail
+        .catch(() => undefined)
+        .then(async () => {
+            if (await getCachedArticle(url)) return true;
+            const policy = await getArticleFetchPolicy(url, feedUrl);
+            if (!policy.hasStrictConfiguredMethods || !hasOnlyOpenCliFetchMethod(policy.strategyOrder)) return false;
+
+            const result = await fetchParsedArticleByStrategy(
+                'opencli',
+                url,
+                policy,
+                feedUrl,
+                article?.title || ''
+            );
+            if (!result?.content) throw new Error('OpenCLI returned no usable article content');
+            const cached = await cacheArticleResult(url, {
+                ...result,
+                url,
+                feedUrl: feedUrl || result.feedUrl || '',
+                fetchStrategy: 'opencli'
+            });
+            if (!cached) throw new Error('OpenCLI article content could not be cached');
+            console.log(`[OPENCLI INGEST] Cached new article before display: ${url}`);
+            return true;
+        });
+
+    const tracked = task
+        .catch(error => {
+            console.warn(`[OPENCLI INGEST] Could not prefetch ${url}: ${error.message}`);
+            return false;
+        })
+        .finally(() => openCliIngestPrefetchInFlight.delete(key));
+    openCliIngestPrefetchTail = tracked;
+    openCliIngestPrefetchInFlight.set(key, tracked);
+    return tracked;
+}
+
+async function prefetchOpenCliOnlyArticles(articles = [], feedUrl = '') {
+    if (!Array.isArray(articles) || !articles.length) return [];
+    return Promise.all(articles.map(article => scheduleOpenCliIngestPrefetch(article, feedUrl)));
+}
+
+async function fetchPrimaryArticleForAggregate(value) {
+    const url = normalizeArticleSourceUrl(value);
+    if (!url || normalizedHostname(url) === 'techmeme.com') return null;
+    const policy = await getArticleFetchPolicy(url, '');
+    const preferredOrder = ['jina', 'direct', 'cloudflare', 'vietserver', 'allorigins', 'opencli'];
+    const strategyOrder = preferredOrder.filter(strategy => policy.strategyOrder.includes(strategy));
+    for (const strategy of strategyOrder) {
+        try {
+            const result = await fetchParsedArticleByStrategy(strategy, url, policy);
+            if (!result?.content || isDeletedArticlePayload(url, result)) continue;
+            const textLength = String(result.content).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().length;
+            if (textLength >= 400) return result;
+        } catch (error) {
+            // The aggregate remains usable with its Techmeme summary when a
+            // publisher reader is unavailable or requires a subscription.
+        }
+    }
+    return null;
 }
 
 async function discoverArticleAudioUrls(html, pageUrl) {
@@ -5466,6 +5871,8 @@ async function triggerNextFiveArticlesPrefetch(currentUrl, dryRun = false, prefe
                 }
                 try {
                     const policy = await getArticleFetchPolicy(targetUrl, art?.feedUrl || '');
+                    const deletionEvidence = new Set();
+                    let prefetched = false;
                     for (const strategy of policy.strategyOrder) {
                         try {
                             const parsedPayload = await fetchParsedArticleByStrategy(
@@ -5476,16 +5883,29 @@ async function triggerNextFiveArticlesPrefetch(currentUrl, dryRun = false, prefe
                                 art?.title || ''
                             );
                             if (isDeletedArticlePayload(targetUrl, parsedPayload)) {
+                                deletionEvidence.add(strategy);
+                                if (requiresIndependentDeletionConfirmation(targetUrl)) continue;
                                 await buildDeletedSourceResponse(targetUrl, { fallbackTitle: art?.title || '' });
+                                prefetched = true;
                                 break;
                             }
                             if (parsedPayload && parsedPayload.content) {
-                                await cacheArticleResult(targetUrl, parsedPayload);
+                                const enhancedPayload = enhanceArticleResultForSource(targetUrl, parsedPayload, {
+                                    description: art?.description || art?.content || ''
+                                });
+                                await cacheArticleResult(targetUrl, enhancedPayload);
                                 console.log(`[NEXT-5 PREFETCH] Cached ready to serve: ${targetUrl}`);
                                 enqueuePrefetchedSummary(targetUrl, art, 1);
+                                prefetched = true;
                                 break;
                             }
                         } catch(e) {}
+                    }
+                    if (!prefetched && deletionEvidence.size >= 2) {
+                        await buildDeletedSourceResponse(targetUrl, {
+                            fallbackTitle: art?.title || '',
+                            deletionConfirmedBy: [...deletionEvidence]
+                        });
                     }
                 } catch(e) {}
                 await new Promise(r => setTimeout(r, 500));
@@ -5507,6 +5927,13 @@ async function isProtectedDeletedSourceSnapshot(url) {
         if (threadCachedArticle?.sourceDeleted === true) return true;
     }
     return false;
+}
+
+function requiresIndependentDeletionConfirmation(url) {
+    // VOZ threads have a dedicated deletion/archive protocol. Every ordinary
+    // article requires two independent reader methods before a permanent
+    // tombstone can be created, so a proxy error cannot hide a live page.
+    return !isVozThreadUrl(url);
 }
 
 app.post('/api/clear-article-cache', authMiddleware, async (req, res) => {
@@ -5612,6 +6039,7 @@ async function buildDeletedSourceResponse(url, responseMetadata = {}) {
         && !lastCache.content.includes(DELETED_SOURCE_TOMBSTONE)
         && !(isUnsafeVozThreadPayload(url, lastCache) && lastCache.sourceDeleted !== true)
     );
+    if (!hasCachedContent) await markUnavailableSourceUrl(snapshotUrl);
     const deletedDetectedAt = lastCache?.deletedDetectedAt
         || threadMetadataCache?.deletedDetectedAt
         || new Date().toISOString();
@@ -5639,6 +6067,10 @@ async function buildDeletedSourceResponse(url, responseMetadata = {}) {
         sourceDeletedKind: kind,
         isDeletedSource: true,
         isDeletedThread: kind === 'thread',
+        deletionConfirmedBy: Array.isArray(responseMetadata.deletionConfirmedBy)
+            ? [...new Set(responseMetadata.deletionConfirmedBy.filter(Boolean))]
+            : (lastCache?.deletionConfirmedBy || []),
+        deletionConfirmationVersion: kind === 'thread' ? 1 : 2,
         deletedDetectedAt
     };
     await cacheArticleResult(snapshotUrl, preserved);
@@ -5652,6 +6084,8 @@ async function buildDeletedSourceResponse(url, responseMetadata = {}) {
         sourceDeleted: true,
         sourceDeletedHasCache: hasCachedContent,
         sourceDeletedKind: kind,
+        deletionConfirmedBy: preserved.deletionConfirmedBy,
+        deletionConfirmationVersion: preserved.deletionConfirmationVersion,
         deletedDetectedAt
     };
 }
@@ -5673,10 +6107,29 @@ app.get('/api/article-content', authMiddleware, async (req, res) => {
         const hasMethodRejection = Object.prototype.hasOwnProperty.call(req.query, 'reject')
             || Object.prototype.hasOwnProperty.call(req.query, 'exclude');
         const hasProtectedDeletedSnapshot = await isProtectedDeletedSourceSnapshot(requestedUrl);
-        if (hasMethodRejection && hasProtectedDeletedSnapshot) {
+        const protectedDeletedSnapshot = hasProtectedDeletedSnapshot
+            ? await getLastKnownCachedArticle(requestedUrl)
+            : null;
+        const shouldRevalidateUnconfirmedArticle = Boolean(
+            hasProtectedDeletedSnapshot
+            && !isVozThreadUrl(requestedUrl)
+            && (protectedDeletedSnapshot?.deletionConfirmationVersion !== 2
+                || !Array.isArray(protectedDeletedSnapshot?.deletionConfirmedBy)
+                || protectedDeletedSnapshot.deletionConfirmedBy.length < 2)
+        );
+        const shouldRevalidateProtectedSnapshot = Boolean(
+            hasProtectedDeletedSnapshot
+            && (shouldRevalidateUnconfirmedArticle
+                || sourceRegistry.getHandler(requestedUrl)?.shouldRevalidateDeletedSnapshot?.(protectedDeletedSnapshot))
+        );
+        if (shouldRevalidateProtectedSnapshot) {
+            await deleteCachedArticle(requestedUrl);
+            await clearUnavailableSourceUrl(requestedUrl);
+        }
+        if (hasMethodRejection && hasProtectedDeletedSnapshot && !shouldRevalidateProtectedSnapshot) {
             return res.status(403).json({ error: 'Deleted-source snapshots are protected from reader-method rejection.' });
         }
-        if (hasProtectedDeletedSnapshot) {
+        if (hasProtectedDeletedSnapshot && !shouldRevalidateProtectedSnapshot) {
             finishArticleFetchProgress(requestId, 'Source deleted. Serving the protected snapshot without contacting the publisher.', { method: 'cache' });
             return res.json(await buildDeletedSourceResponse(requestedUrl));
         }
@@ -5695,6 +6148,7 @@ app.get('/api/article-content', authMiddleware, async (req, res) => {
         const requestedStrategy = String(req.query.strategy || '').trim();
         const rejectedStrategy = String(req.query.reject || '').trim();
         const requestedFeedUrl = String(req.query.feedUrl || '').trim();
+        const requestedDescription = String(req.query.description || '').slice(0, 2000);
         const excludedStrategies = new Set(String(req.query.exclude || '').split(',').map(value => value.trim()).filter(Boolean));
         if (requestedStrategy && requestedStrategy !== 'refresh' && !(requestedStrategy in ARTICLE_FETCH_BASE_POINTS)) {
             return res.status(400).json({ error: 'Unknown fetch method' });
@@ -5742,6 +6196,14 @@ app.get('/api/article-content', authMiddleware, async (req, res) => {
                 if (!directCached) {
                     // Continue below and fetch only through the selected policy.
                 } else {
+                const cachedBeforeEnhancement = directCached;
+                directCached = enhanceArticleResultForSource(url, directCached, {
+                    description: requestedDescription
+                });
+                if (directCached.content !== cachedBeforeEnhancement.content
+                    || directCached.author !== cachedBeforeEnhancement.author) {
+                    await cacheArticleResult(url, directCached);
+                }
                 const cachedSourceIsDeleted = directCached.sourceDeleted === true
                     || deletedVozThreads.has(normalizeStateUrl(url));
                 const cachedSourceHasContent = cachedSourceIsDeleted
@@ -5849,6 +6311,11 @@ app.get('/api/article-content', authMiddleware, async (req, res) => {
         });
 
         const strategyErrors = [];
+        const deletionEvidence = new Set();
+        const recordDeletedResponse = strategy => {
+            deletionEvidence.add(strategy || 'unknown');
+            return !requiresIndependentDeletionConfirmation(url);
+        };
 
         for (let strategyIndex = 0; strategyIndex < strategyOrder.length; strategyIndex++) {
             const strategy = strategyOrder[strategyIndex];
@@ -5861,18 +6328,20 @@ app.get('/api/article-content', authMiddleware, async (req, res) => {
                 if (strategy === 'jina') {
                     const jinaResult = await fetchViaJina(url);
                     if (isDeletedArticlePayload(url, jinaResult)) {
+                        if (!recordDeletedResponse(strategy)) {
+                            throw new Error('This reader reported the article missing, but the publisher requires independent confirmation');
+                        }
                         finishArticleFetchProgress(requestId, 'Source deleted. Preserving the last cached version.', { method: 'cache' });
                         return res.json(await buildDeletedSourceResponse(url, {
                             attemptedStrategies: [...attemptedStrategies],
                             availableStrategies,
                             configuredFetchMethods: feedConfiguredMethods || [],
                             methodPreferences,
+                            deletionConfirmedBy: [...deletionEvidence],
                             fallbackTitle: req.query.title
                         }));
                     }
-                    await recordArticleFetchOutcome(hostname, strategy, true);
-                    finishArticleFetchProgress(requestId, 'Article is ready.', { method: strategy });
-                    const payload = {
+                    let payload = enhanceArticleResultForSource(url, {
                         url,
                         feedUrl: requestedFeedUrl,
                         ...jinaResult,
@@ -5881,7 +6350,11 @@ app.get('/api/article-content', authMiddleware, async (req, res) => {
                         availableStrategies,
                         configuredFetchMethods: feedConfiguredMethods || [],
                         methodPreferences
-                    };
+                    }, { description: requestedDescription });
+                    payload = await expandArticleResultForSource(url, payload, { description: requestedDescription });
+                    assertArticleResultAcceptedBySource(url, payload);
+                    await recordArticleFetchOutcome(hostname, strategy, true);
+                    finishArticleFetchProgress(requestId, 'Article is ready.', { method: strategy });
                     await cacheArticleResult(url, payload);
                     payload.prefetchQueue = await triggerNextFiveArticlesPrefetch(url, false, prefetchTargets);
                     return res.json(payload);
@@ -5890,19 +6363,24 @@ app.get('/api/article-content', authMiddleware, async (req, res) => {
                 if (strategy === 'opencli') {
                     const openCliResult = await fetchViaOpenCli(url);
                     if (isDeletedArticlePayload(url, openCliResult)) {
+                        if (!recordDeletedResponse(strategy)) {
+                            throw new Error('This reader reported the article missing, but the publisher requires independent confirmation');
+                        }
                         finishArticleFetchProgress(requestId, 'Source deleted. Preserving the last cached version.', { method: 'cache' });
                         return res.json(await buildDeletedSourceResponse(url, {
                             attemptedStrategies: [...attemptedStrategies],
                             availableStrategies,
                             configuredFetchMethods: feedConfiguredMethods || [],
                             methodPreferences,
+                            deletionConfirmedBy: [...deletionEvidence],
                             fallbackTitle: req.query.title
                         }));
                     }
                     if (isUnsafeVozThreadPayload(url, openCliResult)) throw new Error('OpenCLI returned a VOZ error page');
+                    assertArticleResultAcceptedBySource(url, openCliResult);
                     await recordArticleFetchOutcome(hostname, strategy, true);
                     finishArticleFetchProgress(requestId, 'Article is ready.', { method: strategy });
-                    const payload = {
+                    let payload = enhanceArticleResultForSource(url, {
                         url,
                         feedUrl: requestedFeedUrl,
                         ...openCliResult,
@@ -5911,7 +6389,8 @@ app.get('/api/article-content', authMiddleware, async (req, res) => {
                         availableStrategies,
                         configuredFetchMethods: feedConfiguredMethods || [],
                         methodPreferences
-                    };
+                    }, { description: requestedDescription });
+                    payload = await expandArticleResultForSource(url, payload, { description: requestedDescription });
                     let prefetchPromise = null;
                     if (payload.pagination?.nextUrl && (hostname === 'voz.vn' || hostname.endsWith('.voz.vn'))) {
                         prefetchPromise = triggerVozNextPagePrefetch(payload.pagination.nextUrl, 1, requestedFeedUrl);
@@ -5924,12 +6403,16 @@ app.get('/api/article-content', authMiddleware, async (req, res) => {
                 const candidateHtml = await fetchArticleHtmlByStrategy(strategy, url);
 
                 if (isDeletedArticlePayload(url, candidateHtml)) {
+                    if (!recordDeletedResponse(strategy)) {
+                        throw new Error('This reader reported the article missing, but the publisher requires independent confirmation');
+                    }
                     finishArticleFetchProgress(requestId, 'Source deleted. Preserving the last cached version.', { method: 'cache' });
                     return res.json(await buildDeletedSourceResponse(url, {
                         attemptedStrategies: [...attemptedStrategies],
                         availableStrategies,
                         configuredFetchMethods: feedConfiguredMethods || [],
                         methodPreferences,
+                        deletionConfirmedBy: [...deletionEvidence],
                         fallbackTitle: req.query.title
                     }));
                 }
@@ -5944,6 +6427,17 @@ app.get('/api/article-content', authMiddleware, async (req, res) => {
         }
 
         if (!html) {
+            if (requiresIndependentDeletionConfirmation(url) && deletionEvidence.size >= 2) {
+                finishArticleFetchProgress(requestId, 'Source deletion confirmed by independent readers.', { method: 'cache' });
+                return res.json(await buildDeletedSourceResponse(url, {
+                    attemptedStrategies: [...attemptedStrategies],
+                    availableStrategies,
+                    configuredFetchMethods: feedConfiguredMethods || [],
+                    methodPreferences,
+                    deletionConfirmedBy: [...deletionEvidence],
+                    fallbackTitle: req.query.title
+                }));
+            }
             if (feedConfiguredMethods) {
                 finishArticleFetchProgress(requestId, 'Selected source methods failed.', { failed: true });
                 return res.json({
@@ -5973,19 +6467,37 @@ app.get('/api/article-content', authMiddleware, async (req, res) => {
             });
         }
 
-        const result = await parseArticleHtmlContent(html, url, htmlStrategy, [...attemptedStrategies], availableStrategies, methodPreferences, requestId, excludedStrategies);
+        let result = await parseArticleHtmlContent(html, url, htmlStrategy, [...attemptedStrategies], availableStrategies, methodPreferences, requestId, excludedStrategies);
         if (result) {
             result.feedUrl = requestedFeedUrl || result.feedUrl || '';
             result.configuredFetchMethods = feedConfiguredMethods || [];
+            result = enhanceArticleResultForSource(url, result, {
+                description: requestedDescription
+            });
+            result = await expandArticleResultForSource(url, result, {
+                description: requestedDescription
+            });
         }
         
         if (result && isDeletedArticlePayload(url, result)) {
+            recordDeletedResponse(result.fetchStrategy || htmlStrategy || 'extraction');
+            if (requiresIndependentDeletionConfirmation(url)) {
+                finishArticleFetchProgress(requestId, 'A reader returned an unconfirmed missing-page response.', { failed: true });
+                return res.json({
+                    error: 'The selected reader could not confirm this article. Try another reader method.',
+                    url,
+                    attemptedStrategies: [...attemptedStrategies],
+                    availableStrategies,
+                    methodPreferences
+                });
+            }
             finishArticleFetchProgress(requestId, 'Source deleted. Preserving the last cached version.', { method: 'cache' });
             return res.json(await buildDeletedSourceResponse(url, {
                 attemptedStrategies: [...attemptedStrategies],
                 availableStrategies,
                 configuredFetchMethods: feedConfiguredMethods || [],
                 methodPreferences,
+                deletionConfirmedBy: [...deletionEvidence],
                 fallbackTitle: req.query.title
             }));
         }
@@ -6474,19 +6986,86 @@ async function parseArticleHtmlContent(html, url, htmlStrategy, attemptedStrateg
 }
 
 function getRootDomain(urlStr) {
-    try {
-        let hostname = new URL(urlStr).hostname;
-        const parts = hostname.split('.');
-        if (parts.length <= 2) return hostname;
-        const secondToLast = parts[parts.length - 2];
-        const knownSecondLevel = ['co', 'com', 'net', 'org', 'gov', 'edu', 'ac'];
-        if (knownSecondLevel.includes(secondToLast)) {
-            return parts.slice(-3).join('.');
+    return sourceFetchPolicyIdentity(urlStr);
+}
+
+function normalizeConfiguredSourceFetchMethods(fetchMethods) {
+    return Array.isArray(fetchMethods)
+        ? [...new Set(fetchMethods.filter(method => method in ARTICLE_FETCH_BASE_POINTS))]
+        : [];
+}
+
+function sourceFetchMethodsMatch(left, right) {
+    return JSON.stringify(normalizeConfiguredSourceFetchMethods(left)) ===
+        JSON.stringify(normalizeConfiguredSourceFetchMethods(right));
+}
+
+async function synchronizeConfiguredSourceFetchMethods(source, fetchMethods, suppliedFeeds = null) {
+    const identity = sourceFetchPolicyIdentity(source);
+    if (!identity) throw new Error('Could not identify this source publisher.');
+    const normalizedFetchMethods = normalizeConfiguredSourceFetchMethods(fetchMethods);
+    const feeds = Array.isArray(suppliedFeeds)
+        ? suppliedFeeds
+        : await env.RSS_DATA.get('feeds', { type: 'json' }) || [];
+    const synchronizedFeeds = feeds.map(feed =>
+        sourceFetchPolicyIdentity(feed) === identity
+            ? { ...feed, fetchMethods: [...normalizedFetchMethods] }
+            : feed
+    );
+
+    const synchronizedSmartSources = await smartNews.setSourceFetchMethodsByIdentity(
+        identity,
+        normalizedFetchMethods
+    );
+    await env.RSS_DATA.put('feeds', JSON.stringify(synchronizedFeeds));
+
+    return {
+        identity,
+        feeds: synchronizedFeeds,
+        sources: synchronizedSmartSources
+    };
+}
+
+async function reconcileAllConfiguredSourceFetchMethods() {
+    const feeds = await env.RSS_DATA.get('feeds', { type: 'json' }) || [];
+    const sources = await smartNews.getSourceSettings();
+    const strictPolicyByIdentity = new Map();
+
+    // Existing installations did not keep duplicate source rows in sync.
+    // Preserve the first strict policy for a publisher (normal feeds take
+    // precedence), then copy it to every normal and Smart occurrence.
+    for (const source of [...feeds, ...sources]) {
+        const identity = sourceFetchPolicyIdentity(source);
+        const methods = normalizeConfiguredSourceFetchMethods(source?.fetchMethods);
+        if (identity && methods.length && !strictPolicyByIdentity.has(identity)) {
+            strictPolicyByIdentity.set(identity, methods);
         }
-        return parts.slice(-2).join('.');
-    } catch(e) {
-        return '';
     }
+
+    let feedsChanged = false;
+    const synchronizedFeeds = feeds.map(feed => {
+        const methods = strictPolicyByIdentity.get(sourceFetchPolicyIdentity(feed)) || [];
+        if (sourceFetchMethodsMatch(feed.fetchMethods, methods)) return feed;
+        feedsChanged = true;
+        return { ...feed, fetchMethods: [...methods] };
+    });
+
+    let sourcesChanged = false;
+    const synchronizedSources = sources.map(source => {
+        const methods = strictPolicyByIdentity.get(sourceFetchPolicyIdentity(source)) || [];
+        if (sourceFetchMethodsMatch(source.fetchMethods, methods)) return source;
+        sourcesChanged = true;
+        return { ...source, fetchMethods: [...methods] };
+    });
+
+    if (feedsChanged) {
+        await env.RSS_DATA.put('feeds', JSON.stringify(synchronizedFeeds));
+    }
+    if (sourcesChanged) {
+        await env.RSS_DATA.put('smartSources', JSON.stringify(synchronizedSources));
+    }
+
+    return { feeds: synchronizedFeeds, sources: synchronizedSources };
 }
 
 app.post('/api/feeds', authMiddleware, async (req, res) => {
@@ -6502,9 +7081,20 @@ app.post('/api/feeds', authMiddleware, async (req, res) => {
             if (cleanHostname.includes('bbc')) cleanHostname = 'bbc.com';
             let iconUrl = publisherIcon(cleanHostname);
             
-            // Check if we already have a feed from this root domain with configured fetch methods
+            // Inherit a publisher policy whether it was selected in a normal
+            // feed or in any Smart category.
             const rootDomain = getRootDomain(feedUrl);
             const existingSameDomainFeed = feeds.find(f => getRootDomain(f.url) === rootDomain && f.fetchMethods && f.fetchMethods.length > 0);
+            let existingSmartSource = null;
+            if (!existingSameDomainFeed && rootDomain) {
+                const smartSources = await smartNews.getSourceSettings();
+                existingSmartSource = smartSources.find(source =>
+                    sourceFetchPolicyIdentity(source) === rootDomain &&
+                    Array.isArray(source.fetchMethods) &&
+                    source.fetchMethods.length
+                );
+            }
+            const inheritedFetchMethods = existingSameDomainFeed?.fetchMethods || existingSmartSource?.fetchMethods || [];
             
             feeds.push({
                 url: feedUrl,
@@ -6512,7 +7102,7 @@ app.post('/api/feeds', authMiddleware, async (req, res) => {
                 category: category || 'Others',
                 icon: iconUrl,
                 excludeFromSmart: req.body.excludeFromSmart || false,
-                fetchMethods: existingSameDomainFeed ? [...existingSameDomainFeed.fetchMethods] : []
+                fetchMethods: [...inheritedFetchMethods]
             });
             await env.RSS_DATA.put('feeds', JSON.stringify(feeds));
         }
@@ -6529,27 +7119,19 @@ app.put('/api/feeds', authMiddleware, async (req, res) => {
     if (invalidFetchMethods.length) {
         return res.status(400).send(`Unknown fetch method(s): ${[...new Set(invalidFetchMethods)].join(', ')}`);
     }
-    const normalizedFetchMethods = [...new Set(requestedFetchMethods)];
+    const normalizedFetchMethods = normalizeConfiguredSourceFetchMethods(requestedFetchMethods);
     let feeds = await env.RSS_DATA.get('feeds', { type: 'json' }) || [];
     let feedIndex = feeds.findIndex(f => f.url === feedUrl);
     if (feedIndex > -1) {
         feeds[feedIndex].title = title;
         feeds[feedIndex].category = category;
         if (excludeFromSmart !== undefined) feeds[feedIndex].excludeFromSmart = excludeFromSmart;
-        feeds[feedIndex].fetchMethods = normalizedFetchMethods;
-        
-        // Sync to all other feeds with the same root domain
-        const rootDomain = getRootDomain(feedUrl);
-        if (rootDomain) {
-            for (let f of feeds) {
-                if (getRootDomain(f.url) === rootDomain) {
-                    f.fetchMethods = [...normalizedFetchMethods];
-                }
-            }
-        }
-        
-        await env.RSS_DATA.put('feeds', JSON.stringify(feeds));
-        res.status(200).send('Updated');
+        const synchronized = await synchronizeConfiguredSourceFetchMethods(
+            feeds[feedIndex],
+            normalizedFetchMethods,
+            feeds
+        );
+        res.status(200).json({ ok: true, ...synchronized });
     } else {
         res.status(404).send('Not Found');
     }
@@ -6934,6 +7516,35 @@ app.get('/api/proxy-image', authMiddleware, async (req, res) => {
     res.status(404).send('Not found');
 });
 
+app.get('/api/x-profile-image', authMiddleware, async (req, res) => {
+    const handle = String(req.query.handle || '').replace(/^@/, '').trim();
+    if (!/^[a-z0-9_]{1,32}$/i.test(handle)) return res.status(400).send('Invalid X handle');
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    try {
+        const imageResponse = await fetch(`https://unavatar.io/x/${encodeURIComponent(handle)}`, {
+            headers: {
+                ...BROWSER_HEADERS,
+                Accept: 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'
+            },
+            signal: controller.signal
+        });
+        const contentType = imageResponse.headers.get('content-type') || '';
+        if (!imageResponse.ok || !contentType.toLowerCase().startsWith('image/')) {
+            await discardResponseBody(imageResponse);
+            return res.status(404).send('Profile image not found');
+        }
+        const buffer = Buffer.from(await imageResponse.arrayBuffer());
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Cache-Control', 'private, max-age=86400, stale-while-revalidate=604800');
+        return res.send(buffer);
+    } catch (error) {
+        return res.status(404).send('Profile image not found');
+    } finally {
+        clearTimeout(timeout);
+    }
+});
+
 app.get('/api/og-image', authMiddleware, async (req, res) => {
     const targetUrl = req.query.url;
     const rssFallback = req.query.rss;
@@ -6942,6 +7553,7 @@ app.get('/api/og-image', authMiddleware, async (req, res) => {
         const scrapeUrl = targetUrl.replace(/\/unread\/?$/, '');
         const foundImg = await getBestImage(scrapeUrl, async (u, opts = {}) => fetch(u, { headers: BROWSER_HEADERS, ...opts }), rssFallback);
         if (foundImg) {
+            res.setHeader('Cache-Control', 'private, max-age=86400, stale-while-revalidate=604800');
             if (foundImg.includes('dantri.com.vn') || foundImg.includes('baodautu.vn')) {
                 return res.redirect(301, `/api/proxy-image?url=${encodeURIComponent(foundImg)}`);
             }
@@ -7085,6 +7697,8 @@ async function runUniversalTabPrefetch(env) {
 
             try {
                 const policy = await getArticleFetchPolicy(url, art.feedUrl || '');
+                const deletionEvidence = new Set();
+                let prefetched = false;
                 for (const strategy of policy.strategyOrder) {
                     try {
                         const parsedPayload = await fetchParsedArticleByStrategy(
@@ -7095,7 +7709,10 @@ async function runUniversalTabPrefetch(env) {
                             art.title || ''
                         );
                         if (isDeletedArticlePayload(url, parsedPayload)) {
+                            deletionEvidence.add(strategy);
+                            if (requiresIndependentDeletionConfirmation(url)) continue;
                             await buildDeletedSourceResponse(url, { fallbackTitle: art.title || '' });
+                            prefetched = true;
                             break;
                         }
                         if (parsedPayload && parsedPayload.content) {
@@ -7103,11 +7720,18 @@ async function runUniversalTabPrefetch(env) {
                             prefetchedCount++;
                             enqueuePrefetchedSummary(url, art, 2);
                             await new Promise(r => setTimeout(r, 600));
+                            prefetched = true;
                             break;
                         }
                     } catch (error) {
                         // Try the next method within this source's allowed policy.
                     }
+                }
+                if (!prefetched && deletionEvidence.size >= 2) {
+                    await buildDeletedSourceResponse(url, {
+                        fallbackTitle: art.title || '',
+                        deletionConfirmedBy: [...deletionEvidence]
+                    });
                 }
             } catch (e) {}
         }
@@ -7208,7 +7832,6 @@ function gcAndLogMemory(label) {
     }
 }
 
-const isMainModule = process.argv[1] && process.argv[1] === fileURLToPath(import.meta.url);
 if (isMainModule) {
     app.listen(PORT, () => {
         console.log(`🚀 RSS Reader running on http://localhost:${PORT}`);
@@ -7255,7 +7878,7 @@ if (isMainModule) {
         setTimeout(() => {
             gcAndLogMemory('Pre-SmartSyncLoop');
             console.log('[STAGGERED BOOT] Phase 3: Starting smart source sync loop...');
-            startSmartSyncLoop({ fastParseRSS, waitForHttpIdle }, BROWSER_HEADERS, env.RSS_DATA, smartNews.getSources);
+            startSmartSyncLoop({ fastParseRSS, waitForHttpIdle, prefetchOpenCliOnlyArticles }, BROWSER_HEADERS, env.RSS_DATA, smartNews.getSources);
         }, STAGGER_DELAY_MS.SMART_SYNC_LOOP);
 
         // ── Phase 4: Prefetch engine (delayed) ──────────────────────
