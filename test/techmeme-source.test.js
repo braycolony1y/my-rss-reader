@@ -105,3 +105,90 @@ test('Techmeme strips gifted-access parameters and expands the canonical main pu
     assert.match(expanded.content, /class="techmeme-x-post__profile"/);
     assert.doesNotMatch(expanded.content, /class="techmeme-x-post__avatar"/);
 });
+
+test('Techmeme never inserts a publisher robot-check page as the primary article', async () => {
+    const source = new TechmemeSource();
+    const cleaned = source.cleanCachedArticleContent(renderedDailyPage, { url: pageUrl });
+    const challengePages = [
+        `<h2>We've detected unusual activity from your computer network</h2><p>${'Please click the box below to let us know you are not a robot. '.repeat(20)}</p>`,
+        `<h3>Why did this happen?</h3><p>Please make sure your browser supports JavaScript and cookies and that you are not blocking them from loading.</p><p>Block reference ID: example</p>${'<p>Subscription information.</p>'.repeat(30)}`,
+        `<h2>Before we continue...</h2><p>Press &amp; Hold to confirm you are a human (and not a bot).</p><p>Reference ID 8ba9665a-a69c-11f1-944f-ce4969283d14</p>${'<p>Verification required.</p>'.repeat(30)}`
+    ];
+
+    for (const content of challengePages) {
+        const expanded = await source.expandArticleResult({
+            url: pageUrl,
+            title: 'Techmeme',
+            content: cleaned
+        }, {
+            url: pageUrl,
+            fetchPrimaryArticle: async () => ({
+                title: 'Bloomberg',
+                content
+            })
+        });
+
+        assert.notEqual(expanded.primaryArticleFetched, true);
+        assert.doesNotMatch(expanded.content, /techmeme-primary-article/);
+        assert.doesNotMatch(expanded.content, /unusual activity|block reference id|press &amp; hold/i);
+    }
+});
+
+test('Techmeme promotes a high-resolution primary-source image over its tiny feed thumbnail and publisher icons', async () => {
+    const source = new TechmemeSource();
+    const cleaned = source.cleanCachedArticleContent(renderedDailyPage, { url: pageUrl });
+    const expanded = await source.expandArticleResult({
+        url: pageUrl,
+        title: 'Techmeme',
+        image: 'https://www.techmeme.com/260830/i11.jpg',
+        content: cleaned
+    }, {
+        url: pageUrl,
+        fetchPrimaryArticle: async () => ({
+            title: 'Primary article',
+            image: 'https://publisher.example/assets/status-icon.svg',
+            content: `<p><img src="https://publisher.example/avatar.jpg?w=60&h=60" alt="thumbnail"></p><p><img src="https://publisher.example/hero.jpg?w=1200&h=675" alt="Article hero"></p><p>${'Complete article body. '.repeat(30)}</p>`
+        })
+    });
+
+    assert.equal(source.isInvalidFeedImage('http://www.techmeme.com/260830/i11.jpg'), true);
+    assert.equal(source.isInvalidFeedImage('https://substackcdn.com/image/fetch/$s_!x!,w_36,h_36,c_fill/example.jpg'), true);
+    assert.equal(source.isInvalidFeedImage('https://substackcdn.com/image/fetch/$s_!x!,w_1456,c_limit/example.jpg'), false);
+    assert.equal(expanded.image, 'https://publisher.example/hero.jpg?w=1200&h=675');
+    assert.equal(source.primaryImageTarget(expanded), 'https://bloomberg.example/main');
+});
+
+test('Techmeme upgrades an already cached Bloomberg primary article without refetching it', () => {
+    const source = new TechmemeSource();
+    const bloombergUrl = 'https://www.bloomberg.com/news/articles/2026-09-01/roku-launches-its-first-oled-tvs-with-prices-starting-at-999';
+    const cached = `<article class="techmeme-story" data-techmeme-story-id="260830p11" data-techmeme-author="Chris Welch" data-techmeme-publisher="Bloomberg" data-techmeme-main-url="${bloombergUrl}">
+        <header class="techmeme-main-story"><div class="techmeme-main-story__source">Chris Welch / Bloomberg</div><h2><a href="${bloombergUrl}">Roku OLED TVs</a></h2></header>
+        <section class="techmeme-primary-article" aria-label="Article from Bloomberg"><div class="techmeme-primary-article__content">
+            <p><img src="https://assets.bwbx.io/images/users/example/hero.webp" alt="Roku OLED TVs"></p>
+            <p>Roku's first self-branded OLED TVs will only be available from Amazon.</p><p>Source: Roku</p>
+            <p>Gift this article</p><p>Add us on Google</p><p>By <a href="https://www.bloomberg.com/authors/example">Chris Welch</a></p><p>Save</p><p>Translate</p>
+            <h3><strong>Takeaways</strong> by Bloomberg AI</h3><ul><li>Roku introduced its first OLED TVs.</li></ul>
+            <p>${'The cached Bloomberg article body remains ready to serve. '.repeat(14)}</p>
+            <p>!</p><p>OLED TVs allow for much thinner designs and offer superior picture quality. Source: Roku</p>
+            <p>[</p><p>Before it's here, it's on the Bloomberg Terminal</p><p>LEARN MORE</p>
+        </div></section>
+    </article>`;
+
+    const first = source.cleanCachedArticleContent(cached, { url: pageUrl, primaryArticleUrl: bloombergUrl });
+    const second = source.cleanCachedArticleContent(first, { url: pageUrl, primaryArticleUrl: bloombergUrl });
+    const enhanced = source.enhanceArticleResult({
+        url: pageUrl,
+        content: first,
+        image: '',
+        imageCaption: '',
+        primaryArticleUrl: bloombergUrl
+    }, { url: pageUrl });
+
+    assert.equal(second, first);
+    assert.equal(enhanced.author, 'Chris Welch');
+    assert.equal(enhanced.image, 'https://assets.bwbx.io/images/users/example/hero.webp');
+    assert.match(enhanced.imageCaption, /Roku's first self-branded OLED TVs.*Source: Roku/);
+    assert.match(enhanced.content, /class="article-media-figure bloomberg-figure"/);
+    assert.match(enhanced.content, /The cached Bloomberg article body remains ready to serve/);
+    assert.doesNotMatch(enhanced.content, /Gift this article|Bloomberg Terminal|<p>!<\/p>/);
+});

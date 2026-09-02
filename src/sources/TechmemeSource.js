@@ -1,5 +1,6 @@
 import * as cheerio from 'cheerio/slim';
 import { decodeHTML } from 'entities';
+import { cleanBloombergArticleHtml } from './BloombergSource.js';
 
 function escapeHtml(value = '') {
     return String(value).replace(/[&<>"']/g, character => ({
@@ -18,6 +19,87 @@ function safeHttpUrl(value = '') {
     } catch (error) {
         return '';
     }
+}
+
+function imageDimensions(value = '') {
+    const url = safeHttpUrl(value);
+    if (!url) return { width: 0, height: 0 };
+    try {
+        const parsed = new URL(url);
+        const pathWidth = parsed.href.match(/(?:[,/])w_(\d{1,5})(?:[,/])/i)?.[1] || 0;
+        const pathHeight = parsed.href.match(/(?:[,/])h_(\d{1,5})(?:[,/])/i)?.[1] || 0;
+        const suffixDimensions = parsed.pathname.match(/-(\d{2,5})x(\d{2,5})(?=\.[a-z0-9]+$)/i);
+        const width = Number(parsed.searchParams.get('width') || parsed.searchParams.get('w') || pathWidth || suffixDimensions?.[1] || 0);
+        const height = Number(parsed.searchParams.get('height') || parsed.searchParams.get('h') || pathHeight || suffixDimensions?.[2] || 0);
+        return {
+            width: Number.isFinite(width) ? width : 0,
+            height: Number.isFinite(height) ? height : 0
+        };
+    } catch (error) {
+        return { width: 0, height: 0 };
+    }
+}
+
+function isLowQualityArticleImage(value = '') {
+    const url = safeHttpUrl(value);
+    if (!url) return true;
+    const { width, height } = imageDimensions(url);
+    return /\.svg(?:[?#]|$)/i.test(url)
+        || /techmeme\.com\/\d{6}\/i\d+\.jpg(?:[?#]|$)/i.test(url)
+        || /techmeme\.com\/(?:img\/)?mg\d+\.(?:png|gif|jpe?g)(?:[?#]|$)/i.test(url)
+        || /(?:favicon|logo|icon|badge|avatar|headshot|social-default|default-image)/i.test(url)
+        || (width > 0 && width < 480)
+        || (height > 0 && height < 270);
+}
+
+function highResolutionArticleImage(value = '') {
+    const url = safeHttpUrl(value);
+    if (!url) return '';
+    try {
+        const parsed = new URL(url);
+        if (parsed.hostname === 'image.cnbcfm.com' && /\/api\/v1\/image\//i.test(parsed.pathname)) {
+            const dimensions = imageDimensions(url);
+            if (!dimensions.width || dimensions.width < 1200) {
+                parsed.searchParams.set('w', '1200');
+                if (dimensions.width && dimensions.height) {
+                    parsed.searchParams.set('h', String(Math.round(dimensions.height * 1200 / dimensions.width)));
+                }
+            }
+        }
+        if (parsed.hostname === 'ajo.prod.reuters.tv' && /\/api\/v2\/img\//i.test(parsed.pathname)) {
+            const width = Number(parsed.searchParams.get('width') || 0);
+            if (!width || width < 1200) parsed.searchParams.set('width', '1200');
+            if (!parsed.searchParams.has('quality')) parsed.searchParams.set('quality', '80');
+        }
+        return parsed.href;
+    } catch (error) {
+        return url;
+    }
+}
+
+function bestPrimaryArticleImage(section) {
+    if (!section?.length) return '';
+    const candidates = [];
+    const add = (value, bonus = 0) => {
+        const rawUrl = safeHttpUrl(value);
+        if (!rawUrl || isLowQualityArticleImage(rawUrl)) return;
+        const url = highResolutionArticleImage(rawUrl);
+        if (!url || candidates.some(item => item.url === url)) return;
+        const { width, height } = imageDimensions(url);
+        let score = bonus;
+        if (width >= 1000) score += 50;
+        else if (width >= 750) score += 35;
+        else if (width >= 480) score += 20;
+        if (height >= 500) score += 20;
+        else if (height >= 270) score += 10;
+        if (/\.(?:jpe?g|png|webp|avif)(?:[?#]|$)/i.test(url)) score += 8;
+        candidates.push({ url, score });
+    };
+
+    add(section.attr('data-primary-image'), 100);
+    section.find('img[src]').each((_, element) => add(element.attribs?.src));
+    candidates.sort((left, right) => right.score - left.score);
+    return candidates[0]?.url || '';
 }
 
 export function canonicalPrimaryArticleUrl(value = '') {
@@ -68,6 +150,11 @@ function cleanText(value = '') {
         .replace(/<[^>]*>/g, ' ')
         .replace(/\s+/g, ' ')
         .trim();
+}
+
+function looksLikePublisherChallenge(value = '') {
+    const text = cleanText(value).slice(0, 3500);
+    return /(?:we(?:'|’)ve detected unusual activity from your computer network|please click the box below to let us know you(?:'|’)re not a robot|why did this happen\??\s*please make sure your browser supports javascript and cookies|press\s*(?:&|and)\s*hold\s+to confirm you are a human|before we continue.{0,160}(?:human|bot)|reference id\s+[a-f0-9-]{12,}|block reference id\s*:|attention required|enable javascript and cookies to continue|access (?:has been )?denied|just a moment)/i.test(text);
 }
 
 function linksFrom(node, $) {
@@ -346,6 +433,32 @@ export function extractTechmemeStory(markup = '', pageUrl = '') {
     return { html, title: headline, author, publisher, mainUrl, related, xPosts };
 }
 
+function cleanNestedPrimaryArticle(markup = '', context = {}) {
+    const source = String(markup || '').trim();
+    if (!source || !source.includes('techmeme-primary-article')) return source;
+    const $ = cheerio.load(`<main id="techmeme-primary-clean-root">${source}</main>`, null, false);
+    const root = $('#techmeme-primary-clean-root');
+    const story = root.children('.techmeme-story').first();
+    const primaryUrl = canonicalPrimaryArticleUrl(context.primaryArticleUrl || story.attr('data-techmeme-main-url'));
+    let hostname = '';
+    try { hostname = new URL(primaryUrl).hostname.replace(/^www\./, ''); } catch (error) { }
+
+    if (hostname === 'bloomberg.com' || hostname.endsWith('.bloomberg.com')) {
+        story.find('.techmeme-primary-article').each((_, element) => {
+            const section = $(element);
+            const body = section.find('.techmeme-primary-article__content').first();
+            if (!body.length) return;
+            const cleaned = cleanBloombergArticleHtml(body.html() || '', { url: primaryUrl });
+            body.html(cleaned.html);
+            if (cleaned.image && !section.attr('data-primary-image')) section.attr('data-primary-image', cleaned.image);
+            if (cleaned.imageCaption && !section.attr('data-primary-image-caption')) section.attr('data-primary-image-caption', cleaned.imageCaption);
+            if (cleaned.author && !section.attr('data-primary-author')) section.attr('data-primary-author', cleaned.author);
+        });
+    }
+
+    return root.html().trim();
+}
+
 export default class TechmemeSource {
     match(hostname) {
         return hostname === 'techmeme.com' || hostname.endsWith('.techmeme.com');
@@ -363,18 +476,28 @@ export default class TechmemeSource {
     }
 
     cleanCachedArticleContent(content, context = {}) {
-        return extractTechmemeStory(content, context.url)?.html || content;
+        const extracted = extractTechmemeStory(content, context.url);
+        return extracted ? cleanNestedPrimaryArticle(extracted.html, context) : content;
     }
 
     enhanceArticleResult(result, context = {}) {
         const extracted = extractTechmemeStory(result?.content || '', context.url || result?.url || '');
         if (!extracted) return result;
-        const next = { ...result, content: extracted.html };
+        const content = cleanNestedPrimaryArticle(extracted.html, result);
+        const $ = cheerio.load(content, null, false);
+        const primarySection = $('.techmeme-primary-article').first();
+        const next = { ...result, content };
         if (extracted.title) next.title = extracted.title;
         if (extracted.author) next.author = extracted.author;
         next.primaryArticleUrl = extracted.mainUrl;
         next.primarySource = sourceMetadata(extracted.publisher, extracted.mainUrl);
-        if (/techmeme\.com\/(?:img\/)?(?:mg\d+|logo|favicon)/i.test(next.image || '')) next.image = '';
+        const primaryImage = bestPrimaryArticleImage(primarySection);
+        const primaryImageCaption = cleanText(primarySection.attr('data-primary-image-caption'));
+        const primaryAuthor = cleanText(primarySection.attr('data-primary-author'));
+        if (primaryImage) next.image = primaryImage;
+        if (primaryImageCaption) next.imageCaption = primaryImageCaption;
+        if (primaryAuthor) next.author = primaryAuthor;
+        if (isLowQualityArticleImage(next.image)) next.image = '';
         return next;
     }
 
@@ -395,7 +518,7 @@ export default class TechmemeSource {
             primary = null;
         }
         const primaryText = cleanText(primary?.content || '');
-        if (!primary?.content || primaryText.length < 400) {
+        if (!primary?.content || primaryText.length < 400 || looksLikePublisherChallenge(primary.content)) {
             return { ...enhanced, primaryArticleFetchAttemptedAt: attemptedAt };
         }
 
@@ -408,10 +531,14 @@ export default class TechmemeSource {
             <div class="techmeme-primary-article__content">${primary.content}</div>
         </section>`);
 
+        const primaryMarkup = cheerio.load(`<section id="techmeme-primary-image-root">${primary.content}</section>`, null, false);
+        const primaryImage = bestPrimaryArticleImage(primaryMarkup('#techmeme-primary-image-root'));
+        const reportedPrimaryImage = isLowQualityArticleImage(primary.image) ? '' : highResolutionArticleImage(primary.image);
+
         return {
             ...enhanced,
             content: $('#techmeme-expanded-root').html(),
-            image: safeHttpUrl(primary.image) || enhanced.image || '',
+            image: primaryImage || reportedPrimaryImage || enhanced.image || '',
             imageCaption: cleanText(primary.imageCaption) || enhanced.imageCaption || '',
             author: cleanText(primary.author) || enhanced.author || '',
             primarySource: metadata,
@@ -419,5 +546,13 @@ export default class TechmemeSource {
             primaryArticleFetchStrategy: primary.fetchStrategy || '',
             primaryArticleFetchAttemptedAt: attemptedAt
         };
+    }
+
+    isInvalidFeedImage(value = '') {
+        return isLowQualityArticleImage(value);
+    }
+
+    primaryImageTarget(result = {}) {
+        return canonicalPrimaryArticleUrl(result.primaryArticleUrl || result.primarySource?.url || '');
     }
 }

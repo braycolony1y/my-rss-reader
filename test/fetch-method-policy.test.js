@@ -62,14 +62,15 @@ test('every background worker dispatches only through the resolved policy', () =
 
 test('OpenCLI-only feed and Smart sources prefetch new article content during ingestion', () => {
     assert.match(server, /function hasOnlyOpenCliFetchMethod\(methods\)/);
-    assert.match(server, /openCliOnlyNewArticles\.push\(articleRecord\)/);
-    assert.match(server, /await prefetchOpenCliOnlyArticles\(openCliOnlyNewArticles, feed\.url\)/);
+    assert.match(server, /openCliOnlyArticlesToPrefetch\.push\(articleRecord\)/);
+    assert.match(server, /await prefetchOpenCliOnlyArticles\(openCliOnlyArticlesToPrefetch, feed\.url\)/);
+    assert.doesNotMatch(server, /!historyStatsMap\.has\(safeLink\) && hasOnlyOpenCliFetchMethod/);
     assert.match(server, /fetchParsedArticleByStrategy\([\s\S]*'opencli'[\s\S]*cacheArticleResult/);
 
     const smartNews = readFileSync(new URL('../smart-news.js', import.meta.url), 'utf8');
-    assert.match(smartNews, /prefetchNewOpenCliOnlySmartArticles/);
+    assert.match(smartNews, /prefetchOpenCliOnlySmartArticles/);
     assert.match(smartNews, /result\?\.source\?\.fetchMethods/);
-    assert.match(smartNews, /helpers\.prefetchOpenCliOnlyArticles\(newArticles, result\.source\.url\)/);
+    assert.match(smartNews, /helpers\.prefetchOpenCliOnlyArticles\(articlesToPrefetch, result\.source\.url\)/);
     assert.match(server, /helpers: \{ fastParseRSS, waitForHttpIdle, prefetchOpenCliOnlyArticles \}/);
 });
 

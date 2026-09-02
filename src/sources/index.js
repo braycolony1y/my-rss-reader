@@ -52,6 +52,8 @@ import DanvietSource from './DanvietSource.js';
 import BaovanhoaSource from './BaovanhoaSource.js';
 import TechmemeSource from './TechmemeSource.js';
 import CnbcSource from './CnbcSource.js';
+import BloombergSource from './BloombergSource.js';
+import TheHillSource from './TheHillSource.js';
 registry.register(new VozSource());
 registry.register(new TinhteSource());
 registry.register(new VietnamplusSource());
@@ -79,6 +81,8 @@ registry.register(new BBCSource());
 registry.register(new SggpSource());
 registry.register(new DanvietSource());
 registry.register(new BaovanhoaSource());
+registry.register(new BloombergSource());
+registry.register(new TheHillSource());
 registry.register(new TechmemeSource());
 registry.register(new CnbcSource());
 

@@ -158,7 +158,7 @@ const ARTICLE_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;// NOTE: If you change anyt
 // Normal reads expire after seven days, but the underlying last-known-good
 // file remains available longer in case the publisher later removes the page.
 const ARTICLE_CACHE_LAST_KNOWN_TTL_MS = 90 * 24 * 60 * 60 * 1000;
-const ARTICLE_CACHE_VERSION = 44;
+const ARTICLE_CACHE_VERSION = 48;
 const execFileAsync = promisify(execFile);
 
 let _articleCacheIndex = null;
@@ -216,6 +216,18 @@ async function expandArticleResultForSource(url, result, context = {}) {
 }
 
 function assertArticleResultAcceptedBySource(url, result) {
+    const title = decodeHTMLEntities(String(result?.title || '')).replace(/\s+/g, ' ').trim();
+    const text = decodeHTMLEntities(String(result?.content || ''))
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 3500);
+    if (
+        /(?:are you a robot|attention required|access (?:to this page )?(?:has been )?denied|just a moment)/i.test(title) ||
+        /(?:we(?:'|’)ve detected unusual activity from your computer network|please click the box below to let us know you(?:'|’)re not a robot|press\s*(?:&|and)\s*hold\s+to confirm you are a human|before we continue.{0,160}(?:human|bot)|reference id\s+[a-f0-9-]{12,}|enable javascript and cookies to continue|why did this happen\??\s*please make sure your browser supports javascript and cookies|block reference id\s*:)/i.test(text)
+    ) {
+        throw new Error('The reader returned a publisher challenge page instead of the article body');
+    }
     const sourceHandler = sourceRegistry.getHandler(url);
     if (sourceHandler?.isUsableArticleResult?.(result, { url }) === false) {
         throw new Error('The reader returned only a related-story fragment instead of the article body');
@@ -267,6 +279,22 @@ async function getCachedArticle(url) {
         if (isUnsafeVozThreadPayload(url, cached.result) && cached.result?.sourceDeleted !== true) {
             console.warn(`[ARTICLE CACHE] Ignoring VOZ error payload for ${url}`);
             return null;
+        }
+        if (cached.version !== ARTICLE_CACHE_VERSION) {
+            // Source-specific cleanups can safely upgrade an otherwise good
+            // cached article without making the reader wait for the publisher
+            // again. This is especially important for authenticated sources
+            // that may challenge a later network request.
+            const normalized = normalizeCachedArticleForSource(url, cached.result);
+            const migrated = enhanceArticleResultForSource(url, normalized, { cacheMigration: true });
+            if (migrated?.content && migrated.content !== cached.result.content) {
+                try {
+                    assertArticleResultAcceptedBySource(url, migrated);
+                    if (await cacheArticleResult(url, migrated)) return migrated;
+                } catch (error) {
+                    console.warn(`[ARTICLE CACHE] Could not migrate cached parser output for ${url}: ${error.message}`);
+                }
+            }
         }
         if (isExpired || cached.version !== ARTICLE_CACHE_VERSION) {
             // Saved and board entries are intentional archives. Read their
@@ -824,7 +852,7 @@ function parseJinaReaderText(text, url) {
     try {
         let sourceHandler = sourceRegistry.getHandler(url);
         if (sourceHandler && sourceHandler.parseJinaReaderText) {
-            let handled = sourceHandler.parseJinaReaderText(markdown);
+            let handled = sourceHandler.parseJinaReaderText(markdown, { url });
             if (handled) {
                 markdown = handled.markdown;
                 readerType = handled.readerType || readerType;
@@ -933,9 +961,10 @@ async function fetchViaOpenCli(url) {
     }
     const executable = path.resolve('./node_modules/.bin/opencli');
     const sourceHandler = sourceRegistry.getHandler(url);
+    const readerUrl = normalizeArticleSourceUrl(sourceHandler?.getOpenCliReaderUrl?.(url) || url);
     const captureDiagnostics = Boolean(sourceHandler?.needsOpenCliDiagnostics?.());
     const args = [
-        'web', 'read', '--url', url,
+        'web', 'read', '--url', readerUrl,
         '--stdout', 'true',
         '--download-images', 'false',
         '--wait', '3',
@@ -2934,7 +2963,7 @@ async function syncFeeds(env, targetFeedUrl = null, onProgress = null, targetCat
                 }
 
                 const eagerImageTasks = [];
-                const openCliOnlyNewArticles = [];
+                const openCliOnlyArticlesToPrefetch = [];
                 for (const item of feedData.items) {
                     let safeLink = cleanUrl(item.link);
                     if (decodedGoogleNewsLinks.has(item.link)) {
@@ -3058,8 +3087,8 @@ async function syncFeeds(env, targetFeedUrl = null, onProgress = null, targetCat
                     };
                     newArticles.push(articleRecord);
 
-                    if (!historyStatsMap.has(safeLink) && hasOnlyOpenCliFetchMethod(feed.fetchMethods)) {
-                        openCliOnlyNewArticles.push(articleRecord);
+                    if (hasOnlyOpenCliFetchMethod(feed.fetchMethods)) {
+                        openCliOnlyArticlesToPrefetch.push(articleRecord);
                     }
 
                     if (!finalImage && articleSource?.shouldResolveImageOnIngest?.()) {
@@ -3076,7 +3105,7 @@ async function syncFeeds(env, targetFeedUrl = null, onProgress = null, targetCat
                     }
                 }
                 await Promise.all(eagerImageTasks);
-                await prefetchOpenCliOnlyArticles(openCliOnlyNewArticles, feed.url);
+                await prefetchOpenCliOnlyArticles(openCliOnlyArticlesToPrefetch, feed.url);
                 recordFetch(feed.url, feed.title || feed.url, 'success', `${feedData.items.length} articles`, Date.now() - feedFetchStart);
             } catch (parseErr) {
                 syncLogs.push({ Feed: feed.title || feed.url, Issue: `XML Parser crashed: ${parseErr.message}` });
@@ -3823,10 +3852,16 @@ async function prepareArticleForClient(article, isSubItem = false) {
                 unfragmented.hash = '';
                 cached = await getLastKnownCachedArticle(unfragmented.href);
             }
+            if (cached) cached = enhanceArticleResultForSource(prepared.link, cached, { cacheMigration: true });
             if (cached?.primarySource) {
                 prepared.primarySource = cached.primarySource;
                 prepared.primaryArticleUrl = cached.primaryArticleUrl || cached.primarySource.url || '';
                 prepared.primaryArticleFetched = cached.primaryArticleFetched === true;
+                if (safeHttpUrl(cached.image) && !isInvalidImage(cached.image)) {
+                    prepared.image = cached.image;
+                } else if (safeHttpUrl(prepared.primaryArticleUrl)) {
+                    prepared.image = `/api/og-image?url=${encodeURIComponent(prepared.primaryArticleUrl)}`;
+                }
             }
         }
     } catch (error) { }
@@ -4992,7 +5027,7 @@ function isUsableArticlePage(html) {
     const sample = html.slice(0, 120000);
     const titleMatch = sample.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
     const titleText = titleMatch ? titleMatch[1].trim() : '';
-    if (/(?:attention required|just a moment|access denied)/i.test(titleText) || /(?:cf-chl-|enable javascript and cookies to continue)/i.test(sample)) return false;
+    if (/(?:attention required|just a moment|access (?:to this page )?(?:has been )?denied|are you a robot)/i.test(titleText) || /(?:cf-chl-|enable javascript and cookies to continue|we(?:'|&apos;|&#x27;)ve detected unusual activity from your computer network|press\s*(?:&amp;|&|and)\s*hold\s+to confirm you are a human|before we continue[\s\S]{0,300}(?:human|bot)|reference id\s+[a-f0-9-]{12,}|why did this happen\??[\s\S]{0,300}please make sure your browser supports javascript and cookies|block reference id\s*:)/i.test(sample)) return false;
     if (/(?:attention required|access denied)/i.test(sample) && !/<(?:article|main|h1)\b/i.test(sample)) return false;
     return /<(?:html|article|main|p|script)\b/i.test(sample);
 }
@@ -5126,9 +5161,13 @@ function cleanArticleMarkup(markup) {
         const $ = cheerio.load(cleaned, null, false);
         $('script,style,template,nav,form,noscript,button').remove();
         $('aside').not('.tuoitre-info-card').remove();
-        $('[aria-hidden="true"]')
-            .not('.tuoitre-event-stream__icon, .tuoitre-event-stream__arrow, .techmeme-x-post__avatar')
-            .remove();
+        $('[aria-hidden="true"]').each((_, element) => {
+            const node = $(element);
+            const isReaderOwnedDecoration = node.hasClass('tuoitre-event-stream__icon')
+                || node.hasClass('tuoitre-event-stream__arrow')
+                || node.closest('.techmeme-x-posts').length > 0;
+            if (!isReaderOwnedDecoration) node.remove();
+        });
 
         const noise = /(?:advert|adsbygoogle|ad-container|breadcrumb|pagination|related|recommend|share|social|reaction|signature|message-user|message-attribution|message-footer|message-cell--user|post-meta|author-box|author-info|singular-author|user-info|user-panel|member-header|comment-list|comments-area|newsletter|subscribe|topic-list|trending|popular-post|read-more|tags-list|article__tags|author-area|menu-area|menu-container|action-bar|thread-action|thread-editor|relate-news|box-topic|tinlienquan|knc-relate|box-relate|zone-interlink|article-audio|tts-player|dt-size-6|detail-comment|box-comment|box-bottom|cmbl|detail-tab|admzone|link-source-detail)/i;
         
@@ -5405,7 +5444,31 @@ function scheduleOpenCliIngestPrefetch(article, feedUrl = '') {
     const task = openCliIngestPrefetchTail
         .catch(() => undefined)
         .then(async () => {
-            if (await getCachedArticle(url)) return true;
+            const sourceHandler = sourceRegistry.getHandler(url);
+            const promoteArticleImage = async result => {
+                const candidate = safeHttpUrl(result?.image);
+                let currentIsInvalid = !article.image || isInvalidImage(article.image);
+                try {
+                    if (sourceHandler?.isInvalidFeedImage?.(article.image)) currentIsInvalid = true;
+                } catch (error) { }
+                if (!currentIsInvalid) return;
+                if (candidate && !isInvalidImage(candidate)) {
+                    article.image = candidate;
+                    return;
+                }
+                const primaryImageTarget = sourceHandler?.primaryImageTarget?.(result);
+                if (!safeHttpUrl(primaryImageTarget)) return;
+                const resolvedImage = await getBestImage(
+                    primaryImageTarget,
+                    (imageUrl, options = {}) => fetch(imageUrl, { headers: BROWSER_HEADERS, ...options })
+                );
+                if (resolvedImage && !isInvalidImage(resolvedImage)) article.image = resolvedImage;
+            };
+            const cached = await getCachedArticle(url);
+            if (cached) {
+                await promoteArticleImage(enhanceArticleResultForSource(url, cached, { cacheMigration: true }));
+                return true;
+            }
             const policy = await getArticleFetchPolicy(url, feedUrl);
             if (!policy.hasStrictConfiguredMethods || !hasOnlyOpenCliFetchMethod(policy.strategyOrder)) return false;
 
@@ -5417,13 +5480,14 @@ function scheduleOpenCliIngestPrefetch(article, feedUrl = '') {
                 article?.title || ''
             );
             if (!result?.content) throw new Error('OpenCLI returned no usable article content');
-            const cached = await cacheArticleResult(url, {
+            await promoteArticleImage(result);
+            const didCache = await cacheArticleResult(url, {
                 ...result,
                 url,
                 feedUrl: feedUrl || result.feedUrl || '',
                 fetchStrategy: 'opencli'
             });
-            if (!cached) throw new Error('OpenCLI article content could not be cached');
+            if (!didCache) throw new Error('OpenCLI article content could not be cached');
             console.log(`[OPENCLI INGEST] Cached new article before display: ${url}`);
             return true;
         });
@@ -5448,7 +5512,7 @@ async function fetchPrimaryArticleForAggregate(value) {
     const url = normalizeArticleSourceUrl(value);
     if (!url || normalizedHostname(url) === 'techmeme.com') return null;
     const policy = await getArticleFetchPolicy(url, '');
-    const preferredOrder = ['jina', 'direct', 'cloudflare', 'vietserver', 'allorigins', 'opencli'];
+    const preferredOrder = ['jina', 'opencli', 'direct', 'cloudflare', 'vietserver', 'allorigins'];
     const strategyOrder = preferredOrder.filter(strategy => policy.strategyOrder.includes(strategy));
     for (const strategy of strategyOrder) {
         try {

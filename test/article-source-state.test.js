@@ -42,4 +42,8 @@ test('normalizes copied publisher links with trailing markdown punctuation', () 
         normalizeArticleSourceUrl('https://example.com/wiki/Story_(2026)'),
         'https://example.com/wiki/Story_(2026)'
     );
+    assert.equal(
+        normalizeArticleSourceUrl('https://www.techmeme.com/260901/p16#a260901p16'),
+        'https://www.techmeme.com/260901/p16'
+    );
 });

@@ -53,10 +53,15 @@ export function normalizeArticleSourceUrl(value) {
     // Markdown/chat copies occasionally leave a closing bracket, parenthesis,
     // brace or escape after a publisher file extension. Those characters are
     // not part of these article URLs and otherwise create a separate 404 cache.
-    return url.replace(
+    const cleaned = url.replace(
         /(\.(?:tpo|chn|s?html?|aspx?|php))[\]\\)}]+([?#].*)?$/i,
         '$1$2'
     );
+    // URL fragments are never sent to the publisher. RSS feeds such as
+    // Techmeme append an in-page anchor while routed reader links omit it;
+    // treating those forms as different cache keys causes an avoidable
+    // foreground refetch even when the article was already warmed by cron.
+    return cleaned.replace(/#.*$/, '');
 }
 
 export { hasVozDeletedThreadMarker };

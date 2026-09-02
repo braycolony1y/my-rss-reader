@@ -57,9 +57,15 @@ test('Techmeme related links and X cards survive shared article cleaning', () =>
     assert.match(server, /isTechmemeStory/);
     assert.match(server, /\.techmeme-x-posts, \.techmeme-primary-article/);
     assert.match(server, /if \(!isTechmemeStory\) \{/);
+    assert.match(server, /node\.closest\('\.techmeme-x-posts'\)\.length > 0/);
     assert.match(html, /\.theme-glass-light \.article-rendered-content \.techmeme-x-posts/);
     assert.match(html, /\.techmeme-x-post__profile/);
+    assert.match(html, /\.article-rendered-content \.techmeme-x-post__profile-image \{[\s\S]*margin: 0 !important;[\s\S]*object-fit: cover;[\s\S]*box-shadow: none;/);
+    assert.match(html, /\.article-rendered-content \.techmeme-x-post__body:only-child \{[\s\S]*grid-column: 1 \/ -1;/);
     assert.doesNotMatch(html, /\.techmeme-x-post__avatar/);
+    assert.match(html, /class="article-primary-source-badge flex items-center/);
+    assert.match(html, /\.theme-glass-light \.article-primary-source-badge \{[\s\S]*background: rgba\(255, 255, 255, 0\.72\) !important/);
+    assert.doesNotMatch(html, /class="[^"]*bg-sky-950\/75[^"]*"/);
 });
 
 test('deleted VOZ pagination serves the exact cached page instead of page one', () => {
@@ -102,6 +108,12 @@ test('canonical publisher URLs cannot be overwritten by their malformed request 
     assert.doesNotMatch(endpoint, /if \(!isGoogleNewsArticleUrl\(requestedUrl\)\) \{[\s\S]{0,300}resolveGoogleNewsUrl\(requestedUrl/);
     assert.match(server, /async function fetchArticleHtmlByStrategy\(strategy, url\) \{\s*url = normalizeArticleSourceUrl\(url\)/);
     assert.match(server, /async function fetchParsedArticleByStrategy\(strategy, url,[\s\S]{0,120}\{\s*url = normalizeArticleSourceUrl\(url\)/);
+});
+
+test('publisher press-and-hold challenges are rejected and The Hill OpenCLI reads its public AMP page', () => {
+    assert.match(server, /press\\s\*\(\?:&\|and\)\\s\*hold\\s\+to confirm you are a human/);
+    assert.match(server, /sourceHandler\?\.getOpenCliReaderUrl\?\.\(url\)/);
+    assert.match(server, /'web', 'read', '--url', readerUrl/);
 });
 
 test('deleted-source warning is a dedicated subdued liquid-glass alert', () => {

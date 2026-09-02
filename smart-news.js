@@ -7205,18 +7205,14 @@ function smartArticleIdentity(article) {
   }
 }
 
-async function prefetchNewOpenCliOnlySmartArticles(results, previousArticles, helpers) {
+async function prefetchOpenCliOnlySmartArticles(results, helpers) {
   if (typeof helpers?.prefetchOpenCliOnlyArticles !== 'function') return;
-  const previousLinks = new Set((previousArticles || []).map(smartArticleIdentity).filter(Boolean));
   const jobs = [];
   for (const result of results || []) {
     if (!hasOnlyOpenCliFetchMethod(result?.source?.fetchMethods)) continue;
-    const newArticles = (result.articles || []).filter(article => {
-      const identity = smartArticleIdentity(article);
-      return identity && !previousLinks.has(identity);
-    });
-    if (newArticles.length) {
-      jobs.push(helpers.prefetchOpenCliOnlyArticles(newArticles, result.source.url));
+    const articlesToPrefetch = (result.articles || []).filter(smartArticleIdentity);
+    if (articlesToPrefetch.length) {
+      jobs.push(helpers.prefetchOpenCliOnlyArticles(articlesToPrefetch, result.source.url));
     }
   }
   await Promise.all(jobs);
@@ -7242,14 +7238,6 @@ export async function startSmartSyncLoop(
       }
       const configuredSources =
         await getSources();
-
-      const previousArticles =
-        (
-          await db.get(
-            'smartRawArticles',
-            { type: 'json', shared: true }
-          )
-        ) || [];
 
       const uniqueSources =
         [
@@ -7282,9 +7270,8 @@ export async function startSmartSyncLoop(
             []
         );
 
-      await prefetchNewOpenCliOnlySmartArticles(
+      await prefetchOpenCliOnlySmartArticles(
         results,
-        previousArticles,
         helpers
       );
 
@@ -8381,9 +8368,8 @@ export function createSmartNewsEngine({
             []
         );
 
-      await prefetchNewOpenCliOnlySmartArticles(
+      await prefetchOpenCliOnlySmartArticles(
         sourceResults,
-        previousSmartArticlesForPrefetch,
         helpers
       );
 

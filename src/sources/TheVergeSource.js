@@ -28,7 +28,7 @@ function markdownImage(line = '') {
 
 function looksLikeAuthorBiography(value = '') {
     const text = cleanText(value);
-    return /\b(?:is an? (?:senior |deput |former )?(?:writer|reporter|editor|reviewer)|covers? .+ for The Verge|started (?:her|his|their) career|posts? from this author|see all by|follow topics and authors)\b/i.test(text);
+    return /\b(?:is an? (?:senior |deput |former )?(?:writer|reporter|editor|reviewer|correspondent)|covers? .+ for The Verge|started (?:her|his|their) career|posts? from this author|see all by|follow topics and authors)\b/i.test(text);
 }
 
 export function cleanTheVergeReaderMarkdown(markdown = '') {
@@ -49,7 +49,9 @@ export function cleanTheVergeReaderMarkdown(markdown = '') {
     let hero = null;
     for (let index = Math.max(0, bylineIndex); index < lines.length; index++) {
         const image = markdownImage(lines[index]);
-        if (image?.url && isTheVergeHero(image.url)) {
+        const imageLabel = cleanText(image?.alt || '').replace(/^Image\s+\d+\s*:\s*/i, '');
+        const isAuthorAvatar = Boolean(author) && imageLabel.localeCompare(author, undefined, { sensitivity: 'accent' }) === 0;
+        if (image?.url && isTheVergeHero(image.url) && !isAuthorAvatar) {
             heroIndex = index;
             hero = image;
             break;

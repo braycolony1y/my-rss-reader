@@ -41,3 +41,40 @@ test('The Verge reader cleanup uses the publisher handler for Techmeme primary a
     assert.match(cleaned.markdown, /^Google has a new suite/m);
     assert.doesNotMatch(cleaned.markdown, /author_profile_images|Subscribe|Most Popular|Google announced/);
 });
+
+test('The Verge reader skips a byline profile photo before the real hero image', () => {
+    const cleaned = cleanTheVergeReaderMarkdown(`
+# Mozilla launches ad blocking for Firefox on iOS
+
+Mozilla is using Apple’s WebKit Content Blocker technology and the EasyList filter.
+
+by Tom Warren
+
+![Image 3: Tom Warren](https://platform.theverge.com/wp-content/uploads/sites/2/2025/01/Tom_BLURPLE.jpg?w=2400)
+
+Tom Warren
+
+Senior Correspondent
+
+![Image 4: Firefox](https://platform.theverge.com/wp-content/uploads/sites/2/2026/02/firefox.jpg?w=2400)
+
+![Image 5: Firefox](https://platform.theverge.com/wp-content/uploads/sites/2/2026/02/firefox.jpg?w=2400)
+
+Image: The Verge
+
+![Image 6: Tom Warren](https://platform.theverge.com/wp-content/uploads/sites/2/2025/01/Tom_BLURPLE.jpg?w=96)
+
+Tom Warren is a senior correspondent and author of Notepad, who has been covering all things Microsoft, PC, and technology for more than 20 years.
+
+Mozilla is officially launching ad blocking for Firefox on iOS today, after testing the feature over the past few weeks. The option blocks most third-party ads and trackers before they load.
+
+Mozilla is using Apple’s WebKit Content Blocker technology and EasyList, and keeps the feature disabled by default until the user enables it.
+
+[Subscribe to The Verge](https://www.theverge.com/subscribe)
+`);
+
+    assert.match(cleaned.image, /firefox\.jpg/);
+    assert.equal(cleaned.imageCaption, 'Image: The Verge');
+    assert.match(cleaned.markdown, /^Mozilla is officially launching/m);
+    assert.doesNotMatch(cleaned.markdown, /Tom_BLURPLE|Senior Correspondent|covered technology/);
+});
