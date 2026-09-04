@@ -158,7 +158,7 @@ const ARTICLE_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;// NOTE: If you change anyt
 // Normal reads expire after seven days, but the underlying last-known-good
 // file remains available longer in case the publisher later removes the page.
 const ARTICLE_CACHE_LAST_KNOWN_TTL_MS = 90 * 24 * 60 * 60 * 1000;
-const ARTICLE_CACHE_VERSION = 48;
+const ARTICLE_CACHE_VERSION = 54;
 const execFileAsync = promisify(execFile);
 
 let _articleCacheIndex = null;
@@ -223,8 +223,8 @@ function assertArticleResultAcceptedBySource(url, result) {
         .trim()
         .slice(0, 3500);
     if (
-        /(?:are you a robot|attention required|access (?:to this page )?(?:has been )?denied|just a moment)/i.test(title) ||
-        /(?:we(?:'|’)ve detected unusual activity from your computer network|please click the box below to let us know you(?:'|’)re not a robot|press\s*(?:&|and)\s*hold\s+to confirm you are a human|before we continue.{0,160}(?:human|bot)|reference id\s+[a-f0-9-]{12,}|enable javascript and cookies to continue|why did this happen\??\s*please make sure your browser supports javascript and cookies|block reference id\s*:)/i.test(text)
+        /(?:are you a robot|attention required|access (?:to this page )?(?:has been )?denied|just a moment|verifying the device)/i.test(title) ||
+        /(?:we(?:'|’)ve detected unusual activity from your computer network|please click the box below to let us know you(?:'|’)re not a robot|press\s*(?:&|and)\s*hold\s+to confirm you are a human|before we continue.{0,160}(?:human|bot)|verifying the device|requested content will be available after verification|captcha-delivery\.com\/interstitial|reference id\s+[a-f0-9-]{12,}|enable javascript and cookies to continue|why did this happen\??\s*please make sure your browser supports javascript and cookies|block reference id\s*:)/i.test(text)
     ) {
         throw new Error('The reader returned a publisher challenge page instead of the article body');
     }
@@ -373,8 +373,8 @@ async function cacheArticleResult(url, result) {
             if (isVozThreadUrl(url)) {
                 const existingPostCount = (existing?.content?.match(/class=["']voz-post["']/gi) || []).length;
                 const incomingPostCount = (result.content.match(/class=["']voz-post["']/gi) || []).length;
-                if (existingPostCount > 0 && incomingPostCount === 0) {
-                    console.warn(`[ARTICLE CACHE] Refusing VOZ quality downgrade for ${url}: ${existingPostCount} posts -> 0 posts.`);
+                if (existingPostCount > 0 && incomingPostCount < existingPostCount) {
+                    console.warn(`[ARTICLE CACHE] Refusing VOZ quality downgrade for ${url}: ${existingPostCount} posts -> ${incomingPostCount} posts.`);
                     return false;
                 }
             }
@@ -963,18 +963,37 @@ async function fetchViaOpenCli(url) {
     const sourceHandler = sourceRegistry.getHandler(url);
     const readerUrl = normalizeArticleSourceUrl(sourceHandler?.getOpenCliReaderUrl?.(url) || url);
     const captureDiagnostics = Boolean(sourceHandler?.needsOpenCliDiagnostics?.());
-    const args = [
-        'web', 'read', '--url', readerUrl,
-        '--stdout', 'true',
-        '--download-images', 'false',
-        '--wait', '3',
-        '--window', 'background'
-    ];
-    if (captureDiagnostics) args.push('--diagnose', 'true');
-    const { stdout, stderr } = await execFileAsync(executable, args, {
-        timeout: 45000,
-        maxBuffer: 12 * 1024 * 1024
-    });
+    const waitSeconds = Math.max(3, Math.min(30, Number(sourceHandler?.getOpenCliWaitSeconds?.()) || 3));
+    const fallbackReaderUrls = (sourceHandler?.getOpenCliFallbackReaderUrls?.(url) || [])
+        .map(candidate => normalizeArticleSourceUrl(candidate))
+        .filter(candidate => safeHttpUrl(candidate) && candidate !== readerUrl);
+    const readerCandidates = [readerUrl, ...new Set(fallbackReaderUrls)];
+    let stdout = '';
+    let stderr = '';
+    let remainedOnVerificationPage = false;
+
+    for (let index = 0; index < readerCandidates.length; index++) {
+        const candidateWaitSeconds = index === 0 ? waitSeconds : 5;
+        const args = [
+            'web', 'read', '--url', readerCandidates[index],
+            '--stdout', 'true',
+            '--download-images', 'false',
+            '--wait', String(candidateWaitSeconds),
+            '--window', 'background'
+        ];
+        if (captureDiagnostics) args.push('--diagnose', 'true');
+        const commandResult = await execFileAsync(executable, args, {
+            timeout: Math.max(45000, (candidateWaitSeconds + 15) * 1000),
+            maxBuffer: 12 * 1024 * 1024
+        });
+        stdout = commandResult.stdout;
+        stderr = commandResult.stderr;
+        remainedOnVerificationPage = /(?:verifying the device|requested content will be available after verification|captcha-delivery\.com\/interstitial|press\s*(?:&|and)\s*hold\s+to confirm you are a human)/i.test(`${stdout}\n${stderr}`);
+        if (!remainedOnVerificationPage && stdout.trim()) break;
+    }
+    if (remainedOnVerificationPage || !stdout.trim()) {
+        throw new Error('OpenCLI remained on the publisher device-verification page after waiting');
+    }
     const parsed = parseOpenCliMarkdown(stdout, url, { diagnostics: stderr });
     if (parsed.isDeletedSource) return parsed;
     assertArticleResultAcceptedBySource(url, parsed);
@@ -1047,7 +1066,7 @@ app.use('/api', (req, res, next) => {
 const PORT = process.env.PORT || 3000;
 const VALID_CLUSTERING_MODELS = new Set([
     'gemini-3.5-flash-lite',
-    'gemini-3.7-flash'
+    'gemini-3.8-flash'
 ]);
 const configuredClusteringModel = process.env.SMART_CLUSTERING_MODEL || 'gemini-3.5-flash-lite';
 const DEFAULT_CLUSTERING_MODEL = VALID_CLUSTERING_MODELS.has(configuredClusteringModel)
@@ -3241,7 +3260,7 @@ async function syncFeeds(env, targetFeedUrl = null, onProgress = null, targetCat
 
 const smartNews = createSmartNewsEngine({
     db: env.RSS_DATA,
-    helpers: { fastParseRSS, waitForHttpIdle, prefetchOpenCliOnlyArticles },
+    helpers: { fastParseRSS, waitForHttpIdle, prefetchOpenCliOnlyArticles, resolveSmartArticleDestinations },
     headers: BROWSER_HEADERS,
     geminiKeyManager
 });
@@ -3615,6 +3634,17 @@ function isGoogleNewsArticleUrl(value) {
     }
 }
 
+function isGoogleNewsHostedThumbnail(value) {
+    try {
+        const hostname = new URL(value).hostname.toLowerCase();
+        return hostname === 'lh3.googleusercontent.com'
+            || hostname === 'news.google.com'
+            || hostname.endsWith('.gstatic.com');
+    } catch (error) {
+        return false;
+    }
+}
+
 async function ensureGoogleNewsUrlCache() {
     if (!googleNewsUrlCache) {
         const obj = await env.RSS_DATA.get('googleNewsUrlCache', { type: 'json' }) || {};
@@ -3736,6 +3766,47 @@ async function resolveGoogleNewsViaPublisherSearch(hints = {}) {
     return '';
 }
 
+function parseOpenCliSearchDestination(output, expectedDomain = '') {
+    const source = String(output || '').trim();
+    const start = source.indexOf('[');
+    const end = source.lastIndexOf(']');
+    if (start < 0 || end <= start) return '';
+    let results;
+    try {
+        results = JSON.parse(source.slice(start, end + 1));
+    } catch (error) {
+        return '';
+    }
+    const domain = String(expectedDomain || '').toLowerCase().replace(/^www\./, '');
+    for (const result of Array.isArray(results) ? results : []) {
+        const candidate = safeHttpUrl(result?.url);
+        if (!candidate || isGoogleNewsArticleUrl(candidate)) continue;
+        try {
+            const hostname = new URL(candidate).hostname.toLowerCase().replace(/^www\./, '');
+            if (!domain || hostname === domain || hostname.endsWith('.' + domain)) return candidate;
+        } catch (error) { }
+    }
+    return '';
+}
+
+async function resolveGoogleNewsViaOpenCliSearch(hints = {}) {
+    const domain = googleNewsPublisherDomain(hints);
+    const title = normalizeArticleTitle(hints.title || '').replace(/\s+-\s+[^-]{2,80}$/i, '').trim();
+    if (!domain || title.length < 12) return '';
+    const executable = path.resolve('./node_modules/.bin/opencli');
+    const query = 'site:' + domain + ' "' + title.replace(/["\r\n]+/g, ' ') + '"';
+    const { stdout } = await execFileAsync(executable, [
+        'duckduckgo', 'search', query,
+        '--limit', '5',
+        '--window', 'background',
+        '-f', 'json'
+    ], {
+        timeout: 45000,
+        maxBuffer: 2 * 1024 * 1024
+    });
+    return parseOpenCliSearchDestination(stdout, domain);
+}
+
 async function resolveGoogleNewsUrl(sourceUrl, hints = {}, options = {}) {
     const original = safeHttpUrl(normalizeArticleSourceUrl(sourceUrl));
     if (!original || !isGoogleNewsArticleUrl(original)) return original || sourceUrl;
@@ -3790,6 +3861,13 @@ async function resolveGoogleNewsUrl(sourceUrl, hints = {}, options = {}) {
                 resolutionError += (resolutionError ? '; ' : '') + error.message;
             }
         }
+        if (!resolvedUrl) {
+            try {
+                resolvedUrl = await resolveGoogleNewsViaOpenCliSearch(hints);
+            } catch (error) {
+                resolutionError += (resolutionError ? '; ' : '') + 'OpenCLI search: ' + error.message;
+            }
+        }
         if (!resolvedUrl && resolutionError) console.error('[GOOGLE NEWS] Destination resolution failed:', resolutionError);
         cache.set(original, { resolvedUrl, cachedAt: Date.now(), error: resolvedUrl ? '' : resolutionError });
         if (cache.size > 3000) cache.delete(cache.keys().next().value);
@@ -3801,6 +3879,61 @@ async function resolveGoogleNewsUrl(sourceUrl, hints = {}, options = {}) {
         return cached?.resolvedUrl || original;
     }
     return pending;
+}
+
+async function resolveSmartArticleDestinations(sourceResults = []) {
+    const articles = sourceResults.flatMap(result => Array.isArray(result?.articles) ? result.articles : []);
+    const wrappers = [...new Set(articles.map(article => article?.link).filter(isGoogleNewsArticleUrl))];
+    if (!wrappers.length) return { attempted: 0, resolved: 0 };
+
+    const cache = await ensureGoogleNewsUrlCache();
+    const now = Date.now();
+    const uncached = wrappers.filter(url => {
+        const entry = cache.get(url);
+        return !entry?.resolvedUrl || now - Number(entry.cachedAt || 0) >= GOOGLE_NEWS_URL_CACHE_TTL_MS;
+    });
+
+    if (uncached.length) {
+        try {
+            const decoded = await googleDecoder.decodeBatch(uncached);
+            for (const result of decoded || []) {
+                const sourceUrl = safeHttpUrl(result?.source_url);
+                const destination = safeHttpUrl(result?.decoded_url);
+                if (!sourceUrl || !destination || isGoogleNewsArticleUrl(destination)) continue;
+                cache.set(sourceUrl, { resolvedUrl: destination, cachedAt: Date.now(), error: '' });
+            }
+            scheduleGoogleNewsUrlCacheSave();
+        } catch (error) {
+            console.warn('[SMART NEWS] Could not batch-resolve Google News destinations:', error.message);
+        }
+    }
+
+    let resolvedCount = 0;
+    for (const article of articles) {
+        const wrapper = article?.link;
+        if (!isGoogleNewsArticleUrl(wrapper)) continue;
+        let destination = cache.get(wrapper)?.resolvedUrl || '';
+        if (!destination) {
+            // Start the more expensive publisher-search fallbacks without
+            // delaying the Smart sync. A later card request or sync reuses it.
+            destination = await resolveGoogleNewsUrl(wrapper, article, { backgroundResolve: true });
+        }
+        if (!destination || isGoogleNewsArticleUrl(destination)) continue;
+
+        article.originalLink = wrapper;
+        article.link = normalizeArticleSourceUrl(destination);
+        article.domain = new URL(article.link).hostname.replace(/^www\./, '');
+        article.feedIcon = publisherIcon(article.link);
+        if (!article.image || isInvalidImage(article.image) || isGoogleNewsHostedThumbnail(article.image)) {
+            const cachedArticle = await getLastKnownCachedArticle(article.link);
+            const cachedImage = safeHttpUrl(cachedArticle?.image);
+            article.image = cachedImage && !isInvalidImage(cachedImage)
+                ? cachedImage
+                : `/api/og-image?url=${encodeURIComponent(article.link)}`;
+        }
+        resolvedCount++;
+    }
+    return { attempted: wrappers.length, resolved: resolvedCount };
 }
 
 async function mapWithConcurrency(items, concurrency, mapper) {
@@ -3831,6 +3964,8 @@ async function prepareArticleForClient(article, isSubItem = false) {
     const prepared = { ...article, title: normalizeArticleTitle(article.title) };
     prepared.link = normalizeArticleSourceUrl(prepared.link);
     if (prepared.originalLink) prepared.originalLink = normalizeArticleSourceUrl(prepared.originalLink);
+    const cameFromGoogleNews = isGoogleNewsArticleUrl(prepared.link)
+        || isGoogleNewsArticleUrl(prepared.originalLink);
     if (isGoogleNewsArticleUrl(prepared.link)) {
         prepared.originalLink = prepared.link;
         prepared.link = await resolveGoogleNewsUrl(prepared.link, prepared, { backgroundResolve: true, isSubItem });
@@ -3862,6 +3997,29 @@ async function prepareArticleForClient(article, isSubItem = false) {
                 } else if (safeHttpUrl(prepared.primaryArticleUrl)) {
                     prepared.image = `/api/og-image?url=${encodeURIComponent(prepared.primaryArticleUrl)}`;
                 }
+            }
+        }
+    } catch (error) { }
+
+    // Google News entries often omit the publisher image. Reuse the real
+    // image already stored with the prefetched publisher article instead of
+    // making the browser show a generated placeholder and fetching again.
+    try {
+        const sourceHandler = sourceRegistry.getHandler(prepared.link);
+        const currentImage = safeHttpUrl(prepared.image);
+        const needsCachedImage = !currentImage
+            || isInvalidImage(currentImage)
+            || (cameFromGoogleNews && isGoogleNewsHostedThumbnail(currentImage))
+            || sourceHandler?.isInvalidFeedImage?.(currentImage) === true;
+        if (needsCachedImage && safeHttpUrl(prepared.link) && !isGoogleNewsArticleUrl(prepared.link)) {
+            const cached = await getLastKnownCachedArticle(prepared.link);
+            const cachedImage = safeHttpUrl(cached?.image);
+            if (cachedImage
+                && !isInvalidImage(cachedImage)
+                && sourceHandler?.isInvalidFeedImage?.(cachedImage) !== true) {
+                prepared.image = cachedImage;
+            } else if (cameFromGoogleNews) {
+                prepared.image = `/api/og-image?url=${encodeURIComponent(prepared.link)}`;
             }
         }
     } catch (error) { }
@@ -4427,7 +4585,7 @@ app.get('/api/gemini-key-status', authMiddleware, async (req, res) => {
     const activeKey = geminiKeyManager.getCurrentKeyObj();
     const keyStats = geminiKeyManager.getDebugStats();
     const apiKey = activeKey?.key || '';
-    const model = process.env.GEMINI_MODEL || 'gemini-3.7-flash';
+    const model = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
     const smartStatus = await smartNews.getStatus();
     const rawProviderHealth = await env.RSS_DATA.get('smartAiProviderHealth', { type: 'json' }).catch(()=>null);
     const providerHealth = rawProviderHealth || {};
@@ -4555,7 +4713,7 @@ app.post('/api/gemini-keys', authMiddleware, async (req, res) => {
         return res.status(400).json({ error: 'Enter a complete Gemini API key without spaces.' });
     }
 
-    const model = process.env.GEMINI_MODEL || 'gemini-3.7-flash';
+    const model = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
     try {
         const validation = await validateGeminiKey(apiKey, model);
         const result = await persistAndActivateGeminiKey(apiKey);
@@ -5027,7 +5185,7 @@ function isUsableArticlePage(html) {
     const sample = html.slice(0, 120000);
     const titleMatch = sample.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
     const titleText = titleMatch ? titleMatch[1].trim() : '';
-    if (/(?:attention required|just a moment|access (?:to this page )?(?:has been )?denied|are you a robot)/i.test(titleText) || /(?:cf-chl-|enable javascript and cookies to continue|we(?:'|&apos;|&#x27;)ve detected unusual activity from your computer network|press\s*(?:&amp;|&|and)\s*hold\s+to confirm you are a human|before we continue[\s\S]{0,300}(?:human|bot)|reference id\s+[a-f0-9-]{12,}|why did this happen\??[\s\S]{0,300}please make sure your browser supports javascript and cookies|block reference id\s*:)/i.test(sample)) return false;
+    if (/(?:attention required|just a moment|access (?:to this page )?(?:has been )?denied|are you a robot|verifying the device)/i.test(titleText) || /(?:cf-chl-|enable javascript and cookies to continue|we(?:'|&apos;|&#x27;)ve detected unusual activity from your computer network|press\s*(?:&amp;|&|and)\s*hold\s+to confirm you are a human|before we continue[\s\S]{0,300}(?:human|bot)|verifying the device|requested content will be available after verification|captcha-delivery\.com\/interstitial|reference id\s+[a-f0-9-]{12,}|why did this happen\??[\s\S]{0,300}please make sure your browser supports javascript and cookies|block reference id\s*:)/i.test(sample)) return false;
     if (/(?:attention required|access denied)/i.test(sample) && !/<(?:article|main|h1)\b/i.test(sample)) return false;
     return /<(?:html|article|main|p|script)\b/i.test(sample);
 }
@@ -6064,6 +6222,19 @@ async function getArchivedVozPaginationSeed(baseUrl) {
     return pages.length ? { pages } : null;
 }
 
+async function shouldRevalidateUnderfilledVozPage(url, cached) {
+    if (!cached?.content || cached.sourceDeleted === true || !isVozThreadUrl(url)) return false;
+    const postCount = (cached.content.match(/class=["']voz-post["']/gi) || []).length;
+    if (!postCount || postCount >= 20) return false;
+    const currentPage = getVozThreadPageNumber(url)
+        || Number.parseInt(cached.pagination?.currentPage, 10)
+        || 1;
+    if (cached.pagination?.nextUrl) return true;
+    const archivedPagination = await getArchivedVozPaginationSeed(normalizeStateUrl(url));
+    const lastKnownPage = Math.max(1, ...(archivedPagination?.pages || []).map(page => Number(page?.page || 0)));
+    return currentPage < lastKnownPage;
+}
+
 async function buildDeletedSourceResponse(url, responseMetadata = {}) {
     const requestedCacheUrl = normalizeArticleSourceUrl(url);
     const baseUrl = normalizeStateUrl(url);
@@ -6247,11 +6418,16 @@ app.get('/api/article-content', authMiddleware, async (req, res) => {
             if (directCached && !isGoogleNewsArticleUrl(directCached.url || '')) {
                 let hostname = '';
                 try { hostname = new URL(url).hostname.toLowerCase(); } catch (e) { }
-                const effectiveFeedUrl = requestedFeedUrl || directCached.feedUrl || '';
+                if ((hostname === 'voz.vn' || hostname.endsWith('.voz.vn'))
+                    && await shouldRevalidateUnderfilledVozPage(url, directCached)) {
+                    console.log(`[VOZ CACHE] Revalidating underfilled page ${url} before serving it.`);
+                    directCached = null;
+                }
+                const effectiveFeedUrl = requestedFeedUrl || directCached?.feedUrl || '';
                 const policy = await getArticleFetchPolicy(url, effectiveFeedUrl);
                 const availableStrategies = policy.availableStrategies;
                 const methodPreferences = await getArticleFetchPreferences(hostname);
-                if (policy.hasStrictConfiguredMethods && !availableStrategies.includes(directCached.fetchStrategy)) {
+                if (directCached && policy.hasStrictConfiguredMethods && !availableStrategies.includes(directCached.fetchStrategy)) {
                     // Preserve the old file as last-known-good, but do not
                     // serve a cache created through a method the user has now
                     // excluded for this source.
@@ -6541,6 +6717,9 @@ app.get('/api/article-content', authMiddleware, async (req, res) => {
             result = await expandArticleResultForSource(url, result, {
                 description: requestedDescription
             });
+        }
+        if (result && !isDeletedArticlePayload(url, result)) {
+            assertArticleResultAcceptedBySource(url, result);
         }
         
         if (result && isDeletedArticlePayload(url, result)) {
@@ -7681,7 +7860,7 @@ async function computeUniversalPrefetchList(env, articleSnapshot = null) {
             for (let i = 0; i < Math.min(5, list.length); i++) {
                 const art = list[i];
                 if (!art) continue;
-                const url = art.originalLink || art.link;
+                const url = art.link || art.originalLink;
                 if (url && !topArticlesMap.has(url)) {
                     topArticlesMap.set(url, { url, title: art.title, originalLink: art.originalLink, link: art.link });
                 }
@@ -7748,7 +7927,7 @@ async function runUniversalTabPrefetch(env) {
 
         let prefetchedCount = 0;
         for (const art of toProcess) {
-            const url = art.originalLink || art.link;
+            const url = art.link || art.originalLink;
             if (!url) continue;
             let cached = await getCachedArticle(url);
             if (!cached && googleNewsUrlCache && googleNewsUrlCache.has(url) && googleNewsUrlCache.get(url).resolvedUrl) {
@@ -7942,7 +8121,7 @@ if (isMainModule) {
         setTimeout(() => {
             gcAndLogMemory('Pre-SmartSyncLoop');
             console.log('[STAGGERED BOOT] Phase 3: Starting smart source sync loop...');
-            startSmartSyncLoop({ fastParseRSS, waitForHttpIdle, prefetchOpenCliOnlyArticles }, BROWSER_HEADERS, env.RSS_DATA, smartNews.getSources);
+            startSmartSyncLoop({ fastParseRSS, waitForHttpIdle, prefetchOpenCliOnlyArticles, resolveSmartArticleDestinations }, BROWSER_HEADERS, env.RSS_DATA, smartNews.getSources);
         }, STAGGER_DELAY_MS.SMART_SYNC_LOOP);
 
         // ── Phase 4: Prefetch engine (delayed) ──────────────────────
@@ -8004,6 +8183,7 @@ export {
     normalizeArticleMediaMarkup,
     jinaMarkdownToHtml,
     normalizeArticleTitle,
+    parseOpenCliSearchDestination,
     fastParseRSS,
     parseBaoMoi,
     parseMorningstar,

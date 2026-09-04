@@ -61,7 +61,7 @@ function markdownImage(line = '') {
 
 function extractMarkdownHero(markdown = '') {
     const lines = String(markdown || '').split(/\r?\n/);
-    const takeawayIndex = lines.findIndex(line => /^\s*(?:#{1,4}\s+)?(?:\*\*)?Takeaways(?:\*\*)?\s+by Bloomberg AI\s*$/i.test(line));
+    const takeawayIndex = lines.findIndex(line => /^\s*(?:#{1,4}\s+)?(?:\*\*)?Takeaways(?:\*\*)?\s+by Bloomberg AI(?:\s*\[Subscribe\]\([^)]+\))?\s*$/i.test(line));
     const limit = takeawayIndex >= 0 ? takeawayIndex : Math.min(lines.length, 100);
     let image = '';
     let imageCaption = '';
@@ -119,7 +119,7 @@ export function cleanBloombergReaderMarkdown(markdown = '', context = {}) {
     const author = extractBloombergAuthor(original);
     let source = original;
 
-    const takeawayIndex = source.search(/^\s*(?:#{1,4}\s+)?(?:\*\*)?Takeaways(?:\*\*)?\s+by Bloomberg AI\s*$/im);
+    const takeawayIndex = source.search(/^\s*(?:#{1,4}\s+)?(?:\*\*)?Takeaways(?:\*\*)?\s+by Bloomberg AI(?:\s*\[Subscribe\]\([^)]+\))?\s*$/im);
     if (takeawayIndex >= 0) {
         source = source.slice(takeawayIndex);
     } else {
@@ -134,6 +134,7 @@ export function cleanBloombergReaderMarkdown(markdown = '', context = {}) {
     }
 
     source = restoreKnownMarkdownImages(source, context.url)
+        .replace(/\[Subscribe\]\(https?:\/\/(?:www\.)?bloomberg\.com\/subscriptions[^)]*\)/gi, '')
         .replace(/^\s*(?:#{1,4}\s+)?\*\*Takeaways\*\*\s+by Bloomberg AI\s*$/im, '### Takeaways by Bloomberg AI')
         .replace(/^\s*\[\s*$/gm, '')
         .replace(/^\s*\]\(https?:\/\/[^)]+\)\s*$/gm, '')
@@ -179,6 +180,7 @@ export function cleanBloombergArticleHtml(content = '', context = {}) {
     if (!source) return { html: source, image: '', imageCaption: '', author: '' };
     const $ = cheerio.load(`<main id="bloomberg-reader-root">${source}</main>`, null, false);
     const root = $('#bloomberg-reader-root');
+    root.find('a[href*="bloomberg.com/subscriptions"]').filter((_, element) => /^Subscribe$/i.test(cleanText($(element).text()))).remove();
     const hero = heroMetadata(root, $);
     const author = (() => {
         const byline = root.find('p').filter((_, element) => /^By\s+/i.test(cleanText($(element).text()))).first();
@@ -265,13 +267,20 @@ export default class BloombergSource {
 
     enhanceArticleResult(result, context = {}) {
         const cleaned = cleanBloombergArticleHtml(result?.content || '', { ...context, url: context.url || result?.url });
+        const text = cleanText(cleaned.html);
+        const takeawayOnly = /Takeaways\s+by Bloomberg AI/i.test(text)
+            && text.length < 1_200;
         return {
             ...result,
             content: cleaned.html,
             image: safeHttpUrl(result?.image) || cleaned.image,
             imageCaption: cleanText(result?.imageCaption) || cleaned.imageCaption,
             author: cleanText(result?.author) || cleaned.author,
-            siteName: 'Bloomberg'
+            siteName: 'Bloomberg',
+            partialContent: takeawayOnly,
+            partialContentReason: takeawayOnly
+                ? 'Bloomberg exposed only its AI Takeaways to this reader. The remaining article requires publisher access.'
+                : ''
         };
     }
 

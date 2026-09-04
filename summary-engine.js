@@ -26,7 +26,7 @@ const MAX_RETRIES = 2;
 const RETRY_DELAY_MS = 5000;
 const QUEUE_POLL_INTERVAL_MS = 3000;
 const COOLDOWN_BETWEEN_JOBS_MS = 1500;
-const GEMINI_PRIMARY_MODEL = process.env.GEMINI_MODEL || 'gemini-3.7-flash';
+const GEMINI_PRIMARY_MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
 
 function logOnlineAiUsage(event) {
     console.log('[ONLINE AI]', JSON.stringify({

@@ -71,7 +71,7 @@ test('OpenCLI-only feed and Smart sources prefetch new article content during in
     assert.match(smartNews, /prefetchOpenCliOnlySmartArticles/);
     assert.match(smartNews, /result\?\.source\?\.fetchMethods/);
     assert.match(smartNews, /helpers\.prefetchOpenCliOnlyArticles\(articlesToPrefetch, result\.source\.url\)/);
-    assert.match(server, /helpers: \{ fastParseRSS, waitForHttpIdle, prefetchOpenCliOnlyArticles \}/);
+    assert.match(server, /helpers: \{ fastParseRSS, waitForHttpIdle, prefetchOpenCliOnlyArticles, resolveSmartArticleDestinations \}/);
 });
 
 test('Edit Source uses light liquid glass controls with a complete checkbox border', () => {
@@ -94,7 +94,7 @@ test('Smart sources expose and enforce their own article fetch allowlists', () =
     assert.match(html, /toggleSmartSourceFetchMethod\(source, method\.value\)/);
     assert.match(script, /toggleSmartSourceFetchPanel\(source\)/);
     assert.match(script, /async toggleSmartSourceFetchMethod\(source, method\)/);
-    assert.match(html, /script\.js\?v=30_shared_fetch_policy/);
+    assert.match(html, /script\.js\?v=32_pdf_destination/);
     assert.match(server, /smartNews\.getSourceSettings\(\)/);
     assert.match(server, /configuredSources = \[\.\.\.feeds, \.\.\.smartSources\]/);
     assert.match(server, /smartNews\.setSourceFetchMethods/);

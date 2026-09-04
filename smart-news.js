@@ -88,7 +88,7 @@ const SMART_NEWS_AI_CONFIG = {
       type: 'gemini',
       model:
         process.env.GEMINI_MODEL ||
-        'gemini-3.7-flash',
+        'gemini-3.8-flash',
       priority: 2,
       timeoutMs: 25_000,
       maxRetries: 1,
@@ -7263,6 +7263,17 @@ export async function startSmartSyncLoop(
             )
         );
 
+      if (
+        typeof helpers
+          .resolveSmartArticleDestinations ===
+        'function'
+      ) {
+        await helpers
+          .resolveSmartArticleDestinations(
+            results
+          );
+      }
+
       const articles =
         results.flatMap(
           result =>
@@ -8360,6 +8371,21 @@ export function createSmartNewsEngine({
               }
             )
         );
+
+      if (
+        typeof helpers
+          .resolveSmartArticleDestinations ===
+        'function'
+      ) {
+        notify(
+          'smart-resolving',
+          'Resolving publisher links and thumbnails…'
+        );
+        await helpers
+          .resolveSmartArticleDestinations(
+            sourceResults
+          );
+      }
 
       const fetchedArticles =
         sourceResults.flatMap(

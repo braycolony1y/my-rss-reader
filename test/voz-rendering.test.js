@@ -8,6 +8,7 @@ import {
     renderVozTwitterEmbed,
     transformVozRedditEmbeds
 } from '../src/sources/VozSource.js';
+import VozSource from '../src/sources/VozSource.js';
 
 test('VOZ image display width survives article media sanitization', () => {
     const forumImage = `<img src="data:image/svg+xml,%3Csvg width='500' height='500'%3E" data-src="https://i.imgur.com/example.png" class="bbImage lazyload" style="width: 100px" width="500" height="500">`;
@@ -69,4 +70,18 @@ test('article reader hydrates X embeds and contains horizontal gestures', () => 
     assert.match(html, /#overlay-scroll-container\s*\{[^}]*overflow-x:\s*hidden;[^}]*overscroll-behavior-x:\s*none;[^}]*touch-action:\s*pan-y pinch-zoom;/);
     assert.doesNotMatch(html, /\.article-rendered-content\s*\{[^}]*overflow-x:\s*(?:clip|hidden);/);
     assert.match(html, /\.voz-reddit-embed__frame\s*\{[^}]*height:\s*760px\s*!important;/);
+});
+
+test('VOZ rejects a one-post proxy fragment when the thread has a following page', () => {
+    const source = new VozSource();
+    const onePost = '<div class="voz-post" data-post-index="121">Only the first post was returned.</div>';
+
+    assert.equal(source.isUsableArticleResult({
+        content: onePost,
+        pagination: { currentPage: 7, nextUrl: 'https://voz.vn/t/example.1/page-8' }
+    }), false);
+    assert.equal(source.isUsableArticleResult({
+        content: onePost,
+        pagination: { currentPage: 9, nextUrl: null }
+    }), true);
 });

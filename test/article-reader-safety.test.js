@@ -110,10 +110,29 @@ test('canonical publisher URLs cannot be overwritten by their malformed request 
     assert.match(server, /async function fetchParsedArticleByStrategy\(strategy, url,[\s\S]{0,120}\{\s*url = normalizeArticleSourceUrl\(url\)/);
 });
 
+test('Google News cards fetch and route to the resolved publisher while keeping their stable original identity', () => {
+    assert.match(script, /articleReaderUrl\(articleOrUrl\)[\s\S]*articleOrUrl\?\.resolvedLink \|\| articleOrUrl\?\.link \|\| articleOrUrl\?\.originalLink/);
+    assert.match(script, /articleRouteUrl\(articleOrUrl\) \{[\s\S]*this\.articleReaderUrl\(articleOrUrl\)/);
+    assert.match(script, /let targetUrl = this\.articleReaderUrl\(article\)/);
+    assert.match(script, /this\.isGoogleNewsArticleUrl\(this\.overlayArticle\.link\)[\s\S]*this\.overlayArticle\.link = data\.url/);
+    assert.match(script, /this\.updateArticleRoute\(this\.overlayArticle, true\)/);
+    assert.match(script, /this\.markAsReadExplicit\(article\.originalLink \|\| article\.link\)/);
+    assert.match(server, /resolveGoogleNewsViaOpenCliSearch\(hints\)/);
+    assert.match(server, /'duckduckgo', 'search', query/);
+});
+
 test('publisher press-and-hold challenges are rejected and The Hill OpenCLI reads its public AMP page', () => {
     assert.match(server, /press\\s\*\(\?:&\|and\)\\s\*hold\\s\+to confirm you are a human/);
     assert.match(server, /sourceHandler\?\.getOpenCliReaderUrl\?\.\(url\)/);
-    assert.match(server, /'web', 'read', '--url', readerUrl/);
+    assert.match(server, /'web', 'read', '--url', readerCandidates\[index\]/);
+});
+
+test('device-verification pages are rejected after a source-specific OpenCLI wait', () => {
+    assert.match(server, /sourceHandler\?\.getOpenCliWaitSeconds\?\.\(\)/);
+    assert.match(server, /sourceHandler\?\.getOpenCliFallbackReaderUrls\?\.\(url\)/);
+    assert.match(server, /OpenCLI remained on the publisher device-verification page after waiting/);
+    assert.match(server, /requested content will be available after verification/);
+    assert.match(server, /captcha-delivery\\\.com\\\/interstitial/);
 });
 
 test('deleted-source warning is a dedicated subdued liquid-glass alert', () => {
@@ -132,7 +151,7 @@ test('article cards retain the original seamless image mask without an overlay s
     assert.match(html, /\.article-card img\.thumbnail-img \{[\s\S]*-webkit-mask-image: linear-gradient\(to right,[\s\S]*transparent 0%,[\s\S]*rgba\(0, 0, 0, 1\) 35%\) !important;/);
     assert.doesNotMatch(html, /article-card-media/);
     assert.doesNotMatch(html, /\.article-card-media::after/);
-    assert.match(script, /url\.startsWith\('\/api\/og-image'\)[\s\S]*versioned\.searchParams\.set\('v', '31'\)/);
+    assert.match(script, /url\.startsWith\('\/api\/og-image'\)[\s\S]*versioned\.searchParams\.set\('v', '32'\)/);
 });
 
 test('light article sections share one neutral parent surface between cards', () => {
@@ -166,4 +185,16 @@ test('article reader can copy rich content with images, links, and a plain-text 
     assert.match(script, /'text\/plain': new Blob\(\[payload\.text\]/);
     assert.match(script, /copyArticleHtmlLegacy\(payload\.html\)/);
     assert.match(script, /navigator\.clipboard\.writeText\(payload\.text\)/);
+});
+
+test('article reader can save every article as PDF and collect VOZ pages with progress and cancellation', () => {
+    assert.match(html, /@click="saveArticleAsPdf\(\)"/);
+    assert.match(html, /Save article as PDF/);
+    assert.match(html, /articlePdfProgress\.current/);
+    assert.match(html, /@click="cancelArticlePdf\(\)"/);
+    assert.match(script, /async collectVozThreadForPdf\(signal\)/);
+    assert.match(script, /for \(let page = 1; page <= totalPages && page <= 250; page\+\+\)/);
+    assert.match(script, /params\.set\('bypassCache', '1'\)/);
+    assert.match(script, /this\.articlePdfAbortController\.abort\(\)/);
+    assert.match(script, /printWindow\.print\(\)/);
 });

@@ -34,19 +34,19 @@ test('online AI calls and the private 24-hour exporter are logged', async () => 
     assert.match(exporter, /online-ai-usage-last-24h\.log/);
 });
 
-test('summaries use 3.7 while clustering uses the cost-saving Lite-to-3.7 chain', async () => {
+test('summaries use 3.8 while clustering uses the cost-saving Lite-to-3.8 chain', async () => {
     const summarySource = await read('summary-engine.js');
     const smartSource = await read('smart-news.js');
     const serverSource = await read('server.js');
     const frontendSource = await read('script.js');
 
-    assert.match(summarySource, /GEMINI_PRIMARY_MODEL[^\n]+gemini-3\.7-flash/);
-    assert.match(smartSource, /process\.env\.GEMINI_MODEL\s*\|\|\s*\n\s*'gemini-3\.7-flash'/);
+    assert.match(summarySource, /GEMINI_PRIMARY_MODEL[^\n]+gemini-3\.8-flash/);
+    assert.match(smartSource, /process\.env\.GEMINI_MODEL\s*\|\|\s*\n\s*'gemini-3\.8-flash'/);
     assert.doesNotMatch(summarySource, /gemini-3\.5-flash-lite/);
     assert.match(smartSource, /gemini-3\.5-flash-lite/);
     assert.ok(
         smartSource.indexOf("id: 'gemini-flash-lite'") < smartSource.indexOf("id: 'gemini-flash'"),
-        'Flash-Lite must precede Gemini 3.7 in the provider chain'
+        'Flash-Lite must precede Gemini 3.8 in the provider chain'
     );
     assert.match(smartSource, /thinkingLevel:\s*'minimal'/);
     assert.match(smartSource, /thinkingLevel:\s*'low'/);

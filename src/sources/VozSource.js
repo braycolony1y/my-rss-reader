@@ -199,6 +199,20 @@ export default class VozSource {
         return null;
     }
 
+    isUsableArticleResult(result) {
+        if (result?.sourceDeleted === true || result?.isDeletedThread === true) return true;
+        const content = String(result?.content || '');
+        const postCount = (content.match(/class=["']voz-post["']/gi) || []).length;
+        if (!postCount) return false;
+
+        // A XenForo page that links to a following page is not the final page,
+        // so a one-post response is a truncated proxy/bot response rather than
+        // a complete twenty-post page. Reject it so the next reader strategy
+        // gets a chance instead of poisoning the cache.
+        if (result?.pagination?.nextUrl && postCount < 2) return false;
+        return true;
+    }
+
     parseJinaReaderText(markdown) {
         const firstPostMarker = markdown.match(/(?:^|\n)\s*\*?\s*\[#1\]\([^\n)]+\)\s*\n+/m);
         if (firstPostMarker) {

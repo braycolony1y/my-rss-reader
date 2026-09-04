@@ -34,7 +34,7 @@ Save
 
 Translate
 
-### **Takeaways** by Bloomberg AI
+### **Takeaways** by Bloomberg AI[Subscribe](https://www.bloomberg.com/subscriptions)
 
 - Roku introduced its first self-branded OLED TVs.
 
@@ -69,6 +69,7 @@ test('Bloomberg reader cleanup keeps the story, hero metadata, links, and missin
     assert.equal(cleaned.image, hero);
     assert.equal(cleaned.imageCaption, "Roku's first self-branded OLED TVs will only be available from Amazon. · Source: Roku");
     assert.match(cleaned.markdown, /^### Takeaways by Bloomberg AI/m);
+    assert.doesNotMatch(cleaned.markdown, /Subscribe/);
     assert.match(cleaned.markdown, new RegExp(officialFigure.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
     assert.match(cleaned.markdown, /\[LG Electronics\]\(https:\/\/www\.bloomberg\.com\/quote\/066570:KP\)/);
     assert.doesNotMatch(cleaned.markdown, /Gift this article|Contact us|Bloomberg Terminal|^!$/m);
@@ -111,4 +112,18 @@ test('Bloomberg rejects publisher challenge pages', () => {
     const source = new BloombergSource();
     assert.equal(source.isUsableArticleResult({ content: `<p>${'Real Bloomberg article text. '.repeat(30)}</p>` }), true);
     assert.equal(source.isUsableArticleResult({ content: '<h2>Are you a robot?</h2><p>Unusual activity from your computer network.</p>' }), false);
+});
+
+test('Bloomberg labels a Takeaways-only response as a partial publisher preview', () => {
+    const source = new BloombergSource();
+    const enhanced = source.enhanceArticleResult({
+        url: articleUrl,
+        content: '<h3><strong>Takeaways</strong> by Bloomberg AI<a href="https://www.bloomberg.com/subscriptions">Subscribe</a></h3>'
+            + '<p>The publisher exposed this summary paragraph.</p>'
+            + '<p>The article body remains behind publisher access.</p>'
+    });
+
+    assert.equal(enhanced.partialContent, true);
+    assert.match(enhanced.partialContentReason, /only its AI Takeaways/);
+    assert.doesNotMatch(enhanced.content, />Subscribe</);
 });

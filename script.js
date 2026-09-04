@@ -211,6 +211,11 @@
                 overlayMethodError: '',
                 articleCopyState: 'idle',
                 articleCopyResetTimer: null,
+                articlePdfState: 'idle',
+                articlePdfProgress: { current: 0, total: 0, message: '' },
+                articlePdfAbortController: null,
+                articlePdfWindow: null,
+                articlePdfResetTimer: null,
                 articleSpeechState: 'idle',
                 articleSpeechChunks: [],
                 articleSpeechIndex: 0,
@@ -1470,7 +1475,7 @@
 
                 handleCardHover(article) {
                     if (this.isMobile) return;
-                    const url = article.originalLink || article.link;
+                    const url = this.articleReaderUrl(article);
                     if (!url) return;
                     
                     this.hoveredArticleUrl = url;
@@ -1514,7 +1519,7 @@
                 },
 
                 handleCardHoverOut(article) {
-                    const url = article.originalLink || article.link;
+                    const url = this.articleReaderUrl(article);
                     if (this.hoveredArticleUrl === url) {
                         this.hoveredArticleUrl = null;
                     }
@@ -2089,6 +2094,8 @@
                     this.overlayArticle.primaryArticleUrl = data.primaryArticleUrl || this.overlayArticle.primaryArticleUrl || '';
                     this.overlayArticle.primarySource = data.primarySource || this.overlayArticle.primarySource || null;
                     this.overlayArticle.primaryArticleFetched = data.primaryArticleFetched === true;
+                    this.overlayArticle.partialContent = data.partialContent === true;
+                    this.overlayArticle.partialContentReason = data.partialContentReason || '';
                     
                     if (data.image && !this.overlayArticle.image) this.overlayArticle.image = data.image;
                     if (data.imageCaption && !this.overlayArticle.imageCaption) this.overlayArticle.imageCaption = data.imageCaption;
@@ -2099,12 +2106,16 @@
                     if (data.url) {
                         if (data.url !== this.overlayArticle.link) {
                             this.overlayArticle.originalLink ||= this.overlayArticle.link;
+                            if (this.isGoogleNewsArticleUrl(this.overlayArticle.link) && !this.isGoogleNewsArticleUrl(data.url)) {
+                                this.overlayArticle.link = data.url;
+                            }
                         }
                         // Keep the exact page that produced the rendered content.
                         // VOZ /post-{id} URLs resolve to the page containing that
                         // post; background updates must refresh this page, not the
                         // feed's original /unread URL.
                         this.overlayArticle.resolvedLink = data.url;
+                        if (!this.isGoogleNewsArticleUrl(data.url)) this.updateArticleRoute(this.overlayArticle, true);
                     }
                     this.overlayFetchStrategy = strategy;
                     this.overlayFetchedFromCache = data.cached === true;
@@ -2451,7 +2462,7 @@
                         this.overlayMethodError = 'Deleted-source snapshots are protected and cannot be refreshed.';
                         return;
                     }
-                    const targetUrl = this.overlayArticle.originalLink || this.overlayArticle.link;
+                    const targetUrl = this.articleReaderUrl(this.overlayArticle);
                     if (!targetUrl) return;
 
                     try {
@@ -2477,7 +2488,7 @@
                         return;
                     }
                     const rejected = this.overlayFetchStrategy;
-                    const targetUrl = this.overlayArticle.originalLink || this.overlayArticle.link;
+                    const targetUrl = this.articleReaderUrl(this.overlayArticle);
                     this.overlayRejectedStrategies = [...new Set([...this.overlayRejectedStrategies, rejected])];
                     this.overlayTryingMethod = true;
                     this.overlayMethodError = '';
@@ -2540,18 +2551,24 @@
                 },
 
                 buildArticleClipboardPayload() {
-                    if (!this.overlayArticle || !this.overlayContent || typeof document === 'undefined') return null;
+                    if (!this.overlayArticle) return null;
+                    const rawHero = this.overlayArticle.overlayImage || this.overlayArticle.image || '';
+                    return this.buildArticleExportPayload(this.overlayArticle, this.overlayContent, rawHero);
+                },
 
-                    const sourceUrl = this.overlayArticle.originalLink || this.overlayArticle.link || window.location.href;
+                buildArticleExportPayload(articleInput, contentInput, rawHeroInput = '') {
+                    if (!articleInput || !contentInput || typeof document === 'undefined') return null;
+
+                    const sourceUrl = this.articleReaderUrl(articleInput) || window.location.href;
                     const clipboardDocument = document.implementation.createHTMLDocument('');
                     const article = clipboardDocument.createElement('article');
                     const title = clipboardDocument.createElement('h1');
-                    title.textContent = this.stripHtml(this.overlayArticle.overlayTitle || this.overlayArticle.title || 'Article');
+                    title.textContent = this.stripHtml(articleInput.overlayTitle || articleInput.title || 'Article');
                     article.appendChild(title);
 
-                    const metadata = [this.overlayArticle.overlayAuthor || this.overlayArticle.author].filter(Boolean);
-                    const publishedAt = this.overlayArticle.overlayDate || this.overlayArticle.pubDate;
-                    if (publishedAt && this.overlayArticle.publicationTimeReliable !== false) {
+                    const metadata = [articleInput.overlayAuthor || articleInput.author].filter(Boolean);
+                    const publishedAt = articleInput.overlayDate || articleInput.pubDate;
+                    if (publishedAt && articleInput.publicationTimeReliable !== false) {
                         try { metadata.push(this.formatVietnamDateTime(publishedAt)); } catch (error) { }
                     }
                     if (metadata.length) {
@@ -2582,7 +2599,7 @@
                     };
 
                     const content = clipboardDocument.createElement('div');
-                    content.innerHTML = this.overlayContent;
+                    content.innerHTML = contentInput;
                     content.querySelectorAll('script, style, noscript, template, form, button').forEach(node => node.remove());
                     content.querySelectorAll('iframe').forEach(frame => {
                         const rawSrc = frame.getAttribute('src');
@@ -2625,7 +2642,7 @@
                         }
                     });
 
-                    const rawHero = this.overlayArticle.overlayImage || this.overlayArticle.image || '';
+                    const rawHero = rawHeroInput || articleInput.overlayImage || articleInput.image || '';
                     const portableHero = portableImageUrl(rawHero);
                     const heroIsPortable = portableHero && !portableHero.includes('/api/og-image');
                     if (heroIsPortable && !copiedImages.some(image => image.src === portableHero)) {
@@ -2645,6 +2662,250 @@
                         .filter(Boolean)
                         .join('\n\n');
                     return { html: article.outerHTML, text: plainText };
+                },
+
+                cancelArticlePdf(options = {}) {
+                    const silent = options?.silent === true;
+                    if (this.articlePdfAbortController) this.articlePdfAbortController.abort();
+                    this.articlePdfAbortController = null;
+                    if (this.articlePdfWindow && !this.articlePdfWindow.closed) this.articlePdfWindow.close();
+                    this.articlePdfWindow = null;
+                    if (this.articlePdfResetTimer) clearTimeout(this.articlePdfResetTimer);
+                    this.articlePdfResetTimer = null;
+                    this.articlePdfState = 'idle';
+                    this.articlePdfProgress = {
+                        current: 0,
+                        total: 0,
+                        message: silent ? '' : 'PDF preparation cancelled.'
+                    };
+                },
+
+                vozPdfPageUrl(baseUrl, page) {
+                    return page <= 1 ? baseUrl : `${baseUrl}/page-${page}`;
+                },
+
+                vozPdfBaseUrl(article = this.overlayArticle) {
+                    const raw = this.articleReaderUrl(article) || article?.link || article?.originalLink || '';
+                    try {
+                        const url = new URL(raw, window.location.origin);
+                        url.hash = '';
+                        url.search = '';
+                        url.pathname = url.pathname
+                            .replace(/\/(?:unread|latest|page-\d+|post-\d+)\/?$/i, '')
+                            .replace(/\/$/, '');
+                        return url.href.replace(/\/$/, '');
+                    } catch (error) {
+                        return raw.replace(/[?#].*$/, '').replace(/\/(?:unread|latest|page-\d+|post-\d+)\/?$/i, '').replace(/\/$/, '');
+                    }
+                },
+
+                async fetchVozPdfPage(url, page, signal, options = {}) {
+                    const currentPage = Number(this.overlayPagination?.currentPage || 1);
+                    if (options.force !== true && page === currentPage && this.overlayContent) {
+                        return {
+                            url: this.articleReaderUrl(this.overlayArticle) || url,
+                            content: this.overlayContent,
+                            pagination: this.overlayPagination,
+                            cached: this.overlayFetchedFromCache
+                        };
+                    }
+                    const params = new URLSearchParams({
+                        url,
+                        title: this.overlayArticle?.overlayTitle || this.overlayArticle?.title || '',
+                        feedTitle: this.overlayArticle?.feedTitle || 'VOZ',
+                        feedUrl: this.overlayArticle?.feedUrl || ''
+                    });
+                    if (options.force === true) params.set('bypassCache', '1');
+                    const response = await fetch('/api/article-content?' + params.toString(), { signal });
+                    if (!response.ok) throw new Error(`Page ${page} returned HTTP ${response.status}`);
+                    const data = await response.json();
+                    if (data.error) throw new Error(data.error);
+                    return data;
+                },
+
+                async collectVozThreadForPdf(signal) {
+                    const baseUrl = this.vozPdfBaseUrl();
+                    if (!baseUrl) throw new Error('The VOZ thread URL is unavailable.');
+                    const initialPages = this.overlayPagination?.pages || [];
+                    let totalPages = Math.max(
+                        1,
+                        Number(this.overlayPagination?.currentPage || 1),
+                        ...initialPages.map(item => Number(item?.page || 0))
+                    );
+                    const collected = [];
+                    const seenPosts = new Set();
+                    const failedPages = [];
+
+                    for (let page = 1; page <= totalPages && page <= 250; page++) {
+                        if (signal.aborted) throw new DOMException('PDF preparation cancelled.', 'AbortError');
+                        this.articlePdfProgress = {
+                            current: page - 1,
+                            total: totalPages,
+                            message: `Fetching VOZ page ${page} of ${totalPages}…`
+                        };
+                        let data;
+                        try {
+                            data = await this.fetchVozPdfPage(this.vozPdfPageUrl(baseUrl, page), page, signal);
+                        } catch (error) {
+                            if (error?.name === 'AbortError') throw error;
+                            failedPages.push(page);
+                            this.articlePdfProgress = {
+                                current: page,
+                                total: totalPages,
+                                message: `Page ${page} is unavailable; continuing with cached pages…`
+                            };
+                            continue;
+                        }
+
+                        const paginationPages = data.pagination?.pages || [];
+                        totalPages = Math.max(
+                            totalPages,
+                            Number(data.pagination?.currentPage || page),
+                            ...paginationPages.map(item => Number(item?.page || 0))
+                        );
+                        const nextPage = String(data.pagination?.nextUrl || '').match(/\/page-(\d+)/i)?.[1];
+                        if (nextPage) totalPages = Math.max(totalPages, Number(nextPage));
+
+                        let parsed = new DOMParser().parseFromString(`<main>${data.content || ''}</main>`, 'text/html');
+                        let posts = [...parsed.querySelectorAll('.voz-post')];
+                        if (posts.length < 20 && page < totalPages && data.sourceDeleted !== true) {
+                            this.articlePdfProgress = {
+                                current: page - 1,
+                                total: totalPages,
+                                message: `Refreshing incomplete VOZ page ${page} of ${totalPages}…`
+                            };
+                            try {
+                                data = await this.fetchVozPdfPage(this.vozPdfPageUrl(baseUrl, page), page, signal, { force: true });
+                                parsed = new DOMParser().parseFromString(`<main>${data.content || ''}</main>`, 'text/html');
+                                posts = [...parsed.querySelectorAll('.voz-post')];
+                            } catch (error) {
+                                if (error?.name === 'AbortError') throw error;
+                                // Keep the valid cached posts if a refresh fails.
+                            }
+                        }
+                        const uniquePosts = [];
+                        for (const post of posts) {
+                            const identity = post.dataset.absolutePostId
+                                || post.dataset.postIndex
+                                || post.id
+                                || post.textContent?.trim().slice(0, 180);
+                            if (!identity || seenPosts.has(identity)) continue;
+                            seenPosts.add(identity);
+                            uniquePosts.push(post.outerHTML);
+                        }
+                        if (uniquePosts.length) {
+                            collected.push(`<section class="pdf-thread-page" data-page="${page}"><h2>Page ${page}</h2>${uniquePosts.join('')}</section>`);
+                        }
+                        this.articlePdfProgress = {
+                            current: page,
+                            total: totalPages,
+                            message: `Fetched page ${page} of ${totalPages} · ${seenPosts.size} posts`
+                        };
+                    }
+
+                    if (!seenPosts.size) throw new Error('No VOZ posts were available to save.');
+                    if (failedPages.length) {
+                        collected.unshift(`<p class="pdf-warning">Pages unavailable: ${failedPages.join(', ')}. The PDF contains every page available from the normal article cache.</p>`);
+                    }
+                    return collected.join('\n');
+                },
+
+                articlePrintDocument(payload) {
+                    const title = this.stripHtml(this.overlayArticle?.overlayTitle || this.overlayArticle?.title || 'Article');
+                    const safeTitle = String(title).replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
+                    return `<!doctype html><html><head><meta charset="utf-8"><title>${safeTitle}</title><style>
+                        @page { size: A4; margin: 14mm 13mm 16mm; }
+                        * { box-sizing: border-box; }
+                        body { margin: 0 auto; max-width: 760px; color: #111827; background: #fff; font: 11.5pt/1.58 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+                        h1 { font-size: 24pt; line-height: 1.16; margin: 0 0 10mm; }
+                        h2 { font-size: 15pt; margin: 9mm 0 4mm; break-after: avoid; }
+                        h3 { font-size: 13pt; break-after: avoid; }
+                        p { margin: 0 0 4mm; }
+                        a { color: #065f46; overflow-wrap: anywhere; }
+                        img { display: block; max-width: 100% !important; height: auto !important; max-height: 230mm; margin: 4mm auto; object-fit: contain; }
+                        figure { margin: 5mm 0; break-inside: avoid; }
+                        figcaption { color: #64748b; font-size: 9pt; text-align: center; }
+                        blockquote { margin: 5mm 0; padding-left: 5mm; border-left: 2px solid #94a3b8; }
+                        pre, code { white-space: pre-wrap; overflow-wrap: anywhere; }
+                        iframe, video, audio, button, form { display: none !important; }
+                        .pdf-thread-page { break-before: page; }
+                        .pdf-thread-page:first-of-type { break-before: auto; }
+                        .voz-post { margin: 0 0 6mm; padding: 4mm; border: 1px solid #dbe2ea; border-radius: 3mm; break-inside: avoid; }
+                        .voz-post-header { display: flex; justify-content: space-between; gap: 4mm; margin-bottom: 3mm; padding-bottom: 2mm; border-bottom: 1px solid #e5e7eb; font-size: 9pt; color: #475569; }
+                        .voz-post-author-group, .voz-post-info { display: flex; align-items: center; gap: 2mm; }
+                        .voz-post-author-group img { width: 8mm !important; height: 8mm !important; margin: 0; border-radius: 50%; }
+                        .voz-post-rank, .voz-post-likes { color: #64748b; font-size: 8.5pt; }
+                        .voz-post-body img { break-inside: avoid; }
+                        .pdf-warning { padding: 3mm 4mm; color: #92400e; background: #fffbeb; border: 1px solid #fde68a; }
+                    </style></head><body>${payload.html}</body></html>`;
+                },
+
+                async saveArticleAsPdf() {
+                    if (this.articlePdfState === 'preparing') {
+                        this.cancelArticlePdf();
+                        return;
+                    }
+                    if (!this.overlayArticle || !this.overlayContent) return;
+
+                    const printWindow = window.open('', '_blank');
+                    if (!printWindow) {
+                        this.articlePdfState = 'error';
+                        this.articlePdfProgress = { current: 0, total: 0, message: 'Allow pop-ups to open the Save as PDF dialog.' };
+                        return;
+                    }
+                    printWindow.document.write('<!doctype html><title>Preparing PDF…</title><p style="font:16px system-ui;padding:24px">Preparing article for PDF…</p>');
+                    printWindow.document.close();
+
+                    const controller = new AbortController();
+                    this.articlePdfAbortController = controller;
+                    this.articlePdfWindow = printWindow;
+                    this.articlePdfState = 'preparing';
+                    this.articlePdfProgress = { current: 0, total: 1, message: 'Preparing article for PDF…' };
+
+                    try {
+                        const content = this.isVozArticle(this.overlayArticle)
+                            ? await this.collectVozThreadForPdf(controller.signal)
+                            : this.overlayContent;
+                        if (controller.signal.aborted) throw new DOMException('PDF preparation cancelled.', 'AbortError');
+                        const payload = this.buildArticleExportPayload(this.overlayArticle, content);
+                        if (!payload) throw new Error('The article content could not be prepared.');
+
+                        const html = this.articlePrintDocument(payload);
+                        printWindow.document.open();
+                        printWindow.document.write(html);
+                        printWindow.document.close();
+                        await Promise.race([
+                            Promise.all([...printWindow.document.images].map(image => image.complete
+                                ? Promise.resolve()
+                                : new Promise(resolve => {
+                                    image.addEventListener('load', resolve, { once: true });
+                                    image.addEventListener('error', resolve, { once: true });
+                                }))),
+                            new Promise(resolve => setTimeout(resolve, 8_000))
+                        ]);
+                        if (controller.signal.aborted) throw new DOMException('PDF preparation cancelled.', 'AbortError');
+                        this.articlePdfState = 'ready';
+                        this.articlePdfProgress = {
+                            current: this.articlePdfProgress.total || 1,
+                            total: this.articlePdfProgress.total || 1,
+                            message: 'Ready — choose “Save as PDF” in the print dialog.'
+                        };
+                        printWindow.focus();
+                        printWindow.print();
+                        this.articlePdfAbortController = null;
+                        this.articlePdfWindow = null;
+                        this.articlePdfResetTimer = setTimeout(() => {
+                            this.articlePdfState = 'idle';
+                            this.articlePdfProgress = { current: 0, total: 0, message: '' };
+                        }, 3_000);
+                    } catch (error) {
+                        if (error?.name === 'AbortError') return;
+                        if (printWindow && !printWindow.closed) printWindow.close();
+                        this.articlePdfAbortController = null;
+                        this.articlePdfWindow = null;
+                        this.articlePdfState = 'error';
+                        this.articlePdfProgress = { current: 0, total: 0, message: error.message || 'Could not prepare the PDF.' };
+                    }
                 },
 
                 copyArticleHtmlLegacy(html) {
@@ -2861,10 +3122,24 @@
                     );
                 },
 
-                articleRouteUrl(articleOrUrl) {
+                articleReaderUrl(articleOrUrl) {
                     const raw = typeof articleOrUrl === 'string'
                         ? articleOrUrl
-                        : (articleOrUrl?.originalLink || articleOrUrl?.link || articleOrUrl?.resolvedLink || '');
+                        : (articleOrUrl?.resolvedLink || articleOrUrl?.link || articleOrUrl?.originalLink || '');
+                    return this.normalizeArticleSourceUrl(raw);
+                },
+
+                isGoogleNewsArticleUrl(value) {
+                    try {
+                        const parsed = new URL(value);
+                        return parsed.hostname === 'news.google.com' && /\/(?:rss\/)?articles\//.test(parsed.pathname);
+                    } catch (e) {
+                        return false;
+                    }
+                },
+
+                articleRouteUrl(articleOrUrl) {
+                    const raw = this.articleReaderUrl(articleOrUrl);
                     if (!raw) return '';
                     const normalized = this.normalizeArticleSourceUrl(raw);
                     try {
@@ -3054,7 +3329,7 @@
                 prefetchNextAfter(articleOrLink) {
                     const targetUrl = typeof articleOrLink === 'string'
                         ? articleOrLink
-                        : (articleOrLink?.originalLink || articleOrLink?.link || articleOrLink?.id);
+                        : (this.articleReaderUrl(articleOrLink) || articleOrLink?.id);
                     if (!targetUrl || !Array.isArray(this.articles) || !this.articles.length) return;
 
                     const sourceArray = this.displayedArticles || [];
@@ -3078,9 +3353,9 @@
                     if (!this.prefetchQueue) this.prefetchQueue = [];
 
                     for (const art of articlesToPrefetch) {
-                        const url = art.originalLink || art.link;
+                        const url = this.articleReaderUrl(art);
                         if (!url || this.articleContentCache.has(url)) continue;
-                        if (!this.prefetchQueue.some(item => (item.originalLink || item.link) === url)) {
+                        if (!this.prefetchQueue.some(item => this.articleReaderUrl(item) === url)) {
                             this.prefetchQueue.push(art);
                         }
                     }
@@ -3101,7 +3376,7 @@
 
                         const art = this.prefetchQueue.shift();
                         if (!art) continue;
-                        const url = art.originalLink || art.link;
+                        const url = this.articleReaderUrl(art);
                         if (!url || (this.articleContentCache && this.articleContentCache.has(url))) continue;
 
                         try {
@@ -3206,13 +3481,18 @@
                 },
 
                 async openArticleOverlay(article, options = {}) {
+                    if (this.articlePdfState === 'preparing') this.cancelArticlePdf({ silent: true });
+                    if (this.articlePdfResetTimer) clearTimeout(this.articlePdfResetTimer);
+                    this.articlePdfResetTimer = null;
+                    this.articlePdfState = 'idle';
+                    this.articlePdfProgress = { current: 0, total: 0, message: '' };
                     this.hideTooltip();
                     const shouldStack = options.stack === true && this.articleOverlayOpen && this.overlayArticle;
                     if (shouldStack) this.articleOverlayStack.push(this.captureArticleOverlay());
                     else if (!this.articleOverlayOpen) this.articleOverlayStack = [];
                     if (options.updateHistory !== false) this.updateArticleRoute(article);
                     const requestId = 'article-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
-                    let targetUrl = article.originalLink || article.link;
+                    let targetUrl = this.articleReaderUrl(article);
                     const isVoz = targetUrl.includes('voz.vn') || article.siteName === 'VOZ';
                     if (isVoz) {
                         const threadMatch = targetUrl.match(/threads\/[^\/.]+\.(\d+)/i) || targetUrl.match(/\b(\d{5,8})\b/);
@@ -3270,7 +3550,7 @@
                     this.lastTrackedVozPost = '';
                     const articleScroll = document.getElementById('overlay-scroll-container');
                     if (articleScroll) articleScroll.scrollTop = 0;
-                    this.markAsReadExplicit(article.link);
+                    this.markAsReadExplicit(article.originalLink || article.link);
                     document.body.style.overflow = 'hidden';
 
                     // AI Summary: reset and fetch
@@ -3295,7 +3575,7 @@
                     if (currentIndex !== -1) {
                         for (let i = currentIndex + 1; i < Math.min(sourceArray.length, currentIndex + 6); i++) {
                             const nextArticle = sourceArray[i];
-                            const u = nextArticle?.originalLink || nextArticle?.link;
+                            const u = this.articleReaderUrl(nextArticle);
                             if (u && u !== targetUrl) {
                                 prefetchTargets.push({
                                     url: u,
@@ -3404,6 +3684,7 @@
             
             closeArticleOverlay(options = {}) {
                     const closeOptions = options && options.constructor === Object ? options : {};
+                    if (this.articlePdfState === 'preparing') this.cancelArticlePdf({ silent: true });
                     this.stopArticleSpeech();
                     if (this.vozScrollRaf) cancelAnimationFrame(this.vozScrollRaf);
                     this.vozScrollRaf = 0;
@@ -3532,7 +3813,7 @@
                             const res = await fetch(`/api/summary?url=${encodeURIComponent(url)}`);
                             if (!res.ok) return;
                             const data = await res.json();
-                            if (data.status === 'ready' && data.modelUsed === 'gemini-3.7-flash') {
+                            if (data.status === 'ready' && data.modelUsed === 'gemini-3.8-flash') {
                                 this.aiSummary = data;
                                 clearInterval(this.aiSummaryUpgradePollTimer);
                                 this.aiSummaryUpgradePollTimer = null;
@@ -3727,7 +4008,7 @@
                 },
 
                 async openDebugModal(articleOrUrl) {
-                    const url = typeof articleOrUrl === 'string' ? articleOrUrl : (articleOrUrl.originalLink || articleOrUrl.link);
+                    const url = this.articleReaderUrl(articleOrUrl);
                     this.debugModalArticle = typeof articleOrUrl === 'object' ? articleOrUrl : this.articles.find(a => (a.originalLink || a.link) === url);
                     
                     this.debugModalOpen = true;
@@ -3754,7 +4035,7 @@
                     if (url.startsWith('/api/og-image')) {
                         try {
                             const versioned = new URL(url, window.location.origin);
-                            versioned.searchParams.set('v', '31');
+                            versioned.searchParams.set('v', '32');
                             return versioned.pathname + versioned.search;
                         } catch (error) { }
                     }

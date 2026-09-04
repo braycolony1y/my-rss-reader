@@ -8,5 +8,5 @@ The usage exporter is installed at `/home/ubuntu/script/export-online-ai-usage-2
 `check-gemini-model.mjs` performs a small live generation request without printing API keys. To test only the seventh configured key with Gemini 3.7:
 
 ```bash
-node ops/maintenance/check-gemini-model.mjs --model gemini-3.7-flash --key-index 7
+node ops/maintenance/check-gemini-model.mjs --model gemini-3.8-flash --key-index 7
 ```

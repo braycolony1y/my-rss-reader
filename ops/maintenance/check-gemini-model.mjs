@@ -13,7 +13,7 @@ function argumentValue(name, fallback) {
     return index >= 0 && args[index + 1] ? args[index + 1] : fallback;
 }
 
-const model = argumentValue('--model', 'gemini-3.7-flash');
+const model = argumentValue('--model', 'gemini-3.8-flash');
 const keyFile = path.resolve(argumentValue('--keys', path.join(repositoryRoot, 'gemini-keys.txt')));
 const requestedIndex = Number.parseInt(argumentValue('--key-index', '0'), 10);
 const keys = (await readFile(keyFile, 'utf8'))
