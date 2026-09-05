@@ -13,6 +13,7 @@ function fnv1a(str) {
 }
 import * as cheerio from 'cheerio/slim';
 import { createTrackedFetch, discardResponseBody } from './src/fetch-response.js';
+import { runOpenCliReader, isActiveArticleSession } from './src/opencli-reader.js';
 const workerPath = new URL('./feed-worker.js', import.meta.url);
 let parserWorker = null;
 let parserRequestId = 0;
@@ -955,11 +956,10 @@ function parseOpenCliMarkdown(markdown, url, options = {}) {
     };
 }
 
-async function fetchViaOpenCli(url) {
+async function fetchViaOpenCli(url, requestId = '') {
     if (url.match(/reddit\.com\/r\/.*\/comments\//)) {
         return fetchRedditViaOpenCli(url);
     }
-    const executable = path.resolve('./node_modules/.bin/opencli');
     const sourceHandler = sourceRegistry.getHandler(url);
     const readerUrl = normalizeArticleSourceUrl(sourceHandler?.getOpenCliReaderUrl?.(url) || url);
     const captureDiagnostics = Boolean(sourceHandler?.needsOpenCliDiagnostics?.());
@@ -974,18 +974,23 @@ async function fetchViaOpenCli(url) {
 
     for (let index = 0; index < readerCandidates.length; index++) {
         const candidateWaitSeconds = index === 0 ? waitSeconds : 5;
-        const args = [
-            'web', 'read', '--url', readerCandidates[index],
-            '--stdout', 'true',
-            '--download-images', 'false',
-            '--wait', String(candidateWaitSeconds),
-            '--window', 'background'
-        ];
-        if (captureDiagnostics) args.push('--diagnose', 'true');
-        const commandResult = await execFileAsync(executable, args, {
-            timeout: Math.max(45000, (candidateWaitSeconds + 15) * 1000),
-            maxBuffer: 12 * 1024 * 1024
-        });
+        let commandResult;
+        try {
+            commandResult = await runOpenCliReader({
+                url: readerCandidates[index], stdout: true, 'download-images': false,
+                wait: candidateWaitSeconds, diagnose: captureDiagnostics
+            }, () => {
+                if (!isActiveArticleSession(articleReaderSessions.get(requestId), url)) return false;
+                updateArticleFetchProgress(requestId, 'verification',
+                    'Please complete the CAPTCHA in the OpenCLI Chrome window. Keep this article open; reading will resume automatically after verification.',
+                    { method: 'opencli', requiresHumanVerification: true });
+                return true;
+            });
+        } catch (error) {
+            if (!/Publisher verification blocked this fetch/i.test(error.message)) throw error;
+            remainedOnVerificationPage = true;
+            continue;
+        }
         stdout = commandResult.stdout;
         stderr = commandResult.stderr;
         remainedOnVerificationPage = /(?:verifying the device|requested content will be available after verification|captcha-delivery\.com\/interstitial|press\s*(?:&|and)\s*hold\s+to confirm you are a human)/i.test(`${stdout}\n${stderr}`);
@@ -4965,6 +4970,7 @@ const ARTICLE_FETCH_BASE_POINTS = {
 let articleFetchStrategyStats = null;
 let articleFetchStatsSaveTimer = null;
 const articleFetchProgress = new Map();
+const articleReaderSessions = new Map();
 
 function updateArticleFetchProgress(requestId, stage, message, extra = {}) {
     if (!requestId) return;
@@ -5764,11 +5770,18 @@ async function discoverArticleAudioUrls(html, pageUrl) {
 
 app.get('/api/article-content-progress', authMiddleware, (req, res) => {
     const requestId = String(req.query.id || '');
+    const session = articleReaderSessions.get(requestId);
+    if (session && session.url === normalizeArticleSourceUrl(req.query.url || '')) session.lastSeen = Date.now();
     res.json(articleFetchProgress.get(requestId) || {
         stage: 'waiting',
         message: 'Preparing article reader…',
         done: false
     });
+});
+
+app.post('/api/article-reader-session/close', authMiddleware, (req, res) => {
+    articleReaderSessions.delete(String(req.body?.requestId || ''));
+    res.json({ ok: true });
 });
 
 app.post('/api/article-fetch-preference', authMiddleware, async (req, res) => {
@@ -6336,6 +6349,10 @@ app.get('/api/article-content', authMiddleware, async (req, res) => {
     try { if (req.query.prefetchTargets) prefetchTargets = JSON.parse(req.query.prefetchTargets); } catch(e) {}
     
     const requestId = String(req.query.requestId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80);
+    if (requestId && req.query.interactive === '1') {
+        articleReaderSessions.set(requestId, { url, lastSeen: Date.now() });
+        res.on('close', () => articleReaderSessions.delete(requestId));
+    }
     updateArticleFetchProgress(requestId, 'starting', 'Identifying source and loading its fetch history…');
 
     try {
@@ -6601,7 +6618,7 @@ app.get('/api/article-content', authMiddleware, async (req, res) => {
                 }
 
                 if (strategy === 'opencli') {
-                    const openCliResult = await fetchViaOpenCli(url);
+                    const openCliResult = await fetchViaOpenCli(url, requestId);
                     if (isDeletedArticlePayload(url, openCliResult)) {
                         if (!recordDeletedResponse(strategy)) {
                             throw new Error('This reader reported the article missing, but the publisher requires independent confirmation');
@@ -6763,6 +6780,7 @@ app.get('/api/article-content', authMiddleware, async (req, res) => {
         finishArticleFetchProgress(requestId, 'Article loading failed.', { failed: true });
         res.json({ error: e.message, url });
     } finally {
+        articleReaderSessions.delete(requestId);
         activeForegroundRequests = Math.max(0, activeForegroundRequests - 1);
     }
 });
@@ -6974,7 +6992,7 @@ async function parseArticleHtmlContent(html, url, htmlStrategy, attemptedStrateg
             try {
                 attemptedStrategies.add('opencli');
                 updateArticleFetchProgress(requestId, 'fallback', 'Trying the browser reader as the final backup…');
-                const openCliResult = await fetchViaOpenCli(url);
+                const openCliResult = await fetchViaOpenCli(url, requestId);
                 if (isDeletedArticlePayload(url, openCliResult)) {
                     return { url, ...openCliResult, content: '', isDeletedSource: true, isDeletedThread: deletedSourceKind(url) === 'thread', fetchStrategy: 'opencli', attemptedStrategies: [...attemptedStrategies], availableStrategies, methodPreferences };
                 }
@@ -7052,7 +7070,7 @@ async function parseArticleHtmlContent(html, url, htmlStrategy, attemptedStrateg
             try {
                 attemptedStrategies.add('opencli');
                 updateArticleFetchProgress(requestId, 'fallback', 'Trying the browser reader as the final backup…');
-                const openCliResult = await fetchViaOpenCli(url);
+                const openCliResult = await fetchViaOpenCli(url, requestId);
                 if (isDeletedArticlePayload(url, openCliResult)) {
                     return { url, ...openCliResult, content: '', isDeletedSource: true, isDeletedThread: deletedSourceKind(url) === 'thread', fetchStrategy: 'opencli', attemptedStrategies: [...attemptedStrategies], availableStrategies, methodPreferences };
                 }

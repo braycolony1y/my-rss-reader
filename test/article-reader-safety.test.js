@@ -124,7 +124,7 @@ test('Google News cards fetch and route to the resolved publisher while keeping 
 test('publisher press-and-hold challenges are rejected and The Hill OpenCLI reads its public AMP page', () => {
     assert.match(server, /press\\s\*\(\?:&\|and\)\\s\*hold\\s\+to confirm you are a human/);
     assert.match(server, /sourceHandler\?\.getOpenCliReaderUrl\?\.\(url\)/);
-    assert.match(server, /'web', 'read', '--url', readerCandidates\[index\]/);
+    assert.match(server, /runOpenCliReader\(\{\s*url: readerCandidates\[index\]/);
 });
 
 test('device-verification pages are rejected after a source-specific OpenCLI wait', () => {

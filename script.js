@@ -2493,12 +2493,14 @@
                     this.overlayTryingMethod = true;
                     this.overlayMethodError = '';
                     const requestId = 'article-method-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+                    this.releaseArticleReaderSession();
                     this.overlayRequestId = requestId;
                     this.overlayProgress = { message: 'Rejecting this result and choosing the next reader method…' };
                     if (this.overlayProgressInterval) clearInterval(this.overlayProgressInterval);
                     const updateProgress = async () => {
                         try {
-                            const response = await fetch('/api/article-content-progress?id=' + encodeURIComponent(requestId));
+                            if (!this.articleOverlayOpen || this.overlayRequestId !== requestId) return;
+                            const response = await fetch('/api/article-content-progress?' + new URLSearchParams({ id: requestId, url: targetUrl }));
                             if (!response.ok || this.overlayRequestId !== requestId) return;
                             this.overlayProgress = await response.json();
                         } catch (e) { }
@@ -2510,6 +2512,7 @@
                             url: targetUrl,
                             requestId,
                             reject: rejected,
+                            interactive: '1',
                             exclude,
                             title: this.overlayArticle.title || '',
                             description: String(this.overlayArticle.content || '').slice(0, 1200),
@@ -2556,7 +2559,7 @@
                     return this.buildArticleExportPayload(this.overlayArticle, this.overlayContent, rawHero);
                 },
 
-                buildArticleExportPayload(articleInput, contentInput, rawHeroInput = '') {
+                buildArticleExportPayload(articleInput, contentInput, rawHeroInput = '', options = {}) {
                     if (!articleInput || !contentInput || typeof document === 'undefined') return null;
 
                     const sourceUrl = this.articleReaderUrl(articleInput) || window.location.href;
@@ -2589,6 +2592,8 @@
                         try {
                             const baseUrl = rawSrc.startsWith('/api/') ? window.location.origin : sourceUrl;
                             const resolved = new URL(rawSrc, baseUrl);
+                            // Printing runs on the reader's origin, so keep its working image proxies.
+                            if (options.forPrint) return resolved.href;
                             if (resolved.pathname === '/api/proxy-image' && resolved.searchParams.get('url')) {
                                 return resolved.searchParams.get('url');
                             }
@@ -2662,6 +2667,43 @@
                         .filter(Boolean)
                         .join('\n\n');
                     return { html: article.outerHTML, text: plainText };
+                },
+
+                buildArticlePrintPayload(contentInput) {
+                    const payload = this.buildArticleExportPayload(this.overlayArticle, contentInput, '', { forPrint: true });
+                    if (!payload) return null;
+                    const parsed = new DOMParser().parseFromString(payload.html, 'text/html');
+                    const article = parsed.querySelector('article');
+                    const content = article.lastElementChild;
+                    content.classList.add('article-rendered-content');
+                    article.classList.add('article-print');
+
+                    // Copy the rendered hero, title and metadata so the export follows
+                    // the reader's actual layout, including avatars and image captions.
+                    const headerNodes = document.querySelectorAll('#overlay-scroll-container [data-article-export-header]');
+                    if (headerNodes.length) {
+                        const header = parsed.createElement('header');
+                        headerNodes.forEach(node => header.appendChild(node.cloneNode(true)));
+                        article.replaceChildren(header, content);
+                        const source = parsed.createElement('a');
+                        source.className = 'pdf-source';
+                        source.href = this.articleReaderUrl(this.overlayArticle) || window.location.href;
+                        source.textContent = source.href;
+                        article.appendChild(source);
+                    }
+
+                    article.querySelectorAll('script, style, noscript, template, form, button').forEach(node => node.remove());
+                    article.querySelectorAll('img').forEach(image => {
+                        // Lazy images on later thread pages must also load before printing.
+                        image.removeAttribute('loading');
+                        image.removeAttribute('srcset');
+                    });
+                    article.querySelectorAll('*').forEach(node => {
+                        for (const attribute of [...node.attributes]) {
+                            if (/^on|^x-|^@|^:/i.test(attribute.name)) node.removeAttribute(attribute.name);
+                        }
+                    });
+                    return { ...payload, html: article.outerHTML };
                 },
 
                 cancelArticlePdf(options = {}) {
@@ -2812,32 +2854,90 @@
 
                 articlePrintDocument(payload) {
                     const title = this.stripHtml(this.overlayArticle?.overlayTitle || this.overlayArticle?.title || 'Article');
-                    const safeTitle = String(title).replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
-                    return `<!doctype html><html><head><meta charset="utf-8"><title>${safeTitle}</title><style>
+                    const escape = value => String(value).replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
+                    const readerContent = document.querySelector('#overlay-scroll-container .article-rendered-content');
+                    const contentWidth = readerContent?.getBoundingClientRect().width || 680;
+                    // Resolve responsive rules against the open reader, before the
+                    // popup or A4 page can select different font sizes and spacing.
+                    const snapshotRules = rules => [...rules].map(rule => {
+                        if (rule.type === 4 && typeof window.matchMedia === 'function') {
+                            return window.matchMedia(rule.conditionText).matches ? snapshotRules(rule.cssRules) : '';
+                        }
+                        if (!rule.style || !rule.selectorText) return rule.cssText;
+                        const declarations = rule.style.cssText.replace(/(-?\d*\.?\d+)(vh|vw)\b/g, (_, value, unit) =>
+                            `${Number(value) * (unit === 'vh' ? window.innerHeight : window.innerWidth) / 100}px`);
+                        return `${rule.selectorText} { ${declarations} }`;
+                    }).join('\n');
+                    // Share the live styles, including Tailwind utilities used inside
+                    // reaction bars. A separate print theme drifts from the reader.
+                    const readerStyles = [...document.querySelectorAll('head style, head link[rel="stylesheet"]')]
+                        .map(node => {
+                            if (node.disabled) return '';
+                            try {
+                                // Inline loaded CSS so a failed fetch cannot strip the layout.
+                                if (node.sheet?.cssRules) {
+                                    if (node.media && typeof window.matchMedia === 'function' && !window.matchMedia(node.media).matches) return '';
+                                    const style = document.createElement('style');
+                                    style.textContent = snapshotRules(node.sheet.cssRules);
+                                    return style.outerHTML;
+                                }
+                            } catch (error) { /* Cross-origin stylesheets must remain links. */ }
+                            const copy = node.cloneNode(true);
+                            if (copy.tagName === 'LINK') copy.setAttribute('href', node.href);
+                            return copy.outerHTML;
+                        }).join('\n');
+                    const bodyClass = escape(`${document.body.className} article-print-document`);
+                    const htmlClass = escape(document.documentElement.className);
+                    const background = this.theme === 'glass-light' ? '#f7f7f7' : '#1e1e1e';
+                    return `<!doctype html><html id="article-print-root" class="${htmlClass}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escape(title)}</title>${readerStyles}<style>
                         @page { size: A4; margin: 14mm 13mm 16mm; }
-                        * { box-sizing: border-box; }
-                        body { margin: 0 auto; max-width: 760px; color: #111827; background: #fff; font: 11.5pt/1.58 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-                        h1 { font-size: 24pt; line-height: 1.16; margin: 0 0 10mm; }
-                        h2 { font-size: 15pt; margin: 9mm 0 4mm; break-after: avoid; }
-                        h3 { font-size: 13pt; break-after: avoid; }
-                        p { margin: 0 0 4mm; }
-                        a { color: #065f46; overflow-wrap: anywhere; }
-                        img { display: block; max-width: 100% !important; height: auto !important; max-height: 230mm; margin: 4mm auto; object-fit: contain; }
-                        figure { margin: 5mm 0; break-inside: avoid; }
-                        figcaption { color: #64748b; font-size: 9pt; text-align: center; }
-                        blockquote { margin: 5mm 0; padding-left: 5mm; border-left: 2px solid #94a3b8; }
-                        pre, code { white-space: pre-wrap; overflow-wrap: anywhere; }
+                        html, body { display: block !important; height: auto !important; min-height: 0 !important; overflow: visible !important; }
+                        html#article-print-root, html#article-print-root body.article-print-document { margin: 0 !important; background: ${background} !important; background-image: none !important; background-attachment: scroll !important; }
+                        #article-print-root #overlay-scroll-container { overflow: visible !important; scrollbar-gutter: auto; }
+                        *, *::before, *::after { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                        .article-print { box-sizing: border-box; width: ${contentWidth + 80}px; max-width: 100%; margin: 0 auto; padding: 32px 40px; }
+                        .article-print h1, .article-print h2, .article-print h3 { break-after: avoid; }
+                        .article-print pre, .article-print code { white-space: pre-wrap; overflow-wrap: anywhere; }
+                        .article-print figure { break-inside: avoid; }
+                        .article-print .voz-post { break-inside: auto; }
+                        .article-print .voz-post-header { break-after: avoid; }
+                        .article-print .voz-post-likes { break-before: avoid; }
+                        .article-print .voz-post .voz-like-icon { width: 18px !important; height: 18px !important; max-height: 18px !important; flex-shrink: 0 !important; }
+                        .article-print .voz-post .bbCodeBlock--spoiler .bbCodeBlock-content { filter: none !important; opacity: 1 !important; max-height: none !important; overflow: visible !important; }
+                        .article-print .voz-post .bbCodeBlock--spoiler::before { content: "Spoiler" !important; }
+                        .article-print .pdf-thread-page > h2 { font-size: 14px; opacity: 0.65; margin: 24px 0 12px; }
+                        .article-print .pdf-thread-page:first-of-type > h2 { display: none; }
+                        .pdf-source { display: block; margin-top: 24px; font-size: 12px; opacity: 0.65; overflow-wrap: anywhere; }
+                        .pdf-warning { padding: 12px 16px; color: #92400e; background: #fffbeb; border: 1px solid #fde68a; }
                         iframe, video, audio, button, form { display: none !important; }
-                        .pdf-thread-page { break-before: page; }
-                        .pdf-thread-page:first-of-type { break-before: auto; }
-                        .voz-post { margin: 0 0 6mm; padding: 4mm; border: 1px solid #dbe2ea; border-radius: 3mm; break-inside: avoid; }
-                        .voz-post-header { display: flex; justify-content: space-between; gap: 4mm; margin-bottom: 3mm; padding-bottom: 2mm; border-bottom: 1px solid #e5e7eb; font-size: 9pt; color: #475569; }
-                        .voz-post-author-group, .voz-post-info { display: flex; align-items: center; gap: 2mm; }
-                        .voz-post-author-group img { width: 8mm !important; height: 8mm !important; margin: 0; border-radius: 50%; }
-                        .voz-post-rank, .voz-post-likes { color: #64748b; font-size: 8.5pt; }
-                        .voz-post-body img { break-inside: avoid; }
-                        .pdf-warning { padding: 3mm 4mm; color: #92400e; background: #fffbeb; border: 1px solid #fde68a; }
-                    </style></head><body>${payload.html}</body></html>`;
+                        @media print {
+                            .article-print { width: ${contentWidth + 8}px; padding: 0 4px; }
+                            .pdf-thread-page + .pdf-thread-page { break-before: page; }
+                        }
+                    </style></head><body class="${bodyClass}"><main id="overlay-scroll-container">${payload.html}</main></body></html>`;
+                },
+
+                async waitForArticlePrintAssets(printWindow) {
+                    let timeout;
+                    try {
+                        await Promise.race([
+                            (async () => {
+                                if (printWindow.document.readyState !== 'complete') {
+                                    await new Promise(resolve => printWindow.addEventListener('load', resolve, { once: true }));
+                                }
+                                await printWindow.document.fonts?.ready;
+                                await Promise.all([...printWindow.document.images].map(image => image.complete
+                                    ? Promise.resolve()
+                                    : new Promise(resolve => {
+                                        image.addEventListener('load', resolve, { once: true });
+                                        image.addEventListener('error', resolve, { once: true });
+                                    })));
+                            })(),
+                            new Promise(resolve => { timeout = setTimeout(resolve, 8_000); })
+                        ]);
+                    } finally {
+                        clearTimeout(timeout);
+                    }
                 },
 
                 async saveArticleAsPdf() {
@@ -2867,22 +2967,14 @@
                             ? await this.collectVozThreadForPdf(controller.signal)
                             : this.overlayContent;
                         if (controller.signal.aborted) throw new DOMException('PDF preparation cancelled.', 'AbortError');
-                        const payload = this.buildArticleExportPayload(this.overlayArticle, content);
+                        const payload = this.buildArticlePrintPayload(content);
                         if (!payload) throw new Error('The article content could not be prepared.');
 
                         const html = this.articlePrintDocument(payload);
                         printWindow.document.open();
                         printWindow.document.write(html);
                         printWindow.document.close();
-                        await Promise.race([
-                            Promise.all([...printWindow.document.images].map(image => image.complete
-                                ? Promise.resolve()
-                                : new Promise(resolve => {
-                                    image.addEventListener('load', resolve, { once: true });
-                                    image.addEventListener('error', resolve, { once: true });
-                                }))),
-                            new Promise(resolve => setTimeout(resolve, 8_000))
-                        ]);
+                        await this.waitForArticlePrintAssets(printWindow);
                         if (controller.signal.aborted) throw new DOMException('PDF preparation cancelled.', 'AbortError');
                         this.articlePdfState = 'ready';
                         this.articlePdfProgress = {
@@ -3480,7 +3572,16 @@
                     await this.openArticleOverlay(article, { stack: true });
                 },
 
+                releaseArticleReaderSession() {
+                    if (!this.overlayRequestId) return;
+                    fetch('/api/article-reader-session/close', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ requestId: this.overlayRequestId }), keepalive: true
+                    }).catch(() => {});
+                },
+
                 async openArticleOverlay(article, options = {}) {
+                    this.releaseArticleReaderSession();
                     if (this.articlePdfState === 'preparing') this.cancelArticlePdf({ silent: true });
                     if (this.articlePdfResetTimer) clearTimeout(this.articlePdfResetTimer);
                     this.articlePdfResetTimer = null;
@@ -3609,7 +3710,8 @@
                     if (this.overlayProgressInterval) clearInterval(this.overlayProgressInterval);
                     const updateProgress = async () => {
                         try {
-                            const progressResponse = await fetch('/api/article-content-progress?id=' + encodeURIComponent(requestId));
+                            if (!this.articleOverlayOpen || this.overlayRequestId !== requestId) return;
+                            const progressResponse = await fetch('/api/article-content-progress?' + new URLSearchParams({ id: requestId, url: targetUrl }));
                             if (!progressResponse.ok || this.overlayRequestId !== requestId) return;
                             const progress = await progressResponse.json();
                             this.overlayProgress = progress;
@@ -3621,6 +3723,7 @@
                         const params = new URLSearchParams({
                             url: targetUrl,
                             requestId,
+                            interactive: '1',
                             title: article.title || '',
                             description: String(article.content || '').slice(0, 1200),
                             feedTitle: article.feedTitle || '',
@@ -3683,6 +3786,7 @@
                 },
             
             closeArticleOverlay(options = {}) {
+                    this.releaseArticleReaderSession();
                     const closeOptions = options && options.constructor === Object ? options : {};
                     if (this.articlePdfState === 'preparing') this.cancelArticlePdf({ silent: true });
                     this.stopArticleSpeech();

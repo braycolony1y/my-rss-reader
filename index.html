@@ -6334,7 +6334,7 @@
 
                     <!-- Hero image -->
                     <template x-if="overlayArticle && overlayArticle.overlayImage">
-                        <figure class="w-full mb-8">
+                        <figure data-article-export-header class="w-full mb-8">
                             <img :src="overlayArticle.overlayImage"
                                 class="w-full h-auto max-h-[40vh] md:max-h-[320px] object-cover rounded-2xl shadow-lg"
                                 @error="$el.closest('figure').style.display='none'">
@@ -6346,13 +6346,13 @@
                     </template>
 
                     <!-- Title -->
-                    <h1 class="text-3xl md:text-4xl font-bold leading-tight mb-6 mt-4 tracking-tight"
+                    <h1 data-article-export-header class="text-3xl md:text-4xl font-bold leading-tight mb-6 mt-4 tracking-tight"
                         :class="theme === 'glass-light' ? 'text-black' : 'text-white'"
                         x-text="overlayArticle ? (overlayArticle.overlayTitle || stripHtml(overlayArticle.title)) : ''">
                     </h1>
 
                     <!-- Meta row -->
-                    <div class="flex flex-wrap items-center gap-2 md:gap-3 text-[13px] md:text-sm mb-8 pb-6 border-b"
+                    <div data-article-export-header class="flex flex-wrap items-center gap-2 md:gap-3 text-[13px] md:text-sm mb-8 pb-6 border-b"
                         :class="theme === 'glass-light' ? 'border-gray-200/60' : 'border-white/10'">
 
 
@@ -6995,7 +6995,7 @@
         </div>
     </div>
     
-    <script src="/script.js?v=32_pdf_destination"></script>
+    <script src="/script.js?v=35_reuters_manual_verification"></script>
 </body>
 
 </html>

@@ -1,7 +1,15 @@
 import { decodeHTML } from 'entities';
+import { load } from 'cheerio';
+
+const invisibleSpacing = /[\u200b-\u200d\u2060\ufeff]/g;
+const reportLead = /\(Reuters\)\s*[-—]\s*\S/i;
+const reportCredits = /^\(?Reporting\s+by\b/i;
+const reportFooter = /^(?:Read Next|Join the Conversation|Our Standards:|Copyright\s+\d{4}\s+Thomson Reuters|Purchase Licensing Rights)\b/i;
+const newsletterPromo = /^(?:The Reuters\b.*\bnewsletter\b|Get a look at the day ahead.*newsletter)/i;
 
 function cleanText(value = '') {
     return decodeHTML(String(value || ''))
+        .replace(invisibleSpacing, '')
         .replace(/<[^>]*>/g, ' ')
         .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
         .replace(/[*_`#]/g, '')
@@ -37,7 +45,7 @@ function markdownImage(line = '') {
 }
 
 export function cleanReutersReaderMarkdown(markdown = '') {
-    const original = String(markdown || '');
+    const original = decodeHTML(String(markdown || '')).replace(invisibleSpacing, '');
     const lines = original.split(/\r?\n/);
     const author = cleanText(original.match(/^\s*By\s+(?:\[)?([^\]\n]+)(?:\]\([^)]+\))?\s*$/im)?.[1] || 'Reuters');
     let image = '';
@@ -55,22 +63,25 @@ export function cleanReutersReaderMarkdown(markdown = '') {
         break;
     }
 
-    const start = lines.findIndex(line => /^[A-ZÀ-Ý][A-ZÀ-Ý .’'()-]{1,80},\s+[A-Z][a-z]+\s+\d{1,2}\s+\(Reuters\)\s*[-—]\s+\S/.test(cleanText(line)));
+    const start = lines.findIndex(line => reportLead.test(cleanText(line)));
     if (start < 0) {
         return { markdown: original.trim(), author, image, imageCaption, readerType: 'reuters-article' };
     }
     let body = lines.slice(start);
-    const copyright = body.findIndex(line => /^\s*(?:\*\*)?Copyright\s+\d{4}\s+Thomson Reuters/i.test(line));
-    if (copyright >= 0) body = body.slice(0, copyright);
+    const credits = body.findIndex(line => reportCredits.test(cleanText(line)));
+    if (credits >= 0) body = body.slice(0, credits + 1);
+    const footer = body.findIndex(line => reportFooter.test(cleanText(line)));
+    if (footer >= 0) body = body.slice(0, footer);
 
     body = body.filter(line => {
         const text = cleanText(line);
+        if (newsletterPromo.test(text)) return false;
         return !/^(?:Advertisement\s*·\s*Scroll to continue|Get a look at the day ahead.+Morning Bid Europe newsletter|Item\s+\d+\s+of\s+\d+\b|\[\d+\/\d+\].+Purchase Licensing Rights.*|Our Standards:.*|Purchase Licensing Rights.*)$/i.test(text);
     }).map(line => {
         const text = cleanText(line);
         return text.length >= 8 && text.length <= 110 && /^[A-Z0-9][A-Z0-9\s,’'&()-]+$/.test(text)
             ? `## ${text}`
-            : line;
+            : line.replace(/,?\s*opens new tab/gi, '');
     });
 
     return {
@@ -104,6 +115,37 @@ export default class ReutersSource {
 
     parseOpenCliMarkdown(markdown) {
         return cleanReutersReaderMarkdown(markdown);
+    }
+
+    parseJinaReaderText(markdown) {
+        return cleanReutersReaderMarkdown(markdown);
+    }
+
+    cleanCachedArticleContent(content) {
+        const $ = load(content, null, false);
+        $.root().find('*').addBack().contents().each((_, node) => {
+            if (node.type === 'text') node.data = node.data.replace(invisibleSpacing, '');
+        });
+        const children = $.root().children().toArray();
+        const start = children.findIndex(node => reportLead.test($(node).text()));
+        if (start < 0) return content;
+        children.slice(0, start).forEach(node => $(node).remove());
+        let finished = false;
+        children.slice(start).forEach(node => {
+            const text = $(node).text().trim();
+            if (finished || reportFooter.test(text)) {
+                $(node).remove();
+                finished = true;
+            } else if (newsletterPromo.test(text) || /^Advertisement\s*·?\s*Scroll to continue/i.test(text)) {
+                $(node).remove();
+            } else if (reportCredits.test(text)) {
+                finished = true;
+            }
+        });
+        $('a').contents().each((_, node) => {
+            if (node.type === 'text') node.data = node.data.replace(/,?\s*opens new tab/gi, '');
+        });
+        return $.root().html();
     }
 
     isUsableArticleResult(result) {

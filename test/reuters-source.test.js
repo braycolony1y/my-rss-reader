@@ -63,3 +63,24 @@ This publisher footer must be removed.
     assert.match(cleaned.markdown, /## FEWER POLICE THAN USUAL AT BORDER/);
     assert.doesNotMatch(cleaned.markdown, /Copyright|Join the Conversation|publisher footer|Advertisement|Morning Bid|Purchase Licensing|Our Standards/);
 });
+
+test('Reuters datelines tolerate invisible spacing and stop at reporting credits', () => {
+    const dirty = `By Reuters\n\nSaveAdd us on\n\n### 来自 iframe: example\n\nWASHINGTON, Sept \u20604 (Reuters) - A short \u200breport.\n\nA second paragraph.\n\nThe Reuters Daily Briefing newsletter provides news. Sign up here.\n\n(Reporting \u2060by Jane Reporter; Editing by Editor)\n\nCopyright 2026 Thomson Reuters\n\n## Read Next\n\n[\n\n](https://example.com/unrelated)`;
+    const result = cleanReutersReaderMarkdown(dirty);
+    assert.match(result.markdown, /^WASHINGTON, Sept 4 \(Reuters\) - A short report\./);
+    assert.match(result.markdown, /A second paragraph/);
+    assert.match(result.markdown, /Reporting by Jane Reporter/);
+    assert.doesNotMatch(result.markdown, /newsletter|Read Next|Copyright|iframe|SaveAdd|\u200b|\u2060/);
+});
+
+test('cached Reuters reports discard newsletter and broken footer markup without losing body links', () => {
+    const source = new ReutersSource();
+    const dirty = `<p>By Reuters</p><p>WASHINGTON, Sept &#x2060;4 (Reuters) - Opening.</p><p>The Reuters Power Up newsletter is available. Sign up <a href="https://example.com/signup">here</a>.</p><h3>BODY SECTION</h3><p>Body with <a href="https://example.com/company">Company, opens new tab</a>.</p><p>Reporting by Jane Reporter; Editing by Editor</p><p>[</p><p>](https://example.com/author)</p><h3>Read Next</h3><p>Unrelated story</p>`;
+    const cleaned = source.cleanCachedArticleContent(dirty);
+    assert.match(cleaned, /^<p>WASHINGTON, Sept 4/);
+    assert.match(cleaned, /BODY SECTION/);
+    assert.match(cleaned, /href="https:\/\/example.com\/company">Company<\/a>/);
+    assert.match(cleaned, /Reporting by Jane Reporter/);
+    assert.doesNotMatch(cleaned, /newsletter|Read Next|Unrelated|example.com\/author|opens new tab|&#x2060;/);
+    assert.equal(source.cleanCachedArticleContent(cleaned), cleaned);
+});

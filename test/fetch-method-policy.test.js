@@ -94,7 +94,7 @@ test('Smart sources expose and enforce their own article fetch allowlists', () =
     assert.match(html, /toggleSmartSourceFetchMethod\(source, method\.value\)/);
     assert.match(script, /toggleSmartSourceFetchPanel\(source\)/);
     assert.match(script, /async toggleSmartSourceFetchMethod\(source, method\)/);
-    assert.match(html, /script\.js\?v=32_pdf_destination/);
+    assert.match(html, /script\.js\?v=\d+_[a-z0-9_]+/);
     assert.match(server, /smartNews\.getSourceSettings\(\)/);
     assert.match(server, /configuredSources = \[\.\.\.feeds, \.\.\.smartSources\]/);
     assert.match(server, /smartNews\.setSourceFetchMethods/);
