@@ -1,3 +1,4 @@
+import { matchesGoogleNewsPublisher, decodeGoogleNewsIndividually, repairGoogleNewsRecord } from './src/google-news-destination.js';
 import express from 'express';
 import { fileURLToPath } from 'url';
 import cron from 'node-cron';
@@ -1375,6 +1376,25 @@ async function _loadDBFromDisk() {
                 console.error('[DB MIGRATION ERROR]', err.message);
             }
         }
+    }
+    // Repair historical publisher mismatches before any list or sync reads them.
+    for (const key of ['articles', 'smartRawArticles', 'smartClusters']) {
+        if (!mainSnapshot[key]) continue;
+        try {
+            const records = JSON.parse(mainSnapshot[key]);
+            if (Array.isArray(records)) mainSnapshot[key] = JSON.stringify(records.map(record => {
+                const repaired = repairGoogleNewsRecord(record);
+                if (repaired && repaired !== record) repaired.hotness = calculateHotness([repaired, ...(repaired.relatedArticles || [])]);
+                return repaired;
+            }).filter(Boolean));
+        } catch { }
+    }
+    // Older batch-decoded destinations cannot be trusted, even on the same host.
+    if (mainSnapshot.googleNewsUrlCache) {
+        try {
+            const cache = JSON.parse(mainSnapshot.googleNewsUrlCache);
+            mainSnapshot.googleNewsUrlCache = JSON.stringify(Object.fromEntries(Object.entries(cache).filter(([, entry]) => entry.individuallyDecoded === true)));
+        } catch { }
     }
     return mainSnapshot;
 }
@@ -2974,10 +2994,10 @@ async function syncFeeds(env, targetFeedUrl = null, onProgress = null, targetCat
                     googleNewsUrlsToDecode = feedData.items.map(i => i.link).filter(l => l && l.includes('news.google.com/rss/articles/'));
                     if (googleNewsUrlsToDecode.length > 0) {
                         try {
-                            const results = await googleDecoder.decodeBatch(googleNewsUrlsToDecode);
+                            const results = await decodeGoogleNewsIndividually(googleDecoder, googleNewsUrlsToDecode);
                             results.forEach((res, idx) => {
-                                if (res.status) {
-                                    decodedGoogleNewsLinks.set(googleNewsUrlsToDecode[idx], res.decoded_url);
+                                if (res.status && googleNewsUrlsToDecode.includes(res.source_url) && matchesGoogleNewsPublisher(res.decoded_url, { feedUrl: feed.url })) {
+                                    decodedGoogleNewsLinks.set(res.source_url, res.decoded_url);
                                 }
                             });
                         } catch (e) {
@@ -3737,7 +3757,7 @@ function googleNewsPublisherDomain(hints = {}) {
         const feedUrl = new URL(hints.feedUrl || '');
         const query = feedUrl.searchParams.get('q') || '';
         const site = query.match(/(?:^|\s)site:([^\s)]+)/i)?.[1];
-        if (site) candidates.push(site);
+        if (site) candidates.unshift(site);
     } catch (e) { }
     const iconDomain = String(hints.feedIcon || '').match(/\/ip3\/([^/]+)\.ico/i)?.[1];
     if (iconDomain) candidates.push(iconDomain);
@@ -3817,6 +3837,10 @@ async function resolveGoogleNewsUrl(sourceUrl, hints = {}, options = {}) {
     if (!original || !isGoogleNewsArticleUrl(original)) return original || sourceUrl;
     const cache = await ensureGoogleNewsUrlCache();
     let cached = cache.get(original);
+    if (cached?.resolvedUrl && !matchesGoogleNewsPublisher(cached.resolvedUrl, hints)) {
+        cache.delete(original);
+        cached = undefined;
+    }
     if (cached) {
         // LRU bump
         cache.delete(original);
@@ -3845,6 +3869,7 @@ async function resolveGoogleNewsUrl(sourceUrl, hints = {}, options = {}) {
         } catch (error) {
             resolutionError = error.message;
         }
+        if (resolvedUrl && !matchesGoogleNewsPublisher(resolvedUrl, hints)) resolvedUrl = '';
         if (!resolvedUrl) {
             try {
                 resolvedUrl = await decodeGoogleNewsArticleUrl(original);
@@ -3852,6 +3877,7 @@ async function resolveGoogleNewsUrl(sourceUrl, hints = {}, options = {}) {
                 resolutionError += (resolutionError ? '; ' : '') + error.message;
             }
         }
+        if (resolvedUrl && !matchesGoogleNewsPublisher(resolvedUrl, hints)) resolvedUrl = '';
         if (!resolvedUrl) {
             try {
                 resolvedUrl = await decodeGoogleNewsOriginalUrl(original, hints);
@@ -3859,6 +3885,7 @@ async function resolveGoogleNewsUrl(sourceUrl, hints = {}, options = {}) {
                 resolutionError += (resolutionError ? '; ' : '') + error.message;
             }
         }
+        if (resolvedUrl && !matchesGoogleNewsPublisher(resolvedUrl, hints)) resolvedUrl = '';
         if (!resolvedUrl) {
             try {
                 resolvedUrl = await resolveGoogleNewsViaPublisherSearch(hints);
@@ -3866,6 +3893,7 @@ async function resolveGoogleNewsUrl(sourceUrl, hints = {}, options = {}) {
                 resolutionError += (resolutionError ? '; ' : '') + error.message;
             }
         }
+        if (resolvedUrl && !matchesGoogleNewsPublisher(resolvedUrl, hints)) resolvedUrl = '';
         if (!resolvedUrl) {
             try {
                 resolvedUrl = await resolveGoogleNewsViaOpenCliSearch(hints);
@@ -3873,8 +3901,9 @@ async function resolveGoogleNewsUrl(sourceUrl, hints = {}, options = {}) {
                 resolutionError += (resolutionError ? '; ' : '') + 'OpenCLI search: ' + error.message;
             }
         }
+        if (resolvedUrl && !matchesGoogleNewsPublisher(resolvedUrl, hints)) resolvedUrl = '';
         if (!resolvedUrl && resolutionError) console.error('[GOOGLE NEWS] Destination resolution failed:', resolutionError);
-        cache.set(original, { resolvedUrl, cachedAt: Date.now(), error: resolvedUrl ? '' : resolutionError });
+        cache.set(original, { resolvedUrl, individuallyDecoded: true, cachedAt: Date.now(), error: resolvedUrl ? '' : resolutionError });
         if (cache.size > 3000) cache.delete(cache.keys().next().value);
         scheduleGoogleNewsUrlCacheSave();
         return resolvedUrl || original;
@@ -3900,12 +3929,12 @@ async function resolveSmartArticleDestinations(sourceResults = []) {
 
     if (uncached.length) {
         try {
-            const decoded = await googleDecoder.decodeBatch(uncached);
+            const decoded = await decodeGoogleNewsIndividually(googleDecoder, uncached);
             for (const result of decoded || []) {
                 const sourceUrl = safeHttpUrl(result?.source_url);
                 const destination = safeHttpUrl(result?.decoded_url);
                 if (!sourceUrl || !destination || isGoogleNewsArticleUrl(destination)) continue;
-                cache.set(sourceUrl, { resolvedUrl: destination, cachedAt: Date.now(), error: '' });
+                cache.set(sourceUrl, { resolvedUrl: destination, individuallyDecoded: true, cachedAt: Date.now(), error: '' });
             }
             scheduleGoogleNewsUrlCacheSave();
         } catch (error) {
@@ -3918,12 +3947,16 @@ async function resolveSmartArticleDestinations(sourceResults = []) {
         const wrapper = article?.link;
         if (!isGoogleNewsArticleUrl(wrapper)) continue;
         let destination = cache.get(wrapper)?.resolvedUrl || '';
+        if (destination && !matchesGoogleNewsPublisher(destination, article)) {
+            cache.delete(wrapper);
+            destination = '';
+        }
         if (!destination) {
             // Start the more expensive publisher-search fallbacks without
             // delaying the Smart sync. A later card request or sync reuses it.
             destination = await resolveGoogleNewsUrl(wrapper, article, { backgroundResolve: true });
         }
-        if (!destination || isGoogleNewsArticleUrl(destination)) continue;
+        if (!destination || isGoogleNewsArticleUrl(destination) || !matchesGoogleNewsPublisher(destination, article)) continue;
 
         article.originalLink = wrapper;
         article.link = normalizeArticleSourceUrl(destination);

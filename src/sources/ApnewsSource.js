@@ -68,7 +68,10 @@ function extractAuthor(markdown = '') {
 
 function isApShareLine(line = '') {
     const text = cleanText(line);
-    return /^\[\]\(https?:\/\/(?:www\.)?apnews\.com\/article\/[^)]+\)\s*$/i.test(line.trim())
+    return /^(?:Facebook|X|LinkedIn|Bluesky|Flipboard|Pinterest|Reddit)\]\(/i.test(line.trim())
+        || /^(?:[-*+]\s*)?\[$/.test(line.trim())
+        || /^(?:Copy|Link copied)$/i.test(text)
+        || /^\[\]\(https?:\/\/(?:www\.)?apnews\.com\/article\/[^)]+\)\s*$/i.test(line.trim())
         || /Add AP News (?:on|as your preferred source)/i.test(text)
         || /^(?:Share|Read More)$/i.test(text)
         || /^(?:Sign up for .+|Email address|Sign up)$/i.test(text)
@@ -92,6 +95,7 @@ function firstArticleLine(lines, authorLineIndex) {
 
     return lines.findIndex((line, index) => {
         if (index < searchStart || isApShareLine(line)) return false;
+        if (/(?:AP Photo\/|AP video\/|Associated Press photo)/i.test(cleanText(line))) return false;
         const text = cleanText(line);
         return text.length >= 120
             && !/^(?:Updated|Leer en espa|\d+\s+of\s+\d+)/i.test(text)
@@ -104,7 +108,10 @@ export function cleanApReaderMarkdown(markdown = '') {
     const author = extractAuthor(original);
     const shareImage = extractShareImage(original);
     const originalLines = original.split(/\r?\n/);
-    const authorLineIndex = originalLines.findIndex(line => /https?:\/\/(?:www\.)?apnews\.com\/author\//i.test(line));
+    // OpenCLI's metadata can contain an author URL above the lead photo.
+    // Anchor to the visible byline, not the first occurrence of that URL.
+    const authorLineIndex = originalLines.findIndex(line => /^\s*By\s+/i.test(cleanText(line)));
+
     const start = firstArticleLine(originalLines, authorLineIndex);
     if (start < 0) {
         return { markdown: original.trim(), author, image: shareImage, readerType: 'ap-article' };
@@ -174,10 +181,18 @@ export function cleanApReaderMarkdown(markdown = '') {
 
 export function cleanApArticleHtml(content = '') {
     const source = String(content || '').trim();
-    if (!source || /(?:Keyboard Shortcuts|Subtitle Settings|More Videos)/i.test(cleanText(source))) return source;
+    if (!source) return source;
 
     const $ = cheerio.load(`<main id="ap-reader-root">${source}</main>`, null, false);
     const root = $('#ap-reader-root');
+    root.find('#onetrust-consent-sdk, #onetrust-banner-sdk, #onetrust-pc-sdk, .ot-sdk-container, .vjs-control-bar, .jw-controls, script, style').remove();
+    // Old browser-reader snapshots may already contain split Markdown share
+    // links. Remove those exact controls without touching links in the report.
+    root.find('p, li').each((_, element) => {
+        const node = $(element);
+        if (isApShareLine(node.text())) node.remove();
+    });
+    root.find('ul, ol').filter((_, element) => !$(element).text().trim() && !$(element).find('img').length).remove();
     root.find('p').each((_, element) => {
         const imageParagraph = $(element);
         if (imageParagraph.closest('figure').length) return;
@@ -287,6 +302,12 @@ export default class ApnewsSource {
         const dateMatch = html.match(/"datePublished":\s*"([^"]+)"/i);
         if (dateMatch) result.published = dateMatch[1];
 
+        const $ = cheerio.load(html);
+        const body = $('.RichTextStoryBody, .ArticleBody').first();
+        if (body.length && cleanText(body.text()).length >= 350) {
+            body.find('#onetrust-consent-sdk, .vjs-control-bar, .jw-controls, [class*="RelatedStory"], script, style').remove();
+            return cleanApArticleHtml(body.html());
+        }
         return false;
     }
 }

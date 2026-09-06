@@ -112,3 +112,44 @@ test('AP cached HTML keeps each photo caption directly below its image', () => {
     assert.match(first, /<figcaption>A useful article photo \(AP Photo\/Example\)<\/figcaption>/);
     assert.doesNotMatch(first, /<\/figure><p>A useful article photo/);
 });
+
+test('OpenCLI author metadata and a long lead caption do not truncate AP before its byline', () => {
+    const markdown = `# Article headline
+> 作者: https://apnews.com/author/rebecca-boone
+
+![Lead photo](https://assets.apnews.com/photo.jpg)
+
+${'The president appears in a photograph at an official event. '.repeat(4)} (AP Photo/Alex Brandon)
+
+[![](https://assets.apnews.com/avatar.jpg)](https://apnews.com/author/rebecca-boone)
+
+By [REBECCA BOONE](https://apnews.com/author/rebecca-boone)
+
+A federal judge has blocked the latest executive order, granting a preliminary injunction while a lawsuit brought by immigrant families proceeds through the courts.
+
+${'The report continues with the court findings. '.repeat(12)}
+
+The White House did not immediately respond to a request for comment.
+
+[REBECCA BOONE](https://apnews.com/author/rebecca-boone)
+
+Author biography.`;
+    const cleaned = cleanApReaderMarkdown(markdown);
+    assert.match(cleaned.markdown, /^A federal judge/);
+    assert.match(cleaned.markdown, /The White House did not immediately respond/);
+    assert.doesNotMatch(cleaned.markdown, /AP Photo|Author biography/);
+    assert.equal(cleaned.author, 'REBECCA BOONE');
+    assert.equal(new ApnewsSource().isUsableArticleResult({ content: cleaned.markdown }), true);
+});
+
+test('AP removes split browser share links before finding the story lead and from cached HTML', () => {
+    const lead = 'A federal judge has blocked the latest order, granting a preliminary injunction while a lawsuit brought by immigrant families proceeds through the courts.';
+    const markdown = `By [REPORTER](https://apnews.com/author/reporter)\n\n- [\n\nFacebook](https://www.facebook.com/dialog/share?href=${'x'.repeat(180)})\n\n- Copy\n\nLink copied\n\n${lead}\n\nThe final paragraph.`;
+    const cleaned = cleanApReaderMarkdown(markdown);
+    assert.ok(cleaned.markdown.startsWith(lead));
+    assert.doesNotMatch(cleaned.markdown, /Facebook|Link copied/);
+    const html = cleanApArticleHtml(`<p>Facebook](https://www.facebook.com/dialog/share?href=article)</p><ul><li>[</li></ul><p>Link copied</p><p>${lead}</p><p><a href="https://apnews.com/article/source">Source article</a></p>`);
+    assert.doesNotMatch(html, /Facebook|Link copied|<ul>/);
+    assert.match(html, /Source article/);
+    assert.match(html, /A federal judge/);
+});
