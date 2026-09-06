@@ -1,10 +1,11 @@
+import { readServerSource } from './helpers/server-source.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import { parseOpenCliSearchDestination } from '../server.js';
 
-const server = readFileSync(new URL('../server.js', import.meta.url), 'utf8');
+const server = readServerSource();
 const smartNews = readFileSync(new URL('../smart-news.js', import.meta.url), 'utf8');
 
 test('OpenCLI publisher search accepts only results from the expected publisher domain', () => {

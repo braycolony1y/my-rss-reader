@@ -1,8 +1,9 @@
+import { readServerSource } from './helpers/server-source.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
-const server = fs.readFileSync(new URL('../server.js', import.meta.url), 'utf8');
+const server = readServerSource();
 const script = fs.readFileSync(new URL('../script.js', import.meta.url), 'utf8');
 const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 
