@@ -1,8 +1,9 @@
+import { readServerSource } from './helpers/server-source.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-const server = readFileSync(new URL('../server.js', import.meta.url), 'utf8');
+const server = readServerSource();
 const script = readFileSync(new URL('../script.js', import.meta.url), 'utf8');
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 
@@ -71,7 +72,7 @@ test('OpenCLI-only feed and Smart sources prefetch new article content during in
     assert.match(smartNews, /prefetchOpenCliOnlySmartArticles/);
     assert.match(smartNews, /result\?\.source\?\.fetchMethods/);
     assert.match(smartNews, /helpers\.prefetchOpenCliOnlyArticles\(articlesToPrefetch, result\.source\.url\)/);
-    assert.match(server, /helpers: \{ fastParseRSS, waitForHttpIdle, prefetchOpenCliOnlyArticles, resolveSmartArticleDestinations \}/);
+    assert.match(server, /helpers: \{\s*fastParseRSS,\s*waitForHttpIdle: http\.waitForHttpIdle,\s*prefetchOpenCliOnlyArticles: \(\.\.\.args\) => prefetch\.prefetchOpenCliOnlyArticles\(\.\.\.args\),\s*resolveSmartArticleDestinations: googleNews\.resolveSmartArticleDestinations/);
 });
 
 test('Edit Source uses light liquid glass controls with a complete checkbox border', () => {

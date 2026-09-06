@@ -7,7 +7,7 @@
     <title>My RSS Reader</title>
     <link rel="icon"
         href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22%238b5cf6%22/><circle cx=%2230%22 cy=%2270%22 r=%2210%22 fill=%22white%22/><path d=%22M30 40a30 30 0 0 1 30 30M30 20a50 50 0 0 1 50 50%22 fill=%22none%22 stroke=%22white%22 stroke-width=%2210%22 stroke-linecap=%22round%22/></svg>">
-    <link rel="stylesheet" href="/public/styles.css?v=20260904_pdf_destination">
+    <link rel="stylesheet" href="/public/styles.css?v=20260906_ground_reader3">
     <script>
         // Start the first Smart News request while the browser is still parsing
         // the page. Returning visitors paint saved cards immediately instead.
@@ -1349,6 +1349,47 @@
             overflow: hidden;
             word-break: normal;
         }
+
+        .article-rendered-content .ground-story { --ground-text:#e8edf5; --ground-muted:#a8b4c6; --ground-surface:rgba(255,255,255,.055); --ground-border:rgba(255,255,255,.12); --ground-left:#85b7ff; --ground-center:#bec7d6; --ground-right:#ef9ca4; color:var(--ground-text); }
+        .article-rendered-content .ground-summary p { margin:0 0 1.1em; line-height:1.8; }
+        .article-rendered-content .ground-coverage,.article-rendered-content .ground-articles { margin:24px 0; padding:24px; border:1px solid var(--ground-border); border-radius:24px; background:var(--ground-surface); box-shadow:inset 0 1px 0 rgba(255,255,255,.12),0 10px 30px rgba(0,0,0,.04); backdrop-filter:blur(20px); }
+        .article-rendered-content .ground-section-heading { color:var(--ground-text); font-size:18px; font-weight:650; letter-spacing:-.025em; margin-bottom:18px; }
+        .article-rendered-content .ground-coverage-stats { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+        .article-rendered-content .ground-coverage-stat { display:flex; flex-direction:column; gap:8px; padding:4px 12px; border-left:3px solid currentColor; font-size:13px; }
+        .article-rendered-content .ground-coverage-stat strong { font-size:28px; line-height:1.2; font-weight:650; color:var(--ground-text); font-variant-numeric:tabular-nums; white-space:nowrap; }
+        .article-rendered-content .ground-bias-left { color:var(--ground-left); }
+        .article-rendered-content .ground-bias-center { color:var(--ground-center); }
+        .article-rendered-content .ground-bias-right { color:var(--ground-right); }
+        .article-rendered-content .ground-bias-unrated { color:var(--ground-muted); }
+        .article-rendered-content .ground-filters { display:flex; gap:6px; padding:5px; border:1px solid var(--ground-border); border-radius:16px; background:var(--ground-surface); margin-bottom:18px; }
+        .article-rendered-content .ground-filter { flex:1; display:flex; align-items:center; justify-content:center; gap:7px; padding:10px 6px; border:0; border-radius:11px; color:var(--ground-muted); background:transparent; font:inherit; font-size:13px; cursor:pointer; white-space:nowrap; }
+        .article-rendered-content .ground-filter span { font-size:11px; opacity:.8; font-variant-numeric:tabular-nums; }
+        .article-rendered-content .ground-filter[aria-pressed="true"] { color:var(--ground-text); background:rgba(255,255,255,.14); box-shadow:0 2px 8px rgba(0,0,0,.08); }
+        .article-rendered-content .ground-filter:focus-visible,.article-rendered-content .ground-publisher:focus-visible { outline:2px solid var(--ground-left); outline-offset:3px; }
+        .article-rendered-content a.ground-publisher { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:16px 2px; border-bottom:1px solid var(--ground-border); text-decoration:none; color:var(--ground-text); }
+        .article-rendered-content a.ground-publisher:hover { opacity:.8; }
+        .article-rendered-content .ground-publisher[hidden],.article-rendered-content .ground-empty[hidden] { display:none; }
+        .article-rendered-content .ground-publisher-name { font-size:15px; font-weight:550; overflow-wrap:anywhere; }
+        .article-rendered-content .ground-publisher-meta { display:flex; align-items:center; gap:12px; font-size:11px; color:var(--ground-muted); white-space:nowrap; }
+        .article-rendered-content .ground-bias-label { font-weight:600; }
+        .article-rendered-content .ground-coverage-note,.article-rendered-content .ground-empty { font-size:12px; color:var(--ground-muted); line-height:1.6; margin:18px 0 0; }
+        .article-rendered-content a.ground-original { display:inline-block; font-size:13px; margin-top:18px; color:var(--ground-text); text-underline-offset:4px; }
+        .theme-glass-light .article-rendered-content .ground-story { --ground-text:#202b3d; --ground-muted:#637086; --ground-surface:rgba(255,255,255,.5); --ground-border:rgba(109,129,157,.18); --ground-left:#346ac0; --ground-center:#616b7c; --ground-right:#b44e5a; }
+        .theme-glass-light .article-rendered-content .ground-coverage,.theme-glass-light .article-rendered-content .ground-articles { background:linear-gradient(145deg,rgba(255,255,255,.78),rgba(246,249,255,.42)); box-shadow:inset 0 1px 0 #fff,0 12px 36px rgba(59,77,109,.06); }
+        .theme-glass-light .article-rendered-content .ground-filter[aria-pressed="true"] { background:rgba(255,255,255,.95); box-shadow:0 2px 8px rgba(59,77,109,.1),inset 0 1px 0 #fff; }
+        @media(max-width:600px) { .article-rendered-content .ground-coverage,.article-rendered-content .ground-articles { padding:18px 14px; border-radius:20px; } .article-rendered-content .ground-publisher-meta { gap:8px; } .article-rendered-content a.ground-publisher { align-items:flex-start; flex-direction:column; gap:6px; } .article-rendered-content .ground-coverage-stat { padding-left:8px; } }
+
+        .article-rendered-content .ground-perspectives { margin:24px 0; padding:24px; border:1px solid var(--ground-border); border-radius:24px; background:var(--ground-surface); box-shadow:inset 0 1px 0 rgba(255,255,255,.12),0 10px 30px rgba(0,0,0,.04); backdrop-filter:blur(20px); }
+        .article-rendered-content .ground-summary-panel[hidden],.article-rendered-content img.ground-publisher-logo[hidden] { display:none!important; }
+        .article-rendered-content .ground-summary-points { margin:20px 0 0; padding-left:22px; list-style:disc; color:var(--ground-text); }
+        .article-rendered-content .ground-summary-points li { margin:0 0 14px; padding-left:4px; line-height:1.75; }
+        .article-rendered-content .ground-summary-filters { flex-wrap:wrap; }
+        .article-rendered-content .ground-summary-filters .ground-filter { min-width:64px; }
+        .article-rendered-content .ground-summary-filters .ground-filter:last-child { flex:1.7; }
+        .article-rendered-content .ground-publisher-identity { display:flex; align-items:center; gap:12px; min-width:0; }
+        .article-rendered-content img.ground-publisher-logo { display:block; width:30px!important; height:30px!important; min-width:30px; max-width:30px!important; max-height:30px!important; object-fit:contain!important; border-radius:8px; margin:0!important; padding:3px; background:rgba(255,255,255,.9); box-shadow:0 1px 5px rgba(0,0,0,.06); }
+        .theme-glass-light .article-rendered-content .ground-perspectives { background:linear-gradient(145deg,rgba(255,255,255,.78),rgba(246,249,255,.42)); box-shadow:inset 0 1px 0 #fff,0 12px 36px rgba(59,77,109,.06); }
+        @media(max-width:600px) { .article-rendered-content .ground-perspectives { padding:18px 14px; border-radius:20px; } .article-rendered-content .ground-summary-filters .ground-filter:last-child { flex-basis:100%; } }
 
         .article-rendered-content .techmeme-main-story {
             margin: 0 0 2rem;
@@ -6995,7 +7036,7 @@
         </div>
     </div>
     
-    <script src="/script.js?v=35_reuters_manual_verification"></script>
+    <script src="/script.js?v=20260906_retain_unavailable"></script>
 </body>
 
 </html>

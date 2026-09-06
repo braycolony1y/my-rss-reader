@@ -1,3 +1,4 @@
+import { readServerSource } from './helpers/server-source.js';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -7,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 async function read(relativePath) {
+    if (relativePath === 'server.js') return readServerSource();
     return readFile(path.join(repositoryRoot, relativePath), 'utf8');
 }
 

@@ -56,3 +56,35 @@ test('keeps the first playable video when Tiền Phong falls back to Jina Reader
     assert.equal(parsed.readerType, 'video-article');
     assert.equal(parsed.markdown, `[Video 41](${streamUrl})`);
 });
+
+test('rejects unrelated recommendation cards mistakenly returned as the requested article', () => {
+    const source = new TienPhongSource();
+    const url = 'https://tienphong.vn/sieu-mau-noi-y-bi-mang-khap-mang-xa-hoi-post1874068.tpo';
+    const content = '<p><img src="https://cdn.tienphong.vn/greenland.jpg"></p><h3><a href="https://tienphong.vn/greenland-post1874059.tpo">Liên minh châu Âu dựng lá chắn Greenland</a></h3>';
+    assert.equal(source.isUsableArticleResult({ title: 'Siêu mẫu nội y bị mắng khắp mạng xã hội', content }, { url }), false);
+    assert.equal(source.isUsableArticleResult({ content: '<p>' + 'This is the actual article prose. '.repeat(10) + '</p>' + content }, { url }), true);
+});
+
+test('the real Tiền Phong response restores the requested headline and body', async () => {
+    const { readFileSync } = await import('node:fs');
+    const html = readFileSync(new URL('./fixtures/tienphong-1874068.html', import.meta.url), 'utf8');
+    const source = new TienPhongSource();
+    const result = { title: 'Unrelated title' };
+    const url = 'https://tienphong.vn/sieu-mau-noi-y-bi-mang-khap-mang-xa-hoi-post1874068.tpo';
+    const content = source.parseArticleHtmlContent(html, url, result, { escapeHtml: String });
+    assert.equal(result.title, 'Siêu mẫu nội y bị mắng khắp mạng xã hội');
+    assert.match(content, /Lưu Văn/);
+    assert.match(content, /Tỉnh Bách Nhiên/);
+    assert.equal(source.isUsableArticleResult({ ...result, content }, { url }), true);
+});
+
+
+test('related story IDs containing 410 do not mark a real article as deleted', async () => {
+    const { isDeletedArticlePayload } = await import('../src/article-source-state.js');
+    const { readFileSync } = await import('node:fs');
+    const html = readFileSync(new URL('./fixtures/tienphong-1874068.html', import.meta.url), 'utf8');
+    assert.equal(isDeletedArticlePayload(pageUrl, html), false);
+    assert.equal(isDeletedArticlePayload(pageUrl, '<h2 data-tracking="1874108"><a href="/post1874108.tpo">Another story</a></h2>'), false);
+    assert.equal(isDeletedArticlePayload(pageUrl, '<h1>410 Gone</h1>'), true);
+    assert.equal(isDeletedArticlePayload(pageUrl, '<h1>404 Not Found</h1>'), true);
+});

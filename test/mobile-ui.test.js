@@ -1,3 +1,4 @@
+import { readServerSource } from './helpers/server-source.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -69,12 +70,12 @@ test('article image shadows can feather beyond content while the overlay contain
 });
 
 test('Smart News API bypasses the regular article database path', () => {
-    const server = readFileSync(new URL('../server.js', import.meta.url), 'utf8');
+    const server = readServerSource();
     const smartNews = readFileSync(new URL('../smart-news.js', import.meta.url), 'utf8');
     assert.match(server, /if \(filterType === 'smart'\) return serveSmartData\(req, res\);/);
     assert.match(server, /get\('smartClusters', \{ type: 'json', shared: true \}\)/);
     assert.match(server, /Server-Timing.*smart-data/);
-    assert.match(server, /helpers: \{ fastParseRSS, waitForHttpIdle, prefetchOpenCliOnlyArticles, resolveSmartArticleDestinations \}/);
+    assert.match(server, /helpers: \{\s*fastParseRSS,\s*waitForHttpIdle: http\.waitForHttpIdle,\s*prefetchOpenCliOnlyArticles: \(\.\.\.args\) => prefetch\.prefetchOpenCliOnlyArticles\(\.\.\.args\),\s*resolveSmartArticleDestinations: googleNews\.resolveSmartArticleDestinations/);
     assert.match(server, /skipped while HTTP requests are active/);
     assert.match(server, /max-age=31536000, immutable/);
     assert.match(server, /no-cache, must-revalidate/);

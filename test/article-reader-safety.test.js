@@ -1,8 +1,9 @@
+import { readServerSource } from './helpers/server-source.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
-const server = fs.readFileSync(new URL('../server.js', import.meta.url), 'utf8');
+const server = readServerSource();
 const script = fs.readFileSync(new URL('../script.js', import.meta.url), 'utf8');
 const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 
@@ -86,17 +87,14 @@ test('deleted VOZ pagination serves the exact cached page instead of page one', 
     assert.match(functionBody, /url: snapshotUrl/);
 });
 
-test('deleted articles without a cached copy are removed from active Smart News views', () => {
-    const functionStart = server.indexOf('async function buildDeletedSourceResponse');
-    const functionEnd = server.indexOf('\n// --- ARTICLE CONTENT EXTRACTION ENDPOINT ---', functionStart);
-    const functionBody = server.slice(functionStart, functionEnd);
-
-    assert.match(server, /function markUnavailableSourceUrl\(url\)/);
-    assert.match(functionBody, /if \(!hasCachedContent\) await markUnavailableSourceUrl\(snapshotUrl\)/);
-    assert.match(server, /function removeUnavailableSmartSources\(article, unavailableSet\)/);
-    assert.match(server, /get\('unavailableSourceUrls', \{ type: 'json' \}\)/);
-    assert.match(server, /\.map\(article => removeUnavailableSmartSources\(article, unavailableSet\)\)/);
-    assert.match(script, /data\.sourceDeleted === true && data\.sourceDeletedHasCache === false[\s\S]*closeArticleOverlay\(\{ closeAll: true \}\)[\s\S]*fetchData\(false, true, true\)/);
+test('deleted articles stay in lists and keep the reader open with an unavailable notice', () => {
+    assert.match(server, /function markUnavailableSmartSources\(article, unavailableSet\)/);
+    assert.match(server, /relatedArticles: article\.relatedArticles\.map\(annotate\)/);
+    const start = script.indexOf('applyOverlayArticleData(data, fallbackArticle');
+    const end = script.indexOf('checkVozThreadPosition()', start);
+    const body = script.slice(start, end);
+    assert.doesNotMatch(body, /this\.articles\s*=.*filter|closeArticleOverlay\(\{ closeAll: true \}\)/);
+    assert.match(body, /fallbackArticle\?\.title \|\| this\.overlayArticle\.title \|\| data\.title/);
 });
 
 test('canonical publisher URLs cannot be overwritten by their malformed request form', () => {

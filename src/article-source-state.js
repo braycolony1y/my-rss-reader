@@ -27,7 +27,9 @@ export function hasGenericDeletedSourceMarker(payload = '') {
     const titleOrHeading = String(text).match(
         /<(?:title|h1|h2)\b[^>]*>([\s\S]{0,500}?)<\/(?:title|h1|h2)>/giu
     ) || [];
-    if (titleOrHeading.some(value => /(?:Không tìm thấy|không còn tồn tại|đã bị (?:xóa|gỡ)|404|410|Not Found|Gone|no longer exists|has been (?:deleted|removed))/iu.test(value))) {
+    // Inspect visible heading text, never IDs or link URLs: article IDs such
+    // as 1874108 are not HTTP 410 notices.
+    if (titleOrHeading.some(value => /(?:Không tìm thấy|không còn tồn tại|đã bị (?:xóa|gỡ)|\b(?:404|410)\b|Not Found|Gone|no longer exists|has been (?:deleted|removed))/iu.test(value.replace(/<[^>]*>/g, ' ')))) {
         return true;
     }
 

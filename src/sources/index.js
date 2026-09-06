@@ -1,3 +1,6 @@
+import GroundNewsSource from './GroundNewsSource.js';
+import YahooFinanceSource from './YahooFinanceSource.js';
+import AlJazeeraSource from './AlJazeeraSource.js';
 
 class SourceRegistry {
     constructor() {
@@ -21,6 +24,9 @@ class SourceRegistry {
 }
 
 const registry = new SourceRegistry();
+registry.register(new GroundNewsSource());
+registry.register(new YahooFinanceSource());
+registry.register(new AlJazeeraSource());
 
 // Register specific sources
 import VozSource from './VozSource.js';

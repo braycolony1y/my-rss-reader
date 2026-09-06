@@ -1,3 +1,4 @@
+import { readServerSource } from './helpers/server-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
@@ -94,7 +95,7 @@ test('keeps the event heading usable when the optional list request times out', 
 
 test('defines responsive liquid-glass light styles for Tuổi Trẻ editorial sections', () => {
     const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
-    const server = readFileSync(new URL('../server.js', import.meta.url), 'utf8');
+    const server = readServerSource();
 
     assert.match(html, /\.theme-glass-light \.article-rendered-content \.tuoitre-info-card,/);
     assert.match(html, /backdrop-filter: blur\(28px\) saturate\(170%\)/);

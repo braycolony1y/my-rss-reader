@@ -1,6 +1,25 @@
+import * as cheerio from 'cheerio/slim';
+
 export default class VnexpressSource {
     match(hostname) {
         return hostname.includes('vnexpress.net');
+    }
+
+    isUsableArticleResult(result) {
+        if (result?.sourceDeleted === true && result?.sourceDeletedHasCache === false) return true;
+        const title = String(result?.title || '').trim();
+        if (/^VnExpress\s*[-–|]\s*Báo tiếng Việt/i.test(title)) return false;
+        const $ = cheerio.load(String(result?.content || ''), null, false);
+        if (/Không tìm thấy đường dẫn này/i.test($.root().text())) return false;
+        if ($('video[src], video source[src], audio[src], iframe[src]').length) return true;
+        const links = $('a[href]').length;
+        $('a,h1,h2,h3,h4,nav,footer,figure,figcaption,.embedded-suggested-articles').remove();
+        const prose = $.root().text().replace(/\s+/g, ' ').trim();
+        return Boolean(prose) && !(links >= 4 && prose.length < 250);
+    }
+
+    cleanCachedArticleContent(content, result = {}) {
+        return this.isUsableArticleResult({ ...result, content }) ? content : '';
     }
 
     async preProcessHtml(html, utils) {
@@ -48,6 +67,9 @@ export default class VnexpressSource {
     }
 
     parseArticleHtmlContent(html, url, result, utils) {
+        const $ = cheerio.load(html);
+        const headline = $('h1.title-detail, h1.title_news_detail, h1').first().text().trim();
+        if (headline) result.title = headline;
         let videoData = null;
         
         // Attempt to find VideoObject in JSON-LD

@@ -5,6 +5,34 @@ export default class BBCSource {
         return hostname.includes('bbc.co.uk') || hostname.includes('bbc.com');
     }
 
+    cleanCachedArticleContent(content, result = {}) {
+        const $ = cheerio.load(content || '', null, false);
+        const name = $('.byline-link-text').first().text().trim();
+        if (name) result.author = name;
+        else if (/^https?:/.test(result.author || '')) result.author = '';
+        $('[data-block="byline"], [data-block="metadata"], [data-block="headline"], [data-block="topicList"], [data-block="links"], [data-block="relatedLinks"], .visually-hidden, svg, button').remove();
+        $('p').filter((_, el) => /newsletter/i.test($(el).text()) && $(el).find('a[href*="newsletter"], a[href*="email.bbc.com"]').length).remove();
+        $('img').each((_, el) => {
+            const img = $(el), caption = img.attr('alt') || '';
+            if (caption.startsWith('Image caption,') && !img.closest('figure').length) {
+                img.wrap('<figure></figure>');
+                img.after($('<figcaption></figcaption>').text(caption.replace(/^Image caption,\s*/, '')));
+            }
+        });
+        $('.styled-rel-card').parent().each((_, el) => {
+            const section = $('<section><h2>Related stories</h2><ul></ul></section>');
+            $(el).find('.styled-rel-card > a').each((__, link) => section.find('ul').append($('<li></li>').append($(link).clone().removeAttr('class'))));
+            $(el).replaceWith(section);
+        });
+        return $.root().html();
+    }
+
+    enhanceArticleResult(result) {
+        const updated = { ...result };
+        updated.content = this.cleanCachedArticleContent(result.content, updated);
+        return updated;
+    }
+
     parseArticleHtmlContent(html, url, result, utils) {
         const $ = cheerio.load(html);
         
@@ -96,7 +124,7 @@ export default class BBCSource {
             if (src) {
                 const caption = figure.find('figcaption').first();
                 const capText = caption.length ? caption.text().trim() : '';
-                figure.replaceWith(`<div class="my-4"><img class="w-full rounded-xl" src="${utils.escapeHtml(src)}" alt="${utils.escapeHtml(capText)}"></div>`);
+                figure.replaceWith(`<figure><img src="${utils.escapeHtml(src)}" alt="${utils.escapeHtml(capText)}"><figcaption>${utils.escapeHtml(capText)}</figcaption></figure>`);
             }
         });
 
@@ -118,6 +146,6 @@ export default class BBCSource {
             </div>`;
         }
 
-        return articleHtml;
+        return this.cleanCachedArticleContent(articleHtml, result);
     }
 }

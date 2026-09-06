@@ -1,3 +1,5 @@
+import * as cheerio from 'cheerio/slim';
+
 function getHtmlAttribute(tag, name) {
     const match = String(tag || '').match(
         new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, 'i')
@@ -61,7 +63,25 @@ export default class TienPhongSource {
         return hostname.includes('tienphong.vn');
     }
 
+    isUsableArticleResult(result, { url } = {}) {
+        const $ = cheerio.load(String(result?.content || ''), null, false);
+        if ($('video[src], video source[src], iframe[src]').length) return true;
+        const requestedId = String(url || result?.url || '').match(/post(\d+)\.tpo/i)?.[1];
+        const unrelatedStory = $('h1 a[href], h2 a[href], h3 a[href]').toArray().some(el => {
+            const id = $(el).attr('href')?.match(/post(\d+)\.tpo/i)?.[1];
+            return id && id !== requestedId;
+        });
+        // A browser reader can mistakenly return just a recommendation card.
+        // Require actual prose outside linked headlines before accepting that.
+        $('a,h1,h2,h3,figure,figcaption,.tp-related-articles,.tp-related-news').remove();
+        const prose = $.root().text().replace(/\s+/g, ' ').trim();
+        return !(unrelatedStory && prose.length < 80);
+    }
+
     parseArticleHtmlContent(html, url, result, utils) {
+        const $ = cheerio.load(html);
+        const headline = $('h1.article__title, h1.cms-title, h1').first().text().trim();
+        if (headline) result.title = headline;
         // Extract Author
         const author = [
             html.match(/<div[^>]*class=["'][^"']*author[^"']*["'][^>]*>[\s\S]*?<\/span>([^<]+)/i),

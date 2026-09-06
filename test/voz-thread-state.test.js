@@ -1,3 +1,4 @@
+import { readServerSource } from './helpers/server-source.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -128,7 +129,7 @@ test('deletion/error markers do not affect non-VOZ articles', () => {
 });
 
 test('server keeps the old cache until a validated replacement and short-circuits deletion before fallback', () => {
-    const server = readFileSync(new URL('../server.js', import.meta.url), 'utf8');
+    const server = readServerSource();
     const cacheWriter = server.slice(
         server.indexOf('async function cacheArticleResult'),
         server.indexOf('async function deleteCachedArticle')
@@ -155,7 +156,7 @@ test('VOZ background polling carries feed policy instead of silently enabling Ji
 });
 
 test('Cache Board refreshes VOZ every minute and crawls past cached pages to the final page', () => {
-    const server = readFileSync(new URL('../server.js', import.meta.url), 'utf8');
+    const server = readServerSource();
     const crawlerStart = server.indexOf('async function runVozCacheBoardCrawlBatch');
     const crawlerEnd = server.indexOf('\nfunction triggerVozNextPagePrefetch', crawlerStart);
     const crawler = server.slice(crawlerStart, crawlerEnd);
