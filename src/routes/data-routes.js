@@ -1,3 +1,4 @@
+import { canonicalIdentity } from '../board/thread-model.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { normalizeBlockedKeywordEntries, articleContentFilterMatches } from '../filters/content-filter.js';
 import { NormalizedSet, NormalizedMap, mapWithConcurrency } from '../utils/article-utils.js';
@@ -150,6 +151,13 @@ export function registerDataRoutes({
                 });
 
                 smartArticles.forEach(a => linkMap.set(a.link, a));
+                if (filterType === 'board') {
+                    const members = await env.RSS_DATA.get('cacheMembers', { type: 'json' }) || {};
+                    for (const member of Object.values(members)) if (member.in_cache) {
+                        const article = { ...(linkMap.get(member.url) || member.article), link: member.url, active_caching: member.active_caching, auto_added: member.auto_added };
+                        linkMap.set(member.url, article);
+                    }
+                }
                 filteredArticles = Array.from(linkMap.values());
             }
 
@@ -164,10 +172,11 @@ export function registerDataRoutes({
                 if (hideRead) filteredArticles = filteredArticles.filter(a => !readSet.has(a.link));
                 filteredArticles.sort((a, b) => savedIndex.get(b.link) - savedIndex.get(a.link));
             } else if (filterType === 'board') {
-                filteredArticles = filteredArticles.filter(a => boardSet.has(a.link));
+                filteredArticles = deduplicateBoardArticles(filteredArticles.filter(a => boardSet.has(a.link)));
                 if (filterValue) {
                     const mappings = userPreferences.boardFolderMappings || {};
-                    filteredArticles = filteredArticles.filter(a => mappings[a.link] === filterValue);
+                    const folders = new Map(Object.entries(mappings).map(([url, folder]) => [canonicalIdentity(url), folder]));
+                    filteredArticles = filteredArticles.filter(a => folders.get(canonicalIdentity(a)) === filterValue);
                 }
                 if (hideRead) filteredArticles = filteredArticles.filter(a => !readSet.has(a.link));
                 filteredArticles.sort((a, b) => boardIndex.get(b.link) - boardIndex.get(a.link));
@@ -277,4 +286,14 @@ export function registerDataRoutes({
         });
     });
 
+}
+
+export function deduplicateBoardArticles(articles) {
+    const unique = new Map();
+    for (const article of articles) {
+        let id; try { id = canonicalIdentity(article); } catch { id = article.link; }
+        const previous = unique.get(id);
+        if (!previous || (!previous.image && article.image)) unique.set(id, article);
+    }
+    return [...unique.values()];
 }

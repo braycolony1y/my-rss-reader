@@ -4,6 +4,7 @@ import { normalizeStateUrl } from '../utils/article-utils.js';
 
 export function registerSettingsRoutes({
     app,
+    boardCache,
     env,
     normalizeClusteringModel,
     VALID_CLUSTERING_MODELS,
@@ -37,6 +38,10 @@ export function registerSettingsRoutes({
             prefs[key] = value;
             await env.RSS_DATA.put('userPreferences', JSON.stringify(prefs));
             if (key === 'clusteringModel') setClusteringModel(value);
+            if (key === 'boardFolderMappings') {
+                await boardCache?.reconcileMembership();
+                void boardCache?.tick().catch(error => console.warn('[CACHE MEMBERSHIP]', error.message));
+            }
 
             res.json({ success: true });
         } catch (error) {
@@ -77,6 +82,7 @@ export function registerSettingsRoutes({
             }
         }
 
+        if (list === 'boardStates') await boardCache?.reconcileMembership();
         res.status(200).send('Toggled');
     });
 
@@ -112,6 +118,7 @@ export function registerSettingsRoutes({
             }
         }
 
+        if (list === 'boardStates') await boardCache?.reconcileMembership();
         res.status(200).send('Toggled Batch');
     });
 

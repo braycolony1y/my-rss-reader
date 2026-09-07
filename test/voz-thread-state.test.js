@@ -155,24 +155,12 @@ test('VOZ background polling carries feed policy instead of silently enabling Ji
     assert.match(script, /this\.overlayFetchedFromCache && !this\.overlayArticle\.sourceDeleted/);
 });
 
-test('Cache Board refreshes VOZ every minute and crawls past cached pages to the final page', () => {
+test('Cache Board schedules the permanent post archive every minute', () => {
     const server = readServerSource();
-    const crawlerStart = server.indexOf('async function runVozCacheBoardCrawlBatch');
-    const crawlerEnd = server.indexOf('\nfunction triggerVozNextPagePrefetch', crawlerStart);
-    const crawler = server.slice(crawlerStart, crawlerEnd);
     const cronStart = server.indexOf("cron.schedule('* * * * *'");
-    const cronEnd = server.indexOf('\n        console.log(`[STAGGERED BOOT]', cronStart);
-    const cacheBoardCron = server.slice(cronStart, cronEnd);
-
-    assert.match(server, /const VOZ_CACHE_BOARD_REFRESH_INTERVAL_MS = 55 \* 1000/);
-    assert.match(server, /const vozCacheBoardLastCheck = new Map\(\)/);
-    assert.match(server, /options\.cacheAllPages \? vozCacheBoardLastCheck : vozBackgroundLastCheck/);
-    assert.match(cacheBoardCron, /minimumIntervalMs: VOZ_CACHE_BOARD_REFRESH_INTERVAL_MS/);
-    assert.match(cacheBoardCron, /cacheAllPages: true/);
-    assert.match(cacheBoardCron, /enqueueVozCacheBoardCrawl\(baseUrl, cached\.pagination/);
-    assert.match(crawler, /while \(job\.nextPage <= job\.maxPage/);
-    assert.match(crawler, /if \(hasUsableCachedVozPage\(cached, requestedPage\)\) \{[\s\S]*continue;/);
-    assert.doesNotMatch(crawler, /if \(hasUsableCachedVozPage\(cached, requestedPage\)\) \{[\s\S]{0,300}return;/);
-    assert.match(crawler, /getVozPaginationMaxPage\(result\.pagination, actualPage\)/);
-    assert.match(server, /const VOZ_CACHE_BOARD_CRAWL_CONCURRENCY = 2/);
+    assert.notEqual(cronStart, -1);
+    const cacheBoardCron = server.slice(cronStart);
+    assert.match(cacheBoardCron, /await boardCache\.tick\(\)/);
+    assert.doesNotMatch(cacheBoardCron, /enqueueVozCacheBoardCrawl/);
+    // Full-page rescan, edits, deletion safety and pause are exercised in board-cache.test.js.
 });

@@ -15,6 +15,208 @@
                 readStates: new Set(),
                 savedStates: [],
                 boardStates: [],
+                get cacheRuleSources() {
+                    return [...new Map([...this.feeds, ...this.smartSources].filter(source => source?.url).map(source => [source.url, source])).values()];
+                },
+                clockNow: Date.now(),
+                formatPostTime(value) {
+                    const date = new Date(value), now = new Date(this.clockNow);
+                    if (!Number.isFinite(date.getTime())) return '';
+                    const minutes = Math.max(0, Math.floor((now - date) / 60000));
+                    if (minutes < 1) return 'Just now';
+                    if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`;
+                    if (minutes < 120) return '1 hour ago';
+                    const time = new Intl.DateTimeFormat('en-US', {hour:'numeric', minute:'2-digit'}).format(date);
+                    const calendarDay = d => Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
+                    const days = (calendarDay(now) - calendarDay(date)) / 86400000;
+                    if (days === 0) return `Today at ${time}`;
+                    if (days === 1) return `Yesterday at ${time}`;
+                    if (days > 1 && days < 7) return `${new Intl.DateTimeFormat('en-US', {weekday:'long'}).format(date)} at ${time}`;
+                    return new Intl.DateTimeFormat('en-US', {year:'numeric', month:'short', day:'numeric'}).format(date);
+                },
+                formatSourceTimeMarkup(content) {
+                    if (!content || !content.includes('data-source-time')) return content;
+                    const parsed = new DOMParser().parseFromString(content, 'text/html');
+                    this.updateSourceTimes(parsed);
+                    return parsed.body.innerHTML;
+                },
+                updateSourceTimes(root = document) {
+                    root.querySelectorAll('time[data-source-time]').forEach(el => {
+                        const date = new Date(el.dataset.sourceTime);
+                        if (!Number.isFinite(date.getTime())) return;
+                        const exact = new Intl.DateTimeFormat('en-US', { year:'numeric', month:'short', day:'numeric', hour:'numeric', minute:'2-digit' }).format(date);
+                        el.textContent = el.dataset.showExact === 'true' ? exact : this.formatPostTime(date);
+                        el.title = exact;
+                        el.setAttribute('aria-label', exact);
+                        el.setAttribute('aria-expanded', String(el.dataset.showExact === 'true'));
+                    });
+                },
+                toggleSourceTime(event) {
+                    const el = event.target.closest('time[data-source-time]');
+                    if (!el) return false;
+                    event.preventDefault(); event.stopPropagation();
+                    el.dataset.showExact = el.dataset.showExact === 'true' ? 'false' : 'true';
+                    this.updateSourceTimes();
+                    return true;
+                },
+                cardSourceTime(article, exactOnly = false) {
+                    const member = this.cacheMember(article);
+                    const source = member ? member.source_created_at || article.source_created_at || article.createDate : article.source_created_at || article.createDate || article.pubDate;
+                    const value = source || member?.cached_at;
+                    if (!value || !Number.isFinite(new Date(value).getTime())) return 'Creation time unavailable';
+                    const exact = this.formatVietnamDateTime(value);
+                    return exactOnly ? exact : this.timeAgo(value);
+                },
+                cacheRules: [],
+                cacheMembers: {},
+                cacheRulesOpen: false,
+                cacheRulesSaving: false,
+                cacheNotice: '',
+                cacheHistory: null,
+                historyFrom: 0,
+                historyTo: 1,
+                async cacheRequest(url, options = {}) {
+                    const response = await fetch(url, options);
+                    const text = await response.text();
+                    let data;
+                    try { data = JSON.parse(text); } catch {
+                        if (response.status === 401) throw new Error('Please sign in again to save your Board changes.');
+                        if (response.status === 413) throw new Error('This save request is too large. Reload the page and try again.');
+                        throw new Error(`Could not save Board changes (HTTP ${response.status}). Please reload and try again.`);
+                    }
+                    if (!response.ok) throw new Error(data.error || 'Could not save Board changes');
+                    return data;
+                },
+                async loadCacheState() {
+                    if (!this.isLoggedIn) return;
+                    try {
+                        const data = await this.cacheRequest('/api/board-cache');
+                        const membershipChanged = JSON.stringify(Object.entries(this.cacheMembers).map(([id, m]) => [id, m.in_cache])) !== JSON.stringify(Object.entries(data.members).map(([id, m]) => [id, m.in_cache]));
+                        for (const [id, active] of Object.entries(this.cacheTogglePending)) if (data.members[id]) data.members[id].active_caching = active;
+                        this.cacheMembers = data.members;
+                        if (membershipChanged && this.selectedFilterType === 'board') this.fetchData();
+                        if (!this.cacheRulesOpen) this.cacheRules = data.rules;
+                    } catch (e) { this.cacheNotice = e.message; }
+                },
+                cacheMember(article) {
+                    if (!article) return null;
+                    const raw = typeof article === 'string' ? article : article.resolvedLink || article.originalLink || article.link;
+                    let id;
+                    try {
+                        const u = new URL(raw);
+                        const match = u.pathname.match(/^\/(?:t|threads)\/(?:[^/]*\.)?(\d+)(?:\/|$)/i);
+                        if (match) id = `${u.hostname.toLowerCase()}:thread:${match[1]}`;
+                        else {
+                            u.hash = '';
+                            for (const key of [...u.searchParams.keys()]) if (/^(utm_|fbclid$|gclid$)/i.test(key)) u.searchParams.delete(key);
+                            u.searchParams.sort(); u.pathname = u.pathname.replace(/\/+$/, '') || '/'; id = u.href;
+                        }
+                    } catch { return null; }
+                    const member = this.cacheMembers[id];
+                    return member?.in_cache ? member : null;
+                },
+                cacheTogglePending: {},
+                cacheBadgeText(article) {
+                    const m = this.cacheMember(article);
+                    return m?.source_removed ? 'Removed from source' : !m?.active_caching ? 'Cache paused' : m?.sync_status === 'incomplete' ? 'Sync delayed' : 'Live cache';
+                },
+                cacheBadgeTitle(article) {
+                    const m = this.cacheMember(article);
+                    return `${this.cacheBadgeText(article)}. ${m?.active_caching ? 'Click to pause.' : 'Click to resume.'}${m?.last_successful_sync_at ? ' Last successful sync: ' + this.formatVietnamDateTime(m.last_successful_sync_at) : ''}`;
+                },
+                async setCacheActive(article) {
+                    const member = this.cacheMember(article);
+                    if (!member || Object.hasOwn(this.cacheTogglePending, member.thread_id)) return;
+                    const previous = member.active_caching;
+                    this.cacheTogglePending[member.thread_id] = !previous;
+                    member.active_caching = !previous;
+                    try {
+                        await this.cacheRequest('/api/board-cache/active', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: member.url, active: !previous }) });
+                    } catch (e) { member.active_caching = previous; if (this.cacheMembers[member.thread_id]) this.cacheMembers[member.thread_id].active_caching = previous; this.cacheNotice = e.message; }
+                    finally { delete this.cacheTogglePending[member.thread_id]; }
+                },
+                async openCacheRules() {
+                    this.cacheRulesOpen = true;
+                    await this.loadCacheState();
+                    this.cacheNotice = '';
+                },
+                addCacheRule() {
+                    this.cacheRules.push({ id: crypto.randomUUID(), keywords: [], source: '', enabled: true });
+                },
+                addCacheKeyword(rule, input) {
+                    const value = input.value.normalize('NFKC').toLowerCase().trim();
+                    rule.keywords = [...new Set(rule.keywords.map(k => k.normalize('NFKC').toLowerCase().trim()).filter(Boolean))];
+                    if (value && !rule.keywords.includes(value)) rule.keywords.push(value);
+                    input.value = '';
+                },
+                editCacheKeyword(rule, index, input) {
+                    const value = input.value.normalize('NFKC').toLowerCase().trim();
+                    if (value) rule.keywords.splice(index, 1, value);
+                    else rule.keywords.splice(index, 1);
+                    rule.keywords = [...new Set(rule.keywords.map(k => k.normalize('NFKC').toLowerCase().trim()).filter(Boolean))];
+                },
+                async saveCacheRules() {
+                    this.cacheRulesSaving = true; this.cacheNotice = '';
+                    try {
+                        const data = await this.cacheRequest('/api/board-cache/rules', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rules: this.cacheRules }) });
+                        this.cacheRules = data.rules;
+                        this.cacheRulesOpen = false;
+                        this.cacheNotice = 'Auto Cache Rules saved';
+                    } catch (e) { this.cacheNotice = e.message; }
+                    finally { this.cacheRulesSaving = false; }
+                },
+                async copyFolderUrl() {
+                    try {
+                        await navigator.clipboard.writeText(location.origin + location.pathname + '#board' + (this.selectedFilterValue ? '/' + encodeURIComponent(this.selectedFilterValue) : ''));
+                        this.cacheNotice = 'Folder link copied';
+                    } catch { this.cacheNotice = 'Could not copy the link'; }
+                },
+                async openPostHistory(event) {
+                    const button = event.target.closest('[data-cache-history]');
+                    if (!button || !this.overlayArticle) return;
+                    event.stopPropagation();
+                    try {
+                        const data = await this.cacheRequest('/api/board-cache/archive?' + new URLSearchParams({ url: this.articleReaderUrl(this.overlayArticle) }));
+                        const post = data.archive?.posts[button.dataset.cacheHistory];
+                        if (!post || post.versions.length < 2) return;
+                        this.cacheHistory = post;
+                        this.historyFrom = post.versions.length - 2;
+                        this.historyTo = post.versions.length - 1;
+                    } catch (e) { this.cacheNotice = e.message; }
+                },
+                historyText(version) {
+                    const doc = new DOMParser().parseFromString(version?.content || '', 'text/html');
+                    doc.querySelectorAll('img').forEach(img => img.replaceWith(doc.createTextNode(` [Image: ${img.getAttribute('src') || img.alt}] `)));
+                    doc.querySelectorAll('a').forEach(a => a.append(doc.createTextNode(` (${a.getAttribute('href') || ''})`)));
+                    return doc.body.textContent || '';
+                },
+                historyDiff() {
+                    if (!this.cacheHistory) return '';
+                    const from = this.cacheHistory.versions[this.historyFrom], to = this.cacheHistory.versions[this.historyTo];
+                    const beforeText = this.historyText(from), afterText = this.historyText(to);
+                    const markupChanged = beforeText === afterText && from.content !== to.content;
+                    const before = (markupChanged ? from.content : beforeText).split(/(\s+)/);
+                    const after = (markupChanged ? to.content : afterText).split(/(\s+)/);
+                    const escape = text => String(text).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
+                    let start = 0, end = 0;
+                    while (start < before.length && start < after.length && before[start] === after[start]) start++;
+                    while (end < before.length - start && end < after.length - start && before[before.length - 1 - end] === after[after.length - 1 - end]) end++;
+                    const a = before.slice(start, before.length - end), b = after.slice(start, after.length - end);
+                    let middle = '';
+                    if (a.length * b.length > 250000) middle = `<del>${escape(a.join(''))}</del><ins>${escape(b.join(''))}</ins>`;
+                    else {
+                        const dp = Array.from({ length: a.length + 1 }, () => new Uint32Array(b.length + 1));
+                        for (let i = a.length - 1; i >= 0; i--) for (let j = b.length - 1; j >= 0; j--) dp[i][j] = a[i] === b[j] ? dp[i+1][j+1] + 1 : Math.max(dp[i+1][j], dp[i][j+1]);
+                        let i = 0, j = 0;
+                        while (i < a.length || j < b.length) {
+                            if (i < a.length && j < b.length && a[i] === b[j]) { middle += escape(a[i++]); j++; }
+                            else if (j < b.length && (i === a.length || dp[i][j+1] >= dp[i+1][j])) middle += `<ins>${escape(b[j++])}</ins>`;
+                            else middle += `<del>${escape(a[i++])}</del>`;
+                        }
+                    }
+                    return (markupChanged ? '<p>Formatting or embedded content changed:</p>' : '') + escape(before.slice(0, start).join('')) + middle + escape(end ? before.slice(-end).join('') : '');
+                },
+
                 hiddenStates: [], 
                 userPreferences: {}, 
                 isSyncing: false,
@@ -160,6 +362,8 @@
                 debugModalOpen: false,
                 boardModalOpen: false,
                 boardModalArticle: null,
+                boardSavePending: false,
+                boardSavingFolder: null,
                 newBoardFolderName: '',
                 editModalOpen: false,
                 editingFeed: null,
@@ -363,9 +567,15 @@
                 unreadCounts: { feeds: {}, categories: {}, total: 0 },
 
                 async initApp() {
+                    setInterval(() => { this.clockNow = Date.now(); this.updateSourceTimes(); }, 30000);
+                    document.addEventListener('visibilitychange', () => { this.clockNow = Date.now(); this.updateSourceTimes(); });
+                    document.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') this.toggleSourceTime(event); });
+                    this.$watch('isLoggedIn', () => this.loadCacheState());
+                    setInterval(() => this.loadCacheState(), 60000);
                     this.installTooltipDismissListeners();
                     if (document.cookie.includes('auth=true')) {
                         this.isLoggedIn = true;
+                        this.loadCacheState();
                         this.fetchContentFilterSettings();
                         this.fetchSmartSettings();
                         this.fetchSmartSources();
@@ -1283,7 +1493,7 @@
                                 if (this.userPreferences.clusteringModel) {
                                     this.clusteringModel = this.userPreferences.clusteringModel;
                                 }
-                                this.userPreferences.boardFolders = this.userPreferences.boardFolders || [];
+                                this.userPreferences.boardFolders = [...new Set(['cache', ...(this.userPreferences.boardFolders || [])])];
                                 this.userPreferences.boardFolderMappings = this.userPreferences.boardFolderMappings || {};
                                 this.categoryOrder = data.categoryOrder || [];
                                 if (data.unreadCounts) this.unreadCounts = data.unreadCounts;
@@ -1449,7 +1659,7 @@
                     this._preserveSmartVersionCall = preserveVersion && this.selectedFilterType === 'smart';
                     this.selectedFilterType = type;
                     this.selectedFilterValue = value;
-                    window.location.hash = `${type}${value ? '/' + value : ''}`;
+                    window.location.hash = `${type}${value ? '/' + encodeURIComponent(value) : ''}`;
                     this.currentPage = 1;
                     this.hasMore = false;
                     this.articles = [];
@@ -1574,7 +1784,7 @@
                     this.dragTargetCategory = null;
                 },
 
-                toggleState(list, link) {
+                async toggleState(list, link) {
                     if (!link) return;
                     const array = this[list];
                     const index = array.indexOf(link);
@@ -1591,14 +1801,14 @@
                             });
                             fetch('/api/article-content?' + params.toString()).catch(() => {});
                         }
-                        fetch('/api/toggle', {
+                        await fetch('/api/toggle', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ link, list, forceAdd: true })
                         });
                     } else {
                         array.splice(index, 1);
-                        fetch('/api/toggle', {
+                        await fetch('/api/toggle', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ link, list, forceRemove: true })
@@ -1632,45 +1842,47 @@
                 },
 
                 openBoardModal(article) {
+                    if (this.boardSavePending) return;
+                    this.cacheNotice = '';
                     this.boardModalArticle = article;
                     this.newBoardFolderName = '';
                     this.boardModalOpen = true;
                 },
 
-                assignBoardFolder(folderName) {
-                    if (!this.boardModalArticle) return;
-                    const link = this.boardModalArticle.originalLink || this.boardModalArticle.link;
-                    
-                    // Add to boardStates if not already there
-                    if (!this.boardStates.includes(link)) {
-                        this.toggleState('boardStates', link);
-                    }
-                    
-                    // Set folder mapping
-                    this.userPreferences.boardFolderMappings[link] = folderName;
-                    this.syncUserPreferenceDebounced('boardFolderMappings', this.userPreferences.boardFolderMappings);
-                    
-                    this.boardModalOpen = false;
+                async assignBoardFolder(folderName) {
+                    if (this.boardSavePending) return;
+                    if (!this.boardModalArticle) { this.cacheNotice = 'Choose an article before saving to Board.'; return; }
+                    this.boardSavePending = true;
+                    this.boardSavingFolder = folderName;
+                    this.cacheNotice = folderName === null ? 'Removing…' : 'Saving…';
+                    try {
+                        const source = this.boardModalArticle;
+                        // Board membership needs article metadata, never rendered HTML or inline images.
+                        const article = {};
+                        for (const key of ['link', 'resolvedLink', 'title', 'feedUrl', 'feedTitle', 'feedCategory', 'pubDate']) {
+                            const value = key === 'link' ? source.originalLink || source.link : source[key];
+                            if (typeof value === 'string') article[key] = value.slice(0, key === 'title' ? 2000 : 4096);
+                        }
+                        if (typeof source.image === 'string' && /^https?:\/\//i.test(source.image) && source.image.length <= 4096) article.image = source.image;
+                        const data = await this.cacheRequest('/api/board-cache/folder', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ article, folder: folderName }) });
+                        this.boardStates = data.boardStates;
+                        this.userPreferences = { ...this.userPreferences, ...data.userPreferences };
+                        if (data.cacheMember) this.cacheMembers[data.cacheMember.thread_id] = data.cacheMember;
+                        this.boardModalOpen = false;
+                        this.cacheNotice = folderName === null ? 'Removed from Board' : `Saved to ${folderName}`;
+                        // Saving is complete. List hydration must not hold the modal open.
+                        if (this.selectedFilterType === 'board') void this.fetchData();
+                    } catch (e) { this.cacheNotice = e.message; }
+                    finally { this.boardSavePending = false; this.boardSavingFolder = null; }
                 },
 
                 createNewBoardFolder() {
                     const name = this.newBoardFolderName.trim();
-                    if (!name) return;
-                    
-                    if (!this.userPreferences.boardFolders.includes(name)) {
-                        this.userPreferences.boardFolders.push(name);
-                        this.syncUserPreferenceDebounced('boardFolders', this.userPreferences.boardFolders);
-                    }
-                    this.assignBoardFolder(name);
+                    if (name) this.assignBoardFolder(name);
                 },
 
-                removeArticleFromBoard() {
-                    if (!this.boardModalArticle) return;
-                    const link = this.boardModalArticle.originalLink || this.boardModalArticle.link;
-                    if (this.boardStates.includes(link)) {
-                        this.toggleState('boardStates', link);
-                    }
-                    this.boardModalOpen = false;
+                async removeArticleFromBoard() {
+                    await this.assignBoardFolder(null);
                 },
 
                 async markAsReadExplicit(link) {
@@ -2014,6 +2226,7 @@
                 },
 
                 hydrateTwitterEmbeds(root = document) {
+                    this.updateSourceTimes();
                     const scope = root?.querySelectorAll ? root : document;
                     const embeds = Array.from(scope.querySelectorAll('.voz-twitter-embed[data-tweet-id]'))
                         .filter(embed => !embed.dataset.twitterState);
@@ -2063,6 +2276,8 @@
                     const strategy = data.fetchStrategy || '';
                     if (strategy && strategy !== 'none') this.overlayMethodResults = { ...this.overlayMethodResults, [strategy]: { ...data } };
                     this.stopArticleSpeech();
+                    this.overlayArticle.cacheSyncStatus = data.sync_status || null;
+                    this.overlayArticle.cacheLastSync = data.last_successful_sync_at || null;
                     this.overlayArticle.sourceDeleted = data.sourceDeleted === true;
                     this.overlayArticle.sourceDeletedHasCache = data.sourceDeletedHasCache !== false && Boolean(data.content);
                     this.overlayArticle.sourceDeletedKind = data.sourceDeletedKind || (this.isVozArticle(this.overlayArticle) ? 'thread' : 'article');
@@ -2073,7 +2288,7 @@
                             feedUrl: this.overlayArticle.feedUrl || ''
                         }]);
                     }
-                    this.overlayContent = data.content;
+                    this.overlayContent = this.formatSourceTimeMarkup(data.content);
                     this.overlayHasNativeAudio = /<audio\b/i.test(this.overlayContent || '');
                     if (!this.overlayHasNativeAudio) this.prepareArticleSpeech();
                     this.overlayArticle.overlayTitle = this.stripHtml(data.sourceDeleted
@@ -2118,7 +2333,6 @@
                         ...(data.attemptedStrategies || []),
                         strategy
                     ].filter(Boolean))];
-                    this.checkVozThreadPosition();
                     this.$nextTick(() => {
                         this.hydrateTwitterEmbeds(document.getElementById('overlay-scroll-container'));
                         if (window.Hls) {
@@ -2143,6 +2357,7 @@
                         }
                         const articleScroll = document.getElementById('overlay-scroll-container');
                         if (articleScroll) articleScroll.scrollTop = 0;
+                        this.checkVozThreadPosition();
                     });
                 },
 
@@ -2180,13 +2395,16 @@
                         this.vozPollingInterval = null;
                     }
 
+                    if (!(lastRead && Number(lastRead) > 1 && this.vozInitialThreadLoad)) this.vozResumePending = false;
                     if (lastRead && Number(lastRead) > 1 && this.vozInitialThreadLoad) {
                         const requestId = this.overlayRequestId;
                         let attempts = 0;
                         const checkAndScroll = () => {
                             if (!this.articleOverlayOpen || this.overlayRequestId !== requestId) return;
-                            const postEl = document.getElementById('voz-post-' + lastRead);
+                            const postEl = lastReadAbsId ? Array.from(document.querySelectorAll('.voz-post[data-absolute-post-id]')).find(el => el.getAttribute('data-absolute-post-id') === String(lastReadAbsId)) : document.getElementById('voz-post-' + lastRead);
                             if (postEl && postEl.offsetParent !== null) {
+                                setTimeout(() => { if (this.overlayRequestId === requestId) this.vozResumePending = false; }, 250);
+                                lastRead = postEl.getAttribute('data-post-index') || lastRead;
                                 const existingNotice = document.getElementById('voz-inline-notice');
                                 if (existingNotice) existingNotice.remove();
                                 
@@ -2201,6 +2419,7 @@
                                 attempts++;
                                 setTimeout(checkAndScroll, 100); // Poll every 100ms for up to 3 seconds
                             } else {
+                                this.vozResumePending = false;
                                 const targetPage = Math.ceil(Number(lastRead) / 20);
                                 const currentPage = this.overlayPagination ? this.overlayPagination.currentPage : 1;
                                 if (targetPage !== currentPage && this.overlayPagination?.pages?.some(p => p.page === targetPage)) {
@@ -2216,7 +2435,7 @@
                                     const currentPage = this.overlayPagination ? this.overlayPagination.currentPage : 1;
                                     if (targetPage > 1 && targetPage !== currentPage) {
                                         // Build the target page URL from the thread URL
-                                        const baseThreadUrl = (this.overlayArticle.originalLink || this.overlayArticle.link || url).split(/[?#]/)[0].replace(/\/page-\d+$/, '').replace(/\/$/, '');
+                                        const baseThreadUrl = (this.overlayArticle.originalLink || this.overlayArticle.link || url).split(/[?#]/)[0].replace(/\/(?:page-\d+|post-\d+|unread|latest)\/?$/, '').replace(/\/$/, '');
                                         const targetPageUrl = lastReadAbsId ? baseThreadUrl + '/post-' + lastReadAbsId : baseThreadUrl + '/page-' + targetPage;
                                         this.vozThreadNotice = {
                                             text: `📍 Lần trước bạn đã đọc đến bài #${lastRead}.`,
@@ -2270,7 +2489,9 @@
                     }, 2000);
                 },
 
+                vozResumePending: false,
                 trackVozThreadScroll(event) {
+                    if (this.vozResumePending) return;
                     if (!this.overlayArticle || !this.articleOverlayOpen) return;
                     const url = this.overlayArticle.link || '';
                     if (!url.includes('voz.vn') && this.overlayArticle.siteName !== 'VOZ') return;
@@ -2335,6 +2556,7 @@
                         if (freshPostsCount > 0) {
                             const parser = new DOMParser();
                             const doc = parser.parseFromString(freshData.content, 'text/html');
+                            this.updateSourceTimes(doc);
                             const freshPosts = Array.from(doc.querySelectorAll('.voz-post'));
                             let contentUpdated = false;
                             
@@ -2382,6 +2604,7 @@
                     const requestId = 'thread-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
                     this.overlayRequestId = requestId;
                     this.vozInitialThreadLoad = isResume;
+                    this.vozResumePending = isResume;
                     this.lastVozMeasureAt = 0;
                     this.lastTrackedVozPost = '';
                     this.stopArticleSpeech();
@@ -3241,7 +3464,7 @@
                 },
 
                 filterHash(articleUrl = '') {
-                    const base = `${this.selectedFilterType}${this.selectedFilterValue ? '/' + this.selectedFilterValue : ''}`;
+                    const base = `${this.selectedFilterType}${this.selectedFilterValue ? '/' + encodeURIComponent(this.selectedFilterValue) : ''}`;
                     return articleUrl ? `#${base}?article=${encodeURIComponent(articleUrl)}` : `#${base}`;
                 },
 
@@ -3312,7 +3535,7 @@
                         try { articleUrl = encodedArticle ? this.normalizeArticleSourceUrl(decodeURIComponent(encodedArticle)) : ''; } catch (e) { }
                         return {
                             type: parts[0],
-                            value: parts.length > 1 ? parts.slice(1).join('/') : null,
+                            value: parts.length > 1 ? (() => { try { return decodeURIComponent(parts.slice(1).join('/')); } catch { return parts.slice(1).join('/'); } })() : null,
                             articleUrl
                         };
                     }
@@ -3527,7 +3750,7 @@
                     this.articleOverlayOpen = true;
                     this.isLoadingOverlay = false;
                     this.overlayArticle = { ...snapshot.overlayArticle };
-                    this.overlayContent = snapshot.overlayContent;
+                    this.overlayContent = this.formatSourceTimeMarkup(snapshot.overlayContent);
                     this.overlayPagination = snapshot.overlayPagination;
                     this.vozThreadNotice = snapshot.vozThreadNotice;
                     this.overlayError = snapshot.overlayError;
@@ -3609,12 +3832,12 @@
                         }
 
                         if (lastReadAbsId) {
-                            const baseThreadUrl = targetUrl.split(/[?#]/)[0].replace(/\/unread\/?(?:[?#].*)?$/i, '').replace(/\/page-\d+$/, '').replace(/\/$/, '');
+                            const baseThreadUrl = targetUrl.split(/[?#]/)[0].replace(/\/unread\/?(?:[?#].*)?$/i, '').replace(/\/(?:page-\d+|post-\d+|unread|latest)\/?$/, '').replace(/\/$/, '');
                             targetUrl = baseThreadUrl + '/post-' + lastReadAbsId;
                         } else if (lastRead && Number(lastRead) > 1) {
                             const targetPage = Math.ceil(Number(lastRead) / 20);
                             if (targetPage > 1) {
-                                const baseThreadUrl = targetUrl.split(/[?#]/)[0].replace(/\/unread\/?(?:[?#].*)?$/i, '').replace(/\/page-\d+$/, '').replace(/\/$/, '');
+                                const baseThreadUrl = targetUrl.split(/[?#]/)[0].replace(/\/unread\/?(?:[?#].*)?$/i, '').replace(/\/(?:page-\d+|post-\d+|unread|latest)\/?$/, '').replace(/\/$/, '');
                                 targetUrl = baseThreadUrl + '/page-' + targetPage;
                             }
                         }
@@ -3623,6 +3846,7 @@
                     this.articleOverlayOpen = true;
                     this.isLoadingOverlay = true;
                     this.vozInitialThreadLoad = true;
+                    this.vozResumePending = true;
                     this.overlayContent = null;
                     this.overlayPagination = null;
                     this.overlayError = null;
@@ -3640,6 +3864,7 @@
                     this.overlayRequestId = requestId;
                     this.overlayProgress = { message: 'Preparing article reader…' };
                     this.overlayArticle = { ...article };
+                    if (this.cacheMember(article)) this.articleContentCache?.delete(this.articleReaderUrl(article));
                     this.lastVozMeasureAt = 0;
                     this.lastTrackedVozPost = '';
                     const articleScroll = document.getElementById('overlay-scroll-container');
@@ -3753,6 +3978,7 @@
                 },
 
                 handleArticleClick(e) {
+                    if (this.toggleSourceTime(e)) return;
                     const relatedLink = e.target.closest('.embedded-suggested-card a, a.styled-rel-card, a.tuoitre-event-stream__item-link');
                     if (relatedLink?.href) {
                         const matched = this.findArticleByRouteUrl(relatedLink.href);
@@ -4153,7 +4379,7 @@
                 timeAgo(dateString) {
                     if (!dateString) return '';
                     const date = new Date(dateString);
-                    const seconds = Math.floor((new Date() - date) / 1000);
+                    const seconds = Math.floor(((this.clockNow || Date.now()) - date.getTime()) / 1000);
 
                     if (seconds < 0) return "Just now";
                     

@@ -6,6 +6,7 @@ import { normalizeStateUrl } from '../utils/article-utils.js';
 import { isVozThreadUrl } from '../voz-thread-state.js';
 
 export function createBackgroundStartup({
+    boardCache,
     reconcileAllConfiguredSourceFetchMethods,
     cleanupArticleCache,
     env,
@@ -94,7 +95,7 @@ export function createBackgroundStartup({
         setTimeout(() => {
             gcAndLogMemory('Pre-SmartSyncLoop');
             console.log('[STAGGERED BOOT] Phase 3: Starting smart source sync loop...');
-            startSmartSyncLoop({ fastParseRSS, waitForHttpIdle, prefetchOpenCliOnlyArticles, resolveSmartArticleDestinations }, BROWSER_HEADERS, env.RSS_DATA, smartNews.getSources);
+            startSmartSyncLoop({ fastParseRSS, waitForHttpIdle, prefetchOpenCliOnlyArticles, resolveSmartArticleDestinations, observeCacheArticles: boardCache.observe }, BROWSER_HEADERS, env.RSS_DATA, smartNews.getSources);
         }, STAGGER_DELAY_MS.SMART_SYNC_LOOP);
 
         // ── Phase 4: Prefetch engine (delayed) ──────────────────────
@@ -115,32 +116,11 @@ export function createBackgroundStartup({
             summaryQueue.start();
         }, STAGGER_DELAY_MS.SUMMARY_QUEUE);
 
-        // ── Background cron: Voz cache board refresh ────────────────
+        // Every run re-scans every current page; old page caches are never a completion signal.
         cron.schedule('* * * * *', async () => {
             try {
-                const [boardStates, userPreferences] = await Promise.all([
-                    env.RSS_DATA.get('boardStates', { type: 'json' }),
-                    env.RSS_DATA.get('userPreferences', { type: 'json' })
-                ]);
-                const boardUrls = new Set((boardStates || []).map(normalizeStateUrl).filter(Boolean));
-                const cacheBoardLinks = Object.entries(userPreferences?.boardFolderMappings || {})
-                    .filter(([link, folder]) => folder === 'cache' && boardUrls.has(normalizeStateUrl(link)))
-                    .map(([link]) => link);
-
-                for (const link of cacheBoardLinks) {
-                    if (!isVozThreadUrl(link)) continue;
-                    const baseUrl = normalizeStateUrl(link);
-                    if (deletedVozThreads.has(baseUrl)) continue;
-                    const cached = await getCachedArticle(link) || { content: '' };
-                    enqueueVozCacheBoardCrawl(baseUrl, cached.pagination, cached.feedUrl || '');
-                    triggerVozCurrentPageBackgroundUpdate(link, cached, cached.feedUrl || '', {
-                        minimumIntervalMs: VOZ_CACHE_BOARD_REFRESH_INTERVAL_MS,
-                        cacheAllPages: true
-                    });
-                }
-            } catch (error) {
-                console.warn('[VOZ CACHE BOARD] Could not schedule refresh:', error.message);
-            }
+                await boardCache.tick();
+            } catch (error) { console.warn('[BOARD CACHE]', error.message); }
         });
 
         console.log(`[STAGGERED BOOT] Startup schedule: SmartNews=${STAGGER_DELAY_MS.SMART_NEWS/1000}s, SmartSync=${STAGGER_DELAY_MS.SMART_SYNC_LOOP/1000}s, Prefetch=${STAGGER_DELAY_MS.PREFETCH/1000}s, Summaries=${STAGGER_DELAY_MS.SUMMARY_QUEUE/1000}s`);

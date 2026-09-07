@@ -1,3 +1,6 @@
+import { canonicalIdentity, extractLegacyPosts } from './board/thread-model.js';
+import { createBoardCache } from './board/cache-service.js';
+import { registerBoardCacheRoutes } from './routes/board-cache-routes.js';
 import { isMainThread } from 'node:worker_threads';
 import { createSmartNewsEngine } from '../smart-news.js';
 import { fastParseRSS } from '../feed-parsers.js';
@@ -75,7 +78,8 @@ export async function createApplication({ isMainModule = false } = {}) {
             fastParseRSS,
             waitForHttpIdle: http.waitForHttpIdle,
             prefetchOpenCliOnlyArticles: (...args) => prefetch.prefetchOpenCliOnlyArticles(...args),
-            resolveSmartArticleDestinations: googleNews.resolveSmartArticleDestinations
+            resolveSmartArticleDestinations: googleNews.resolveSmartArticleDestinations,
+            observeCacheArticles: (...args) => boardCache.observe(...args)
         },
         headers: config.BROWSER_HEADERS,
         geminiKeyManager
@@ -121,6 +125,42 @@ export async function createApplication({ isMainModule = false } = {}) {
         getArticleFetchPolicy: policy.getArticleFetchPolicy
     });
 
+    const boardCache = createBoardCache({
+        env: database.env,
+        writeJson: database._writeJsonAtomic,
+        loadLegacy: async url => {
+            const snapshots = [];
+            const id = canonicalIdentity(url);
+            await cache._initArticleCacheIndex();
+            for (const meta of cache._articleCacheIndex.values()) {
+                if (!meta.url) continue;
+                try { if (canonicalIdentity(meta.url) !== id) continue; } catch { continue; }
+                const old = await cache.getLastKnownCachedArticle(meta.url);
+                if (!old?.content) continue;
+                const posts = extractLegacyPosts(old.content, meta.url);
+                if (!id.includes(':thread:')) posts.push({ thread_id: id, post_id: 'article', author_id: null, author_name: old.author || '', current_content: old.content,
+                    created_at: old.pubDate || null, edited_at: null, current_page: 1, current_position: 1, current_visible_number: null, permalink: url });
+                snapshots.push({ posts, content: old.content, title: old.title, url: meta.url, captured_at: new Date(meta.cachedAt || Date.now()).toISOString() });
+            }
+            return snapshots.sort((a, b) => a.captured_at.localeCompare(b.captured_at));
+        },
+        fetchPage: async (url, feedUrl) => {
+            const fetchPolicy = await policy.getArticleFetchPolicy(url, feedUrl);
+            let error;
+            for (const strategy of fetchPolicy.strategyOrder) {
+                try {
+                    const result = await pipeline.fetchParsedArticleByStrategy(strategy, url, fetchPolicy, feedUrl);
+                    if (result?.isDeletedSource || result?.isDeletedThread || result?.sourceDeleted) return result;
+                    if (!result?.content) throw new Error('Source unavailable');
+                    if (/\/(?:t|threads)\//.test(new URL(url).pathname) && !result.threadSnapshot?.complete) throw new Error('Reader did not return permanent post IDs');
+                    return result;
+                } catch (e) { error = e; }
+            }
+            throw error || new Error('No reader is available');
+        }
+    });
+    registerBoardCacheRoutes({ app: http.app, boardCache });
+
     const presentation = createArticlePresentation({
         resolveGoogleNewsUrl: googleNews.resolveGoogleNewsUrl,
         getLastKnownCachedArticle: cache.getLastKnownCachedArticle,
@@ -137,6 +177,8 @@ export async function createApplication({ isMainModule = false } = {}) {
         markUnavailableSourceUrl: presentation.markUnavailableSourceUrl,
         cache
     });
+
+    archives.setBoardCache(boardCache);
 
     const prefetch = createArticlePrefetch({
         getBestImage: images.getBestImage,
@@ -155,6 +197,7 @@ export async function createApplication({ isMainModule = false } = {}) {
     });
 
     const sync = createFeedSync({
+        observeCacheArticles: boardCache.observe,
         CF_PROXY_BASE: config.CF_PROXY_BASE,
         BROWSER_HEADERS: config.BROWSER_HEADERS,
         VIETSERVER_PROXY_BASE: config.VIETSERVER_PROXY_BASE,
@@ -178,6 +221,7 @@ export async function createApplication({ isMainModule = false } = {}) {
     });
 
     const startup = createBackgroundStartup({
+        boardCache,
         reconcileAllConfiguredSourceFetchMethods: policy.reconcileAllConfiguredSourceFetchMethods,
         cleanupArticleCache: cache.cleanupArticleCache,
         env: database.env,
@@ -292,6 +336,7 @@ export async function createApplication({ isMainModule = false } = {}) {
     });
 
     registerSettingsRoutes({
+        boardCache,
         app: http.app,
         env: database.env,
         normalizeClusteringModel: config.normalizeClusteringModel,
@@ -320,7 +365,11 @@ export async function createApplication({ isMainModule = false } = {}) {
     return {
         app: http.app,
         port: config.PORT,
-        startBackgroundServices: startup.startBackgroundServices,
+        startBackgroundServices: async () => {
+            await boardCache.initialize();
+            startup.startBackgroundServices();
+            void boardCache.tick().catch(error => console.warn('[CACHE STARTUP]', error.message));
+        },
         database, cache, worker, policy, readers, parser, pipeline, archives,
         prefetch, sync, smartNews, progress, googleNews, presentation
     };

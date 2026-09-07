@@ -1,3 +1,4 @@
+import { extractThreadSnapshot, extractLegacyPosts } from '../board/thread-model.js';
 import sourceRegistry from '../sources/index.js';
 import { normalizeArticleSourceUrl, isDeletedArticlePayload, deletedSourceTitle, deletedSourceKind } from '../article-source-state.js';
 import { assertArticleResultAcceptedBySource, enhanceArticleResultForSource } from './source-results.js';
@@ -88,6 +89,19 @@ export function createArticlePipeline({
             policy.excludedStrategies
         );
         if (result) {
+            result.threadSnapshot = extractThreadSnapshot(html, url);
+            if (result.threadSnapshot) {
+                const rendered = new Map(extractLegacyPosts(result.content, url).map(post => [post.post_id, post]));
+                for (const post of result.threadSnapshot.posts) {
+                    const presentation = rendered.get(post.post_id);
+                    post.display_content = presentation?.current_content || post.current_content;
+                    if (presentation) {
+                        post.reaction_html = presentation.reaction_html;
+                        post.author_avatar = presentation.author_avatar || post.author_avatar;
+                        post.author_rank = presentation.author_rank || post.author_rank;
+                    }
+                }
+            }
             result.feedUrl = feedUrl || result.feedUrl || '';
             result.title = normalizeArticleTitle(result.title || fallbackTitle || '');
             result = enhanceArticleResultForSource(url, result);

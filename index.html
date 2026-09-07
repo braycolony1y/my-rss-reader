@@ -7,7 +7,7 @@
     <title>My RSS Reader</title>
     <link rel="icon"
         href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22%238b5cf6%22/><circle cx=%2230%22 cy=%2270%22 r=%2210%22 fill=%22white%22/><path d=%22M30 40a30 30 0 0 1 30 30M30 20a50 50 0 0 1 50 50%22 fill=%22none%22 stroke=%22white%22 stroke-width=%2210%22 stroke-linecap=%22round%22/></svg>">
-    <link rel="stylesheet" href="/public/styles.css?v=20260906_ground_reader3">
+    <link rel="stylesheet" href="/public/styles.css?v=20260907_board_save_feedback">
     <script>
         // Start the first Smart News request while the browser is still parsing
         // the page. Returning visitors paint saved cards immediately instead.
@@ -510,6 +510,13 @@
             gap: 4px 8px !important;
             margin-left: auto !important;
             justify-content: flex-end !important;
+        }
+
+        .voz-post time.voz-post-time {
+            max-width: 100%;
+            white-space: normal;
+            overflow-wrap: anywhere;
+            cursor: pointer;
         }
 
         .voz-post .voz-post-time,
@@ -3483,11 +3490,14 @@
                 align-items: flex-end !important;
                 justify-content: center !important;
                 gap: 2px !important;
-                flex: 0 0 auto !important;
+                flex: 0 1 auto !important;
+                min-width: 0 !important;
+                max-width: 55% !important;
             }
         }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
+    <link rel="stylesheet" href="/public/board-cache.css?v=20260907_board_save_feedback">
 </head>
 
 <body class="font-sans antialiased h-[100dvh] overflow-hidden flex selection:bg-blue-500/30"
@@ -4814,12 +4824,12 @@
                     <p class="text-sm font-medium mb-2 opacity-70">Save to existing folder:</p>
                     <div class="grid grid-cols-1 gap-2">
                         <template x-for="folder in userPreferences.boardFolders" :key="folder">
-                            <button @click="assignBoardFolder(folder)"
+                            <button type="button" @click="assignBoardFolder(folder)" :disabled="boardSavePending" :aria-busy="boardSavePending && boardSavingFolder === folder"
                                 class="flex items-center justify-between px-4 py-2.5 rounded-lg border transition hover:scale-[1.02]"
                                 :class="(boardModalArticle && userPreferences.boardFolderMappings && userPreferences.boardFolderMappings[boardModalArticle.originalLink || boardModalArticle.link] === folder) ? (theme === 'glass-light' ? 'border-yellow-400 bg-yellow-50 text-yellow-800 font-bold' : 'border-yellow-500 bg-yellow-500/10 text-yellow-400 font-bold') : (theme === 'glass-light' ? 'border-black/5 hover:bg-black/5' : 'border-white/10 hover:bg-white/5')">
                                 <span class="flex items-center gap-2">
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
-                                    <span x-text="folder"></span>
+                                    <span x-text="boardSavePending && boardSavingFolder === folder ? 'Saving…' : folder"></span>
                                 </span>
                                 <svg x-show="boardModalArticle && userPreferences.boardFolderMappings && userPreferences.boardFolderMappings[boardModalArticle.originalLink || boardModalArticle.link] === folder" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
                             </button>
@@ -4832,7 +4842,7 @@
                         <input type="text" x-model="newBoardFolderName" @keydown.enter="createNewBoardFolder()" placeholder="Folder name..."
                             class="flex-1 px-4 py-2 rounded-lg border focus:ring-2 focus:outline-none transition"
                             :class="theme === 'glass-light' ? 'bg-white/50 border-black/10 focus:border-emerald-500 focus:ring-emerald-500/20 placeholder-slate-400' : 'bg-black/20 border-white/10 focus:border-emerald-500 focus:ring-emerald-500/20 text-white placeholder-gray-500'">
-                        <button @click="createNewBoardFolder()" :disabled="!newBoardFolderName.trim()"
+                        <button @click="createNewBoardFolder()" :disabled="boardSavePending || !newBoardFolderName.trim()"
                             class="px-4 py-2 rounded-lg font-bold disabled:opacity-50 transition"
                             :class="theme === 'glass-light' ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : 'bg-emerald-500 hover:bg-emerald-600 text-white'">
                             Add
@@ -4841,8 +4851,9 @@
                 </div>
             </div>
             <div class="p-4 border-t flex justify-end" :class="theme === 'glass-light' ? 'bg-slate-50/50 border-black/5' : 'bg-black/20 border-[#333]'">
+                <p x-show="cacheNotice" x-text="cacheNotice" role="status" class="cache-notice"></p>
                 <button x-show="boardModalArticle && boardStates.includes(boardModalArticle.originalLink || boardModalArticle.link)"
-                    @click="removeArticleFromBoard()"
+                    @click="removeArticleFromBoard()" :disabled="boardSavePending"
                     class="px-4 py-2 rounded-lg text-sm font-medium transition mr-auto"
                     :class="theme === 'glass-light' ? 'text-red-600 hover:bg-red-50' : 'text-red-400 hover:bg-red-500/10'">
                     Remove from Board
@@ -5656,7 +5667,7 @@
                             
                             <select x-show="selectedFilterType === 'board' && userPreferences.boardFolders?.length > 0"
                                 x-model="selectedFilterValue"
-                                @change="fetchData()"
+                                @change="setFilter('board', selectedFilterValue || null)"
                                 class="ml-2 text-sm bg-transparent hover:bg-white/5 border border-white/20 rounded-lg px-2 py-1 outline-none transition cursor-pointer"
                                 :class="theme === 'glass-light' ? 'text-emerald-700 border-black/10 hover:bg-black/5 bg-transparent' : 'text-emerald-400 border-white/20 hover:bg-white/5'">
                                 <option value="" class="bg-[#111827] text-white">All Folders</option>
@@ -5664,6 +5675,7 @@
                                     <option :value="folder" x-text="folder" class="bg-[#111827] text-white"></option>
                                 </template>
                             </select>
+                            <button x-show="selectedFilterType === 'board'" class="cache-settings-button" @click="openCacheRules()" title="Auto Cache Rules" aria-label="Auto Cache Rules"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 7h16M4 17h16M8 4v6M16 14v6"/></svg></button>
                         </h1>
 
                     </div>
@@ -5836,6 +5848,20 @@
             @scroll.passive.debounce.100ms="!isMobile && handleScroll($event)">
             <div class="max-w-4xl mx-auto py-8 px-2 md:px-8">
 
+                                <section x-show="selectedFilterType === 'board'" class="cache-glass board-tools" aria-label="Board folders">
+                    <div class="cache-toolbar">
+                        <nav class="cache-folder-links" aria-label="Folders">
+                            <a href="#board" :aria-current="!selectedFilterValue ? 'page' : null">All folders</a>
+                            <template x-for="folder in [...new Set(['cache', ...(userPreferences.boardFolders || [])])]" :key="folder">
+                                <a :href="'#board/' + encodeURIComponent(folder)" :aria-current="selectedFilterValue === folder ? 'page' : null" x-text="folder === 'cache' ? 'Cache' : folder"></a>
+                            </template>
+                        </nav>
+                        <button class="cache-button" @click="copyFolderUrl()">Copy folder link</button>
+                    </div>
+
+                    <p x-show="cacheNotice" x-text="cacheNotice" role="status" class="cache-notice"></p>
+                </section>
+
                 <div x-show="searchQuery && displayedArticles.length > 0" class="mb-4 text-gray-400 text-sm px-4">
                     Found <span x-text="displayedArticles.length" class="text-white font-bold"></span> results for
                     "<span x-text="searchQuery" class="text-white"></span>"
@@ -5859,7 +5885,7 @@
                         <div
                             class="relative z-10 flex flex-col p-4 md:p-8 w-[65%] md:w-[65%] min-w-0 overflow-hidden min-h-[180px] md:min-h-[220px] justify-center">
                             <div
-                                class="flex items-center gap-1.5 md:gap-2 text-[10px] md:text-[11px] font-bold tracking-wider mb-2.5 md:mb-4 uppercase">
+                                class="article-metadata flex items-center gap-1.5 md:gap-2 text-[10px] md:text-[11px] font-bold tracking-wider mb-2.5 md:mb-4 uppercase">
                                 <span
                                     class="flex items-center gap-1.5 md:gap-2 bg-[#0B101E]/90 px-2 py-1 md:px-2.5 md:py-1 rounded-md text-emerald-400 border border-emerald-500/10">
                                     <img :src="article.feedIcon || smartSourceIcon({ domain: new URL(article.link).hostname })"
@@ -5881,8 +5907,11 @@
                                     </a>
                                 </template>
                                 <span class="text-white/20 hidden md:inline">•</span>
-                                <span class="text-gray-400 whitespace-nowrap"
-                                    x-text="article.publicationTimeReliable === false ? 'Time unavailable' : timeAgo(article.pubDate)"></span>
+                                <span class="text-gray-400 whitespace-nowrap" :title="cardSourceTime(article, true)"
+                                    x-text="article.publicationTimeReliable === false ? 'Time unavailable' : cardSourceTime(article)"></span>
+                                <button x-show="cacheMember(article)" class="cache-status-chip" :class="{ 'is-paused': !cacheMember(article)?.active_caching, 'is-live': cacheMember(article)?.active_caching && !cacheMember(article)?.source_removed && cacheMember(article)?.sync_status !== 'incomplete' }" @click.stop="setCacheActive(article)" :title="cacheBadgeTitle(article)" :aria-label="cacheMember(article)?.active_caching ? 'Pause active caching' : 'Resume caching'">
+                                    <span aria-hidden="true" x-text="cacheMember(article)?.active_caching ? '●' : '⏸'"></span><span x-text="cacheBadgeText(article)"></span>
+                                </button>
                                 <template x-if="article.isCluster">
                                     <div class="flex items-center gap-1.5 md:gap-2 ml-1"
                                         :title="(article.sources || []).join(', ')">
@@ -5923,6 +5952,7 @@
                                         </span>
                                     </div>
                                 </template>
+
                             </div>
                                 <div data-tooltip-trigger
                                      @pointerenter="showTooltip($event, stripHtml(article.title), stripHtml(article.content))"
@@ -5936,6 +5966,7 @@
                                     <p class="text-[13px] md:text-[14px] text-gray-300 line-clamp-2 md:line-clamp-2 pr-2 md:pr-4 leading-snug md:leading-relaxed break-words"
                                         x-text="stripHtml(article.content)"></p>
                                 </div>
+
                         </div>
 
                         <!-- Action Buttons Overlay -->
@@ -5965,7 +5996,7 @@
                                         d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"></path>
                                 </svg>
                             </button>
-                            <button @click.stop="boardModalArticle = article; boardModalOpen = true;"
+                            <button @click.stop="openBoardModal(article)"
                                 class="transition p-1.5 rounded-lg"
                                 :class="theme === 'glass-light' ? 'hover:bg-black/5 text-gray-500 hover:text-gray-800' : 'hover:bg-white/10 text-gray-400'"
                                 :title="isMobile ? '' : (boardStates.includes(article.originalLink || article.link) ? 'Remove from Board' : 'Save to Board')">
@@ -6263,7 +6294,7 @@
                         <svg class="w-5 h-5 transition-colors" :class="overlayArticle && savedStates.includes(overlayArticle.link) ? (theme === 'glass-light' ? 'fill-blue-100 text-blue-600' : 'fill-blue-900/50 text-blue-500') : 'currentColor'" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"></path></svg>
                     </button>
                     <!-- Save to Board Button -->
-                    <button @click.stop="if(overlayArticle) { boardModalArticle = overlayArticle; boardModalOpen = true; }" 
+                    <button @click.stop="if(overlayArticle) openBoardModal(overlayArticle)" 
                         class="transition p-2 rounded-lg" 
                         :class="theme === 'glass-light' ? 'hover:bg-black/5 text-gray-500' : 'hover:bg-white/10 text-gray-400'"
                         :title="overlayArticle && boardStates.includes(overlayArticle.originalLink || overlayArticle.link) ? 'Remove from Board' : 'Save to Board'">
@@ -6839,7 +6870,7 @@
                     </div>
 
                     <!-- Rendered article body -->
-                    <div class="article-rendered-content" x-html="overlayContent" @click="handleArticleClick($event)"></div>
+                    <div class="article-rendered-content" x-html="overlayContent" @click="openPostHistory($event); handleArticleClick($event)"></div>
 
                     <!-- VOZ Thread Pagination Bar -->
                     <template
@@ -7036,7 +7067,48 @@
         </div>
     </div>
     
-    <script src="/script.js?v=20260906_retain_unavailable"></script>
+    <div x-show="cacheRulesOpen" x-cloak class="cache-modal" @keydown.escape.window="cacheRulesOpen = false" role="dialog" aria-modal="true" aria-labelledby="cache-rules-title">
+        <section class="cache-glass cache-dialog" @click.outside="cacheRulesOpen = false">
+            <div class="cache-toolbar"><h2 id="cache-rules-title">Auto Cache Rules</h2><button class="cache-button" @click="cacheRulesOpen = false" aria-label="Close rules">Close</button></div>
+            <p>Cache genuinely new articles whose title contains any phrase in a rule and matches its source. Existing threads and new replies are excluded.</p>
+            <p x-show="!cacheRules.length" class="cache-empty">No rules yet. Add a rule to start caching automatically.</p>
+            <template x-for="(rule, ruleIndex) in cacheRules" :key="rule.id">
+                <div class="cache-rule" :class="{ 'cache-rule-disabled': !rule.enabled }">
+                    <div class="cache-toolbar">
+                        <label class="cache-switch"><input type="checkbox" x-model="rule.enabled"> <span x-text="rule.enabled ? 'Rule enabled' : 'Rule disabled'"></span></label>
+                        <button class="cache-button" @click="cacheRules.splice(ruleIndex, 1)">Delete rule</button>
+                    </div>
+                    <label class="cache-field">Source<select x-model="rule.source"><option value="">Any source</option><template x-for="feed in cacheRuleSources" :key="feed.url"><option :value="feed.url" x-text="feed.title || feed.name || feed.url"></option></template></select></label>
+                    <label class="cache-field">Title keywords or phrases</label>
+                    <div class="cache-keywords">
+                        <template x-for="(keyword, keywordIndex) in rule.keywords" :key="keywordIndex">
+                            <span class="cache-chip"><input :value="keyword" :size="Math.max(3, Math.min(keyword.length + 1, 30))" maxlength="200" aria-label="Edit keyword or phrase" @change="editCacheKeyword(rule, keywordIndex, $event.target)" @keydown.enter.prevent="$event.target.blur()"><button @click="rule.keywords.splice(keywordIndex, 1)" :aria-label="'Remove ' + keyword">×</button></span>
+                        </template>
+                        <input class="cache-chip-entry" placeholder="Add a phrase…" maxlength="200" aria-label="Add keyword or phrase" @keydown.enter.prevent="addCacheKeyword(rule, $event.target)" @blur="addCacheKeyword(rule, $event.target)">
+                    </div>
+                    <p class="cache-hint">Press Enter to add a chip. Spaces stay inside the phrase. Click a chip to edit.</p>
+                </div>
+            </template>
+            <button class="cache-button" @click="addCacheRule()">+ Add rule</button>
+            <p x-show="cacheNotice" x-text="cacheNotice" class="cache-notice" role="status"></p>
+            <div class="cache-dialog-footer"><button class="cache-button" @click="cacheRulesOpen = false">Cancel</button><button class="cache-button cache-primary" :disabled="cacheRulesSaving" @click="saveCacheRules()" x-text="cacheRulesSaving ? 'Saving…' : 'Save rules'"></button></div>
+        </section>
+    </div>
+    <div x-show="cacheHistory" x-cloak class="cache-modal" @keydown.escape.window="cacheHistory = null" role="dialog" aria-modal="true" aria-labelledby="cache-history-title">
+        <section class="cache-glass cache-dialog cache-history-dialog" @click.outside="cacheHistory = null">
+            <div class="cache-toolbar"><h2 id="cache-history-title">Post change history</h2><button class="cache-button" @click="cacheHistory = null">Close</button></div>
+            <p><span x-text="cacheHistory?.author_name"></span> · Post <span x-text="cacheHistory?.post_id"></span></p>
+            <div class="cache-history-selectors">
+                <label class="cache-field">Previous version<select x-model.number="historyFrom"><template x-for="(version, index) in cacheHistory?.versions || []" :key="index"><option :value="index" x-text="'Version ' + version.version + ' · Captured ' + new Date(version.captured_at).toLocaleString() + (version.edited_at ? ' · Edited ' + new Date(version.edited_at).toLocaleString() : ' · Edit time unavailable')"></option></template></select></label>
+                <label class="cache-field">Compare with<select x-model.number="historyTo"><template x-for="(version, index) in cacheHistory?.versions || []" :key="index"><option :value="index" x-text="'Version ' + version.version + ' · Captured ' + new Date(version.captured_at).toLocaleString() + (version.edited_at ? ' · Edited ' + new Date(version.edited_at).toLocaleString() : ' · Edit time unavailable')"></option></template></select></label>
+            </div>
+            <p class="cache-diff-legend"><del>Removed</del> <ins>Added</ins> · Changes show both.</p>
+            <div class="cache-diff" x-html="historyDiff()"></div>
+            <details><summary>Read selected previous version</summary><div class="cache-diff" x-text="historyText(cacheHistory?.versions[historyFrom])"></div></details>
+        </section>
+    </div>
+
+    <script src="/script.js?v=20260907_board_save_feedback"></script>
 </body>
 
 </html>

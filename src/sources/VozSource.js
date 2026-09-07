@@ -1,3 +1,5 @@
+import { renderVozPost } from '../articles/voz-post-renderer.js';
+import { absoluteTimestamp } from '../articles/source-time.js';
 import { hasVozDeletedThreadMarker } from '../voz-thread-state.js';
 
 function findHtmlAttribute(tag, targetName) {
@@ -341,16 +343,11 @@ export default class VozSource {
                 avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(author)}&background=random&color=fff&size=96`;
             }
 
-            let postTime = '';
             const attrMainMatch = artHtml.match(/<ul\b[^>]*class=["'][^"']*message-attribution-main[^"']*["'][^>]*>([\s\S]*?)<\/ul>/i) || artHtml.match(/<div\b[^>]*class=["'][^"']*message-attribution-main[^"']*["'][^>]*>([\s\S]*?)<\/div>/i) || [null, artHtml];
-            const timeMatch = attrMainMatch[1].match(/<time\b[^>]*>([\s\S]*?)<\/time>/i);
-            if (timeMatch) {
-                postTime = timeMatch[1].replace(/<[^>]+>/g, '').trim();
-            } else {
-                const dateStringMatch = attrMainMatch[1].match(/data-date-string=["']([^"']+)["']/i);
-                if (dateStringMatch) postTime = dateStringMatch[1];
-            }
-
+            const createdTimeTag = attrMainMatch[1].match(/<time\b[^>]*>/i)?.[0] || '';
+            const sourceCreatedAt = absoluteTimestamp(createdTimeTag.match(/datetime=["']([^"']+)["']/i)?.[1]) || absoluteTimestamp(createdTimeTag.match(/data-timestamp=["']([^"']+)["']/i)?.[1]) || absoluteTimestamp(createdTimeTag.match(/data-time=["']([^"']+)["']/i)?.[1]);
+            const editTimeTag = artHtml.match(/message-lastEdit[\s\S]*?<time\b[^>]*>/i)?.[0] || '';
+            const sourceEditedAt = absoluteTimestamp(editTimeTag.match(/datetime=["']([^"']+)["']/i)?.[1]) || absoluteTimestamp(editTimeTag.match(/data-timestamp=["']([^"']+)["']/i)?.[1]) || absoluteTimestamp(editTimeTag.match(/data-time=["']([^"']+)["']/i)?.[1]);
             const postIdMatch = artHtml.match(/(?:data-content|data-lb-id|id)=["'](?:js-)?post-(\d+)["']/i);
             const attrOppositeMatch = artHtml.match(/<ul\b[^>]*class=["'][^"']*message-attribution-opposite[^"']*["'][^>]*>([\s\S]*?)<\/ul>/i) || artHtml.match(/<div\b[^>]*class=["'][^"']*message-attribution-opposite[^"']*["'][^>]*>([\s\S]*?)<\/div>/i) || [null, artHtml];
             let postLink = postIdMatch ? `https://voz.vn/p/${postIdMatch[1]}` : url;
@@ -512,16 +509,7 @@ export default class VozSource {
                 });
                 // Make the entire unfurl block clickable
                 bbContent = bbContent.replace(/<div([^>]*class=["'])([^"']*(?:bbCodeBlock--unfurl|fauxBlockLink)[^"']*)(["'][^>]*)>/gi, '<div$1$2 hover:bg-white/5 transition-colors duration-200 cursor-pointer$3>');
-                // Format quote title cleanly without nested anchors/spans or emojis
-                bbContent = bbContent.replace(/<div\b[^>]*class=["'][^"']*bbCodeBlock-title[^"']*["'][^>]*>([\s\S]*?)<\/div>/gi, (m, c) => {
-                    const text = c.replace(/<[^>]+>/g, '').trim();
-                    return `<div class="voz-quote-title font-semibold text-gray-700 dark:text-gray-300 text-xs mb-1.5">${text}</div>`;
-                });
-                // Simplify blockquote hierarchy by just adding classes
-                bbContent = bbContent.replace(/<blockquote\b[^>]*>/gi, match => {
-                    if (match.includes('voz-quote')) return match;
-                    return `<blockquote class="voz-quote my-2 p-3 rounded-xl border-l-4 border-l-gray-300 dark:border-l-gray-600 bg-gray-100 dark:bg-black/30 text-sm text-gray-800 dark:text-gray-300 leading-relaxed shadow-sm">`;
-                });
+                bbContent = styleVozQuotes(bbContent);
 
                 // The shared sanitizer removes inline styles from images. Preserve XenForo's
                 // explicit pixel display width as a safe HTML width hint before that happens.
@@ -593,22 +581,10 @@ export default class VozSource {
                 continue;
             }
 
-            posts.push(`
-<div class="voz-post" id="voz-post-${postNumber}" data-post-index="${postNumber}" data-absolute-post-id="${absolutePostId}">
-    <div class="voz-post-header">
-        <div class="voz-post-author-group">
-            <img src="${utils.escapeHtml(avatarUrl)}" alt="${utils.escapeHtml(author)}" loading="lazy" onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(author)}&background=random&color=fff&size=80'">
-            <span class="voz-post-author">@${utils.escapeHtml(author)}</span>
-            <span class="voz-post-rank">${utils.escapeHtml(rank)}</span>
-        </div>
-        <div class="voz-post-info">
-            ${postTime ? `<span class="voz-post-time">${utils.escapeHtml(postTime)}</span>` : ''}
-            <a href="${utils.escapeHtml(postLink)}" target="_blank" class="voz-post-index" title="Mở bài viết gốc">#${postNumber}</a>
-        </div>
-    </div>
-    <div class="voz-post-body">${bbContent}</div>
-    ${reactionBarHtml}
-</div>`.trim());
+            posts.push(renderVozPost({post_id:absolutePostId, current_visible_number:postNumber,
+                author_name:author, author_avatar:avatarUrl, author_rank:rank, permalink:postLink,
+                source_created_at:sourceCreatedAt, source_edited_at:sourceEditedAt, cached_at:new Date().toISOString()
+            }, {body:bbContent, reactions:reactionBarHtml}));
             idx++;
         }
         if (posts.length > 0) {
@@ -624,4 +600,19 @@ export default class VozSource {
     
         return articleHtml;
     }
+}
+
+export function styleVozQuotes(markup) {
+                // Format quote title cleanly without nested anchors/spans or emojis
+    markup = markup.replace(/<div\b[^>]*class=["'][^"']*bbCodeBlock-title[^"']*["'][^>]*>([\s\S]*?)<\/div>/gi, (m, c) => {
+                    const text = c.replace(/<[^>]+>/g, '').trim();
+                    return `<div class="voz-quote-title font-semibold text-gray-700 dark:text-gray-300 text-xs mb-1.5">${text}</div>`;
+                });
+                // Simplify blockquote hierarchy by just adding classes
+    markup = markup.replace(/<blockquote\b[^>]*>/gi, match => {
+                    if (match.includes('voz-quote')) return match;
+                    return `<blockquote class="voz-quote my-2 p-3 rounded-xl border-l-4 border-l-gray-300 dark:border-l-gray-600 bg-gray-100 dark:bg-black/30 text-sm text-gray-800 dark:text-gray-300 leading-relaxed shadow-sm">`;
+                });
+
+    return markup;
 }

@@ -7,6 +7,7 @@ import { decodeHTMLEntities } from '../../feed-parsers.js';
 import { decodeGoogleNewsIndividually, matchesGoogleNewsPublisher } from '../google-news-destination.js';
 
 export function createFeedSync({
+    observeCacheArticles = async () => {},
     CF_PROXY_BASE,
     BROWSER_HEADERS,
     VIETSERVER_PROXY_BASE,
@@ -715,6 +716,7 @@ export function createFeedSync({
                         }
                     }
 
+                    const cacheArticles = [];
                     const eagerImageTasks = [];
                     const openCliOnlyArticlesToPrefetch = [];
                     for (const item of feedData.items) {
@@ -841,6 +843,7 @@ export function createFeedSync({
                             ...(item.groundNews ? { groundNews: item.groundNews, description: item.description, publishedAt: item.publishedAt, url: item.url } : {})
                         };
                         newArticles.push(articleRecord);
+                        cacheArticles.push(articleRecord);
 
                         if (hasOnlyOpenCliFetchMethod(feed.fetchMethods)) {
                             openCliOnlyArticlesToPrefetch.push(articleRecord);
@@ -859,6 +862,7 @@ export function createFeedSync({
                             }));
                         }
                     }
+                    await observeCacheArticles(cacheArticles);
                     await Promise.all(eagerImageTasks);
                     await prefetchOpenCliOnlyArticles(openCliOnlyArticlesToPrefetch, feed.url);
                     recordFetch(feed.url, feed.title || feed.url, 'success', `${feedData.items.length} articles`, Date.now() - feedFetchStart);

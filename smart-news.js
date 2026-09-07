@@ -7281,6 +7281,7 @@ export async function startSmartSyncLoop(
             []
         );
 
+      await helpers.observeCacheArticles?.(articles);
       await prefetchOpenCliOnlySmartArticles(
         results,
         helpers
@@ -8394,6 +8395,7 @@ export function createSmartNewsEngine({
             []
         );
 
+      await helpers.observeCacheArticles?.(fetchedArticles);
       await prefetchOpenCliOnlySmartArticles(
         sourceResults,
         helpers

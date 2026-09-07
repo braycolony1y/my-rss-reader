@@ -11,6 +11,13 @@ export function createHttpApp() {
     });
 
     app.use(express.json());
+    // Body-parser errors occur before API routes; keep them machine-readable.
+    app.use((error, req, res, next) => {
+        if (!req.path.startsWith('/api/')) return next(error);
+        if (error.type === 'entity.too.large') return res.status(413).json({error:'The request is too large. Reload the page and try again.'});
+        if (error.type === 'entity.parse.failed') return res.status(400).json({error:'Invalid JSON request.'});
+        next(error);
+    });
 
     app.use('/public', express.static('public'));
 

@@ -14,6 +14,8 @@ export function createArticleArchives({
     markUnavailableSourceUrl,
     cache,
 } = {}) {
+    let boardCache;
+    const setBoardCache = service => { boardCache = service; };
     const deletedVozThreads = new Set();
 
     const vozBackgroundUpdatesInFlight = new Set();
@@ -52,7 +54,8 @@ export function createArticleArchives({
         return !Number.isSafeInteger(cachedPage) || cachedPage === expectedPage;
     }
 
-    function enqueueVozCacheBoardCrawl(url, pagination, feedUrl = '') {
+    async function enqueueVozCacheBoardCrawl(url, pagination, feedUrl = '') {
+        if (boardCache && await boardCache.managed(url)) return;
         if (!isVozThreadUrl(url)) return;
         const baseUrl = normalizeStateUrl(url);
         if (!baseUrl || deletedVozThreads.has(baseUrl)) return;
@@ -161,7 +164,8 @@ export function createArticleArchives({
         }
     }
 
-    function triggerVozNextPagePrefetch(nextUrl, depth = 1, feedUrl = '') {
+    async function triggerVozNextPagePrefetch(nextUrl, depth = 1, feedUrl = '') {
+        if (boardCache && await boardCache.managed(nextUrl)) return;
         if (!nextUrl || !nextUrl.includes('voz.vn') || depth > 2) return Promise.resolve();
         return new Promise(resolve => {
             setTimeout(async () => {
@@ -196,7 +200,8 @@ export function createArticleArchives({
         });
     }
 
-    function triggerVozCurrentPageBackgroundUpdate(url, cachedArticle, feedUrl = '', options = {}) {
+    async function triggerVozCurrentPageBackgroundUpdate(url, cachedArticle, feedUrl = '', options = {}) {
+        if (boardCache && await boardCache.managed(url)) return;
         if (!url || !url.includes('voz.vn')) return;
         const canonicalUrl = normalizeStateUrl(url);
         if (cachedArticle?.sourceDeleted) {
@@ -423,6 +428,7 @@ export function createArticleArchives({
     }
 
     return {
+        setBoardCache,
         requiresIndependentDeletionConfirmation,
         buildDeletedSourceResponse,
         isProtectedDeletedSourceSnapshot,

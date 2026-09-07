@@ -1,3 +1,4 @@
+import { normalizeStoredPostTimes } from './source-time.js';
 import { normalizeArticleSourceUrl } from '../article-source-state.js';
 import { fnv1a, normalizeStateUrl } from '../utils/article-utils.js';
 import path from 'path';
@@ -18,7 +19,7 @@ export function createArticleCache({
     // file remains available longer in case the publisher later removes the page.
     const ARTICLE_CACHE_LAST_KNOWN_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 
-    const ARTICLE_CACHE_VERSION = 54;
+    const ARTICLE_CACHE_VERSION = 55;
 
     let _articleCacheIndex = null;
 
@@ -119,7 +120,7 @@ export function createArticleCache({
                     return null;
                 }
             }
-            const normalizedResult = normalizeCachedArticleForSource(url, cached.result);
+            const normalizedResult = normalizeCachedArticleForSource(url, { ...cached.result, ...(isVozThreadUrl(url) ? { cached_at: cached.result.cached_at || new Date(cached.cachedAt).toISOString() } : {}), content: normalizeStoredPostTimes(cached.result.content, { cached_at: new Date(cached.cachedAt).toISOString(), unavailable: cached.result.sourceDeleted === true }) });
             try {
                 return assertArticleResultAcceptedBySource(url, normalizedResult);
             } catch (error) {
@@ -137,7 +138,7 @@ export function createArticleCache({
             const result = cached?.result;
             if (!result?.content) return null;
             if (isUnsafeVozThreadPayload(url, result) && result.sourceDeleted !== true) return null;
-            return normalizeCachedArticleForSource(url, result);
+            return normalizeCachedArticleForSource(url, { ...result, ...(isVozThreadUrl(url) ? { cached_at: result.cached_at || (cached.cachedAt ? new Date(cached.cachedAt).toISOString() : null) } : {}), content: normalizeStoredPostTimes(result.content, { cached_at: cached.cachedAt ? new Date(cached.cachedAt).toISOString() : null, unavailable: result.sourceDeleted === true }) });
         } catch (error) {
             return null;
         }

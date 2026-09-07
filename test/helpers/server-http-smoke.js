@@ -38,6 +38,16 @@ async function request(endpoint, { method = 'GET', body, authenticated = true } 
 }
 try {
     assert.equal((await request('/health')).data.status, 'ok');
+    const oversized = await request('/api/board-cache/folder', {method:'POST',body:{article:{link:articleUrl,content:'x'.repeat(110000)},folder:'cache'}});
+    assert.equal(oversized.status,413);
+    assert.match(oversized.headers.get('content-type'),/application\/json/);
+    assert.match(oversized.data.error,/too large/);
+    const folderSave = await request('/api/board-cache/folder',{method:'POST',body:{article,folder:'reading'}});
+    assert.equal(folderSave.status,200);
+    assert.ok(folderSave.data.boardStates.includes(articleUrl));
+    assert.equal(folderSave.data.userPreferences.boardFolderMappings[articleUrl],'reading');
+    await request('/api/board-cache/folder',{method:'POST',body:{article,folder:null}});
+
     assert.equal((await request('/api/data', { authenticated: false })).status, 401);
     assert.equal((await request('/api/login', { method: 'POST', body: { password: 'fixture-password' }, authenticated: false })).status, 200);
     assert.equal((await request('/api/login', { method: 'POST', body: { password: 'wrong' }, authenticated: false })).status, 401);
@@ -59,6 +69,17 @@ try {
     assert.equal(publisherRequests, 1, 'second request must use the same cache owner');
     assert.equal(application.progress.activeForegroundRequests, 0);
     assert.equal((await request('/api/article-content')).status, 400);
+    assert.equal((await request('/api/board-cache', { authenticated: false })).status, 401);
+    assert.deepEqual((await request('/api/board-cache')).data.rules, []);
+    const ruleSave = await request('/api/board-cache/rules', { method: 'PUT', body: { rules: [{ keywords: ['whole phrase'], source: feedUrl, enabled: false }] } });
+    assert.equal(ruleSave.status, 200);
+    assert.deepEqual(ruleSave.data.rules[0].keywords, ['whole phrase']);
+    assert.equal((await request('/api/board-cache/rules', { method: 'PUT', body: { rules: [{ keywords: [] }] } })).status, 400);
+    assert.equal((await request('/api/board-cache/active', { method: 'POST', body: { url: articleUrl, active: false } })).status, 400);
+    assert.equal((await request('/api/board-cache/folder', { method: 'POST', body: { article, folder: 'Research / notes' } })).status, 200);
+    assert.equal((await request('/api/data?filterType=board&filterValue=Research%20%2F%20notes')).data.articles[0].link, articleUrl);
+    assert.equal((await request('/api/board-cache/folder', { method: 'POST', body: { article, folder: null } })).status, 200);
+
     assert.equal((await request('/api/content-filter-settings', { method: 'POST', body: { keywords: ['fixture'] } })).data.ok, true);
     assert.deepEqual((await request('/api/content-filter-settings')).data.keywords, ['fixture']);
     assert.ok((await request('/api/content-filter-preview', { method: 'POST', body: { keywords: ['fixture'] } })).data.overallTotal >= 1);

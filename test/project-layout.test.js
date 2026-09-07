@@ -56,6 +56,8 @@ const allowedRootDirectories = new Set([
 test('project root contains only documented production and workspace entries', async () => {
     const entries = await readdir(repositoryRoot, { withFileTypes: true });
     const unexpected = entries
+        // The live database writer briefly stages these atomic runtime files.
+        .filter(entry => !/^(?:database\.json|smart-data\.json|feeds_backup\.json)(?:\.backup)?\.tmp-\d+-[a-z0-9]+$/.test(entry.name))
         .filter((entry) => entry.isDirectory()
             ? !allowedRootDirectories.has(entry.name)
             : !allowedRootFiles.has(entry.name))
