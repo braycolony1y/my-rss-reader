@@ -1,3 +1,6 @@
+import { createPdfService } from './exports/pdf-service.js';
+import { registerPdfRoutes } from './routes/pdf-routes.js';
+import { isVozThreadUrl } from './voz-thread-state.js';
 import { canonicalIdentity, extractLegacyPosts } from './board/thread-model.js';
 import { createBoardCache } from './board/cache-service.js';
 import { registerBoardCacheRoutes } from './routes/board-cache-routes.js';
@@ -180,6 +183,38 @@ export async function createApplication({ isMainModule = false } = {}) {
 
     archives.setBoardCache(boardCache);
 
+    const pdf = createPdfService({
+        retention: cache.getArticleRetention,
+        fetchPage: async (url, feedUrl, { page, force }) => {
+            const archived = await boardCache.articlePage(url);
+            if (archived?.content && (!archived.pagination || Number(archived.pagination.currentPage) === page)) return archived;
+            const fetchPolicy = await policy.getArticleFetchPolicy(url, feedUrl);
+            const cached = force ? null : await cache.getCachedArticle(url);
+            if (cached?.content && (!fetchPolicy.hasStrictConfiguredMethods || fetchPolicy.availableStrategies.includes(cached.fetchStrategy))
+                && !await archives.shouldRevalidateUnderfilledVozPage(url, cached)) return cached;
+            if (await archives.isProtectedDeletedSourceSnapshot(url)) {
+                const last = await cache.getLastKnownCachedArticle(url);
+                if (last?.content && last.sourceDeletedHasCache !== false) return last;
+                throw new Error('The source was deleted and this page was not archived.');
+            }
+            // PDF work yields before each publisher request so interactive reads keep priority.
+            while (progress.activeForegroundRequests > 0) await new Promise(resolve => setTimeout(resolve, 300));
+            let error;
+            for (const strategy of fetchPolicy.strategyOrder) {
+                try {
+                    const result = await pipeline.fetchParsedArticleByStrategy(strategy, url, fetchPolicy, feedUrl);
+                    if (!result?.content || result.isDeletedSource || result.isDeletedThread) throw new Error('The source page is unavailable.');
+                    if (isVozThreadUrl(url) && result.pagination?.nextUrl && (result.content.match(/class=["']voz-post["']/g) || []).length < 20) throw new Error('The source returned an incomplete thread page.');
+                    await cache.cacheArticleResult(url, result);
+                    return result;
+                } catch (e) { error = e; }
+            }
+            throw error || new Error('No reader is available for this source.');
+        }
+    });
+    registerPdfRoutes({ app: http.app, pdf });
+
+
     const prefetch = createArticlePrefetch({
         getBestImage: images.getBestImage,
         BROWSER_HEADERS: config.BROWSER_HEADERS,
@@ -223,7 +258,12 @@ export async function createApplication({ isMainModule = false } = {}) {
     const startup = createBackgroundStartup({
         boardCache,
         reconcileAllConfiguredSourceFetchMethods: policy.reconcileAllConfiguredSourceFetchMethods,
-        cleanupArticleCache: cache.cleanupArticleCache,
+        cleanupArticleCache: async () => {
+            await boardCache.cleanup();
+            await pdf.initialize();
+            await pdf.cleanup();
+            await cache.cleanupArticleCache();
+        },
         env: database.env,
         normalizeClusteringModel: config.normalizeClusteringModel,
         startSequentialSyncLoop: sync.startSequentialSyncLoop,
@@ -370,7 +410,7 @@ export async function createApplication({ isMainModule = false } = {}) {
             startup.startBackgroundServices();
             void boardCache.tick().catch(error => console.warn('[CACHE STARTUP]', error.message));
         },
-        database, cache, worker, policy, readers, parser, pipeline, archives,
+        database, cache, worker, policy, readers, parser, pipeline, archives, pdf,
         prefetch, sync, smartNews, progress, googleNews, presentation
     };
 }

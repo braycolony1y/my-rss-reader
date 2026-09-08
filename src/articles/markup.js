@@ -128,7 +128,33 @@ function trimArticleMarkupAtSemanticBoundary(markup) {
     return source;
 }
 
+const cleanedThreadMarkup = new Map();
+let cleanedThreadBytes = 0;
 function cleanArticleMarkup(markup) {
+    const input = String(markup || '');
+    if (!input.includes('voz-post')) return cleanArticleMarkupUncached(input);
+    const cached = cleanedThreadMarkup.get(input);
+    if (cached) {
+        cleanedThreadMarkup.delete(input);
+        cleanedThreadMarkup.set(input, cached);
+        return cached.output;
+    }
+    const output = cleanArticleMarkupUncached(input);
+    // Exact input keys keep edits and sanitation changes from sharing results.
+    const bytes = (input.length + output.length) * 2;
+    if (bytes <= 8 * 1024 * 1024) {
+        cleanedThreadMarkup.set(input, { output, bytes });
+        cleanedThreadBytes += bytes;
+        while (cleanedThreadBytes > 8 * 1024 * 1024 || cleanedThreadMarkup.size > 100) {
+            const oldest = cleanedThreadMarkup.keys().next().value;
+            cleanedThreadBytes -= cleanedThreadMarkup.get(oldest).bytes;
+            cleanedThreadMarkup.delete(oldest);
+        }
+    }
+    return output;
+}
+
+function cleanArticleMarkupUncached(markup) {
     // This also migrates already-cached VOZ pages at read time. Older cache
     // entries contain XenForo's enormous inline Reddit SVG instead of an
     // actual embed because the publisher normally upgrades it with JS.
@@ -157,12 +183,18 @@ function cleanArticleMarkup(markup) {
 
         const noise = /(?:advert|adsbygoogle|ad-container|breadcrumb|pagination|related|recommend|share|social|reaction|signature|message-user|message-attribution|message-footer|message-cell--user|post-meta|author-box|author-info|singular-author|user-info|user-panel|member-header|comment-list|comments-area|newsletter|subscribe|topic-list|trending|popular-post|read-more|tags-list|article__tags|author-area|menu-area|menu-container|action-bar|thread-action|thread-editor|relate-news|box-topic|tinlienquan|knc-relate|box-relate|zone-interlink|article-audio|tts-player|dt-size-6|detail-comment|box-comment|box-bottom|cmbl|detail-tab|admzone|link-source-detail)/i;
 
+        // Resolve repeated ancestor selectors once per document. Recompiling
+        // them for every element dominated cleanup on image-heavy forum pages.
+        const descendants = selector => new Set($(selector).find('*').addBack().toArray());
+        const readerSections = descendants('.embedded-suggested-articles, .tuoitre-event-stream, .techmeme-x-posts, .techmeme-primary-article');
+        const protectedNodes = descendants('.voz-post-likes, .box_tiso_all, .highcharts-container');
+        const groundNodes = descendants('.ground-story[data-ground-reader="2"]');
         $('*').each((i, el) => {
             const node = $(el);
             const tag = el.tagName;
             const marker = [node.attr('id'), node.attr('class'), node.attr('role')].filter(Boolean).join(' ');
 
-            const isReaderOwnedSection = node.closest('.embedded-suggested-articles, .tuoitre-event-stream, .techmeme-x-posts, .techmeme-primary-article').length > 0;
+            const isReaderOwnedSection = readerSections.has(el);
             if (noise.test(marker) && !isReaderOwnedSection) {
                 node.remove();
                 return;
@@ -204,7 +236,7 @@ function cleanArticleMarkup(markup) {
             }
 
             if (tag === 'img') {
-                const isGroundPublisherLogo = node.hasClass('ground-publisher-logo') && node.closest('.ground-story[data-ground-reader="2"]').length > 0;
+                const isGroundPublisherLogo = node.hasClass('ground-publisher-logo') && groundNodes.has(el);
                 if (!isVozPost && !isGroundPublisherLogo && /(avatar|logo|smilie|emoji)/i.test(marker + ' ' + (node.attr('src')||''))) {
                     node.remove(); return;
                 }
@@ -233,9 +265,7 @@ function cleanArticleMarkup(markup) {
             }
 
             const isMediaNode = ['img', 'video', 'audio', 'iframe'].includes(tag);
-            const isProtectedNode = node.hasClass('voz-post-likes') || node.closest('.voz-post-likes').length > 0 ||
-                                    node.hasClass('box_tiso_all') || node.closest('.box_tiso_all').length > 0 ||
-                                    node.hasClass('highcharts-container') || node.closest('.highcharts-container').length > 0;
+            const isProtectedNode = protectedNodes.has(el);
             if (!isProtectedNode) {
                 if (!isMediaNode || tag === 'img') {
                     node.removeAttr('style');
@@ -267,13 +297,10 @@ function cleanArticleMarkup(markup) {
             }
         });
 
+        const retainedSections = descendants('.ground-story[data-ground-reader="2"], .embedded-suggested-articles, .styled-rel-card, .tuoitre-event-stream, .techmeme-x-posts, .techmeme-primary-article');
         $('div,section,ul').each((i, el) => {
             const node = $(el);
-            if (node.closest('.ground-story[data-ground-reader="2"]').length > 0 || node.hasClass('embedded-suggested-articles') || node.closest('.embedded-suggested-articles').length > 0 ||
-                node.hasClass('styled-rel-card') || node.closest('.styled-rel-card').length > 0 ||
-                node.hasClass('tuoitre-event-stream') || node.closest('.tuoitre-event-stream').length > 0 ||
-                node.hasClass('techmeme-x-posts') || node.closest('.techmeme-x-posts').length > 0 ||
-                node.hasClass('techmeme-primary-article') || node.closest('.techmeme-primary-article').length > 0) return;
+            if (retainedSections.has(el)) return;
             const textLength = node.text().replace(/\s+/g, ' ').trim().length;
             const links = node.find('a');
             let linkLength = 0;

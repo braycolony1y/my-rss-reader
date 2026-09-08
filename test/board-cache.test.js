@@ -20,7 +20,7 @@ async function fixture(t, extra = {}) {
     const service = createBoardCache({ env: { RSS_DATA: db }, directory, now: () => time,
         writeJson: (file, data) => fs.writeFile(file, JSON.stringify(data)), fetchPage: extra.fetchPage || (async () => snapshot(1, 1, [post(10)])), ...extra.options });
     await service.initialize();
-    return { service, values, advance: ms => { time += ms; } };
+    return { service, values, db, advance: ms => { time += ms; } };
 }
 const membership = { boardStates: [url], userPreferences: { boardFolders: ['cache'], boardFolderMappings: { [url]: 'cache' } } };
 
@@ -140,7 +140,8 @@ test('dismissals extend on activity, expire and purge, without ever treating an 
     assert.equal(values.cacheIdentityLedger.dismissals[id], undefined);
     await service.observe([article]);
     assert.equal(values.boardStates.length, 0);
-    assert.ok((await service.archive(url)).posts['10']);
+    await service.cleanup();
+    assert.equal(await service.archive(url), null, 'departed archives expire independently of dismissal tracking');
 });
 
 test('history button is hidden for one version, visible for edits, and archived HTML is sanitized', () => {
@@ -292,4 +293,205 @@ test('Board deduplicates thread URL variants without merging separate threads wi
     const {deduplicateBoardArticles}=await import('../src/routes/data-routes.js');
     const list=deduplicateBoardArticles([{link:url,title:'Same'},{link:url+'unread',title:'Same',image:'photo.jpg'},{link:'https://voz.vn/t/other.456',title:'Same'}]);
     assert.equal(list.length,2);assert.equal(list[0].image,'photo.jpg');
+});
+
+test('leaving Cache releases live refresh ownership but preserves history', async t => {
+    const { service } = await fixture(t, { values: membership });
+    await service.tick();
+    await service.setActive(url, false);
+    assert.equal(await service.managed(url), true, 'paused Cache still owns its archive');
+    await service.setFolder({ link: url }, 'Reading');
+    assert.equal(await service.managed(url), false);
+    assert.ok((await service.archive(url)).posts['10']);
+});
+
+test('sync starts at page one when Board stores an unread link', async t => {
+    const unread = url + 'unread';
+    const calls = [];
+    const { service } = await fixture(t, { values: {
+        boardStates: [unread], userPreferences: { boardFolderMappings: { [unread]: 'cache' } },
+        cacheMembers: { [id]: { thread_id: id, url: unread, article: { link: unread }, in_cache: true, active_caching: true } }
+    }, fetchPage: async value => {
+        calls.push(value);
+        return value.endsWith('/page-2') ? snapshot(2, 2, [post(20, 'Reply', 2, 2)]) : snapshot(1, 2, [post(10)]);
+    } });
+    await service.tick();
+    assert.deepEqual(calls, [url.slice(0, -1), url + 'page-2', url.slice(0, -1)]);
+    assert.equal((await service.archive(url)).sync_status, 'complete');
+});
+
+test('ordinary reader skips retained archives outside Cache and serves paused Cache', async () => {
+    const { registerBoardCacheRoutes } = await import('../src/routes/board-cache-routes.js');
+    const routes = new Map();
+    let managed = false, reads = 0, next = 0, response;
+    registerBoardCacheRoutes({ app: { get: (path, ...handlers) => routes.set(path, handlers.at(-1)), post() {}, put() {} }, boardCache: {
+        managed: async () => managed,
+        articlePage: async () => { reads++; return { url, content: 'Cached post', archive: true, active_caching: false }; }
+    } });
+    const handler = routes.get('/api/article-content');
+    const res = { set() {}, json: data => { response = data; } };
+    await handler({ query: { url } }, res, () => next++);
+    assert.equal(next, 1);
+    assert.equal(reads, 0);
+    managed = true;
+    await handler({ query: { url } }, res, e => { throw e; });
+    assert.equal(response.archive, true);
+    assert.equal(response.active_caching, false);
+});
+
+test('stale folder snapshots cannot evict an auto-added thread or create a dismissal', async t => {
+    const { service, values } = await fixture(t);
+    const article = { link: url, title: 'VinFast news' };
+    await service.saveRules([{ keywords: ['vinfast'] }]);
+    await service.observe([article]);
+    await service.updatePreference('boardFolderMappings', {});
+    await service.reconcileMembership();
+    assert.equal(values.cacheMembers[id].in_cache, true);
+    assert.equal(values.cacheMembers[id].active_caching, true);
+    assert.equal(values.userPreferences.boardFolderMappings[values.cacheMembers[id].url], 'cache');
+    assert.equal(values.cacheIdentityLedger.dismissals[id], undefined);
+    await service.updatePreference('boardFolderMappings', { [url + 'unread']: 'old-folder' });
+    await service.reconcileMembership();
+    assert.equal(values.cacheMembers[id].in_cache, true);
+    await service.setFolder(article, 'Reading');
+    await service.reconcileMembership();
+    assert.equal(values.cacheMembers[id].in_cache, false);
+    assert.ok(values.cacheIdentityLedger.dismissals[id]);
+    await service.observe([article]);
+    assert.equal(values.cacheMembers[id].in_cache, false, 'explicit moves are respected');
+});
+
+test('missing mappings are repaired without resuming paused Cache members', async t => {
+    const { service, values } = await fixture(t, { values: membership });
+    await service.setActive(url, false);
+    values.userPreferences.boardFolderMappings = {};
+    await service.reconcileMembership();
+    assert.equal(values.cacheMembers[id].in_cache, true);
+    assert.equal(values.cacheMembers[id].active_caching, false);
+    assert.equal(values.userPreferences.boardFolderMappings[values.cacheMembers[id].url], 'cache');
+    assert.equal(values.cacheIdentityLedger.dismissals[id], undefined);
+    values.boardStates = [];
+    await service.reconcileMembership();
+    assert.equal(values.cacheMembers[id].in_cache, false, 'removing the pin still removes membership');
+});
+
+test('concurrent reading-position and folder saves preserve both updates', async t => {
+    const { service, values } = await fixture(t);
+    await Promise.all([
+        service.updatePreference('voz_last_read_post_123', { postId: '10' }),
+        service.setFolder({ link: url }, 'Reading'),
+        service.updatePreference('theme', 'light')
+    ]);
+    assert.equal(values.userPreferences.voz_last_read_post_123.postId, '10');
+    assert.equal(values.userPreferences.theme, 'light');
+    assert.equal(values.userPreferences.boardFolderMappings[values.boardStates[0]], 'Reading');
+});
+
+test('moving a pinned article writes only its folder mapping and unchanged saves write nothing', async t => {
+    const { service, values, db } = await fixture(t);
+    const a = { link: 'https://example.org/a', title: 'A' }, b = { link: 'https://example.org/b', title: 'B' };
+    await service.setFolder(a, 'one'); await service.setFolder(b, 'one');
+    const original = db.putMany, calls = [];
+    db.putMany = async (writes, options) => { calls.push({ keys: Object.keys(writes), options }); return original(writes); };
+    const result = await service.setFolder(a, 'two', { compact: true });
+    assert.deepEqual(calls[0].keys, ['userPreferences']);
+    assert.equal(calls[0].options.lightweight, true);
+    assert.deepEqual(values.boardStates, [a.link, b.link]);
+    assert.equal(result.folder, 'two'); assert.equal(result.boardStates, undefined); assert.equal(result.userPreferences, undefined);
+    await service.setFolder(a, 'two', { compact: true });
+    assert.equal(calls.length, 1);
+});
+
+test('a long scan does not block the next minute from refreshing a completed thread', async t => {
+    const shortUrl = 'https://voz.vn/t/short.456';
+    const shortId = canonicalIdentity(shortUrl);
+    let releaseLong, longStarted;
+    const gate = new Promise(resolve => { releaseLong = resolve; });
+    const started = new Promise(resolve => { longStarted = resolve; });
+    let shortFetches = 0, longPageFetches = 0, active = 0, peak = 0;
+    const { service } = await fixture(t, { values: {
+        boardStates: [url, shortUrl], userPreferences: { boardFolderMappings: { [url]: 'cache', [shortUrl]: 'cache' } }
+    }, fetchPage: async value => {
+        active++; peak = Math.max(peak, active);
+        try {
+            if (value.includes('.456')) { shortFetches++; return snapshot(1, 1, [post(40)]); }
+            if (value.includes('page-2')) { longPageFetches++; longStarted(); await gate; return snapshot(2, 2, [post(20, 'Page two', 2, 2)]); }
+            return snapshot(1, 2, [post(10)]);
+        } finally { active--; }
+    } });
+    const first = service.tick();
+    try {
+        await started;
+        await service.syncOne(shortId);
+        const previous = shortFetches;
+        await service.tick();
+        assert.equal(shortFetches, previous + 1);
+        assert.equal(longPageFetches, 1, 'long thread must not overlap itself');
+        assert.ok(peak <= 2, 'page fetching remains bounded');
+    } finally { releaseLong(); await first; }
+});
+
+
+test('reader page cache follows syncs, permanent post positions, pause and dismissal', async t => {
+    let body = 'Original';
+    const { service } = await fixture(t, { values: membership, fetchPage: async () => snapshot(1, 1, [post(10, body)]) });
+    await service.tick();
+    const first = await service.articlePage(url);
+    assert.match(first.content, /Original/);
+    assert.deepEqual(await service.articlePage(url), first);
+    assert.match((await service.articlePage(url + 'post-10')).content, /Original/);
+    body = 'Updated content';
+    await service.tick();
+    const updated = await service.articlePage(url);
+    assert.match(updated.content, /Updated content/);
+    assert.notEqual(updated.content, first.content);
+    await service.setActive(url, false);
+    assert.equal((await service.articlePage(url)).active_caching, false);
+    await service.setFolder({ link: url }, 'general');
+    assert.equal(await service.articlePage(url), null);
+});
+
+test('leaving Cache retains history for 14 days and returning cancels the deadline', async t => {
+    const { service, values, advance } = await fixture(t, { values: membership });
+    await service.tick();
+    await service.setFolder({ link: url }, 'reading');
+    const left = values.cacheMembers[id].left_cache_at;
+    advance(13 * 86400000); await service.cleanup();
+    assert.ok(await service.archive(url));
+    await service.setFolder({ link: url }, 'cache');
+    await service.syncOne(id);
+    assert.equal(values.cacheMembers[id].left_cache_at, null);
+    advance(2 * 86400000); await service.cleanup();
+    assert.ok(await service.archive(url));
+    await service.setFolder({ link: url }, 'reading');
+    assert.notEqual(values.cacheMembers[id].left_cache_at, left);
+    advance(14 * 86400000); await service.cleanup();
+    assert.equal(await service.archive(url), null);
+    assert.ok(values.cacheMembers[id].archive_expired_at);
+    assert.ok(values.boardStates.includes(url), 'moving elsewhere on Board does not protect the departed Cache archive');
+});
+
+test('legacy departed archives start their 14-day clock at migration', async t => {
+    const { service, values, advance } = await fixture(t, { values: membership });
+    await service.tick(); await service.setFolder({ link: url }, null);
+    delete values.cacheMembers[id].left_cache_at;
+    await service.cleanup();
+    assert.ok(values.cacheMembers[id].left_cache_at);
+    advance(14 * 86400000 - 1); await service.cleanup();
+    assert.ok(await service.archive(url));
+    advance(1); await service.cleanup();
+    assert.equal(await service.archive(url), null);
+});
+
+test('confirmed removed Cache snapshots expire after 14 days even while pinned', async t => {
+    let removed = false;
+    const { service, values, advance } = await fixture(t, { values: membership, fetchPage: async () => removed ? { isDeletedThread: true } : snapshot(1, 1, [post(10)]) });
+    await service.tick(); removed = true; await service.tick();
+    assert.ok(values.cacheMembers[id].removed_at);
+    advance(14 * 86400000 - 1); await service.cleanup();
+    assert.ok(await service.archive(url));
+    advance(1); await service.cleanup();
+    assert.equal(await service.archive(url), null);
+    assert.equal(await service.articlePage(url), null);
+    assert.equal(values.cacheMembers[id].in_cache, true);
 });

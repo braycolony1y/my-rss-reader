@@ -63,10 +63,7 @@ export function createBackgroundStartup({
             const clusteringModel = normalizeClusteringModel(currentPreferences.clusteringModel);
             setClusteringModel(clusteringModel);
             if (currentPreferences.clusteringModel !== clusteringModel) {
-                await env.RSS_DATA.put('userPreferences', JSON.stringify({
-                    ...currentPreferences,
-                    clusteringModel
-                }));
+                await boardCache.updatePreference('clusteringModel', clusteringModel);
             }
         }).catch(err => console.error("Error loading user preferences for clustering model:", err));
 

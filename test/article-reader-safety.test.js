@@ -168,7 +168,7 @@ test('all Alpine-bound reader settings exist before the first render', () => {
     assert.match(html, /class="mt-2 text-\[11px\] text-gray-400 space-y-0\.5"\s+x-data="\{ healthType:/);
     assert.match(html, /x-for="\(item, idx\) in \(debugData\?\.prefetchQueue \|\| \[\]\)"/);
     assert.match(html, /:title="overlayArticle && savedStates\.includes\(overlayArticle\.link\) \? 'Remove from Read Later' : 'Read Later'"/);
-    assert.match(html, /:title="overlayArticle && boardStates\.includes\(overlayArticle\.originalLink \|\| overlayArticle\.link\) \? 'Remove from Board' : 'Save to Board'"/);
+    assert.match(html, /:title="isOnBoard\(overlayArticle\) \? 'Remove from Board' : 'Save to Board'"/);
 });
 
 test('article reader can copy rich content with images, links, and a plain-text fallback', () => {
@@ -185,14 +185,12 @@ test('article reader can copy rich content with images, links, and a plain-text 
     assert.match(script, /navigator\.clipboard\.writeText\(payload\.text\)/);
 });
 
-test('article reader can save every article as PDF and collect VOZ pages with progress and cancellation', () => {
+test('article reader downloads server PDFs with progress and pause controls', () => {
     assert.match(html, /@click="saveArticleAsPdf\(\)"/);
-    assert.match(html, /Save article as PDF/);
+    assert.match(html, /Download PDF from server/);
     assert.match(html, /articlePdfProgress\.current/);
     assert.match(html, /@click="cancelArticlePdf\(\)"/);
-    assert.match(script, /async collectVozThreadForPdf\(signal\)/);
-    assert.match(script, /for \(let page = 1; page <= totalPages && page <= 250; page\+\+\)/);
-    assert.match(script, /params\.set\('bypassCache', '1'\)/);
-    assert.match(script, /this\.articlePdfAbortController\.abort\(\)/);
-    assert.match(script, /printWindow\.print\(\)/);
+    assert.match(script, /fetch\('\/api\/article-pdf'/);
+    assert.match(script, /link\.href = job\.downloadUrl/);
+    assert.doesNotMatch(script, /printWindow\.print\(\)/);
 });

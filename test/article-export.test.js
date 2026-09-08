@@ -160,3 +160,34 @@ test('printing waits for the document styles, fonts and images to finish loading
     await waiting;
     assert.equal(ready, true);
 });
+
+test('PDF download uses a completed server file without opening a print window', async t => {
+    const { app, dom } = createReader();
+    t.after(() => dom.window.close());
+    const requests = [], downloads = [];
+    dom.window.open = () => { throw new Error('A print popup must not open'); };
+    dom.window.HTMLAnchorElement.prototype.click = function () { downloads.push(this.getAttribute('href')); };
+    dom.window.fetch = async (url, options) => {
+        requests.push({ url, options });
+        return { ok: true, json: async () => ({ id: 'pdf-id', status: 'ready', current: 6803, total: 6803, downloadUrl: '/api/article-pdf/pdf-id/download' }) };
+    };
+    app.overlayPagination = { currentPage: 6703, pages: [{ page: 1 }, { page: 6803 }] };
+    await app.saveArticleAsPdf();
+    assert.equal(requests[0].url, '/api/article-pdf');
+    assert.equal(JSON.parse(requests[0].options.body).totalPages, 6803);
+    assert.deepEqual(downloads, ['/api/article-pdf/pdf-id/download']);
+    assert.equal(app.articlePdfState, 'ready');
+});
+
+test('closing the reader stops polling but leaves the server export running', t => {
+    const { app, dom } = createReader();
+    t.after(() => dom.window.close());
+    const requests = [];
+    dom.window.fetch = (...args) => { requests.push(args); return Promise.resolve({}); };
+    app.articlePdfJobId = 'pdf-id';
+    app.articlePdfAbortController = new dom.window.AbortController();
+    const controller = app.articlePdfAbortController;
+    app.cancelArticlePdf({ silent: true });
+    assert.equal(controller.signal.aborted, true);
+    assert.equal(requests.length, 0);
+});

@@ -28,7 +28,7 @@ test('a non-empty source method selection is a strict allowlist', () => {
 
 test('all browser article requests preserve source identity', () => {
     assert.match(script, /new URLSearchParams\(\{\s*url: link,\s*feedUrl: sourceArticle\?\.feedUrl \|\| ''/);
-    assert.match(script, /url: targetUrl,\s*feedUrl: this\.overlayArticle\?\.feedUrl \|\| ''/);
+    assert.match(script, /this\.fetchThreadPage\(targetUrl, this\.overlayArticle\?\.feedUrl \|\| ''\)/);
     assert.match(script, /prefetchTargets\.push\(\{\s*url: u,[\s\S]*feedUrl: nextArticle\?\.feedUrl \|\| ''/);
     assert.match(script, /if \(this\.articleContentCache\) this\.articleContentCache\.clear\(\)/);
 });

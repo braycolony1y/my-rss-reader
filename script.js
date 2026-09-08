@@ -88,9 +88,11 @@
                     return data;
                 },
                 async loadCacheState() {
-                    if (!this.isLoggedIn) return;
+                    if (!this.isLoggedIn || this.boardSavePending) return;
+                    const boardVersion = this.boardMutationVersion;
                     try {
                         const data = await this.cacheRequest('/api/board-cache');
+                        if (this.boardSavePending || boardVersion !== this.boardMutationVersion) return;
                         const membershipChanged = JSON.stringify(Object.entries(this.cacheMembers).map(([id, m]) => [id, m.in_cache])) !== JSON.stringify(Object.entries(data.members).map(([id, m]) => [id, m.in_cache]));
                         for (const [id, active] of Object.entries(this.cacheTogglePending)) if (data.members[id]) data.members[id].active_caching = active;
                         this.cacheMembers = data.members;
@@ -119,6 +121,10 @@
                 cacheBadgeText(article) {
                     const m = this.cacheMember(article);
                     return m?.source_removed ? 'Removed from source' : !m?.active_caching ? 'Cache paused' : m?.sync_status === 'incomplete' ? 'Sync delayed' : 'Live cache';
+                },
+                cacheLastSuccessText(article) {
+                    const value = this.cacheMember(article)?.last_successful_sync_at || article?.cacheLastSync;
+                    return value ? 'Last cached successfully: ' + this.formatVietnamDateTime(value) : 'Waiting for first successful cache';
                 },
                 cacheBadgeTitle(article) {
                     const m = this.cacheMember(article);
@@ -363,6 +369,7 @@
                 boardModalOpen: false,
                 boardModalArticle: null,
                 boardSavePending: false,
+                boardMutationVersion: 0,
                 boardSavingFolder: null,
                 newBoardFolderName: '',
                 editModalOpen: false,
@@ -418,7 +425,7 @@
                 articlePdfState: 'idle',
                 articlePdfProgress: { current: 0, total: 0, message: '' },
                 articlePdfAbortController: null,
-                articlePdfWindow: null,
+                articlePdfJobId: null,
                 articlePdfResetTimer: null,
                 articleSpeechState: 'idle',
                 articleSpeechChunks: [],
@@ -1459,7 +1466,7 @@
                                 this.feeds = data.feeds || [];
                                 this.readStates = new Set([...(data.readStates || []), ...this.readStates]);
                                 this.savedStates = [...new Set([...(data.savedStates || []), ...this.savedStates])];
-                                this.boardStates = [...new Set([...(data.boardStates || []), ...this.boardStates])];
+                                this.boardStates = this.dedupeStateLinks(data.boardStates || []);
                                 // The server is authoritative. Merging with an old browser snapshot
                                 // kept removed entries forever and made the sidebar count drift.
                                 this.hiddenStates = this.dedupeStateLinks(data.hiddenStates || []);
@@ -1552,6 +1559,14 @@
                    different canonical URL).  Undefined/duplicate keys make
                    Alpine reuse the previous card's DOM, which looks like a
                    flash of another article during scrolling. */
+                articleRowKeys: new WeakMap(),
+                articleRowSequence: 0,
+                articleRowKey(article, index) {
+                    if (!article || typeof article !== 'object') return this.articleKey(article, index);
+                    if (!this.articleRowKeys.has(article)) this.articleRowKeys.set(article, this.articleKey(article) + ':row:' + (++this.articleRowSequence));
+                    return this.articleRowKeys.get(article);
+                },
+
                 articleKey(article, index = '') {
                     if (!article) return 'article:empty';
                     const identity = article.id || article.guid || article.originalLink || article.link;
@@ -1786,6 +1801,20 @@
 
                 async toggleState(list, link) {
                     if (!link) return;
+                    if (list === 'boardStates' && this.isOnBoard(link)) {
+                        if (this.boardSavePending) return;
+                        this.boardSavePending = true;
+                        this.boardMutationVersion++;
+                        try {
+                            const data = await this.cacheRequest('/api/board-cache/folder', {
+                                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ article: link, folder: null, compact: true })
+                            });
+                            this.applyBoardFolderResult(data, link, null);
+                        } catch (e) { this.cacheNotice = e.message; }
+                        finally { this.boardSavePending = false; }
+                        return;
+                    }
                     const array = this[list];
                     const index = array.indexOf(link);
                     const isAdding = index === -1;
@@ -1814,11 +1843,7 @@
                             body: JSON.stringify({ link, list, forceRemove: true })
                         });
                         
-                        // Clean up folder mapping if removing from board
-                        if (list === 'boardStates' && this.userPreferences.boardFolderMappings?.[link]) {
-                            delete this.userPreferences.boardFolderMappings[link];
-                            this.syncUserPreferenceDebounced('boardFolderMappings', this.userPreferences.boardFolderMappings);
-                        }
+
                     }
                     
                     if (list === 'hiddenStates') {
@@ -1841,6 +1866,25 @@
                     if (typeof this.saveState === 'function') this.saveState();
                 },
 
+                boardIdentity(article) {
+                    const raw = typeof article === 'string' ? article : article?.resolvedLink || article?.originalLink || article?.link;
+                    if (!raw) return '';
+                    try {
+                        const u = new URL(raw);
+                        const match = u.pathname.match(/^\/(?:t|threads)\/(?:[^/]*\.)?(\d+)(?:\/|$)/i);
+                        if (match) return `${u.hostname.toLowerCase()}:thread:${match[1]}`;
+                    } catch {}
+                    return this.normalizeStateLink(raw);
+                },
+                isOnBoard(article) {
+                    const id = this.boardIdentity(article);
+                    return !!id && this.boardStates.some(url => this.boardIdentity(url) === id);
+                },
+                boardFolderFor(article) {
+                    const id = this.boardIdentity(article);
+                    if (!id) return null;
+                    return Object.entries(this.userPreferences.boardFolderMappings || {}).find(([url]) => this.boardIdentity(url) === id)?.[1] || null;
+                },
                 openBoardModal(article) {
                     if (this.boardSavePending) return;
                     this.cacheNotice = '';
@@ -1849,12 +1893,39 @@
                     this.boardModalOpen = true;
                 },
 
+                applyBoardFolderResult(data, article, folder) {
+                    const id = this.boardIdentity(article);
+                    if (data.thread_id) {
+                        if (Object.hasOwn(data, 'folder')) folder = data.folder;
+                        const existing = this.boardStates.find(url => this.boardIdentity(url) === id);
+                        if (folder === null) this.boardStates = this.boardStates.filter(url => this.boardIdentity(url) !== id);
+                        else if (!existing) this.boardStates.push(data.url);
+                        const mappings = { ...(this.userPreferences.boardFolderMappings || {}) };
+                        for (const url of Object.keys(mappings)) if (this.boardIdentity(url) === id) delete mappings[url];
+                        if (folder !== null) mappings[data.url] = folder;
+                        this.userPreferences.boardFolderMappings = mappings;
+                        if (folder !== null) this.userPreferences.boardFolders = [...new Set([...(this.userPreferences.boardFolders || []), folder])];
+                    } else {
+                        this.boardStates = data.boardStates;
+                        this.userPreferences = { ...this.userPreferences, ...data.userPreferences };
+                    }
+                    if (data.cacheMember) this.cacheMembers[data.cacheMember.thread_id] = data.cacheMember;
+                    // Keep the list, its order, loaded pages and viewport in place.
+                    if (this.selectedFilterType === 'board' && (folder === null || (this.selectedFilterValue && this.selectedFilterValue !== folder))) {
+                        const container = document.getElementById('scroll-container');
+                        const scrollTop = container?.scrollTop;
+                        this.articles = this.articles.filter(item => this.boardIdentity(item) !== id);
+                        if (container && this.$nextTick) this.$nextTick(() => { container.scrollTop = scrollTop; });
+                    }
+                },
+
                 async assignBoardFolder(folderName) {
                     if (this.boardSavePending) return;
                     if (!this.boardModalArticle) { this.cacheNotice = 'Choose an article before saving to Board.'; return; }
                     this.boardSavePending = true;
+                    this.boardMutationVersion++;
                     this.boardSavingFolder = folderName;
-                    this.cacheNotice = folderName === null ? 'Removing…' : 'Saving…';
+                    this.cacheNotice = '';
                     try {
                         const source = this.boardModalArticle;
                         // Board membership needs article metadata, never rendered HTML or inline images.
@@ -1864,14 +1935,10 @@
                             if (typeof value === 'string') article[key] = value.slice(0, key === 'title' ? 2000 : 4096);
                         }
                         if (typeof source.image === 'string' && /^https?:\/\//i.test(source.image) && source.image.length <= 4096) article.image = source.image;
-                        const data = await this.cacheRequest('/api/board-cache/folder', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ article, folder: folderName }) });
-                        this.boardStates = data.boardStates;
-                        this.userPreferences = { ...this.userPreferences, ...data.userPreferences };
-                        if (data.cacheMember) this.cacheMembers[data.cacheMember.thread_id] = data.cacheMember;
+                        const data = await this.cacheRequest('/api/board-cache/folder', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ article, folder: folderName, compact: true }) });
+                        this.applyBoardFolderResult(data, source, folderName);
                         this.boardModalOpen = false;
-                        this.cacheNotice = folderName === null ? 'Removed from Board' : `Saved to ${folderName}`;
-                        // Saving is complete. List hydration must not hold the modal open.
-                        if (this.selectedFilterType === 'board') void this.fetchData();
+                        this.cacheNotice = '';
                     } catch (e) { this.cacheNotice = e.message; }
                     finally { this.boardSavePending = false; this.boardSavingFolder = null; }
                 },
@@ -2079,7 +2146,7 @@
                             const data = await res.json();
                             if (data.readStates) this.readStates = new Set([...data.readStates, ...this.readStates]);
                             if (data.savedStates) this.savedStates = [...new Set([...data.savedStates, ...this.savedStates])];
-                            if (data.boardStates) this.boardStates = [...new Set([...data.boardStates, ...this.boardStates])];
+                            if (data.boardStates) this.boardStates = this.dedupeStateLinks(data.boardStates);
                             if (data.hiddenStates) this.hiddenStates = this.dedupeStateLinks(data.hiddenStates);
                             if (data.clusteringModel) this.clusteringModel = data.clusteringModel;
                             
@@ -2282,11 +2349,8 @@
                     this.overlayArticle.sourceDeletedHasCache = data.sourceDeletedHasCache !== false && Boolean(data.content);
                     this.overlayArticle.sourceDeletedKind = data.sourceDeletedKind || (this.isVozArticle(this.overlayArticle) ? 'thread' : 'article');
                     this.overlayPagination = data.pagination || null;
-                    if (!this.overlayArticle.sourceDeleted && this.overlayPagination && this.overlayPagination.nextUrl) {
-                        this.prefetchArticlesList([{
-                            link: this.overlayPagination.nextUrl,
-                            feedUrl: this.overlayArticle.feedUrl || ''
-                        }]);
+                    if (!this.overlayArticle.sourceDeleted && this.overlayPagination?.nextUrl) {
+                        this.prefetchThreadPages(this.overlayPagination, this.overlayArticle.feedUrl || '');
                     }
                     this.overlayContent = this.formatSourceTimeMarkup(data.content);
                     this.overlayHasNativeAudio = /<audio\b/i.test(this.overlayContent || '');
@@ -2521,7 +2585,7 @@
                         const threadMatch = currentUrl.match(/threads\/[^\/.]+\.(\d+)/i) || currentUrl.match(/\b(\d{5,8})\b/);
                         const threadId = threadMatch ? threadMatch[1] : currentUrl;
                         
-                        const saveData = absId ? JSON.stringify({ index, absId }) : index;
+                        const saveData = absId ? JSON.stringify({ index, absId, page: this.overlayPagination?.currentPage || Math.ceil(Number(index) / 20) }) : index;
                         this.syncUserPreferenceDebounced('voz_last_read_post_' + threadId, saveData);
                     });
                 },
@@ -2599,6 +2663,41 @@
                     } catch(e) {}
                 },
 
+                fetchThreadPage(targetUrl, feedUrl = '', prefetch = false) {
+                    if (!this.articleContentCache) this.articleContentCache = new Map();
+                    const cached = this.articleContentCache.get(targetUrl);
+                    if (cached) return Promise.resolve(cached);
+                    if (!this.threadPageRequests) this.threadPageRequests = new Map();
+                    if (this.threadPageRequests.has(targetUrl)) return this.threadPageRequests.get(targetUrl);
+                    const request = (async () => {
+                        const params = new URLSearchParams({ url: targetUrl, feedUrl, threadPage: '1' });
+                        if (prefetch) params.set('prefetch', '1');
+                        const res = await fetch('/api/article-content?' + params.toString());
+                        const data = await res.json();
+                        if (!res.ok || data.error || !data.content) throw new Error(data.error || 'Trang không tồn tại hoặc lỗi tải');
+                        this.articleContentCache.set(targetUrl, data);
+                        if (this.articleContentCache.size > 60) this.articleContentCache.delete(this.articleContentCache.keys().next().value);
+                        return data;
+                    })();
+                    this.threadPageRequests.set(targetUrl, request);
+                    request.finally(() => this.threadPageRequests.delete(targetUrl)).catch(() => {});
+                    return request;
+                },
+
+                async prefetchThreadPages(pagination, feedUrl = '') {
+                    const requestId = this.overlayRequestId;
+                    let nextUrl = pagination?.nextUrl;
+                    // Read ahead directly instead of waiting behind the article queue.
+                    // A click joins this same promise, including while the fetch is running.
+                    for (let depth = 0; depth < 2 && nextUrl; depth++) {
+                        if (!this.articleOverlayOpen || this.overlayRequestId !== requestId) return;
+                        try {
+                            const data = await this.fetchThreadPage(nextUrl, feedUrl, true);
+                            nextUrl = data.pagination?.nextUrl;
+                        } catch { return; }
+                    }
+                },
+
                 async navigateToThreadPage(targetUrl, isResume = false) {
                     if (!targetUrl || this.isLoadingOverlay) return;
                     const requestId = 'thread-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
@@ -2618,20 +2717,8 @@
                         this.overlayArticle.link = targetUrl;
                     }
                     try {
-                        const cached = this.articleContentCache ? this.articleContentCache.get(targetUrl) : null;
-                        if (cached) {
-                            if (!this.articleOverlayOpen || this.overlayRequestId !== requestId) return;
-                            this.applyOverlayArticleData(cached, this.overlayArticle);
-                            return;
-                        }
-                        const params = new URLSearchParams({
-                            url: targetUrl,
-                            feedUrl: this.overlayArticle?.feedUrl || ''
-                        });
-                        const res = await fetch('/api/article-content?' + params.toString());
-                        const data = await res.json();
+                        const data = await this.fetchThreadPage(targetUrl, this.overlayArticle?.feedUrl || '');
                         if (!this.articleOverlayOpen || this.overlayRequestId !== requestId) return;
-                        if (!res.ok || data.error) throw new Error(data.error || 'Trang không tồn tại hoặc lỗi tải');
                         this.applyOverlayArticleData(data, this.overlayArticle);
                     } catch (e) {
                         if (this.overlayRequestId === requestId) this.overlayError = e.message;
@@ -2924,18 +3011,20 @@
 
                 cancelArticlePdf(options = {}) {
                     const silent = options?.silent === true;
-                    if (this.articlePdfAbortController) this.articlePdfAbortController.abort();
+                    const controller = this.articlePdfAbortController;
+                    if (controller) {
+                        controller.cancelServerJob = !silent;
+                        controller.abort();
+                    }
+                    if (!silent && this.articlePdfJobId) {
+                        fetch('/api/article-pdf/' + this.articlePdfJobId, { method: 'DELETE' }).catch(() => {});
+                    }
                     this.articlePdfAbortController = null;
-                    if (this.articlePdfWindow && !this.articlePdfWindow.closed) this.articlePdfWindow.close();
-                    this.articlePdfWindow = null;
+                    this.articlePdfJobId = null;
                     if (this.articlePdfResetTimer) clearTimeout(this.articlePdfResetTimer);
                     this.articlePdfResetTimer = null;
                     this.articlePdfState = 'idle';
-                    this.articlePdfProgress = {
-                        current: 0,
-                        total: 0,
-                        message: silent ? '' : 'PDF preparation cancelled.'
-                    };
+                    this.articlePdfProgress = { current: 0, total: 0, message: silent ? '' : 'PDF generation paused. Download again to resume.' };
                 },
 
                 vozPdfPageUrl(baseUrl, page) {
@@ -2994,7 +3083,7 @@
                     const seenPosts = new Set();
                     const failedPages = [];
 
-                    for (let page = 1; page <= totalPages && page <= 250; page++) {
+                    for (let page = 1; page <= totalPages; page++) {
                         if (signal.aborted) throw new DOMException('PDF preparation cancelled.', 'AbortError');
                         this.articlePdfProgress = {
                             current: page - 1,
@@ -3157,62 +3246,58 @@
                 },
 
                 async saveArticleAsPdf() {
-                    if (this.articlePdfState === 'preparing') {
-                        this.cancelArticlePdf();
-                        return;
-                    }
+                    if (this.articlePdfState === 'preparing') { this.cancelArticlePdf(); return; }
                     if (!this.overlayArticle || !this.overlayContent) return;
-
-                    const printWindow = window.open('', '_blank');
-                    if (!printWindow) {
-                        this.articlePdfState = 'error';
-                        this.articlePdfProgress = { current: 0, total: 0, message: 'Allow pop-ups to open the Save as PDF dialog.' };
-                        return;
-                    }
-                    printWindow.document.write('<!doctype html><title>Preparing PDF…</title><p style="font:16px system-ui;padding:24px">Preparing article for PDF…</p>');
-                    printWindow.document.close();
-
                     const controller = new AbortController();
                     this.articlePdfAbortController = controller;
-                    this.articlePdfWindow = printWindow;
+                    this.articlePdfJobId = null;
                     this.articlePdfState = 'preparing';
-                    this.articlePdfProgress = { current: 0, total: 1, message: 'Preparing article for PDF…' };
-
+                    this.articlePdfProgress = { current: 0, total: 0, message: 'Preparing PDF on the server. You can close the reader and return later.' };
                     try {
-                        const content = this.isVozArticle(this.overlayArticle)
-                            ? await this.collectVozThreadForPdf(controller.signal)
-                            : this.overlayContent;
-                        if (controller.signal.aborted) throw new DOMException('PDF preparation cancelled.', 'AbortError');
-                        const payload = this.buildArticlePrintPayload(content);
-                        if (!payload) throw new Error('The article content could not be prepared.');
-
-                        const html = this.articlePrintDocument(payload);
-                        printWindow.document.open();
-                        printWindow.document.write(html);
-                        printWindow.document.close();
-                        await this.waitForArticlePrintAssets(printWindow);
-                        if (controller.signal.aborted) throw new DOMException('PDF preparation cancelled.', 'AbortError');
-                        this.articlePdfState = 'ready';
-                        this.articlePdfProgress = {
-                            current: this.articlePdfProgress.total || 1,
-                            total: this.articlePdfProgress.total || 1,
-                            message: 'Ready — choose “Save as PDF” in the print dialog.'
-                        };
-                        printWindow.focus();
-                        printWindow.print();
-                        this.articlePdfAbortController = null;
-                        this.articlePdfWindow = null;
-                        this.articlePdfResetTimer = setTimeout(() => {
-                            this.articlePdfState = 'idle';
-                            this.articlePdfProgress = { current: 0, total: 0, message: '' };
-                        }, 3_000);
+                        const response = await fetch('/api/article-pdf', {
+                            method: 'POST', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                url: this.isVozArticle(this.overlayArticle) ? this.vozPdfBaseUrl() : this.articleReaderUrl(this.overlayArticle),
+                                title: this.overlayArticle.overlayTitle || this.overlayArticle.title || '',
+                                feedUrl: this.overlayArticle.feedUrl || '',
+                                totalPages: Math.max(1, Number(this.overlayPagination?.currentPage || 1), ...(this.overlayPagination?.pages || []).map(p => Number(p.page) || 1))
+                            })
+                        });
+                        let job = await response.json();
+                        if (!response.ok || job.error) throw new Error(job.error || 'Could not start PDF generation.');
+                        if (controller.signal.aborted) {
+                            if (controller.cancelServerJob) await fetch('/api/article-pdf/' + job.id, { method: 'DELETE' });
+                            return;
+                        }
+                        this.articlePdfJobId = job.id;
+                        while (!controller.signal.aborted) {
+                            this.articlePdfProgress = { current: job.current || 0, total: job.total || 0, message: job.message || 'Preparing PDF on the server…' };
+                            if (job.status === 'ready' && job.downloadUrl) {
+                                const link = document.createElement('a');
+                                link.href = job.downloadUrl;
+                                link.download = '';
+                                document.body.appendChild(link); link.click(); link.remove();
+                                this.articlePdfState = 'ready';
+                                this.articlePdfProgress.message = 'Complete PDF saved on the server. Download started.';
+                                return;
+                            }
+                            if (['error', 'cancelled', 'expired'].includes(job.status)) throw new Error(job.error || job.message || 'PDF generation stopped.');
+                            await new Promise(resolve => {
+                                const done = () => { clearTimeout(timer); controller.signal.removeEventListener('abort', done); resolve(); };
+                                const timer = setTimeout(done, 2000);
+                                controller.signal.addEventListener('abort', done, { once: true });
+                            });
+                            if (controller.signal.aborted) return;
+                            const status = await fetch('/api/article-pdf/' + job.id, { signal: controller.signal });
+                            job = await status.json();
+                            if (!status.ok) throw new Error(job.error || 'Could not check PDF progress.');
+                        }
                     } catch (error) {
-                        if (error?.name === 'AbortError') return;
-                        if (printWindow && !printWindow.closed) printWindow.close();
-                        this.articlePdfAbortController = null;
-                        this.articlePdfWindow = null;
+                        if (controller.signal.aborted) return;
                         this.articlePdfState = 'error';
-                        this.articlePdfProgress = { current: 0, total: 0, message: error.message || 'Could not prepare the PDF.' };
+                        this.articlePdfProgress = { current: 0, total: 0, message: error.message || 'Could not generate the PDF. Download again to retry.' };
+                    } finally {
+                        if (this.articlePdfAbortController === controller) this.articlePdfAbortController = null;
                     }
                 },
 
@@ -3435,6 +3520,21 @@
                         ? articleOrUrl
                         : (articleOrUrl?.resolvedLink || articleOrUrl?.link || articleOrUrl?.originalLink || '');
                     return this.normalizeArticleSourceUrl(raw);
+                },
+
+                articleSourceUrl(article) {
+                    const raw = this.articleReaderUrl(article);
+                    if (this.selectedFilterType === 'board' || this.isOnBoard(article)) {
+                        try {
+                            const url = new URL(raw);
+                            if (url.hostname === 'voz.vn' && /^\/t\/(?:[^/]*\.)?\d+(?:\/|$)/i.test(url.pathname)) {
+                                url.pathname = url.pathname.replace(/\/(?:unread|latest|page-\d+|post-\d+)\/?$/i, '').replace(/\/+$/, '') + '/unread';
+                                url.search = ''; url.hash = '';
+                                return url.href;
+                            }
+                        } catch {}
+                    }
+                    return raw;
                 },
 
                 isGoogleNewsArticleUrl(value) {
@@ -3810,8 +3910,10 @@
                     if (options.updateHistory !== false) this.updateArticleRoute(article);
                     const requestId = 'article-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
                     let targetUrl = this.articleReaderUrl(article);
+                    let resumePage = null;
+                    const hasExplicitPage = /\/page-\d+(?:[/?#]|$)/i.test(targetUrl);
                     const isVoz = targetUrl.includes('voz.vn') || article.siteName === 'VOZ';
-                    if (isVoz) {
+                    if (isVoz && !/\/(?:page|post)-\d+(?:[/?#]|$)/i.test(targetUrl)) {
                         const threadMatch = targetUrl.match(/threads\/[^\/.]+\.(\d+)/i) || targetUrl.match(/\b(\d{5,8})\b/);
                         const threadId = threadMatch ? threadMatch[1] : targetUrl;
                         const prefKey = 'voz_last_read_post_' + threadId;
@@ -3825,6 +3927,7 @@
                                     const parsed = JSON.parse(lastReadRaw);
                                     lastRead = parsed.index;
                                     lastReadAbsId = parsed.absId;
+                                    resumePage = Number(parsed.page) || Math.ceil(Number(parsed.index) / 20);
                                 } catch(e) {}
                             } else {
                                 lastRead = lastReadRaw;
@@ -3845,8 +3948,8 @@
                     this.stopArticleSpeech();
                     this.articleOverlayOpen = true;
                     this.isLoadingOverlay = true;
-                    this.vozInitialThreadLoad = true;
-                    this.vozResumePending = true;
+                    this.vozInitialThreadLoad = !hasExplicitPage;
+                    this.vozResumePending = this.vozInitialThreadLoad;
                     this.overlayContent = null;
                     this.overlayPagination = null;
                     this.overlayError = null;
@@ -3948,6 +4051,8 @@
                             feedUrl: article.feedUrl || '',
                             feedIcon: article.feedIcon || ''
                         });
+                        if (isVoz) params.set('threadPage', '1');
+                        if (resumePage > 0) params.set('resumePage', String(resumePage));
                         if (prefetchTargets.length > 0) {
                             params.set('prefetchTargets', JSON.stringify(prefetchTargets));
                         }

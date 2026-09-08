@@ -231,7 +231,7 @@ test('Board folder click shows pending state, ignores duplicate clicks and close
     app.cacheRequest=()=>{calls++;return new Promise(r=>finish=r)};
     app.loadCacheState=()=>{throw Error('Save must not wait for another request')};
     const save=app.assignBoardFolder('cache');
-    assert.equal(app.boardSavePending,true);assert.equal(app.boardSavingFolder,'cache');assert.equal(app.cacheNotice,'Saving…');
+    assert.equal(app.boardSavePending,true);assert.equal(app.boardSavingFolder,'cache');assert.equal(app.cacheNotice,'');
     await app.assignBoardFolder('cache');assert.equal(calls,1);
     const member={thread_id:'voz.vn:thread:123',in_cache:true,active_caching:true};
     finish({boardStates:[app.boardModalArticle.link],userPreferences:{},cacheMember:member});await save;
@@ -242,4 +242,197 @@ test('failed Board save stays open with an error and permits a retry',async()=>{
     const {app}=createReaderApp();app.boardModalArticle={link:'https://voz.vn/t/example.123'};app.boardModalOpen=true;
     app.cacheRequest=async()=>{throw Error('Request failed')};await app.assignBoardFolder('cache');
     assert.equal(app.boardModalOpen,true);assert.equal(app.boardSavePending,false);assert.equal(app.cacheNotice,'Request failed');
+});
+
+test('Board removal and folder selection recognize unread, post, and renamed thread URLs',()=>{
+    const {app}=createReaderApp();app.boardStates=['https://voz.vn/t/original.1276725/unread'];
+    app.userPreferences.boardFolderMappings={[app.boardStates[0]]:'cache'};
+    const article={link:'https://voz.vn/t/renamed.1276725/post-43600000'};
+    assert.equal(app.isOnBoard(article),true);assert.equal(app.boardFolderFor(article),'cache');
+    app.boardStates=[];assert.equal(app.isOnBoard(article),false);
+    assert.equal(app.isOnBoard(null),false);
+});
+
+test('Board uses the header selector without a second folder toolbar',()=>{
+    const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
+    assert.doesNotMatch(html,/class="cache-glass board-tools"|aria-label="Board folders"/);
+    assert.match(html,/x-show="isOnBoard\(boardModalArticle\)"/);
+    assert.match(html,/class="cache-settings-button"/);
+});
+
+test('Board source links jump to VOZ unread without changing reader pagination', () => {
+    const { app } = createReaderApp('#board');
+    app.selectedFilterType = 'board';
+    const base = 'https://voz.vn/t/example.1273480';
+    for (const suffix of ['', '/', '/unread', '/page-3#post-123', '/post-123']) {
+        const article = { link: base, resolvedLink: base + suffix };
+        assert.equal(app.articleSourceUrl(article), base + '/unread');
+        assert.equal(app.articleReaderUrl(article), base + suffix);
+    }
+    assert.equal(app.articleSourceUrl({ link: 'https://example.com/news' }), 'https://example.com/news');
+    app.selectedFilterType = 'category';
+    assert.equal(app.articleSourceUrl({ link: base + '/page-3' }), base + '/page-3');
+    app.boardStates = [base];
+    assert.equal(app.articleSourceUrl({ link: base + '/page-3' }), base + '/unread');
+});
+
+test('removing a Board thread updates only that thread through the folder endpoint', async () => {
+    const { app } = createReaderApp('#board');
+    const url = 'https://voz.vn/t/example.123';
+    app.boardStates = [url];
+    app.userPreferences = { boardFolderMappings: { [url]: 'cache' } };
+    const calls = [];
+    app.cacheRequest = async (endpoint, options) => {
+        calls.push({ endpoint, body: JSON.parse(options.body) });
+        return { boardStates: [], userPreferences: { boardFolderMappings: {} }, cacheMember: { thread_id: 'voz.vn:thread:123', in_cache: false } };
+    };
+    app.saveState = () => {};
+    await app.toggleState('boardStates', url + '/unread');
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].endpoint, '/api/board-cache/folder');
+    assert.equal(calls[0].body.folder, null);
+    assert.equal(app.boardStates.length, 0);
+    assert.equal(app.cacheMembers['voz.vn:thread:123'].in_cache, false);
+});
+
+test('successful Board removal uses one compact request and preserves the loaded list state', async () => {
+    const { app, document } = createReaderApp('#board/cache');
+    const article = { link: 'https://voz.vn/t/example.123/unread', title: 'Example' };
+    const before = { link: 'https://example.com/before' }, after = { link: 'https://example.com/after' };
+    app.articles = [before, article, after]; app.boardStates = [article.link];
+    app.selectedFilterType = 'board'; app.selectedFilterValue = 'cache';
+    app.currentPage = 4; app.hasMore = true; app.sortBy = 'oldest';
+    app.boardModalArticle = article; app.boardModalOpen = true;
+    const container = { scrollTop: 812 }; document.getElementById = () => container;
+    app.$nextTick = callback => callback();
+    app.fetchData = () => { throw Error('Removal must not refetch'); };
+    let finish, calls = 0;
+    app.cacheRequest = (url, options) => {
+        calls++; assert.equal(JSON.parse(options.body).compact, true);
+        return new Promise(resolve => { finish = resolve; });
+    };
+    const removal = app.removeArticleFromBoard();
+    assert.equal(app.boardSavePending, true); assert.equal(app.boardSavingFolder, null);
+    assert.equal(app.cacheNotice, ''); assert.equal(app.articles.length, 3);
+    await app.removeArticleFromBoard(); assert.equal(calls, 1);
+    finish({ thread_id: 'voz.vn:thread:123', url: article.link, folder: null, cacheMember: { thread_id: 'voz.vn:thread:123', in_cache: false } });
+    await removal;
+    assert.equal(app.articles.length, 2); assert.equal(app.articles[0], before); assert.equal(app.articles[1], after);
+    assert.equal(container.scrollTop, 812); assert.equal(app.currentPage, 4); assert.equal(app.hasMore, true);
+    assert.equal(app.sortBy, 'oldest'); assert.equal(app.selectedFilterValue, 'cache');
+    assert.equal(app.boardStates.length, 0); assert.equal(app.boardModalOpen, false);
+});
+
+test('folder moves update only local membership and remove a row only from a mismatched Board folder', async () => {
+    const { app } = createReaderApp(); const article = { link: 'https://example.org/a' };
+    app.boardStates = [article.link]; app.articles = [article];
+    app.userPreferences = { theme: 'light', boardFolderMappings: { [article.link]: 'old', 'https://example.org/b': 'other' } };
+    app.selectedFilterType = 'board'; app.selectedFilterValue = '';
+    app.applyBoardFolderResult({ thread_id: article.link, url: article.link }, article, 'new');
+    assert.equal(app.articles[0], article); assert.equal(app.userPreferences.theme, 'light');
+    assert.equal(app.userPreferences.boardFolderMappings['https://example.org/b'], 'other');
+    app.selectedFilterValue = 'new';
+    app.applyBoardFolderResult({ thread_id: article.link, url: article.link }, article, 'other');
+    assert.equal(app.articles.length, 0);
+});
+
+test('an older Cache status response cannot refetch the list after a Board mutation', async () => {
+    const { app } = createReaderApp(); app.isLoggedIn = true; app.selectedFilterType = 'board';
+    let finish; app.cacheRequest = () => new Promise(resolve => { finish = resolve; });
+    app.fetchData = () => { throw Error('Stale poll must not refresh the list'); };
+    const poll = app.loadCacheState(); app.boardMutationVersion++;
+    finish({ members: { other: { in_cache: true } }, rules: [] }); await poll;
+    assert.equal(Object.keys(app.cacheMembers).length, 0);
+});
+
+test('removing an earlier row preserves surrounding card DOM keys, including duplicate links', () => {
+    const { app } = createReaderApp();
+    const a = { link: 'https://example.org/a' }, b = { link: 'https://example.org/b' }, duplicate = { ...b };
+    const keys = [a, b, duplicate].map((article, index) => app.articleRowKey(article, index));
+    assert.equal(app.articleRowKey(b, 0), keys[1]);
+    assert.equal(app.articleRowKey(duplicate, 1), keys[2]);
+    assert.notEqual(keys[1], keys[2]);
+});
+
+test('visible cache status uses last successful sync, including while a later sync is delayed', () => {
+    const { app } = createReaderApp(); const article = { link: 'https://voz.vn/t/example.123' };
+    app.formatVietnamDateTime = value => value;
+    app.cacheMembers = { 'voz.vn:thread:123': { in_cache: true, sync_status: 'incomplete', last_successful_sync_at: '2026-09-08T13:09:04Z' } };
+    assert.equal(app.cacheLastSuccessText(article), 'Last cached successfully: 2026-09-08T13:09:04Z');
+    app.cacheMembers['voz.vn:thread:123'].last_successful_sync_at = null;
+    assert.equal(app.cacheLastSuccessText(article), 'Waiting for first successful cache');
+});
+
+test('VOZ resume sends the saved page as a hint while retaining the permanent post URL', async () => {
+    const { app, context } = createReaderApp();
+    const requested = [];
+    context.fetch = async value => {
+        requested.push(new URL(value, 'http://localhost'));
+        return { ok: true, json: async () => ({ content: 'Saved post' }) };
+    };
+    for (const method of ['releaseArticleReaderSession', 'hideTooltip', 'stopArticleSpeech', 'markAsReadExplicit', 'setArticleCopyState', 'prefetchNextAfter', 'applyOverlayArticleData']) app[method] = () => {};
+    app.cacheMember = () => false;
+    app.userPreferences = { voz_last_read_post_123456: JSON.stringify({ index: '82', absId: '999999', page: 4 }) };
+    await app.openArticleOverlay({ link: 'https://voz.vn/t/example.123456/unread' }, { updateHistory: false });
+    const request = requested.find(url => url.pathname === '/api/article-content');
+    assert.equal(request.searchParams.get('url'), 'https://voz.vn/t/example.123456/post-999999');
+    assert.equal(request.searchParams.get('resumePage'), '4');
+});
+
+test('clicking a page already being prefetched shares the request and caches the result', async () => {
+    const { app, context } = createReaderApp();
+    let finish, calls = 0;
+    context.fetch = async value => {
+        assert.equal(new URL(value, 'http://localhost').searchParams.get('feedUrl'), 'https://voz.vn/f/kinh-te.17/index.rss');
+        calls++; return new Promise(resolve => { finish = resolve; });
+    };
+    const url = 'https://voz.vn/t/example.123456/page-6706';
+    const prefetch = app.fetchThreadPage(url, 'https://voz.vn/f/kinh-te.17/index.rss', true);
+    const click = app.fetchThreadPage(url);
+    assert.equal(prefetch, click);
+    assert.equal(calls, 1);
+    finish({ ok: true, json: async () => ({ url, content: 'Page 6706' }) });
+    assert.equal((await click).content, 'Page 6706');
+    assert.equal((await app.fetchThreadPage(url)).content, 'Page 6706');
+    assert.equal(calls, 1);
+});
+
+test('failed thread prefetch can be retried and does not poison the cache', async () => {
+    const { app, context } = createReaderApp();
+    let calls = 0;
+    context.fetch = async () => ({ ok: ++calls > 1, json: async () => calls > 1 ? { content: 'Ready' } : { error: 'Temporary failure' } });
+    await assert.rejects(app.fetchThreadPage('https://voz.vn/t/example.123456/page-2'), /Temporary failure/);
+    assert.equal((await app.fetchThreadPage('https://voz.vn/t/example.123456/page-2')).content, 'Ready');
+    assert.equal(calls, 2);
+});
+
+test('explicit thread page links take precedence over the saved reading position', async () => {
+    const { app, context } = createReaderApp();
+    const requests = [];
+    context.fetch = async value => { requests.push(new URL(value, 'http://localhost')); return { ok: true, json: async () => ({ content: 'Requested page' }) }; };
+    for (const method of ['releaseArticleReaderSession', 'hideTooltip', 'stopArticleSpeech', 'markAsReadExplicit', 'setArticleCopyState', 'prefetchNextAfter', 'applyOverlayArticleData']) app[method] = () => {};
+    app.cacheMember = () => false;
+    app.userPreferences = { voz_last_read_post_123456: JSON.stringify({ index: '82', absId: '999999', page: 4 }) };
+    const url = 'https://voz.vn/t/example.123456/page-6786';
+    await app.openArticleOverlay({ link: url }, { updateHistory: false });
+    assert.equal(requests.find(r => r.pathname === '/api/article-content').searchParams.get('url'), url);
+    assert.equal(app.vozInitialThreadLoad, false);
+});
+
+test('thread read-ahead fetches just the next two pages independently of the article queue', async () => {
+    const { app, context } = createReaderApp();
+    const urls = [];
+    app.articleOverlayOpen = true;
+    app.overlayRequestId = 'current';
+    app.isProcessingPrefetch = true;
+    app.prefetchQueue = [{ link: 'https://unrelated.example/article' }];
+    context.fetch = async value => {
+        const url = new URL(value, 'http://localhost').searchParams.get('url');
+        urls.push(url);
+        const page = Number(url.match(/page-(\d+)/)[1]);
+        return { ok: true, json: async () => ({ url, content: 'Page ' + page, pagination: { nextUrl: url.replace(/page-\d+/, 'page-' + (page + 1)) } }) };
+    };
+    await app.prefetchThreadPages({ nextUrl: 'https://voz.vn/t/example.123456/page-6706' });
+    assert.deepEqual(urls, ['https://voz.vn/t/example.123456/page-6706', 'https://voz.vn/t/example.123456/page-6707']);
+    assert.equal(app.prefetchQueue.length, 1);
 });

@@ -115,3 +115,32 @@ test('startup retains the immediate RSS phase, exact stagger delays, intervals, 
     assert.deepEqual(calls, ['cache', 'rss', 'smart', 'prefetch', 'summary']);
     await Promise.resolve();
 });
+
+test('lightweight Board state is durable and cannot replay over a newer full snapshot', async () => {
+    const previousDirectory = process.cwd();
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'rss-state-'));
+    process.chdir(directory);
+    try {
+        const initial = JSON.stringify({ articles: '[]', feeds: '[]' });
+        await fs.writeFile('database.json', initial);
+        const db = createDatabaseStore().env.RSS_DATA;
+        await db.putMany({ boardStates: '["https://example.org/a"]', userPreferences: '{"theme":"light"}' }, { lightweight: true });
+        assert.equal(await fs.readFile('database.json', 'utf8'), initial, 'small save must not rewrite the main database');
+        const staleOverlay = await fs.readFile('database-state.json', 'utf8');
+        const restarted = createDatabaseStore().env.RSS_DATA;
+        assert.deepEqual(await restarted.get('boardStates', { type: 'json' }), ['https://example.org/a']);
+        assert.equal((await restarted.get('userPreferences', { type: 'json' })).theme, 'light');
+        await restarted.put('userPreferences', '{"theme":"dark"}');
+        await fs.writeFile('database-state.json', staleOverlay); // Crash after snapshot rename, before overlay cleanup.
+        const recovered = createDatabaseStore().env.RSS_DATA;
+        assert.equal((await recovered.get('userPreferences', { type: 'json' })).theme, 'dark');
+        await recovered.putMany({ boardStates: '[]' }, { lightweight: true });
+        const again = createDatabaseStore().env.RSS_DATA;
+        assert.deepEqual(await again.get('boardStates', { type: 'json' }), []);
+        assert.equal((await again.get('userPreferences', { type: 'json' })).theme, 'dark');
+        // A failed atomic write must leave the last acknowledged state intact.
+        await fs.unlink('database-state.json'); await fs.mkdir('database-state.json');
+        await assert.rejects(again.putMany({ boardStates: '["bad"]' }, { lightweight: true }));
+        assert.deepEqual(await again.get('boardStates', { type: 'json' }), []);
+    } finally { process.chdir(previousDirectory); await fs.rm(directory, { recursive: true, force: true }); }
+});

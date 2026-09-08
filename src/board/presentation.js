@@ -17,27 +17,31 @@ export function archivePage(record, requestedUrl = record.url) {
         prevUrl: index > 0 ? pageUrl(pageNumbers[index - 1]) : null, nextUrl: index < pageNumbers.length - 1 ? pageUrl(pageNumbers[index + 1]) : null },
         record: { ...record, posts: Object.fromEntries(Object.entries(record.posts).filter(([,p]) => (Number(p.current_page) || 1) === currentPage)), legacy_snapshots: (record.legacy_snapshots || []).filter(s => pageOf(s.url) === currentPage) } };
 }
-function displayContent(content, url) {
+function displayContent(content, url, sanitize = true) {
     // Publisher collapse controls need XenForo scripts; show their full contents in the reader.
     const normalized = normalizeArticleMediaMarkup(styleVozQuotes(content), url).replace(/<div[^>]*class=["'][^"']*bbCodeBlock-expandLink[^"']*["'][^>]*>[\s\S]*?<\/div>/gi, '');
-    return sanitizePostMarkup(normalized);
+    return sanitize ? sanitizePostMarkup(normalized) : normalized;
 }
 export function renderArchive(record) {
     const legacyPosts = new Map();
-    for (const snapshot of [...(record.legacy_snapshots || [])].sort((a,b) => String(a.captured_at).localeCompare(String(b.captured_at)))) {
+    const posts = Object.values(record.posts).sort((a, b) => (a.current_page - b.current_page) || (a.current_position - b.current_position));
+    // Modern posts already retain presentation metadata. Only parse old HTML
+    // when it can actually supply a missing field.
+    const needsLegacy = posts.some(post => post.reaction_html == null || !post.author_avatar || !post.author_rank || !(post.source_created_at || post.created_at));
+    for (const snapshot of [...(needsLegacy ? record.legacy_snapshots || [] : [])].sort((a,b) => String(a.captured_at).localeCompare(String(b.captured_at)))) {
         for (const post of extractLegacyPosts(snapshot.content, snapshot.url || record.url)) legacyPosts.set(post.post_id, post);
     }
-    const posts = Object.values(record.posts).sort((a, b) => (a.current_page - b.current_page) || (a.current_position - b.current_position));
     const current = posts.map(post => {
         const legacy = legacyPosts.get(post.post_id);
-        const versions = meaningfulVersions(post, record.url);
+        const versions = post.versions?.length > 1 ? meaningfulVersions(post, record.url) : post.versions || [];
         return renderVozPost({...post,
             author_avatar:post.author_avatar || legacy?.author_avatar,
             author_rank:post.author_rank || legacy?.author_rank,
             source_created_at:post.source_created_at || post.created_at || legacy?.created_at,
             unavailable:post.is_removed || record.sync_status === 'incomplete'
         }, {
-            body:displayContent(post.display_content || post.current_content, record.url),
+            // renderVozPost sanitizes the complete post, including this body.
+            body:displayContent(post.display_content || post.current_content, record.url, false),
             reactions:post.reaction_html ?? legacy?.reaction_html ?? '',
             annotations:post.is_removed ? `<div class="cache-removed">Removed from source · Last seen ${escapeText(post.last_seen_at)} · Removed ${escapeText(post.removed_at)}</div>` : '',
             history:versions.length > 1 ? `<button class="cache-history-button" data-cache-history="${escapeText(post.post_id)}">View change history · ${versions.length} versions</button>` : ''

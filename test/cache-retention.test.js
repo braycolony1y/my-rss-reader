@@ -1,0 +1,31 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { createArticleCache } from '../src/articles/cache.js';
+
+test('retention is 14 days and deleted/departed deadlines override Saved/Board protection', async t => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'rss-retention-'));
+    const previous = process.cwd(); process.chdir(directory);
+    t.after(async () => { process.chdir(previous); await fs.rm(directory, { recursive: true, force: true }); });
+    await fs.mkdir('article_cache');
+    const url = 'https://voz.vn/t/example.123456';
+    for (const [page, cachedAt] of [[1, 1000], [2, 2000]]) await fs.writeFile(`article_cache/page${page}.json`, JSON.stringify({ version: 55, cachedAt, url: page === 1 ? url : url + '/page-2', result: {} }));
+    const states = { savedStates: [], boardStates: [] };
+    const cache = createArticleCache({ env: { RSS_DATA: { get: async key => states[key] } } });
+    assert.deepEqual(await cache.getArticleRetention(url, 500), { protected: false, expiresAt: 2000 + 14 * 86400000 });
+    states.savedStates = [url + '/unread'];
+    assert.equal((await cache.getArticleRetention(url)).protected, true);
+    states.savedStates = []; states.boardStates = [url + '/page-2'];
+    assert.equal((await cache.getArticleRetention(url)).protected, true);
+    states.boardStates = [];
+    await fs.writeFile('article_cache/deleted.json', JSON.stringify({ version: 55, cachedAt: 3000, url, result: { sourceDeleted: true } }));
+    const reloaded = createArticleCache({ env: { RSS_DATA: { get: async key => states[key] } } });
+    states.savedStates = [url];
+    assert.deepEqual(await reloaded.getArticleRetention(url), { protected: false, expiresAt: 3000 + 14 * 86400000 });
+    await reloaded.cleanupArticleCache();
+    assert.deepEqual(await fs.readdir('article_cache'), []);
+    states.cacheMembers = { 'voz.vn:thread:123456': { in_cache: false, left_cache_at: '2026-09-08T00:00:00Z' } };
+    assert.deepEqual(await reloaded.getArticleRetention(url), { protected: false, expiresAt: Date.parse('2026-09-22T00:00:00Z') });
+});

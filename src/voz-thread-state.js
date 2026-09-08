@@ -104,3 +104,21 @@ export function isUnsafeVozThreadPayload(url, payload) {
     return isDeletedVozThreadPayload(url, payload)
         || VOZ_ERROR_TITLE_PATTERN.test(String(text));
 }
+
+// A page hint is only a shortcut: the permanent post ID must be present before
+// it can replace a publisher post redirect (positions can change after edits).
+export async function getCachedVozResumePage(url, pageHint, getCachedArticle) {
+    if (!isVozThreadUrl(url)) return null;
+    const parsed = new URL(url);
+    const postId = parsed.pathname.match(/\/post-(\d+)\/?$/)?.[1];
+    const page = Number(pageHint);
+    if (!postId || !Number.isSafeInteger(page) || page < 1) return null;
+    parsed.pathname = parsed.pathname.replace(/\/post-\d+\/?$/, page > 1 ? `/page-${page}` : '');
+    parsed.search = '';
+    parsed.hash = '';
+    const pageUrl = parsed.href;
+    const cached = await getCachedArticle(pageUrl);
+    if (!cached?.content || isUnsafeVozThreadPayload(pageUrl, cached)) return null;
+    if (!new RegExp(`data-absolute-post-id=["']${postId}["']`).test(cached.content)) return null;
+    return { url: pageUrl, cached };
+}

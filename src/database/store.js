@@ -8,6 +8,11 @@ export function createDatabaseStore() {
     const DB_FILE = './database.json';
 
     const SMART_DB_FILE = './smart-data.json';
+    const STATE_FILE = './database-state.json';
+    const STATE_KEYS = new Set(['boardStates', 'userPreferences', 'cacheMembers', 'cacheIdentityLedger']);
+    let stateRevision = 0;
+    let stateOverlay = {};
+
 
     const SMART_KEYS = new Set(['smartClusters', 'smartRawArticles', 'smartCandidateLinks', 'smartCandidateSignature', 'smartAiConfig', 'smartClusterVersion', 'smartStatus']);
 
@@ -226,6 +231,19 @@ export function createDatabaseStore() {
                 mainSnapshot.googleNewsUrlCache = JSON.stringify(Object.fromEntries(Object.entries(cache).filter(([, entry]) => entry.individuallyDecoded === true)));
             } catch { }
         }
+        // Recover acknowledged lightweight state writes after a restart. The
+        // revision prevents an old overlay replaying over a newer full snapshot.
+        stateRevision = Number(mainSnapshot.__stateRevision) || 0;
+        try {
+            const overlay = JSON.parse(await fs.readFile(STATE_FILE, 'utf8'));
+            if (!Number.isSafeInteger(overlay.revision) || !overlay.values ||
+                Object.keys(overlay.values).some(key => !STATE_KEYS.has(key))) throw new Error('Invalid state overlay');
+            if (overlay.revision > stateRevision) {
+                stateOverlay = overlay.values;
+                stateRevision = overlay.revision;
+                Object.assign(mainSnapshot, stateOverlay);
+            }
+        } catch (error) { if (error.code !== 'ENOENT') throw error; }
         return mainSnapshot;
     }
 
@@ -243,10 +261,19 @@ export function createDatabaseStore() {
         }
     }
 
-    async function _persistToDisk(data, previousData, updatedKeys = null) {
+    async function _persistToDisk(data, previousData, updatedKeys = null, options = {}) {
         const changedKeys = Array.isArray(updatedKeys)
             ? updatedKeys
             : (updatedKeys ? [updatedKeys] : []);
+        if (options.lightweight && changedKeys.length && changedKeys.every(key => STATE_KEYS.has(key))) {
+            const values = { ...stateOverlay };
+            for (const key of changedKeys) values[key] = data[key];
+            const revision = stateRevision + 1;
+            await _writeJsonAtomic(STATE_FILE, { revision, values });
+            stateOverlay = values;
+            stateRevision = revision;
+            return;
+        }
         const smartChanged = changedKeys.some(key => SMART_KEYS.has(key));
         const mainChanged = changedKeys.length === 0 || changedKeys.some(key => !SMART_KEYS.has(key));
 
@@ -267,12 +294,14 @@ export function createDatabaseStore() {
         const mainData = {};
         for (const k in data) if (!SMART_KEYS.has(k) && !NON_PERSISTED_DB_KEYS.has(k) && data[k] !== undefined) mainData[k] = data[k];
 
+        mainData.__stateRevision = stateRevision;
         const validation = _validateDatabaseSnapshot(mainData, true);
         if (!validation.ok) throw new Error(`Refusing unsafe database write: ${validation.reason}`);
 
         if (previousData) {
             const prevMainData = {};
             for (const k in previousData) if (!SMART_KEYS.has(k) && !NON_PERSISTED_DB_KEYS.has(k) && previousData[k] !== undefined) prevMainData[k] = previousData[k];
+            prevMainData.__stateRevision = stateRevision;
             if (_validateDatabaseSnapshot(prevMainData, true).ok) {
                 await _writeJsonAtomic(DB_FILE + '.backup', prevMainData);
                 await _createRecoverySnapshot(prevMainData).catch(error => {
@@ -281,6 +310,10 @@ export function createDatabaseStore() {
             }
         }
         await _writeJsonAtomic(DB_FILE, mainData);
+        // The full snapshot now contains all overlay values. A crash before
+        // unlink is safe because readers compare revisions before replaying.
+        stateOverlay = {};
+        await fs.unlink(STATE_FILE).catch(error => { if (error.code !== 'ENOENT') console.warn('[DB STATE]', error.message); });
     }
 
     // Separately backup feeds to a dedicated file for extra safety
@@ -399,7 +432,7 @@ export function createDatabaseStore() {
 
                 _dbCache = next;
                 try {
-                    await _persistToDisk(next, previous, Object.keys(keyValuePairs));
+                    await _persistToDisk(next, previous, Object.keys(keyValuePairs), options);
                 } catch (err) {
                     _dbCache = previous; // rollback on failure
                     throw err;

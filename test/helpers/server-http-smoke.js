@@ -46,6 +46,11 @@ try {
     assert.equal(folderSave.status,200);
     assert.ok(folderSave.data.boardStates.includes(articleUrl));
     assert.equal(folderSave.data.userPreferences.boardFolderMappings[articleUrl],'reading');
+    await request('/api/user-preferences', { method: 'POST', body: { key: 'boardFolderMappings', value: {} } });
+    await request('/api/user-preferences', { method: 'POST', body: { key: 'voz_last_read_post_fixture', value: { postId: '10' } } });
+    const preservedFolder = await request('/api/board-cache/folder', {method:'POST', body:{article,folder:'reading'}});
+    assert.equal(preservedFolder.data.userPreferences.boardFolderMappings[articleUrl], 'reading');
+    assert.equal(preservedFolder.data.userPreferences.voz_last_read_post_fixture.postId, '10');
     await request('/api/board-cache/folder',{method:'POST',body:{article,folder:null}});
 
     assert.equal((await request('/api/data', { authenticated: false })).status, 401);
@@ -114,6 +119,22 @@ try {
     const disk = JSON.parse(await fs.readFile('database.json', 'utf8'));
     assert.equal(JSON.parse(disk.userPreferences).smokePreference, 'persisted');
     assert.ok(JSON.parse(disk.articles).some(item => item.title === 'Fixture article refreshed'));
+    assert.equal((await request('/api/article-pdf', { method: 'POST', body: { url: articleUrl }, authenticated: false })).status, 401);
+    assert.equal((await request('/api/article-pdf', { method: 'POST', body: { url: 'file:///etc/passwd' } })).status, 400);
+    assert.equal((await request('/api/article-pdf/unknown')).status, 404);
+    if (process.env.PDF_SMOKE === '1') {
+        const started = await request('/api/article-pdf', { method: 'POST', body: { url: articleUrl, title: 'Complete fixture PDF', feedUrl } });
+        assert.equal(started.status, 202);
+        await application.pdf.whenIdle();
+        const status = await request('/api/article-pdf/' + started.data.id);
+        assert.equal(status.data.status, 'ready', status.data.error);
+        const file = await realFetch(base + status.data.downloadUrl, { headers: { Cookie: 'auth=true' } });
+        assert.equal(file.status, 200);
+        assert.match(file.headers.get('content-disposition'), /attachment/);
+        assert.equal(Buffer.from(await file.arrayBuffer()).subarray(0, 5).toString(), '%PDF-');
+        assert.equal((await request('/api/article-pdf', { method: 'POST', body: { url: articleUrl } })).data.status, 'ready');
+        console.log('PDF_HTTP_SMOKE_OK');
+    }
     console.log('HTTP_SMOKE_OK: auth, feed/Smart data, saved raw Smart articles, reader, shared cache, filters, worker RSS sync, progress, shared pause state, persistence');
 } finally {
     server.closeAllConnections();

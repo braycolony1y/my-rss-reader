@@ -34,9 +34,7 @@ export function registerSettingsRoutes({
                 }
             }
 
-            let prefs = await env.RSS_DATA.get('userPreferences', { type: 'json' }) || {};
-            prefs[key] = value;
-            await env.RSS_DATA.put('userPreferences', JSON.stringify(prefs));
+            await boardCache.updatePreference(key, value);
             if (key === 'clusteringModel') setClusteringModel(value);
             if (key === 'boardFolderMappings') {
                 await boardCache?.reconcileMembership();

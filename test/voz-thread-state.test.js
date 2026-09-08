@@ -3,6 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
+    getCachedVozResumePage,
     alignVozPaginationToRequestedPage,
     getVozPaginationMaxPage,
     getVozThreadPageNumber,
@@ -163,4 +164,19 @@ test('Cache Board schedules the permanent post archive every minute', () => {
     assert.match(cacheBoardCron, /await boardCache\.tick\(\)/);
     assert.doesNotMatch(cacheBoardCron, /enqueueVozCacheBoardCrawl/);
     // Full-page rescan, edits, deletion safety and pause are exercised in board-cache.test.js.
+});
+
+
+test('resume uses a cached page only when it contains the permanent post ID', async () => {
+    const url = 'https://voz.vn/t/example.123456/post-789';
+    const content = '<div class="voz-post" data-absolute-post-id="789">Saved reply</div>';
+    const calls = [];
+    const cached = { content, pagination: { currentPage: 4 } };
+    const lookup = async url => { calls.push(url); return cached; };
+    assert.deepEqual(await getCachedVozResumePage(url, '4', lookup), { url: 'https://voz.vn/t/example.123456/page-4', cached });
+    assert.deepEqual(calls, ['https://voz.vn/t/example.123456/page-4']);
+    assert.equal(await getCachedVozResumePage(url, 4, async () => ({ content: content.replace('789', '790') })), null);
+    assert.equal(await getCachedVozResumePage(url, 4, async () => null), null);
+    assert.equal(await getCachedVozResumePage(url, -1, lookup), null);
+    assert.equal(await getCachedVozResumePage('https://example.com/t/test/post-789', 4, lookup), null);
 });

@@ -116,3 +116,6 @@ smart-embeddings-worker.json
 # Optional large generated files
 # =========================
 *.pdf
+
+# Durable lightweight Board state (local runtime data)
+database-state.json

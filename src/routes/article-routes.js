@@ -4,7 +4,7 @@ import { isInvalidImage, extractImageFromHtml, normalizeStateUrl } from '../util
 import { normalizeArticleSourceUrl, deletedSourceKind, isDeletedArticlePayload } from '../article-source-state.js';
 import fs from 'fs/promises';
 import path from 'path';
-import { isVozThreadUrl, isUnsafeVozThreadPayload } from '../voz-thread-state.js';
+import { isVozThreadUrl, isUnsafeVozThreadPayload, getCachedVozResumePage } from '../voz-thread-state.js';
 import sourceRegistry from '../sources/index.js';
 import { isGoogleNewsArticleUrl } from '../articles/search-destination.js';
 import { enhanceArticleResultForSource, assertArticleResultAcceptedBySource } from '../articles/source-results.js';
@@ -303,7 +303,9 @@ export function registerArticleRoutes({
             }
 
             if (!bypassCache) {
-                let directCached = await getCachedArticle(requestedUrl);
+                const resume = await getCachedVozResumePage(requestedUrl, req.query.resumePage, getCachedArticle);
+                if (resume) url = resume.url;
+                let directCached = resume?.cached || await getCachedArticle(requestedUrl);
                 if (!directCached && googleNews.googleNewsUrlCache && googleNews.googleNewsUrlCache.has(requestedUrl) && googleNews.googleNewsUrlCache.get(requestedUrl).resolvedUrl) {
                     url = googleNews.googleNewsUrlCache.get(requestedUrl).resolvedUrl;
                     directCached = await getCachedArticle(url);
@@ -357,13 +359,13 @@ export function registerArticleRoutes({
                         { method: 'cache', cached: cachedSourceHasContent }
                     );
                     let prefetchPromise = null;
-                    if (directCached.pagination?.nextUrl && (hostname === 'voz.vn' || hostname.endsWith('.voz.vn'))) {
+                    if (req.query.threadPage !== '1' && req.query.prefetch !== '1' && directCached.pagination?.nextUrl && (hostname === 'voz.vn' || hostname.endsWith('.voz.vn'))) {
                         prefetchPromise = triggerVozNextPagePrefetch(directCached.pagination.nextUrl, 1, effectiveFeedUrl);
                     }
                     if (!cachedSourceIsDeleted && (hostname === 'voz.vn' || hostname.endsWith('.voz.vn'))) {
                         triggerVozCurrentPageBackgroundUpdate(url, directCached, effectiveFeedUrl);
                     }
-                    const prefetchQueue = await triggerNextFiveArticlesPrefetch(url, false, prefetchTargets, prefetchPromise);
+                    const prefetchQueue = (req.query.threadPage === '1' ? [] : await triggerNextFiveArticlesPrefetch(url, false, prefetchTargets, prefetchPromise));
                     return res.json({
                         url,
                         prefetchQueue,
@@ -496,7 +498,7 @@ export function registerArticleRoutes({
                         await recordArticleFetchOutcome(hostname, strategy, true);
                         finishArticleFetchProgress(requestId, 'Article is ready.', { method: strategy });
                         await cacheArticleResult(url, payload);
-                        payload.prefetchQueue = await triggerNextFiveArticlesPrefetch(url, false, prefetchTargets);
+                        payload.prefetchQueue = (req.query.threadPage === '1' ? [] : await triggerNextFiveArticlesPrefetch(url, false, prefetchTargets));
                         return res.json(payload);
                     }
 
@@ -532,11 +534,11 @@ export function registerArticleRoutes({
                         }, { description: requestedDescription });
                         payload = await expandArticleResultForSource(url, payload, { description: requestedDescription });
                         let prefetchPromise = null;
-                        if (payload.pagination?.nextUrl && (hostname === 'voz.vn' || hostname.endsWith('.voz.vn'))) {
+                        if (req.query.threadPage !== '1' && req.query.prefetch !== '1' && payload.pagination?.nextUrl && (hostname === 'voz.vn' || hostname.endsWith('.voz.vn'))) {
                             prefetchPromise = triggerVozNextPagePrefetch(payload.pagination.nextUrl, 1, requestedFeedUrl);
                         }
                         await cacheArticleResult(url, payload);
-                        payload.prefetchQueue = await triggerNextFiveArticlesPrefetch(url, false, prefetchTargets, prefetchPromise);
+                        payload.prefetchQueue = (req.query.threadPage === '1' ? [] : await triggerNextFiveArticlesPrefetch(url, false, prefetchTargets, prefetchPromise));
                         return res.json(payload);
                     }
 
@@ -654,10 +656,10 @@ export function registerArticleRoutes({
             });
             if (extractionSucceeded) await cacheArticleResult(url, result);
             let prefetchPromise = null;
-            if (result.pagination?.nextUrl && (hostname === 'voz.vn' || hostname.endsWith('.voz.vn'))) {
+            if (req.query.threadPage !== '1' && req.query.prefetch !== '1' && result.pagination?.nextUrl && (hostname === 'voz.vn' || hostname.endsWith('.voz.vn'))) {
                 prefetchPromise = triggerVozNextPagePrefetch(result.pagination.nextUrl, 1, requestedFeedUrl);
             }
-            result.prefetchQueue = await triggerNextFiveArticlesPrefetch(url, false, prefetchTargets, prefetchPromise);
+            result.prefetchQueue = (req.query.threadPage === '1' ? [] : await triggerNextFiveArticlesPrefetch(url, false, prefetchTargets, prefetchPromise));
             res.json(result);
         } catch (e) {
             finishArticleFetchProgress(requestId, 'Article loading failed.', { failed: true });

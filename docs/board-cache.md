@@ -47,10 +47,35 @@ Reappearance restores activity and retains presence history. Content versions
 include content, capture/edit timestamps, hash and sequence number. Rendering
 sanitizes stored HTML, and comparisons escape content before highlighting.
 
-The ordinary reader serves the permanent archive when present, including paused
-and removed-source posts. Version controls appear only for posts with history.
+The ordinary reader serves the permanent archive while the article belongs to
+Cache, including paused and removed-source posts. After leaving Cache, the
+reader returns to normal source fetching; retained history remains available
+through the archive endpoint. Board source links for VOZ open `/unread`, while
+archive scans always start from the canonical first page. Version controls appear only for posts with history.
 Historical page snapshots remain available separately. No routine cleanup job
 removes permanent archives.
 
 Validation: `npm test` includes state-transition, ingestion, migration, routing,
 keyword editing, HTTP integration and sanitization checks.
+
+Preference updates share the Cache membership lock so reading-position or theme
+saves cannot overwrite auto-added folder mappings. Legacy whole-map saves only
+add missing assignments; explicit moves/removals use the folder endpoint.
+Reconciliation repairs missing mappings for still-pinned Cache members without
+changing their pause state. Missing preferences alone never create dismissals.
+
+Folder mutations accept `compact: true` to return only the changed association
+and member status. Unchanged selections do not write or restart a scan. Existing
+folder moves preserve Board order and update preferences alone when possible.
+Small mutations commit atomically to `database-state.json`; startup replays them
+and a later full database write checkpoints them using a revision to prevent
+stale replay. Save acknowledgement never waits for article fetching or list
+hydration. Cache scans start in the background after a new membership is saved.
+The browser applies the association locally, removes rows from the current
+Board folder when necessary, and retains loaded pages and scroll position.
+
+Minute scheduling dispatches eligible threads independently. Two shared fetch
+slots rotate between pages, rather than being held for a whole thread. A slow
+scan cannot block the next tick from refreshing already-completed threads.
+The displayed successful-cache time advances only when a complete scan finishes;
+network failures or long scans can still make it older than one minute.
