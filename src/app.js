@@ -167,11 +167,13 @@ export async function createApplication({ isMainModule = false } = {}) {
     const presentation = createArticlePresentation({
         resolveGoogleNewsUrl: googleNews.resolveGoogleNewsUrl,
         getLastKnownCachedArticle: cache.getLastKnownCachedArticle,
+        getLastKnownCachedArticleImage: cache.getLastKnownCachedArticleImage,
         env: database.env
     });
 
     const archives = createArticleArchives({
         getCachedArticle: cache.getCachedArticle,
+        getCachedArticleMetadata: cache.getCachedArticleMetadata,
         getArticleFetchPolicy: policy.getArticleFetchPolicy,
         fetchParsedArticleByStrategy: pipeline.fetchParsedArticleByStrategy,
         cacheArticleResult: cache.cacheArticleResult,
@@ -186,7 +188,7 @@ export async function createApplication({ isMainModule = false } = {}) {
     const pdf = createPdfService({
         retention: cache.getArticleRetention,
         fetchPage: async (url, feedUrl, { page, force }) => {
-            const archived = await boardCache.articlePage(url);
+            const archived = force ? null : await boardCache.articlePage(url);
             if (archived?.content && (!archived.pagination || Number(archived.pagination.currentPage) === page)) return archived;
             const fetchPolicy = await policy.getArticleFetchPolicy(url, feedUrl);
             const cached = force ? null : await cache.getCachedArticle(url);
@@ -312,7 +314,8 @@ export async function createApplication({ isMainModule = false } = {}) {
         serveSmartData: presentation.serveSmartData,
         env: database.env,
         prepareArticleForClient: presentation.prepareArticleForClient,
-        presentation
+        presentation,
+        progress
     });
 
     registerFeedRoutes({

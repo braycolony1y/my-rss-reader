@@ -52,11 +52,18 @@ function contentFilterFieldValues(article) {
 
 function articleContentFilterMatches(article, keywordEntries, includeDetails = false) {
     if (!keywordEntries.length) return includeDetails ? [] : false;
-    const fields = contentFilterFieldValues(article);
     if (!includeDetails) {
-        return fields.some(field => keywordEntries.some(entry => field.normalized.includes(entry.normalized)));
+        // List filtering needs only a boolean. Stop at the first match without
+        // constructing detailed snippets or normalizing the remaining fields.
+        return BLOCKED_ARTICLE_FIELDS.some(field => {
+            const value = article?.[field.key];
+            if (value === undefined || value === null || value === '') return false;
+            const normalized = normalizeBlockedText(value);
+            return keywordEntries.some(entry => normalized.includes(entry.normalized));
+        });
     }
 
+    const fields = contentFilterFieldValues(article);
     const matches = [];
     for (const field of fields) {
         for (const entry of keywordEntries) {

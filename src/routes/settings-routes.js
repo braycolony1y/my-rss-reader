@@ -80,7 +80,7 @@ export function registerSettingsRoutes({
             }
         }
 
-        if (list === 'boardStates') await boardCache?.reconcileMembership();
+        if (list === 'boardStates' || list === 'savedStates') await boardCache?.reconcileMembership();
         res.status(200).send('Toggled');
     });
 
@@ -116,7 +116,7 @@ export function registerSettingsRoutes({
             }
         }
 
-        if (list === 'boardStates') await boardCache?.reconcileMembership();
+        if (list === 'boardStates' || list === 'savedStates') await boardCache?.reconcileMembership();
         res.status(200).send('Toggled Batch');
     });
 

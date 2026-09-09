@@ -46,14 +46,18 @@ Unavailable pages stop generation rather than exposing an incomplete PDF as comp
 
 Private job checkpoints and completed files live under `article_cache/pdf/` and are
 excluded from backups to the public repository. PDFs follow the ordinary cache's
-14-day last-known-content retention. Saved/Board content stays protected unless
-source deletion has been confirmed: deleted snapshots and their PDFs expire 14 days
-after confirmation, even if saved/pinned. Dedicated Cache archives (including post
-history) expire 14 days after leaving Cache; returning before expiry cancels that
-departure deadline. PDFs for those archives share the departure deadline. Existing
-departed archives without a recorded departure date get 14 days from migration. Hourly housekeeping removes expired exports; expired downloads are
+14-day last-known-content retention. Articles in any Board folder or Read Later,
+including deleted-source snapshots, archive post history, and PDFs, do not expire.
+Moving between Board folders or into Read Later does not start an expiry clock.
+Dedicated archives expire 14 days after removal from both Board and Read Later;
+returning to either cancels the departure deadline. Unprotected deleted-source
+snapshots expire 14 days after confirmation. Existing departed archives without a
+recorded departure date get 14 days from migration. PDF generation fetches up to
+10 pages concurrently and the reader polls live progress every two seconds.
+Hourly housekeeping removes expired exports; expired downloads are
 also rejected immediately. A finished PDF is a dated snapshot and is reused until
-expiration.
+expiration. Use Regenerate PDF to fetch fresh thread pages and replace the stored
+snapshot; temporary server response failures reconnect automatically.
 
 Runtime requirements: `puppeteer-core` (installed by npm), Chromium (default
 `/snap/bin/chromium`, overridable with `PDF_CHROMIUM_PATH`), and `qpdf` for merging

@@ -48,7 +48,7 @@ test('database persistence, recovery, and article archives survive service extra
         assert.equal(metadata.url, url);
         const filenamePath = path.join('article_cache', filename);
         const entry = JSON.parse(await fs.readFile(filenamePath, 'utf8'));
-        assert.equal(entry.version, 55);
+        assert.equal(entry.version, 56);
         entry.cachedAt = Date.now() - 8 * 24 * 60 * 60 * 1000;
         await fs.writeFile(filenamePath, JSON.stringify(entry));
         assert.equal(await cache.getCachedArticle(url), null);

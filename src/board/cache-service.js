@@ -30,14 +30,25 @@ export function createBoardCache({ env, fetchPage, writeJson, directory = './art
     const put = (key, value) => db.put(key, JSON.stringify(value));
     const filename = id => path.join(directory, createHash('sha256').update(id).digest('hex') + '.json');
     const readRaw = async id => { try { return JSON.parse(await fs.readFile(filename(id), 'utf8')); } catch (e) { if (e.code === 'ENOENT') return null; throw e; } };
+    const protectedIds = async () => new Set([
+        ...await get('boardStates', []), ...await get('savedStates', [])
+    ].map(value => canonicalIdentity(value)));
+    function updateRetention(member, protectedArchive) {
+        const before = JSON.stringify(member);
+        member.retention_protected = protectedArchive;
+        if (protectedArchive) member.left_cache_at = null;
+        else member.left_cache_at ||= new Date(now()).toISOString();
+        return before !== JSON.stringify(member);
+    }
     const read = async id => {
         const member = (await get('cacheMembers', {}))[id];
-        if (member?.archive_expired_at || archiveExpiry(member) <= now()) return null;
+        if (member?.archive_expired_at || archiveExpiry({ ...member, retention_protected: (await protectedIds()).has(id) }) <= now()) return null;
         return readRaw(id);
     };
     async function cleanup() {
         return locked(async () => {
             const members = await get('cacheMembers', {});
+            const protectedArchives = await protectedIds();
             let changed = false;
             // Older archives may predate membership tracking. Give those copies
             // a recorded departure date instead of retaining orphan files forever.
@@ -52,9 +63,7 @@ export function createBoardCache({ env, fetchPage, writeJson, directory = './art
                 changed = true;
             }
             for (const [id, member] of Object.entries(members)) {
-                if (member.in_cache === false && !member.left_cache_at) {
-                    member.left_cache_at = new Date(now()).toISOString(); changed = true;
-                }
+                if (updateRetention(member, protectedArchives.has(id))) changed = true;
                 if (member.source_removed && !member.removed_at) {
                     const record = await readRaw(id);
                     member.removed_at = record?.removed_at || new Date(now()).toISOString(); changed = true;
@@ -78,7 +87,7 @@ export function createBoardCache({ env, fetchPage, writeJson, directory = './art
     async function articlePage(url) {
         const id = canonicalIdentity(url);
         const member = (await get('cacheMembers', {}))[id];
-        if (!member?.in_cache || member.archive_expired_at || archiveExpiry(member) <= now()) return null;
+        if (!member?.in_cache || member.archive_expired_at || archiveExpiry({ ...member, retention_protected: (await protectedIds()).has(id) }) <= now()) return null;
         const file = filename(id);
         let stat;
         try { stat = await fs.stat(file); } catch (error) { if (error.code === 'ENOENT') return null; throw error; }
@@ -114,7 +123,7 @@ export function createBoardCache({ env, fetchPage, writeJson, directory = './art
     const identity = article => { try { return canonicalIdentity(article); } catch { return null; } };
 
     async function ensureArchive(member) {
-        if (member.archive_expired_at || archiveExpiry(member) <= now()) return null;
+        if (member.archive_expired_at || archiveExpiry({ ...member, retention_protected: (await protectedIds()).has(member.thread_id) }) <= now()) return null;
         let record = await read(member.thread_id);
         if (record) {
             const before = JSON.stringify(record);
@@ -181,6 +190,8 @@ export function createBoardCache({ env, fetchPage, writeJson, directory = './art
                     if (member.auto_added) ledger.dismissals[id] = { last_seen_at: now(), expires_at: now() + retentionMs };
                 }
             }
+            const protectedArchives = await protectedIds();
+            for (const [id, member] of Object.entries(members)) updateRetention(member, protectedArchives.has(id));
             for (const [id, dismissal] of Object.entries(ledger.dismissals)) if (dismissal.expires_at <= now()) delete ledger.dismissals[id];
             await db.putMany({ cacheMembers: JSON.stringify(members), cacheIdentityLedger: JSON.stringify(ledger), userPreferences: JSON.stringify(prefs) });
             return members;
@@ -383,6 +394,11 @@ export function createBoardCache({ env, fetchPage, writeJson, directory = './art
                 writes.cacheMembers = JSON.stringify(members);
             } else if (member?.in_cache) {
                 member.in_cache = false; member.active_caching = false; member.left_cache_at = new Date(now()).toISOString();
+                writes.cacheMembers = JSON.stringify(members);
+            }
+            if (members[id]) {
+                const saved = new Set((await get('savedStates', [])).map(identity));
+                updateRetention(members[id], folder !== null || saved.has(id));
                 writes.cacheMembers = JSON.stringify(members);
             }
             // Inspect the discovery ledger without copying its megabytes for a

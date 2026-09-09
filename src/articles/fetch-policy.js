@@ -62,6 +62,13 @@ export function createArticleFetchPolicy({
 
     async function getConfiguredArticleFetchMethods(targetUrl, feedUrl = '') {
         const feeds = await env.RSS_DATA.get('feeds', { type: 'json' }) || [];
+        const validMethods = methods => Array.isArray(methods)
+            ? [...new Set(methods.filter(method => method in ARTICLE_FETCH_BASE_POINTS))]
+            : [];
+        // Normal feeds take precedence over Smart sources. Page navigation
+        // already supplies its feed, so avoid loading unrelated source settings.
+        const exactFeed = feedUrl && feeds.find(feed => feed.url === feedUrl);
+        if (exactFeed && Array.isArray(exactFeed.fetchMethods)) return validMethods(exactFeed.fetchMethods);
         let smartSources = [];
         try {
             smartSources = await smartNews.getSourceSettings();
@@ -69,9 +76,6 @@ export function createArticleFetchPolicy({
             console.warn('[ARTICLE FETCH] Could not load Smart source policies:', error.message);
         }
         const configuredSources = [...feeds, ...smartSources];
-        const validMethods = methods => Array.isArray(methods)
-            ? [...new Set(methods.filter(method => method in ARTICLE_FETCH_BASE_POINTS))]
-            : [];
 
         const policyForSourceUrl = candidateFeedUrl => {
             if (!candidateFeedUrl) return null;
@@ -90,7 +94,7 @@ export function createArticleFetchPolicy({
         // feed URL. Recover the source identity from the current article record
         // before considering any host-level inference.
         try {
-            const articles = await env.RSS_DATA.get('articles', { type: 'json' }) || [];
+            const articles = await env.RSS_DATA.get('articles', { type: 'json', shared: true }) || [];
             const targetIdentity = normalizeStateUrl(targetUrl);
             const associatedFeedUrls = [...new Set(articles
                 .filter(article => [article?.link, article?.originalLink, article?.id]

@@ -38,9 +38,23 @@ export function pdfDocument({ title, author, sourceDate, url, pages, createdAt }
     </style></head><body><h1>${escapePostText(title)}</h1><p>${escapePostText(author || '')}${sourceDate ? ' · ' + escapePostText(sourceDate) : ''}</p><p class="source">Snapshot ${escapePostText(createdAt)} · <a href="${escapePostText(url)}">${escapePostText(url)}</a></p>${$.html()}</body></html>`;
 }
 
+export async function waitForPdfAssets(page, { timeoutMs = 15000, pollMs = 250 } = {}) {
+    const deadline = Date.now() + timeoutMs;
+    // Page scripts are disabled for untrusted article HTML. Browser-side timer
+    // callbacks do not run in that mode, so the deadline must live in Node.
+    do {
+        const ready = await page.evaluate(() => [...document.images].every(img => img.complete) && document.fonts.status === 'loaded');
+        if (ready) return;
+        await new Promise(resolve => setTimeout(resolve, Math.min(pollMs, Math.max(0, deadline - Date.now()))));
+    } while (Date.now() < deadline);
+    const session = await page.createCDPSession();
+    try { await session.send('Page.stopLoading'); }
+    finally { await session.detach(); }
+}
+
 export async function renderPdfChunk({ title, author, sourceDate, url, pages, createdAt, output }) {
     const { default: puppeteer } = await import('puppeteer-core');
-    const browser = await puppeteer.launch({ executablePath: process.env.PDF_CHROMIUM_PATH || '/snap/bin/chromium', headless: true,
+    const browser = await puppeteer.launch({ executablePath: process.env.PDF_CHROMIUM_PATH || '/snap/bin/chromium', headless: true, protocolTimeout: 120000,
         args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--renderer-process-limit=1'] });
     try {
         const page = await browser.newPage();
@@ -56,14 +70,8 @@ export async function renderPdfChunk({ title, author, sourceDate, url, pages, cr
             void request.abort();
         });
         await page.setContent(pdfDocument({ title, author, sourceDate, url, pages, createdAt }), { waitUntil: 'domcontentloaded', timeout: 60000 });
-        await page.evaluate(async () => {
-            await Promise.race([
-                Promise.all([...document.images].map(img => img.complete ? Promise.resolve() : new Promise(resolve => { img.onload = img.onerror = resolve; }))),
-                new Promise(resolve => setTimeout(resolve, 15000))
-            ]);
-            await document.fonts.ready;
-        });
-        await page.pdf({ path: output, format: 'A4', printBackground: true, preferCSSPageSize: true, timeout: 120000 });
+        await waitForPdfAssets(page);
+        await page.pdf({ path: output, format: 'A4', printBackground: true, preferCSSPageSize: true, waitForFonts: false, timeout: 120000 });
     } finally { await browser.close(); }
 }
 

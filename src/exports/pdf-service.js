@@ -7,7 +7,7 @@ import { isVozThreadUrl, getVozPaginationMaxPage } from '../voz-thread-state.js'
 import { renderPdfChunk, mergePdfChunks } from './pdf-renderer.js';
 
 export function createPdfService({ fetchPage, retention, directory = './article_cache/pdf', render = renderPdfChunk, merge = mergePdfChunks,
-    now = () => Date.now(), chunkSize = 5, pause = () => new Promise(resolve => setTimeout(resolve, 100)) }) {
+    now = () => Date.now(), chunkSize = 10, pause = () => new Promise(resolve => setTimeout(resolve, 100)) }) {
     directory = path.resolve(directory);
     const jobs = new Map(), queue = [];
     let running = false, initialization;
@@ -32,6 +32,7 @@ export function createPdfService({ fetchPage, retention, directory = './article_
     async function initialize() {
         if (initialization) return initialization;
         initialization = (async () => {
+            console.info('[PDF] Loading saved jobs');
             await fs.mkdir(directory, { recursive: true });
             for (const name of await fs.readdir(directory)) {
                 if (!/^[a-f0-9]{64}$/.test(name)) continue;
@@ -46,7 +47,9 @@ export function createPdfService({ fetchPage, retention, directory = './article_
                     jobs.set(name, job);
                 } catch { /* An interrupted atomic write cannot publish a PDF. */ }
             }
+            console.info('[PDF] Loaded', jobs.size, 'jobs; checking retention');
             await cleanup();
+            console.info('[PDF] Jobs ready');
             for (const job of jobs.values()) if (isPending(job)) queue.push(job.id);
             void pump();
         })();
@@ -63,18 +66,24 @@ export function createPdfService({ fetchPage, retention, directory = './article_
             }
         }
     }
-    async function start({ url, title = '', feedUrl = '', totalPages = 1 }) {
+    async function start({ url, title = '', feedUrl = '', totalPages = 1, regenerate = false, regenerationKey = null }) {
         await initialize();
         const identity = canonicalIdentity(url);
         const id = createHash('sha256').update(identity).digest('hex');
         if (jobs.has(id)) await status(id);
         let job = jobs.get(id);
+        if (job && regenerate && regenerationKey && job.regenerationKey === regenerationKey) return view(job);
+        if (job && regenerate) {
+            job.status = 'cancelled';
+            job.generation = (job.generation || 0) + 1;
+            job = null;
+        }
         if (job && ['ready', 'queued', 'fetching', 'rendering', 'merging'].includes(job.status)) return view(job);
         if (!job) {
             const total = Number(totalPages);
             job = { id, url: canonicalUrl(url), title: String(title).slice(0, 1000), feedUrl: String(feedUrl).slice(0, 4000),
                 createdAt: new Date(now()).toISOString(), totalPages: isVozThreadUrl(url) && Number.isSafeInteger(total) && total > 0 ? total : 1,
-                completedPages: 0, chunks: [], seenPostIds: [] };
+                completedPages: 0, chunks: [], seenPostIds: [], fresh: regenerate, regenerationKey, revision: randomUUID() };
             jobs.set(id, job);
         }
         job.generation = (job.generation || 0) + 1;
@@ -90,17 +99,43 @@ export function createPdfService({ fetchPage, retention, directory = './article_
         const active = () => isPending(job) && job.generation === generation;
         const pages = [], seen = new Set(job.seenPostIds);
         const startPage = job.completedPages + 1;
-        for (let page = startPage; page <= job.totalPages && pages.length < chunkSize; page++) {
-            if (!active()) return;
-            job.status = 'fetching'; job.message = `Preparing thread page ${page} of ${job.totalPages}…`;
+        job.status = 'fetching';
+        let fetched = 0;
+        const fetchOne = async page => {
+            if (!active()) return null;
             const url = page === 1 ? job.url : job.url.replace(/\/$/, '') + '/page-' + page;
             let data, error;
             for (let attempt = 0; attempt < 3; attempt++) {
-                try { data = await fetchPage(url, job.feedUrl, { page, force: attempt > 0 }); error = null; break; }
-                catch (e) { error = e; if (!active()) return; await pause(); }
+                try { data = await fetchPage(url, job.feedUrl, { page, force: job.fresh === true || attempt > 0 }); error = null; break; }
+                catch (e) { error = e; if (!active()) return null; await pause(); }
             }
             if (error) throw new Error(`Page ${page}: ${error.message}. Retry to continue from the last completed batch.`);
+            fetched++;
+            if (active()) job.message = `Fetched ${fetched} of ${Math.min(chunkSize, job.totalPages - startPage + 1)} pages in this batch (${job.completedPages} saved of ${job.totalPages})…`;
+            return data;
+        };
+        const results = new Map();
+        // Discover the actual thread length before scheduling subsequent pages.
+        if (startPage === 1) {
+            const first = await fetchOne(1);
             if (!active()) return;
+            results.set(1, first);
+            if (isVozThreadUrl(job.url)) job.totalPages = job.fresh && first?.pagination?.pages?.length
+                ? getVozPaginationMaxPage(first.pagination) : Math.max(job.totalPages, getVozPaginationMaxPage(first?.pagination));
+        }
+        const endPage = Math.min(job.totalPages, startPage + chunkSize - 1);
+        for (let first = startPage === 1 ? 2 : startPage; first <= endPage; first += 10) {
+            if (!active()) return;
+            const numbers = Array.from({ length: Math.min(10, endPage - first + 1) }, (_, i) => first + i);
+            job.message = `Fetching pages ${numbers[0]}–${numbers.at(-1)} of ${job.totalPages} in parallel…`;
+            const batch = await Promise.allSettled(numbers.map(fetchOne));
+            const failure = batch.find(result => result.status === 'rejected');
+            if (failure) throw failure.reason;
+            batch.forEach((result, i) => results.set(numbers[i], result.value));
+        }
+        for (let page = startPage; page <= endPage; page++) {
+            if (!active()) return;
+            const data = results.get(page);
             if (!data?.content) throw new Error(`Page ${page} is unavailable. A complete PDF cannot be created yet.`);
             job.title ||= data.title || 'Article';
             if (page === 1) { job.author = data.author || ''; job.sourceDate = data.date || data.pubDate || ''; }
@@ -129,7 +164,7 @@ export function createPdfService({ fetchPage, retention, directory = './article_
         if (!active()) return;
         if (pages.length) {
             job.status = 'rendering'; job.message = `Creating PDF pages ${startPage}–${pages.at(-1).page} of ${job.totalPages}…`;
-            const name = `part-${String(startPage).padStart(8, '0')}.pdf`;
+            const name = `part-${job.revision || 'original'}-${String(startPage).padStart(8, '0')}.pdf`;
             const output = path.join(folder(job.id), name), temporary = output + '.tmp';
             await render({ title: job.title, author: job.author, sourceDate: job.sourceDate, url: job.url, pages, createdAt: job.createdAt, output: temporary });
             if (!active()) { await fs.rm(temporary, { force: true }); return; }
@@ -153,7 +188,8 @@ export function createPdfService({ fetchPage, retention, directory = './article_
         job.status = 'ready'; job.completedAt = new Date(now()).toISOString(); job.message = 'PDF saved on the server. Ready to download.';
         await persist(job);
         for (const chunk of job.chunks) await fs.rm(path.join(folder(job.id), chunk), { force: true });
-        job.chunks = []; job.seenPostIds = []; await persist(job);
+        job.chunks = []; job.seenPostIds = [];
+        if (jobs.get(job.id) === job && job.generation === generation) await persist(job);
     }
     async function pump() {
         if (running) return;

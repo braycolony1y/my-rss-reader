@@ -451,24 +451,29 @@ test('reader page cache follows syncs, permanent post positions, pause and dismi
     assert.equal(await service.articlePage(url), null);
 });
 
-test('leaving Cache retains history for 14 days and returning cancels the deadline', async t => {
+test('Board folders and Read Later protect history; leaving both starts 14 days', async t => {
     const { service, values, advance } = await fixture(t, { values: membership });
     await service.tick();
     await service.setFolder({ link: url }, 'reading');
-    const left = values.cacheMembers[id].left_cache_at;
+    assert.equal(values.cacheMembers[id].left_cache_at, null);
+    advance(30 * 86400000); await service.cleanup();
+    assert.ok(await service.archive(url));
+    values.savedStates = [url];
+    await service.setFolder({ link: url }, null);
+    advance(30 * 86400000); await service.cleanup();
+    assert.ok(await service.archive(url));
+    assert.equal(values.cacheMembers[id].left_cache_at, null);
+    values.savedStates = [];
+    await service.reconcileMembership();
+    assert.ok(values.cacheMembers[id].left_cache_at);
     advance(13 * 86400000); await service.cleanup();
     assert.ok(await service.archive(url));
-    await service.setFolder({ link: url }, 'cache');
-    await service.syncOne(id);
+    values.savedStates = [url]; await service.reconcileMembership();
     assert.equal(values.cacheMembers[id].left_cache_at, null);
-    advance(2 * 86400000); await service.cleanup();
-    assert.ok(await service.archive(url));
-    await service.setFolder({ link: url }, 'reading');
-    assert.notEqual(values.cacheMembers[id].left_cache_at, left);
+    values.savedStates = []; await service.reconcileMembership();
     advance(14 * 86400000); await service.cleanup();
     assert.equal(await service.archive(url), null);
     assert.ok(values.cacheMembers[id].archive_expired_at);
-    assert.ok(values.boardStates.includes(url), 'moving elsewhere on Board does not protect the departed Cache archive');
 });
 
 test('legacy departed archives start their 14-day clock at migration', async t => {
@@ -483,7 +488,7 @@ test('legacy departed archives start their 14-day clock at migration', async t =
     assert.equal(await service.archive(url), null);
 });
 
-test('confirmed removed Cache snapshots expire after 14 days even while pinned', async t => {
+test('confirmed removed snapshots stay protected while pinned', async t => {
     let removed = false;
     const { service, values, advance } = await fixture(t, { values: membership, fetchPage: async () => removed ? { isDeletedThread: true } : snapshot(1, 1, [post(10)]) });
     await service.tick(); removed = true; await service.tick();
@@ -491,7 +496,7 @@ test('confirmed removed Cache snapshots expire after 14 days even while pinned',
     advance(14 * 86400000 - 1); await service.cleanup();
     assert.ok(await service.archive(url));
     advance(1); await service.cleanup();
-    assert.equal(await service.archive(url), null);
-    assert.equal(await service.articlePage(url), null);
+    assert.ok(await service.archive(url));
+    assert.ok(await service.articlePage(url));
     assert.equal(values.cacheMembers[id].in_cache, true);
 });

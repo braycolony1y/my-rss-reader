@@ -10,10 +10,17 @@ export function registerDataRoutes({
     env,
     prepareArticleForClient,
     presentation,
+    progress = { activeForegroundRequests: 0 },
 } = {}) {
+    let visibleSnapshot;
+    let visibleKeywordSignature;
+    let visibleSnapshotArticles;
     app.get('/api/data', authMiddleware, async (req, res) => {
+        progress.activeForegroundRequests++;
+        try {
+        const startedAt = performance.now();
         const filterType = req.query.filterType || 'today';
-        if (filterType === 'smart') return serveSmartData(req, res);
+        if (filterType === 'smart') return await serveSmartData(req, res);
 
         let feeds = await env.RSS_DATA.get('feeds', { type: 'json' }) || [];
         // This route treats the article snapshot as immutable and derives new
@@ -28,9 +35,18 @@ export function registerDataRoutes({
         const userPreferences = await env.RSS_DATA.get('userPreferences', { type: 'json' }) || {};
 
         const blockedKeywords = await env.RSS_DATA.get('blockedArticleKeywords', { type: 'json' }) || [];
+        const loadedAt = performance.now();
         const blockedKeywordEntries = normalizeBlockedKeywordEntries(blockedKeywords);
         const articleIsBlocked = article => articleContentFilterMatches(article, blockedKeywordEntries);
-        const visibleArticles = allArticles.filter(article => !articleIsBlocked(article));
+        // The database replaces immutable article snapshots on updates. Reuse
+        // keyword filtering across tab clicks, but refresh on either input change.
+        const keywordSignature = JSON.stringify(blockedKeywordEntries);
+        if (visibleSnapshot !== allArticles || visibleKeywordSignature !== keywordSignature) {
+            visibleSnapshotArticles = allArticles.filter(article => !articleIsBlocked(article));
+            visibleSnapshot = allArticles;
+            visibleKeywordSignature = keywordSignature;
+        }
+        const visibleArticles = visibleSnapshotArticles;
 
         const readSet = new NormalizedSet(readStates);
         const savedSet = new NormalizedSet(savedStates);
@@ -268,8 +284,10 @@ export function registerDataRoutes({
         const endIndex = page * limit;
 
         const hasMore = endIndex < filteredArticles.length;
+        const filteredAt = performance.now();
         const paginatedArticles = await mapWithConcurrency(filteredArticles.slice(startIndex, endIndex), 6, prepareArticleForClient);
 
+        res.setHeader?.('Server-Timing', `data;dur=${(loadedAt - startedAt).toFixed(1)}, filter;dur=${(filteredAt - loadedAt).toFixed(1)}, cards;dur=${(performance.now() - filteredAt).toFixed(1)}`);
         res.json({
             feeds,
             articles: paginatedArticles,
@@ -284,6 +302,9 @@ export function registerDataRoutes({
             unreadCounts,
             smartClusterVersion
         });
+        } finally {
+            progress.activeForegroundRequests = Math.max(0, progress.activeForegroundRequests - 1);
+        }
     });
 
 }

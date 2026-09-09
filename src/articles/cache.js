@@ -21,9 +21,10 @@ export function createArticleCache({
     // file remains available longer in case the publisher later removes the page.
     const ARTICLE_CACHE_LAST_KNOWN_TTL_MS = CONTENT_RETENTION_MS;
 
-    const ARTICLE_CACHE_VERSION = 55;
+    const ARTICLE_CACHE_VERSION = 56;
 
     let _articleCacheIndex = null;
+    const cardImages = new Map();
 
     function articleCacheBasename(url) {
         const canonicalUrl = normalizeArticleSourceUrl(url).replace(/\/unread\/?(?:[?#].*)?$/i, '');
@@ -40,7 +41,12 @@ export function createArticleCache({
         try {
             await fs.mkdir(ARTICLE_CACHE_DIR, { recursive: true });
             const files = await fs.readdir(ARTICLE_CACHE_DIR);
-            for (const name of files) {
+            let cursor = 0;
+            // Bounded parallel reads avoid one event-loop round trip per file
+            // during busy startup (large caches contain tens of thousands).
+            await Promise.all(Array.from({ length: 16 }, async () => {
+              while (cursor < files.length) {
+                const name = files[cursor++];
                 if (!name.endsWith('.json')) continue;
                 try {
                     // Regex extraction is much faster than JSON.parse for large HTML blobs
@@ -59,7 +65,8 @@ export function createArticleCache({
                 } catch (e) {
                     _articleCacheIndex.set(name, { version: 0, cachedAt: 0, url: null });
                 }
-            }
+              }
+            }));
         } catch (e) {
             console.error('[ARTICLE CACHE] Failed to init index:', e.message);
         }
@@ -70,7 +77,7 @@ export function createArticleCache({
         const filename = path.join(ARTICLE_CACHE_DIR, name);
         try {
             const cached = JSON.parse(await fs.readFile(filename, 'utf-8'));
-            if (cached.result?.sourceDeleted && Date.now() >= deletionTime({ ...cached.result, cachedAt: cached.cachedAt }) + CONTENT_RETENTION_MS) return null;
+            if (cached.result?.sourceDeleted && Date.now() >= deletionTime({ ...cached.result, cachedAt: cached.cachedAt }) + CONTENT_RETENTION_MS && (await getArticleRetention(url, cached.cachedAt)).expiresAt <= Date.now()) return null;
             const isExpired = Date.now() - cached.cachedAt >= ARTICLE_CACHE_TTL_MS;
             if (!cached.cachedAt || !cached.result?.content) {
                 await fs.unlink(filename).catch(() => {});
@@ -136,17 +143,58 @@ export function createArticleCache({
         }
     }
 
-    async function getLastKnownCachedArticle(url) {
+    async function readLastKnownCachedArticle(url) {
         try {
             const cached = JSON.parse(await fs.readFile(articleCacheFilename(url), 'utf-8'));
             const result = cached?.result;
-            if (result?.sourceDeleted && Date.now() >= deletionTime({ ...result, cachedAt: cached.cachedAt }) + CONTENT_RETENTION_MS) return null;
+            if (result?.sourceDeleted && Date.now() >= deletionTime({ ...result, cachedAt: cached.cachedAt }) + CONTENT_RETENTION_MS && (await getArticleRetention(url, cached.cachedAt)).expiresAt <= Date.now()) return null;
             if (!result?.content) return null;
             if (isUnsafeVozThreadPayload(url, result) && result.sourceDeleted !== true) return null;
-            return normalizeCachedArticleForSource(url, { ...result, ...(isVozThreadUrl(url) ? { cached_at: result.cached_at || (cached.cachedAt ? new Date(cached.cachedAt).toISOString() : null) } : {}), content: normalizeStoredPostTimes(result.content, { cached_at: cached.cachedAt ? new Date(cached.cachedAt).toISOString() : null, unavailable: result.sourceDeleted === true }) });
+            return cached;
         } catch (error) {
             return null;
         }
+    }
+
+    async function getLastKnownCachedArticle(url) {
+        try {
+            const cached = await readLastKnownCachedArticle(url);
+            if (!cached) return null;
+            const result = cached.result;
+            return normalizeCachedArticleForSource(url, { ...result, ...(isVozThreadUrl(url) ? { cached_at: result.cached_at || (cached.cachedAt ? new Date(cached.cachedAt).toISOString() : null) } : {}), content: normalizeStoredPostTimes(result.content, { cached_at: cached.cachedAt ? new Date(cached.cachedAt).toISOString() : null, unavailable: result.sourceDeleted === true }) });
+        } catch {
+            return null;
+        }
+    }
+
+    async function getLastKnownCachedArticleImage(url) {
+        // Cards need only the image. Preserve validity/retention checks without
+        // parsing and rewriting every post in the cached thread body.
+        const filename = articleCacheFilename(url);
+        try {
+            const stat = await fs.stat(filename);
+            const fingerprint = `${stat.mtimeMs}:${stat.ctimeMs}:${stat.size}`;
+            const existing = cardImages.get(filename);
+            if (existing?.fingerprint === fingerprint) return existing.image;
+            const cached = await readLastKnownCachedArticle(url);
+            const image = cached?.result?.image || null;
+            // Deleted snapshots need a fresh retention check on every lookup.
+            if (cached && !cached.result.sourceDeleted) {
+                cardImages.delete(filename);
+                cardImages.set(filename, { fingerprint, image });
+                while (cardImages.size > 512) cardImages.delete(cardImages.keys().next().value);
+            } else cardImages.delete(filename);
+            return image;
+        } catch {
+            cardImages.delete(filename);
+            return null;
+        }
+    }
+
+    async function getCachedArticleMetadata(url) {
+        const cached = await readLastKnownCachedArticle(url);
+        if (!cached) return null;
+        return { sourceDeleted: cached.result.sourceDeleted === true };
     }
 
     async function cacheArticleResult(url, result) {
@@ -219,13 +267,15 @@ export function createArticleCache({
             env.RSS_DATA.get('cacheMembers', { type: 'json' })
         ]);
         let protectedArchive = [...(saved || []), ...(board || [])].some(value => normalizeStateUrl(value) === normalized);
+        if (protectedArchive) return { protected: true, expiresAt: Infinity };
         let cachedAt = 0, deletedExpiry = Infinity;
         for (const meta of _articleCacheIndex.values()) {
             if (!meta.url || normalizeStateUrl(meta.url) !== normalized) continue;
             cachedAt = Math.max(cachedAt, meta.cachedAt || 0);
             if (meta.sourceDeleted) deletedExpiry = Math.min(deletedExpiry, deletionTime(meta) + CONTENT_RETENTION_MS);
         }
-        const forcedExpiry = Math.min(deletedExpiry, archiveExpiry(members?.[canonicalIdentity(url)]));
+        const member = members?.[canonicalIdentity(url)];
+        const forcedExpiry = member?.left_cache_at ? archiveExpiry({ ...member, retention_protected: false }) : Math.min(deletedExpiry, archiveExpiry({ ...member, retention_protected: false }));
         if (Number.isFinite(forcedExpiry)) return { protected: false, expiresAt: forcedExpiry };
         return { protected: protectedArchive, expiresAt: (cachedAt || fallbackCachedAt) + ARTICLE_CACHE_LAST_KNOWN_TTL_MS };
     }
@@ -248,9 +298,10 @@ export function createArticleCache({
             }
             const members = await env.RSS_DATA.get('cacheMembers', { type: 'json' }) || {};
             for (const member of Object.values(members)) {
-                if (!member.source_removed || !member.removed_at || !member.url) continue;
+                if (!member.url) continue;
                 const key = normalizeStateUrl(member.url);
-                deletedThreads.set(key, Math.min(deletedThreads.get(key) || Infinity, Date.parse(member.removed_at) + CONTENT_RETENTION_MS));
+                if (member.left_cache_at) deletedThreads.set(key, archiveExpiry({ ...member, retention_protected: false }));
+                else if (member.source_removed && member.removed_at) deletedThreads.set(key, Math.min(deletedThreads.get(key) || Infinity, Date.parse(member.removed_at) + CONTENT_RETENTION_MS));
             }
             let removed = 0;
             for (const [name, meta] of _articleCacheIndex.entries()) {
@@ -259,7 +310,7 @@ export function createArticleCache({
                 const isLastKnownExpired = deletedExpiry !== undefined ? Date.now() >= deletedExpiry : Date.now() - meta.cachedAt >= ARTICLE_CACHE_LAST_KNOWN_TTL_MS;
 
                 if (!meta.cachedAt || isLastKnownExpired) {
-                    if (deletedExpiry === undefined && meta.url && protectedUrls.has(normalizeStateUrl(meta.url))) {
+                    if (meta.url && protectedUrls.has(normalizeStateUrl(meta.url))) {
                         // Protected, do not delete
                     } else {
                         await fs.unlink(filename).catch(() => {});
@@ -275,6 +326,8 @@ export function createArticleCache({
     }
 
     return {
+        getCachedArticleMetadata,
+        getLastKnownCachedArticleImage,
         getLastKnownCachedArticle,
         cacheArticleResult,
         getCachedArticle,

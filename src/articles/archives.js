@@ -6,6 +6,7 @@ import { normalizeArticleTitle } from '../../feed-parsers.js';
 
 export function createArticleArchives({
     getCachedArticle,
+    getCachedArticleMetadata = getCachedArticle,
     getArticleFetchPolicy,
     fetchParsedArticleByStrategy,
     cacheArticleResult,
@@ -276,10 +277,10 @@ export function createArticleArchives({
     async function isProtectedDeletedSourceSnapshot(url) {
         const canonicalUrl = normalizeStateUrl(url);
         if (isVozThreadUrl(url) && deletedVozThreads.has(canonicalUrl)) return true;
-        const exactCachedArticle = await getCachedArticle(url);
+        const exactCachedArticle = await getCachedArticleMetadata(url);
         if (exactCachedArticle?.sourceDeleted === true) return true;
         if (canonicalUrl !== url) {
-            const threadCachedArticle = await getCachedArticle(canonicalUrl);
+            const threadCachedArticle = await getCachedArticleMetadata(canonicalUrl);
             if (threadCachedArticle?.sourceDeleted === true) return true;
         }
         return false;
@@ -303,6 +304,8 @@ export function createArticleArchives({
             if (!meta?.url || !isVozThreadUrl(meta.url)) continue;
             if (normalizeStateUrl(meta.url) !== canonicalBaseUrl) continue;
 
+            const urlPage = getVozThreadPageNumber(meta.url);
+
             const cached = await getLastKnownCachedArticle(meta.url);
             const hasArchivedPosts = Boolean(
                 cached?.content
@@ -312,7 +315,6 @@ export function createArticleArchives({
             );
             if (!hasArchivedPosts) continue;
 
-            const urlPage = getVozThreadPageNumber(meta.url);
             const cachedPage = Number.parseInt(cached?.pagination?.currentPage, 10);
             const page = urlPage
                 || (Number.isSafeInteger(cachedPage) && cachedPage > 0 ? cachedPage : 1);
@@ -332,9 +334,10 @@ export function createArticleArchives({
             || Number.parseInt(cached.pagination?.currentPage, 10)
             || 1;
         if (cached.pagination?.nextUrl) return true;
-        const archivedPagination = await getArchivedVozPaginationSeed(normalizeStateUrl(url));
-        const lastKnownPage = Math.max(1, ...(archivedPagination?.pages || []).map(page => Number(page?.page || 0)));
-        return currentPage < lastKnownPage;
+        // A valid snapshot of the last page may contain fewer than 20 posts.
+        // Its normal background refresh discovers growth; opening it must not
+        // initialize or scan the entire archive to look for later pages.
+        return currentPage < getVozPaginationMaxPage(cached.pagination, currentPage);
     }
 
     async function buildDeletedSourceResponse(url, responseMetadata = {}) {

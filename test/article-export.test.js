@@ -169,7 +169,7 @@ test('PDF download uses a completed server file without opening a print window',
     dom.window.HTMLAnchorElement.prototype.click = function () { downloads.push(this.getAttribute('href')); };
     dom.window.fetch = async (url, options) => {
         requests.push({ url, options });
-        return { ok: true, json: async () => ({ id: 'pdf-id', status: 'ready', current: 6803, total: 6803, downloadUrl: '/api/article-pdf/pdf-id/download' }) };
+        return { ok: true, text: async () => JSON.stringify({ id: 'pdf-id', status: 'ready', current: 6803, total: 6803, downloadUrl: '/api/article-pdf/pdf-id/download' }) };
     };
     app.overlayPagination = { currentPage: 6703, pages: [{ page: 1 }, { page: 6803 }] };
     await app.saveArticleAsPdf();
@@ -190,4 +190,25 @@ test('closing the reader stops polling but leaves the server export running', t 
     app.cancelArticlePdf({ silent: true });
     assert.equal(controller.signal.aborted, true);
     assert.equal(requests.length, 0);
+});
+
+
+test('PDF API handles a temporary HTML response and reconnects without a JSON parse error', async t => {
+    const { app, dom } = createReader(); t.after(() => dom.window.close());
+    let calls = 0;
+    dom.window.setTimeout = callback => { callback(); return 1; };
+    dom.window.fetch = async () => ++calls === 1
+        ? { ok: false, status: 502, text: async () => '<!DOCTYPE html><title>Bad Gateway</title>' }
+        : { ok: true, status: 200, text: async () => JSON.stringify({ status: 'rendering', current: 10, total: 416 }) };
+    const job = await app.requestArticlePdf('/api/article-pdf/example');
+    assert.equal(calls, 2); assert.equal(job.current, 10);
+});
+
+test('PDF API explains persistent HTML errors and expired authentication', async t => {
+    const { app, dom } = createReader(); t.after(() => dom.window.close());
+    dom.window.setTimeout = callback => { callback(); return 1; };
+    dom.window.fetch = async () => ({ ok: false, status: 502, text: async () => '<!DOCTYPE html>' });
+    await assert.rejects(app.requestArticlePdf('/api/article-pdf/example'), /temporarily unavailable/);
+    dom.window.fetch = async () => ({ ok: false, status: 401 });
+    await assert.rejects(app.requestArticlePdf('/api/article-pdf/example'), /sign in again/);
 });

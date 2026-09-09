@@ -190,7 +190,8 @@ test('article reader downloads server PDFs with progress and pause controls', ()
     assert.match(html, /Download PDF from server/);
     assert.match(html, /articlePdfProgress\.current/);
     assert.match(html, /@click="cancelArticlePdf\(\)"/);
-    assert.match(script, /fetch\('\/api\/article-pdf'/);
+    assert.match(script, /requestArticlePdf\('\/api\/article-pdf'/);
+    assert.match(html, /@click="saveArticleAsPdf\(true\)"/);
     assert.match(script, /link\.href = job\.downloadUrl/);
     assert.doesNotMatch(script, /printWindow\.print\(\)/);
 });

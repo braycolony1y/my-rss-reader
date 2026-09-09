@@ -128,52 +128,61 @@ export function createArticleReaders({
     // Helper to fetch a URL while manually following redirects and persisting cookies.
     // Needed for sites like qdnd.vn that do a 302 back to the same URL with a Set-Cookie.
     async function fetchWithCookies(targetUrl, timeoutMs = 8000, maxRedirects = 5) {
-        let currentUrl = targetUrl;
-        let cookie = '';
-        for (let i = 0; i < maxRedirects; i++) {
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), timeoutMs);
-            const options = {
-                redirect: 'manual',
-                headers: { ...BROWSER_HEADERS },
-                signal: controller.signal
-            };
-            if (cookie) options.headers['Cookie'] = cookie;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+            let currentUrl = targetUrl;
+            let cookie = '';
+            for (let i = 0; i < maxRedirects; i++) {
+                const options = {
+                    redirect: 'manual',
+                    headers: { ...BROWSER_HEADERS },
+                    signal: controller.signal
+                };
+                if (cookie) options.headers['Cookie'] = cookie;
 
-            const res = await fetch(currentUrl, options);
-            clearTimeout(timeout);
+                const res = await fetch(currentUrl, options);
 
-            if (res.status >= 300 && res.status < 400) {
-                const setCookie = res.headers.get('set-cookie');
-                if (setCookie) {
-                    // Keep all cookie key=value pairs, ignore the directives like Domain=
-                    const cookieParts = setCookie.split(/,\s*(?=[^;]+?=)/);
-                    const combinedCookies = cookieParts.map(c => c.split(';')[0]).join('; ');
-                    cookie = combinedCookies;
+                if (res.status >= 300 && res.status < 400) {
+                    const setCookie = res.headers.get('set-cookie');
+                    if (setCookie) {
+                        // Keep all cookie key=value pairs, ignore the directives like Domain=
+                        const cookieParts = setCookie.split(/,\s*(?=[^;]+?=)/);
+                        const combinedCookies = cookieParts.map(c => c.split(';')[0]).join('; ');
+                        cookie = combinedCookies;
+                    }
+                    currentUrl = res.headers.get('location') || currentUrl;
+                    if (!currentUrl.startsWith('http')) currentUrl = new URL(currentUrl, res.url || targetUrl).href;
+                    await discardResponseBody(res);
+                } else if (res.ok || res.status === 404 || res.status === 403 || res.status === 410) {
+                    const body = await res.text();
+                    return (res.status === 404 || res.status === 410)
+                        ? `<!-- RSS_SOURCE_HTTP_STATUS:${res.status} -->${body}`
+                        : body;
+                } else {
+                    let errorBody = '';
+                    try {
+                        errorBody = await res.text();
+                        errorBody = errorBody.substring(0, 200).replace(/[\n\r\t]+/g, ' ').trim();
+                    } catch (e) { }
+                    throw new Error(`HTTP ${res.status} ${res.statusText}${errorBody ? ` | ${errorBody}` : ''}`);
                 }
-                currentUrl = res.headers.get('location') || currentUrl;
-                if (!currentUrl.startsWith('http')) currentUrl = new URL(currentUrl, targetUrl).href;
-                await discardResponseBody(res);
-            } else if (res.ok || res.status === 404 || res.status === 403 || res.status === 410) {
-                const body = await res.text();
-                return (res.status === 404 || res.status === 410)
-                    ? `<!-- RSS_SOURCE_HTTP_STATUS:${res.status} -->${body}`
-                    : body;
-            } else {
-                let errorBody = '';
-                try {
-                    errorBody = await res.text();
-                    errorBody = errorBody.substring(0, 200).replace(/[\n\r\t]+/g, ' ').trim();
-                } catch (e) { }
-                throw new Error(`HTTP ${res.status} ${res.statusText}${errorBody ? ` | ${errorBody}` : ''}`);
             }
-        }
-        throw new Error('Too many redirects');
+            throw new Error('Too many redirects');
+        } finally { clearTimeout(timeout); }
     }
+
+    const pendingDirectFetches = new Map();
 
     async function fetchArticleHtmlByStrategy(strategy, url) {
         url = normalizeArticleSourceUrl(url);
-        if (strategy === 'direct') return await fetchWithCookies(url);
+        if (strategy === 'direct') {
+            if (!pendingDirectFetches.has(url)) {
+                const pending = fetchWithCookies(url).finally(() => pendingDirectFetches.delete(url));
+                pendingDirectFetches.set(url, pending);
+            }
+            return pendingDirectFetches.get(url);
+        }
         if (strategy === 'vietserver') return await fetchViaVietserver(url);
 
         const controller = new AbortController();

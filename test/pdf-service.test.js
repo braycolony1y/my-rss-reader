@@ -93,3 +93,41 @@ test('pausing during rendering cannot publish a file and can resume safely', asy
     assert.equal((await service.status(job.id)).status, 'cancelled');
     assert.equal(await service.download(job.id), null);
 });
+
+
+test('PDF fetching is bounded to ten concurrent pages and rendering preserves page order', async t => {
+    let active = 0, peak = 0;
+    const { service, renders } = await fixture(t, { fetchPage: async (_url, _feed, { page }) => {
+        active++; peak = Math.max(peak, active);
+        await new Promise(resolve => setTimeout(resolve, (11 - page % 10) * 2));
+        active--;
+        return data(page);
+    } });
+    const job = await service.start({ url, totalPages: 31 });
+    await service.whenIdle();
+    assert.equal(peak, 10);
+    assert.deepEqual(renders.flat(), Array.from({ length: 31 }, (_, i) => i + 1));
+    assert.equal((await service.status(job.id)).current, 31);
+    assert.equal((await service.status(job.id)).status, 'ready');
+});
+
+
+test('regeneration replaces a ready snapshot with fresh ordered pages and duplicate requests reuse it', async t => {
+    let version = 1;
+    const forces = [];
+    const { service } = await fixture(t, { fetchPage: async (_url, _feed, { page, force }) => {
+        forces.push(force);
+        return { ...data(page), content: data(page).content.replace('Post', `Version ${version}`) };
+    } });
+    const first = await service.start({ url, totalPages: 2 }); await service.whenIdle();
+    assert.equal((await service.status(first.id)).status, 'ready');
+    version = 2; forces.length = 0;
+    const regenerated = await service.start({ url, totalPages: 3, regenerate: true, regenerationKey: 'request-1' });
+    assert.equal(regenerated.id, first.id);
+    await service.whenIdle();
+    assert.equal((await service.status(first.id)).current, 3);
+    assert.deepEqual(forces, [true, true, true]);
+    await service.start({ url, regenerate: true, regenerationKey: 'request-1' });
+    await service.whenIdle();
+    assert.equal(forces.length, 3);
+});

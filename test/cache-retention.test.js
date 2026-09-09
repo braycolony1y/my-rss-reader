@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createArticleCache } from '../src/articles/cache.js';
 
-test('retention is 14 days and deleted/departed deadlines override Saved/Board protection', async t => {
+test('retention is 14 days but Saved/Board protect deleted and departed archives', async t => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'rss-retention-'));
     const previous = process.cwd(); process.chdir(directory);
     t.after(async () => { process.chdir(previous); await fs.rm(directory, { recursive: true, force: true }); });
@@ -23,6 +23,10 @@ test('retention is 14 days and deleted/departed deadlines override Saved/Board p
     await fs.writeFile('article_cache/deleted.json', JSON.stringify({ version: 55, cachedAt: 3000, url, result: { sourceDeleted: true } }));
     const reloaded = createArticleCache({ env: { RSS_DATA: { get: async key => states[key] } } });
     states.savedStates = [url];
+    assert.equal((await reloaded.getArticleRetention(url)).protected, true);
+    await reloaded.cleanupArticleCache();
+    assert.equal((await fs.readdir('article_cache')).length, 3);
+    states.savedStates = [];
     assert.deepEqual(await reloaded.getArticleRetention(url), { protected: false, expiresAt: 3000 + 14 * 86400000 });
     await reloaded.cleanupArticleCache();
     assert.deepEqual(await fs.readdir('article_cache'), []);

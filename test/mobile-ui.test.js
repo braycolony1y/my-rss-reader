@@ -72,7 +72,7 @@ test('article image shadows can feather beyond content while the overlay contain
 test('Smart News API bypasses the regular article database path', () => {
     const server = readServerSource();
     const smartNews = readFileSync(new URL('../smart-news.js', import.meta.url), 'utf8');
-    assert.match(server, /if \(filterType === 'smart'\) return serveSmartData\(req, res\);/);
+    assert.match(server, /if \(filterType === 'smart'\) return await serveSmartData\(req, res\);/);
     assert.match(server, /get\('smartClusters', \{ type: 'json', shared: true \}\)/);
     assert.match(server, /Server-Timing.*smart-data/);
     assert.match(server, /helpers: \{\s*fastParseRSS,\s*waitForHttpIdle: http\.waitForHttpIdle,\s*prefetchOpenCliOnlyArticles: \(\.\.\.args\) => prefetch\.prefetchOpenCliOnlyArticles\(\.\.\.args\),\s*resolveSmartArticleDestinations: googleNews\.resolveSmartArticleDestinations/);

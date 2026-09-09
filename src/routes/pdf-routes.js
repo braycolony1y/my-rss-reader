@@ -2,10 +2,10 @@ import { authMiddleware } from '../middleware/auth.js';
 export function registerPdfRoutes({ app, pdf }) {
     app.post('/api/article-pdf', authMiddleware, async (req, res) => {
         try {
-            const { url, title, feedUrl, totalPages } = req.body || {};
+            const { url, title, feedUrl, totalPages, regenerate, regenerationKey } = req.body || {};
             const parsed = new URL(url);
             if (!['http:', 'https:'].includes(parsed.protocol)) return res.status(400).json({ error: 'An article URL is required.' });
-            const job = await pdf.start({ url: parsed.href, title, feedUrl, totalPages });
+            const job = await pdf.start({ url: parsed.href, title, feedUrl, totalPages, regenerate: regenerate === true, regenerationKey: typeof regenerationKey === 'string' ? regenerationKey.slice(0, 100) : null });
             res.status(job.status === 'ready' ? 200 : 202).json(job);
         } catch (error) { res.status(400).json({ error: error.message }); }
     });

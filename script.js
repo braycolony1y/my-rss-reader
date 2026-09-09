@@ -3245,7 +3245,35 @@
                     }
                 },
 
-                async saveArticleAsPdf() {
+                async requestArticlePdf(url, options = {}) {
+                    for (let attempt = 0; attempt < 4; attempt++) {
+                        try {
+                            const response = await fetch(url, options);
+                            if (response.status === 401) throw new Error('Please sign in again to download your PDF.');
+                            const text = await response.text();
+                            let job;
+                            try { job = JSON.parse(text); }
+                            catch {
+                                const error = new Error('The PDF server is temporarily unavailable. Please try again shortly.');
+                                error.retryable = true;
+                                throw error;
+                            }
+                            if (!response.ok) {
+                                const error = new Error(job.error || 'Could not check PDF generation.');
+                                error.retryable = response.status >= 500;
+                                throw error;
+                            }
+                            return job;
+                        } catch (error) {
+                            if (options.signal?.aborted) throw error;
+                            if (attempt === 3 || (!error.retryable && error.name !== 'TypeError')) throw error;
+                            this.articlePdfProgress.message = 'Reconnecting to PDF generation on the server…';
+                            await new Promise(resolve => setTimeout(resolve, 2000));
+                        }
+                    }
+                },
+
+                async saveArticleAsPdf(regenerate = false) {
                     if (this.articlePdfState === 'preparing') { this.cancelArticlePdf(); return; }
                     if (!this.overlayArticle || !this.overlayContent) return;
                     const controller = new AbortController();
@@ -3254,17 +3282,17 @@
                     this.articlePdfState = 'preparing';
                     this.articlePdfProgress = { current: 0, total: 0, message: 'Preparing PDF on the server. You can close the reader and return later.' };
                     try {
-                        const response = await fetch('/api/article-pdf', {
+                        let job = await this.requestArticlePdf('/api/article-pdf', {
                             method: 'POST', headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
                                 url: this.isVozArticle(this.overlayArticle) ? this.vozPdfBaseUrl() : this.articleReaderUrl(this.overlayArticle),
+                                regenerate, regenerationKey: regenerate ? crypto.randomUUID() : null,
                                 title: this.overlayArticle.overlayTitle || this.overlayArticle.title || '',
                                 feedUrl: this.overlayArticle.feedUrl || '',
                                 totalPages: Math.max(1, Number(this.overlayPagination?.currentPage || 1), ...(this.overlayPagination?.pages || []).map(p => Number(p.page) || 1))
                             })
                         });
-                        let job = await response.json();
-                        if (!response.ok || job.error) throw new Error(job.error || 'Could not start PDF generation.');
+                        if (job.error) throw new Error(job.error || 'Could not start PDF generation.');
                         if (controller.signal.aborted) {
                             if (controller.cancelServerJob) await fetch('/api/article-pdf/' + job.id, { method: 'DELETE' });
                             return;
@@ -3288,9 +3316,7 @@
                                 controller.signal.addEventListener('abort', done, { once: true });
                             });
                             if (controller.signal.aborted) return;
-                            const status = await fetch('/api/article-pdf/' + job.id, { signal: controller.signal });
-                            job = await status.json();
-                            if (!status.ok) throw new Error(job.error || 'Could not check PDF progress.');
+                            job = await this.requestArticlePdf('/api/article-pdf/' + job.id, { signal: controller.signal });
                         }
                     } catch (error) {
                         if (controller.signal.aborted) return;
@@ -4013,6 +4039,19 @@
 
                     this.prefetchNextAfter(article);
 
+                    const resumePostId = targetUrl.match(/\/post-(\d+)\/?$/)?.[1];
+                    if (resumePostId && Number.isSafeInteger(resumePage) && resumePage > 0) {
+                        // Prefer the saved page over a publisher post redirect,
+                        // but only display it if the permanent post ID is present.
+                        const hintedUrl = targetUrl.replace(/\/post-\d+\/?$/, resumePage > 1 ? '/page-' + resumePage : '');
+                        try {
+                            const hinted = await this.fetchThreadPage(hintedUrl, article.feedUrl || '');
+                            if (!this.articleOverlayOpen || this.overlayRequestId !== requestId) return;
+                            if (new RegExp('data-absolute-post-id=["\x27]' + resumePostId + '["\x27]').test(hinted.content || '')) targetUrl = hintedUrl;
+                        } catch { /* A moved post or failed hint falls back to its permanent redirect. */ }
+                        if (!this.articleOverlayOpen || this.overlayRequestId !== requestId) return;
+                    }
+
                     if (this.articleContentCache && this.articleContentCache.has(targetUrl)) {
                         const cachedData = this.articleContentCache.get(targetUrl);
                         cachedData.cached = true; // Frontend cache hit counts as cached
@@ -4553,4 +4592,16 @@ document.addEventListener('click', event => {
 }, true);
 document.addEventListener('error', event => {
     if (event.target.matches?.('img.ground-publisher-logo')) event.target.hidden = true;
+}, true);
+
+// Keep publisher section links inside the reader without changing the feed route.
+document.addEventListener('click', event => {
+    const link = event.target.closest?.('.tinhte-quick-view a[href^="#"]');
+    if (!link) return;
+    const article = link.closest('.tinhte-article');
+    const target = article?.querySelector('[id="' + CSS.escape(link.getAttribute('href').slice(1)) + '"]');
+    if (!target) return;
+    event.preventDefault();
+    event.stopPropagation();
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }, true);

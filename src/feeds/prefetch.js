@@ -108,7 +108,7 @@ export function createArticlePrefetch({
         const runId = ++currentPrefetchRunId;
         const urlsToPrefetch = new Map();
         try {
-            const articles = await env.RSS_DATA.get('articles', { type: 'json' }) || [];
+            const articles = await env.RSS_DATA.get('articles', { type: 'json', shared: true }) || [];
 
             if (prefetchTargets && prefetchTargets.length > 0) {
                 for (const target of prefetchTargets) {
@@ -135,15 +135,14 @@ export function createArticlePrefetch({
             }
         } catch (e) {}
 
-        const list = [];
-        for (const u of urlsToPrefetch.keys()) {
+        const list = await Promise.all([...urlsToPrefetch.keys()].map(async u => {
             try {
                 const cached = await getCachedArticle(u);
-                list.push({ url: u, isCached: !!(cached && cached.content) });
-            } catch (e) {
-                list.push({ url: u, isCached: false });
+                return { url: u, isCached: !!(cached && cached.content) };
+            } catch {
+                return { url: u, isCached: false };
             }
-        }
+        }));
 
         if (urlsToPrefetch.size === 0 || dryRun) return list;
 
@@ -226,7 +225,7 @@ export function createArticlePrefetch({
             console.log('\n[PREFETCH ENGINE] Computing universal prefetch targets...');
             const articles = Array.isArray(articleSnapshot)
                 ? articleSnapshot
-                : (await env.RSS_DATA.get('articles', { type: 'json' }) || []);
+                : (await env.RSS_DATA.get('articles', { type: 'json', shared: true }) || []);
             const blockedKeywords = await env.RSS_DATA.get('blockedArticleKeywords', { type: 'json' }) || [];
             const blockedKeywordEntries = normalizeBlockedKeywordEntries(blockedKeywords);
             const articleIsBlocked = article => articleContentFilterMatches(article, blockedKeywordEntries);

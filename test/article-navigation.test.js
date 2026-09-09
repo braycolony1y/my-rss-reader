@@ -363,7 +363,7 @@ test('visible cache status uses last successful sync, including while a later sy
     assert.equal(app.cacheLastSuccessText(article), 'Waiting for first successful cache');
 });
 
-test('VOZ resume sends the saved page as a hint while retaining the permanent post URL', async () => {
+test('VOZ resume falls back to the permanent post URL when the hinted page misses the post', async () => {
     const { app, context } = createReaderApp();
     const requested = [];
     context.fetch = async value => {
@@ -374,7 +374,9 @@ test('VOZ resume sends the saved page as a hint while retaining the permanent po
     app.cacheMember = () => false;
     app.userPreferences = { voz_last_read_post_123456: JSON.stringify({ index: '82', absId: '999999', page: 4 }) };
     await app.openArticleOverlay({ link: 'https://voz.vn/t/example.123456/unread' }, { updateHistory: false });
-    const request = requested.find(url => url.pathname === '/api/article-content');
+    const pageRequests = requested.filter(url => url.pathname === '/api/article-content');
+    assert.equal(pageRequests[0].searchParams.get('url'), 'https://voz.vn/t/example.123456/page-4');
+    const request = pageRequests[1];
     assert.equal(request.searchParams.get('url'), 'https://voz.vn/t/example.123456/post-999999');
     assert.equal(request.searchParams.get('resumePage'), '4');
 });
@@ -435,4 +437,25 @@ test('thread read-ahead fetches just the next two pages independently of the art
     await app.prefetchThreadPages({ nextUrl: 'https://voz.vn/t/example.123456/page-6706' });
     assert.deepEqual(urls, ['https://voz.vn/t/example.123456/page-6706', 'https://voz.vn/t/example.123456/page-6707']);
     assert.equal(app.prefetchQueue.length, 1);
+});
+
+test('resume opens the hinted page directly when it contains the permanent post', async () => {
+    for (const cached of [false, true]) {
+        const { app, context } = createReaderApp();
+        const requests = [];
+        const pageUrl = 'https://voz.vn/t/example.123456/page-4000';
+        const data = { url: pageUrl, content: '<div class="voz-post" data-absolute-post-id="999999">Saved reply</div>' };
+        context.fetch = async value => { requests.push(value); return { ok: true, json: async () => data }; };
+        for (const method of ['releaseArticleReaderSession', 'hideTooltip', 'stopArticleSpeech', 'markAsReadExplicit', 'setArticleCopyState', 'prefetchNextAfter']) app[method] = () => {};
+        let applied;
+        app.applyOverlayArticleData = value => { applied = value; };
+        app.cacheMember = () => false;
+        app.userPreferences = { voz_last_read_post_123456: JSON.stringify({ index: '79982', absId: '999999', page: 4000 }) };
+        if (cached) app.articleContentCache = new Map([[pageUrl, data]]);
+        await app.openArticleOverlay({ link: 'https://voz.vn/t/example.123456/unread' }, { updateHistory: false });
+        assert.equal(applied.content, data.content);
+        assert.equal(requests.length, cached ? 0 : 1);
+        if (!cached) assert.equal(new URL(requests[0], 'http://localhost').searchParams.get('url'), pageUrl);
+        assert.equal(app.vozInitialThreadLoad, true);
+    }
 });

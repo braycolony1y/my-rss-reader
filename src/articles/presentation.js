@@ -10,6 +10,7 @@ import { normalizeBlockedKeywordEntries, articleContentFilterMatches } from '../
 export function createArticlePresentation({
     resolveGoogleNewsUrl,
     getLastKnownCachedArticle,
+    getLastKnownCachedArticleImage = async url => (await getLastKnownCachedArticle(url))?.image,
     env,
 } = {}) {
     // Cache for parsed JSON strings (e.g. smartClusters) to avoid CPU-heavy parsing on tab clicks
@@ -67,8 +68,7 @@ export function createArticlePresentation({
                 || (cameFromGoogleNews && isGoogleNewsHostedThumbnail(currentImage))
                 || sourceHandler?.isInvalidFeedImage?.(currentImage) === true;
             if (needsCachedImage && safeHttpUrl(prepared.link) && !isGoogleNewsArticleUrl(prepared.link)) {
-                const cached = await getLastKnownCachedArticle(prepared.link);
-                const cachedImage = safeHttpUrl(cached?.image);
+                const cachedImage = safeHttpUrl(await getLastKnownCachedArticleImage(prepared.link));
                 if (cachedImage
                     && !isInvalidImage(cachedImage)
                     && sourceHandler?.isInvalidFeedImage?.(cachedImage) !== true) {
