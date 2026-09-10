@@ -398,7 +398,8 @@ export async function createApplication({ isMainModule = false } = {}) {
         app: http.app,
         CF_PROXY_BASE: config.CF_PROXY_BASE,
         BROWSER_HEADERS: config.BROWSER_HEADERS,
-        getBestImage: images.getBestImage
+        getBestImage: images.getBestImage,
+        getLastKnownCachedArticleImage: cache.getLastKnownCachedArticleImage
     });
 
     registerPageRoutes({

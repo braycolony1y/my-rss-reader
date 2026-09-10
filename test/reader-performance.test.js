@@ -63,15 +63,15 @@ test('tab requests hold foreground priority until their async work finishes and 
     assert.equal(progress.activeForegroundRequests, 2);
 });
 
-test('Forum cards use the image-only lookup and skip it when an image already exists', async () => {
+test('Forum cards defer missing images so thread files cannot block the list', async () => {
     let reads = 0;
     const presentation = createArticlePresentation({
         getLastKnownCachedArticle: async () => { throw new Error('Full body must not be loaded for a card'); },
         getLastKnownCachedArticleImage: async requested => { assert.equal(requested, url); reads++; return image; }
     });
-    assert.equal((await presentation.prepareArticleForClient({ link: url, title: 'Thread' })).image, image);
+    assert.equal((await presentation.prepareArticleForClient({ link: url, title: 'Thread' })).image, `/api/cached-card-image?url=${encodeURIComponent(url)}`);
     assert.equal((await presentation.prepareArticleForClient({ link: url, title: 'Thread', image })).image, image);
-    assert.equal(reads, 1);
+    assert.equal(reads, 0);
 });
 
 test('explicit feed policy does not wait for Smart settings and changes apply immediately', async () => {
@@ -112,4 +112,20 @@ test('tab filtering reuses immutable articles but updates for keywords, snapshot
     assert.equal((await request()).articles.length, 0);
     state.articles = [{ link: url, title: 'Replacement', feedCategory: 'Forum' }];
     assert.equal((await request()).articles.length, 1);
+});
+
+test('Smart exposes fresh raw headlines before clustering and refreshes on a new raw snapshot', async () => {
+    const article = (id, date) => ({ link: `https://example.com/${id}`, title: id, pubDate: date, smartCategory: 'tech', image });
+    const old = article('old', new Date(Date.now() - 3 * 86400000).toISOString());
+    const fresh = article('fresh', new Date().toISOString());
+    const state = { smartClusters: [old], smartRawArticles: [old, fresh], smartClusterVersion: 'old-version' };
+    const presentation = createArticlePresentation({ env: { RSS_DATA: { get: async key => state[key] } } });
+    const request = async () => {
+        let result;
+        await presentation.serveSmartData({ query: { filterValue: 'tech' } }, { setHeader() {}, json(data) { result = data; } });
+        return result.articles.map(a => a.title);
+    };
+    assert.deepEqual(await request(), ['fresh', 'old']);
+    state.smartRawArticles = [fresh, article('newest', new Date().toISOString())];
+    assert.deepEqual(new Set(await request()), new Set(['fresh', 'newest', 'old']));
 });

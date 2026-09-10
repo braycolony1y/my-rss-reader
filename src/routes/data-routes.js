@@ -82,7 +82,7 @@ export function registerDataRoutes({
                 smartClusters = presentation._smartClustersHistory[requestedVersion];
                 smartClusterVersion = requestedVersion;
             } else {
-                smartClusters = await env.RSS_DATA.get('smartClusters', { type: 'json' }) || [];
+                smartClusters = await env.RSS_DATA.get('smartClusters', { type: 'json', shared: true }) || [];
                 smartClusters = smartClusters.map(article => cleanStoredCluster(article));
                 if (smartClusterVersion) {
                     presentation._smartClustersHistory[smartClusterVersion] = smartClusters;
@@ -155,13 +155,14 @@ export function registerDataRoutes({
                 .sort((a, b) => hiddenIndex.get(b.link) - hiddenIndex.get(a.link));
         } else {
             if (['recent', 'saved', 'board'].includes(filterType)) {
-                const smartClustersRaw = await env.RSS_DATA.get('smartClusters', { type: 'json' }) || [];
-                const smartArticles = smartClustersRaw.map(c => cleanStoredCluster(c)).filter(a => a && !articleIsBlocked(a));
+                const smartClustersRaw = await env.RSS_DATA.get('smartClusters', { type: 'json', shared: true }) || [];
+                const wanted = filterType === 'board' ? boardSet : filterType === 'saved' ? savedSet : readSet;
+                const smartArticles = smartClustersRaw.filter(a => wanted.has(a.link)).map(c => cleanStoredCluster(c)).filter(a => a && !articleIsBlocked(a));
 
                 const linkMap = new Map();
                 filteredArticles.forEach(a => linkMap.set(a.link, a));
 
-                const smartRawArticles = await env.RSS_DATA.get('smartRawArticles', { type: 'json' }) || [];
+                const smartRawArticles = await env.RSS_DATA.get('smartRawArticles', { type: 'json', shared: true }) || [];
                 smartRawArticles.forEach(a => {
                     if (!articleIsBlocked(a)) linkMap.set(a.link, a);
                 });

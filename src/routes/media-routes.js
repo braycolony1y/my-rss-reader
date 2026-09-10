@@ -1,3 +1,4 @@
+import { safeHttpUrl, publisherIcon } from '../utils/article-utils.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { discardResponseBody } from '../fetch-response.js';
 
@@ -6,7 +7,16 @@ export function registerMediaRoutes({
     CF_PROXY_BASE,
     BROWSER_HEADERS,
     getBestImage,
+    getLastKnownCachedArticleImage,
 } = {}) {
+    app.get('/api/cached-card-image', authMiddleware, async (req, res) => {
+        const url = safeHttpUrl(req.query.url);
+        if (!url) return res.status(400).send('Invalid URL');
+        const image = safeHttpUrl(await getLastKnownCachedArticleImage(url));
+        res.setHeader('Cache-Control', 'private, max-age=60');
+        res.redirect(image || publisherIcon(url));
+    });
+
     app.get('/api/proxy-image', authMiddleware, async (req, res) => {
         const targetUrl = req.query.url;
         if (!targetUrl) return res.status(400).send('Missing URL');

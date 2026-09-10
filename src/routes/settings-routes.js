@@ -9,14 +9,23 @@ export function registerSettingsRoutes({
     normalizeClusteringModel,
     VALID_CLUSTERING_MODELS,
 } = {}) {
+    let stateWrites = Promise.resolve();
+    const serializeStateWrite = handler => (req, res) => {
+        const operation = stateWrites.then(() => handler(req, res));
+        stateWrites = operation.catch(() => {});
+        return operation;
+    };
+
     app.get('/api/user-states', authMiddleware, async (req, res) => {
         try {
             const prefs = await env.RSS_DATA.get('userPreferences', { type: 'json' }) || {};
+            res.setHeader('Cache-Control', 'no-store');
             res.json({
-                readStates: prefs.readStates || [],
-                savedStates: prefs.savedStates || [],
-                boardStates: prefs.boardStates || [],
-                hiddenStates: prefs.hiddenStates || [],
+                readStates: await env.RSS_DATA.get('readStates', { type: 'json' }) || [],
+                savedStates: await env.RSS_DATA.get('savedStates', { type: 'json' }) || [],
+                boardStates: await env.RSS_DATA.get('boardStates', { type: 'json' }) || [],
+                hiddenStates: await env.RSS_DATA.get('hiddenStates', { type: 'json' }) || [],
+                userPreferences: prefs,
                 clusteringModel: normalizeClusteringModel(prefs.clusteringModel)
             });
         } catch (e) {
@@ -47,7 +56,7 @@ export function registerSettingsRoutes({
         }
     });
 
-    app.post('/api/toggle', authMiddleware, async (req, res) => {
+    app.post('/api/toggle', authMiddleware, serializeStateWrite(async (req, res) => {
         const { link, list, forceAdd, forceRemove } = req.body;
         if (!['readStates', 'savedStates', 'boardStates', 'hiddenStates'].includes(list)) return res.status(400).send('Invalid List');
 
@@ -82,20 +91,20 @@ export function registerSettingsRoutes({
 
         if (list === 'boardStates' || list === 'savedStates') await boardCache?.reconcileMembership();
         res.status(200).send('Toggled');
-    });
+    }));
 
-    app.post('/api/toggle-batch', authMiddleware, async (req, res) => {
+    app.post('/api/toggle-batch', authMiddleware, serializeStateWrite(async (req, res) => {
         const { links, list, forceAdd, forceRemove } = req.body;
         if (!['readStates', 'savedStates', 'boardStates', 'hiddenStates'].includes(list)) return res.status(400).send('Invalid List');
         if (!Array.isArray(links)) return res.status(400).send('links must be an array');
 
         let stateArray = await env.RSS_DATA.get(list, { type: 'json' }) || [];
-        let stateSet = new Set(stateArray);
+        let stateSet = new Set(stateArray.map(normalizeStateUrl));
 
         if (forceRemove) {
-            links.forEach(link => stateSet.delete(link));
+            links.forEach(link => stateSet.delete(normalizeStateUrl(link)));
         } else if (forceAdd) {
-            links.forEach(link => stateSet.add(link));
+            links.forEach(link => stateSet.add(normalizeStateUrl(link)));
         }
 
         stateArray = Array.from(stateSet);
@@ -118,6 +127,6 @@ export function registerSettingsRoutes({
 
         if (list === 'boardStates' || list === 'savedStates') await boardCache?.reconcileMembership();
         res.status(200).send('Toggled Batch');
-    });
+    }));
 
 }

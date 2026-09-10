@@ -25,8 +25,9 @@ test('database persistence, recovery, and article archives survive service extra
             db.put('smartClusters', JSON.stringify([{ link: 'https://example.org/smart', title: 'Smart fixture' }]))
         ]);
         const disk = JSON.parse(await fs.readFile('database.json', 'utf8'));
-        assert.equal(disk.readStates, '["https://example.org/a"]');
-        assert.equal(disk.savedStates, '["https://example.org/saved"]');
+        const recoveredStates = createDatabaseStore().env.RSS_DATA;
+        assert.deepEqual(await recoveredStates.get('readStates', { type: 'json' }), ['https://example.org/a']);
+        assert.deepEqual(await recoveredStates.get('savedStates', { type: 'json' }), ['https://example.org/saved']);
         assert.equal(disk.smartClusters, undefined);
         assert.equal(JSON.parse(await fs.readFile('smart-data.json', 'utf8')).smartClusters.includes('Smart fixture'), true);
         assert.deepEqual(JSON.parse(await fs.readFile('feeds_backup.json', 'utf8')), [feed]);
@@ -106,13 +107,12 @@ test('startup retains the immediate RSS phase, exact stagger delays, intervals, 
     assert.deepEqual(timeouts.map(timer => timer.delay), [0]);
     startup.startBackgroundServices();
     assert.deepEqual(calls, ['cache', 'rss']);
-    assert.deepEqual(timeouts.map(timer => timer.delay), [0, 30000, 45000, 60000, 90000]);
+    assert.deepEqual(timeouts.map(timer => timer.delay), [0, 30000, 45000, 60000]);
     assert.deepEqual(intervals.map(timer => timer.delay), [3600000, 1800000]);
     assert.deepEqual(cronJobs.map(job => job.expression), ['* * * * *']);
     timeouts.find(timer => timer.delay === 30000).callback();
     timeouts.find(timer => timer.delay === 60000).callback();
-    timeouts.find(timer => timer.delay === 90000).callback();
-    assert.deepEqual(calls, ['cache', 'rss', 'smart', 'prefetch', 'summary']);
+    assert.deepEqual(calls, ['cache', 'rss', 'smart', 'prefetch']);
     await Promise.resolve();
 });
 
@@ -131,6 +131,7 @@ test('lightweight Board state is durable and cannot replay over a newer full sna
         assert.deepEqual(await restarted.get('boardStates', { type: 'json' }), ['https://example.org/a']);
         assert.equal((await restarted.get('userPreferences', { type: 'json' })).theme, 'light');
         await restarted.put('userPreferences', '{"theme":"dark"}');
+        await restarted.put('categoryOrder', '[]'); // Fold the overlay into a full snapshot.
         await fs.writeFile('database-state.json', staleOverlay); // Crash after snapshot rename, before overlay cleanup.
         const recovered = createDatabaseStore().env.RSS_DATA;
         assert.equal((await recovered.get('userPreferences', { type: 'json' })).theme, 'dark');

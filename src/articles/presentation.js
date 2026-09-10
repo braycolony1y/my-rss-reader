@@ -67,7 +67,9 @@ export function createArticlePresentation({
                 || isInvalidImage(currentImage)
                 || (cameFromGoogleNews && isGoogleNewsHostedThumbnail(currentImage))
                 || sourceHandler?.isInvalidFeedImage?.(currentImage) === true;
-            if (needsCachedImage && safeHttpUrl(prepared.link) && !isGoogleNewsArticleUrl(prepared.link)) {
+            if (needsCachedImage && /^https?:\/\/(?:www\.)?(?:voz\.vn|tinhte\.vn)\//i.test(prepared.link)) {
+                prepared.image = `/api/cached-card-image?url=${encodeURIComponent(prepared.link)}`;
+            } else if (needsCachedImage && safeHttpUrl(prepared.link) && !isGoogleNewsArticleUrl(prepared.link)) {
                 const cachedImage = safeHttpUrl(await getLastKnownCachedArticleImage(prepared.link));
                 if (cachedImage
                     && !isInvalidImage(cachedImage)
@@ -91,6 +93,7 @@ export function createArticlePresentation({
     const smartApiViewCache = new Map();
 
     let latestSmartApiVersion = '';
+    const freshViewCache = new Map();
 
     let unavailableSourceMutation = Promise.resolve();
 
@@ -217,7 +220,7 @@ export function createArticlePresentation({
         ]);
 
         let smartClusterVersion = await env.RSS_DATA.get('smartClusterVersion') || '';
-        const requestedVersion = req.query.smartVersion || '';
+        const requestedVersion = Number(req.query.page || 1) > 1 ? (req.query.smartVersion || '') : '';
         let rawClusters;
         if (requestedVersion && _smartClustersHistory[requestedVersion]) {
             rawClusters = _smartClustersHistory[requestedVersion];
@@ -244,6 +247,27 @@ export function createArticlePresentation({
             smartApiViewCache.set(cacheKey, filteredArticles);
             while (smartApiViewCache.size > 7) smartApiViewCache.delete(smartApiViewCache.keys().next().value);
         }
+
+        // Fresh headlines must remain visible while embeddings and AI grouping run.
+        // Preserve grouped stories and add only articles absent from that snapshot.
+        const rawArticles = await env.RSS_DATA.get('smartRawArticles', { type: 'json', shared: true }) || [];
+        const freshKey = `${smartClusterVersion}:${filterValue}:${Math.floor(Date.now() / 60000)}`;
+        let freshView = freshViewCache.get(freshKey);
+        if (!freshView || freshView.raw !== rawArticles || freshView.clusters !== rawClusters) {
+            const represented = new NormalizedSet(rawClusters.flatMap(article =>
+                [article.link, ...(article.relatedArticles || []).map(related => related.link)]));
+            const freshArticles = rawArticles.filter(article => !represented.has(article.link)
+                && smartArticleMatchesSection(article, filterValue));
+            const articles = [...filteredArticles, ...buildSmartApiView(freshArticles, filterValue)];
+            const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+            const recent = article => Number(new Date(article.pubDate || 0).getTime() > cutoff);
+            articles.sort((a, b) => recent(b) - recent(a) || (b.hotness || 0) - (a.hotness || 0)
+                || new Date(b.pubDate || 0) - new Date(a.pubDate || 0));
+            freshView = { raw: rawArticles, clusters: rawClusters, articles };
+            freshViewCache.set(freshKey, freshView);
+            while (freshViewCache.size > 7) freshViewCache.delete(freshViewCache.keys().next().value);
+        }
+        filteredArticles = freshView.articles;
 
         const readSet = new NormalizedSet(readStates || []);
         const hiddenSet = new NormalizedSet(hiddenStates || []);

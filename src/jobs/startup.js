@@ -1,6 +1,5 @@
 import { setClusteringModel, startSmartSyncLoop } from '../../smart-news.js';
 import { fastParseRSS } from '../../feed-parsers.js';
-import { summaryQueue } from '../../summary-engine.js';
 import cron from 'node-cron';
 import { normalizeStateUrl } from '../utils/article-utils.js';
 import { isVozThreadUrl } from '../voz-thread-state.js';
@@ -48,7 +47,6 @@ export function createBackgroundStartup({
         SMART_NEWS:      30_000,  // 30s – let RSS feed sync settle first
         SMART_SYNC_LOOP: 45_000,  // 45s – fetches 186 sources, runs after smart news init
         PREFETCH:        60_000,  // 60s – non-critical, can wait
-        SUMMARY_QUEUE:   90_000,  // 90s – summaries are low priority
     };
 
     function startBackgroundServices() {
@@ -105,14 +103,6 @@ export function createBackgroundStartup({
         const prefetchTimer = setInterval(() => runUniversalTabPrefetch(env), 30 * 60 * 1000);
         if (prefetchTimer.unref) prefetchTimer.unref();
 
-        // ── Phase 5: Summary queue (delayed) ────────────────────────
-        // AI-powered article summaries – lowest priority during boot.
-        setTimeout(() => {
-            gcAndLogMemory('Pre-SummaryQueue');
-            console.log('[STAGGERED BOOT] Phase 5: Starting summary queue...');
-            summaryQueue.start();
-        }, STAGGER_DELAY_MS.SUMMARY_QUEUE);
-
         // Every run re-scans every current page; old page caches are never a completion signal.
         cron.schedule('* * * * *', async () => {
             try {
@@ -120,7 +110,7 @@ export function createBackgroundStartup({
             } catch (error) { console.warn('[BOARD CACHE]', error.message); }
         });
 
-        console.log(`[STAGGERED BOOT] Startup schedule: SmartNews=${STAGGER_DELAY_MS.SMART_NEWS/1000}s, SmartSync=${STAGGER_DELAY_MS.SMART_SYNC_LOOP/1000}s, Prefetch=${STAGGER_DELAY_MS.PREFETCH/1000}s, Summaries=${STAGGER_DELAY_MS.SUMMARY_QUEUE/1000}s`);
+        console.log(`[STAGGERED BOOT] Startup schedule: SmartNews=${STAGGER_DELAY_MS.SMART_NEWS/1000}s, SmartSync=${STAGGER_DELAY_MS.SMART_SYNC_LOOP/1000}s, Prefetch=${STAGGER_DELAY_MS.PREFETCH/1000}s`);
     }
 
     return {

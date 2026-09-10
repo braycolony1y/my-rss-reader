@@ -59,7 +59,7 @@ try {
     assert.equal((await request('/api/data')).data.articles.length, 1);
     const saved = await request('/api/data?filterType=saved');
     assert.equal(saved.data.articles[0].title, 'Saved raw Smart article');
-    assert.equal((await request('/api/data?filterType=smart')).data.articles.length, 1);
+    assert.equal((await request('/api/data?filterType=smart')).data.articles.length, 2);
     assert.equal((await request('/api/smart-status')).status, 200);
     assert.equal((await request('/api/smart-settings')).status, 200);
     assert.equal((await request('/api/smart-sources')).status, 200);
@@ -117,7 +117,8 @@ try {
     assert.equal(unavailable.title, retained.title);
     assert.deepEqual(history.readStates, [retained.link, expired.link]);
     const disk = JSON.parse(await fs.readFile('database.json', 'utf8'));
-    assert.equal(JSON.parse(disk.userPreferences).smokePreference, 'persisted');
+    const states = (await request('/api/user-states')).data;
+    assert.equal(states.userPreferences.smokePreference, 'persisted');
     assert.ok(JSON.parse(disk.articles).some(item => item.title === 'Fixture article refreshed'));
     assert.equal((await request('/api/article-pdf', { method: 'POST', body: { url: articleUrl }, authenticated: false })).status, 401);
     assert.equal((await request('/api/article-pdf', { method: 'POST', body: { url: 'file:///etc/passwd' } })).status, 400);

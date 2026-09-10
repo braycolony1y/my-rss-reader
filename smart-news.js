@@ -7282,10 +7282,10 @@ export async function startSmartSyncLoop(
         );
 
       await helpers.observeCacheArticles?.(articles);
-      await prefetchOpenCliOnlySmartArticles(
+      void prefetchOpenCliOnlySmartArticles(
         results,
         helpers
-      );
+      ).catch(error => console.warn('[SMART PREFETCH]', error.message));
 
       await db.put(
         'smartRawArticles',
@@ -8396,10 +8396,10 @@ export function createSmartNewsEngine({
         );
 
       await helpers.observeCacheArticles?.(fetchedArticles);
-      await prefetchOpenCliOnlySmartArticles(
+      void prefetchOpenCliOnlySmartArticles(
         sourceResults,
         helpers
-      );
+      ).catch(error => console.warn('[SMART PREFETCH]', error.message));
 
       const sourceErrors =
         sourceResults
@@ -8439,6 +8439,8 @@ export function createSmartNewsEngine({
             ...fetchedArticles
           ]
           : fetchedArticles;
+
+      if (hiddenArticles.length) await db.put('smartRawArticles', JSON.stringify(hiddenArticles));
 
       const existingArticles =
         (

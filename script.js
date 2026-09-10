@@ -13,6 +13,8 @@
                 feeds: [],
                 articles: [],
                 readStates: new Set(),
+                pendingReadLinks: new Set(),
+                pendingPreferences: {},
                 savedStates: [],
                 boardStates: [],
                 get cacheRuleSources() {
@@ -674,12 +676,15 @@
                         }
                     }, 600);
                     
+                    setInterval(() => { if (!document.hidden) this.syncUserStatesInBackground(); }, 15000);
+
                     // Background poll for debug stats (quota warning)
                     this.fetchGeminiDebugStats();
                     setInterval(() => this.fetchGeminiDebugStats(), 30000);
 
                     document.addEventListener('visibilitychange', () => { 
                         if (document.hidden) {
+                            this.flushUserPreferences();
                             if (typeof this.saveState === 'function') this.saveState();
                         } else {
                             this.fetchSyncStatus();
@@ -690,7 +695,7 @@
                             }
                         }
                     });
-                    window.addEventListener('pagehide', () => { if (typeof this.saveState === 'function') this.saveState(); });
+                    window.addEventListener('pagehide', () => { this.flushUserPreferences(); if (typeof this.saveState === 'function') this.saveState(); });
                     if ('onfreeze' in document) document.addEventListener('freeze', () => { if (typeof this.saveState === 'function') this.saveState(); });
                     window.addEventListener('pageshow', (e) => { 
                         if (e.persisted) {
@@ -1464,7 +1469,7 @@
                                 this.articles = [...this.articles, ...newUniqueArticles];
                             } else {
                                 this.feeds = data.feeds || [];
-                                this.readStates = new Set([...(data.readStates || []), ...this.readStates]);
+                                this.readStates = new Set([...(data.readStates || []), ...this.pendingReadLinks]);
                                 this.savedStates = [...new Set([...(data.savedStates || []), ...this.savedStates])];
                                 this.boardStates = this.dedupeStateLinks(data.boardStates || []);
                                 // The server is authoritative. Merging with an old browser snapshot
@@ -1496,7 +1501,7 @@
                                     this.articles = newArticles;
                                 }
                                 
-                                this.userPreferences = data.userPreferences || {};
+                                this.userPreferences = { ...(data.userPreferences || {}), ...this.pendingPreferences };
                                 if (this.userPreferences.clusteringModel) {
                                     this.clusteringModel = this.userPreferences.clusteringModel;
                                 }
@@ -1955,6 +1960,7 @@
                 async markAsReadExplicit(link) {
                     this.prefetchNextAfter(link);
                     if (!this.readStates.has(link)) {
+                        this.pendingReadLinks.add(link);
                         this.readStates = new Set([...this.readStates, link]);
                         
                         const article = this.articles.find(a => a.link === link);
@@ -1967,11 +1973,14 @@
 
                         if (typeof this.saveState === 'function') this.saveState();
 
-                        await fetch('/api/toggle', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ link: link, list: 'readStates', forceAdd: true })
-                        });
+                        try {
+                            const res = await fetch('/api/toggle', {
+                                method: 'POST', keepalive: true,
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ link, list: 'readStates', forceAdd: true })
+                            });
+                            if (res.ok) this.pendingReadLinks.delete(link);
+                        } catch (_) { /* Retry on the next state sync. */ }
                     }
                 },
 
@@ -2141,13 +2150,24 @@
                 async syncUserStatesInBackground() {
                     if (!this.isLoggedIn) return;
                     try {
-                        const res = await fetch('/api/user-states');
+                        await this.flushUserPreferences();
+                        const pending = [...this.pendingReadLinks];
+                        if (pending.length) {
+                            const saved = await fetch('/api/toggle-batch', {
+                                method: 'POST', keepalive: true,
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ links: pending, list: 'readStates', forceAdd: true })
+                            });
+                            if (saved.ok) pending.forEach(link => this.pendingReadLinks.delete(link));
+                        }
+                        const res = await fetch('/api/user-states', { cache: 'no-store' });
                         if (res.ok) {
                             const data = await res.json();
-                            if (data.readStates) this.readStates = new Set([...data.readStates, ...this.readStates]);
-                            if (data.savedStates) this.savedStates = [...new Set([...data.savedStates, ...this.savedStates])];
+                            if (data.readStates) this.readStates = new Set([...data.readStates, ...this.pendingReadLinks]);
+                            if (data.savedStates) this.savedStates = this.dedupeStateLinks(data.savedStates);
                             if (data.boardStates) this.boardStates = this.dedupeStateLinks(data.boardStates);
                             if (data.hiddenStates) this.hiddenStates = this.dedupeStateLinks(data.hiddenStates);
+                            if (data.userPreferences) this.userPreferences = { ...data.userPreferences, ...this.pendingPreferences };
                             if (data.clusteringModel) this.clusteringModel = data.clusteringModel;
                             
                             // State sync updates badges and actions only. Removing cards here made
@@ -2544,13 +2564,22 @@
                     this.userPreferences[key] = value;
                     try { localStorage.setItem(key, value); } catch(e) {}
                     
-                    this.syncPrefsTimer[key] = setTimeout(() => {
-                        fetch('/api/user-preferences', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + this.password },
-                            body: JSON.stringify({ key, value })
-                        }).catch(() => {});
-                    }, 2000);
+                    this.pendingPreferences[key] = value;
+                    this.syncPrefsTimer[key] = setTimeout(() => this.flushUserPreferences(), 500);
+                },
+
+                async flushUserPreferences() {
+                    await Promise.all(Object.entries(this.pendingPreferences).map(async ([key, value]) => {
+                        clearTimeout(this.syncPrefsTimer?.[key]);
+                        try {
+                            const res = await fetch('/api/user-preferences', {
+                                method: 'POST', keepalive: true,
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ key, value })
+                            });
+                            if (res.ok && this.pendingPreferences[key] === value) delete this.pendingPreferences[key];
+                        } catch (_) { /* Retry on the next state sync. */ }
+                    }));
                 },
 
                 vozResumePending: false,

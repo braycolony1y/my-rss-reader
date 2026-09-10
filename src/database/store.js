@@ -9,7 +9,7 @@ export function createDatabaseStore() {
 
     const SMART_DB_FILE = './smart-data.json';
     const STATE_FILE = './database-state.json';
-    const STATE_KEYS = new Set(['boardStates', 'userPreferences', 'cacheMembers', 'cacheIdentityLedger']);
+    const STATE_KEYS = new Set(['readStates', 'savedStates', 'hiddenStates', 'boardStates', 'userPreferences', 'cacheMembers', 'cacheIdentityLedger']);
     let stateRevision = 0;
     let stateOverlay = {};
 
@@ -391,7 +391,7 @@ export function createDatabaseStore() {
 
                 _dbCache = next;
                 try {
-                    await _persistToDisk(next, previous, key);
+                    await _persistToDisk(next, previous, key, { ...options, lightweight: STATE_KEYS.has(key) });
                 } catch (err) {
                     _dbCache = previous; // rollback on failure
                     throw err;
