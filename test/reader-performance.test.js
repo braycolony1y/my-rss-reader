@@ -69,7 +69,7 @@ test('Forum cards defer missing images so thread files cannot block the list', a
         getLastKnownCachedArticle: async () => { throw new Error('Full body must not be loaded for a card'); },
         getLastKnownCachedArticleImage: async requested => { assert.equal(requested, url); reads++; return image; }
     });
-    assert.equal((await presentation.prepareArticleForClient({ link: url, title: 'Thread' })).image, `/api/cached-card-image?url=${encodeURIComponent(url)}`);
+    assert.equal((await presentation.prepareArticleForClient({ link: url, title: 'Thread' })).image, `/api/og-image?url=${encodeURIComponent(url)}`);
     assert.equal((await presentation.prepareArticleForClient({ link: url, title: 'Thread', image })).image, image);
     assert.equal(reads, 0);
 });
@@ -118,7 +118,7 @@ test('Smart exposes fresh raw headlines before clustering and refreshes on a new
     const article = (id, date) => ({ link: `https://example.com/${id}`, title: id, pubDate: date, smartCategory: 'tech', image });
     const old = article('old', new Date(Date.now() - 3 * 86400000).toISOString());
     const fresh = article('fresh', new Date().toISOString());
-    const state = { smartClusters: [old], smartRawArticles: [old, fresh], smartClusterVersion: 'old-version' };
+    const state = { smartClusters: [old], smartRawArticles: [old, fresh], smartClusterVersion: 'old-version', userPreferences: { smartTabModes: { tech: 'classic' } } };
     const presentation = createArticlePresentation({ env: { RSS_DATA: { get: async key => state[key] } } });
     const request = async () => {
         let result;
@@ -128,4 +128,21 @@ test('Smart exposes fresh raw headlines before clustering and refreshes on a new
     assert.deepEqual(await request(), ['fresh', 'old']);
     state.smartRawArticles = [fresh, article('newest', new Date().toISOString())];
     assert.deepEqual(new Set(await request()), new Set(['fresh', 'newest', 'old']));
+});
+
+
+test('cards preserve publisher image lookup URLs, including RSS fallback hints', async () => {
+    const presentation = createArticlePresentation({
+        getLastKnownCachedArticleImage: async () => { throw new Error('Existing image lookup must remain intact'); }
+    });
+    for (const link of [url, 'https://tinhte.vn/thread/example.123456', 'https://example.com/story']) {
+        const lookup = `/api/og-image?url=${encodeURIComponent(link)}&rss=https%3A%2F%2Fexample.com%2Fphoto.jpg`;
+        assert.equal((await presentation.prepareArticleForClient({ link, title: 'Story', image: lookup })).image, lookup);
+    }
+});
+
+test('fresh headlines without cached thumbnails retain publisher image discovery', async () => {
+    const presentation = createArticlePresentation({ getLastKnownCachedArticleImage: async () => null });
+    const article = await presentation.prepareArticleForClient({ link: 'https://example.com/story', title: 'Fresh story' });
+    assert.equal(article.image, '/api/og-image?url=https%3A%2F%2Fexample.com%2Fstory');
 });

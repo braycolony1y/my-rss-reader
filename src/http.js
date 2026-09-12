@@ -6,7 +6,10 @@ export function createHttpApp() {
     let lastHttpActivityAt = Date.now();
 
     app.use((req, res, next) => {
-        lastHttpActivityAt = Date.now();
+        // Status polling is background traffic; it must not indefinitely
+        // postpone the very refresh the browser is waiting for.
+        const statusPoll = req.method === 'GET' && /^\/api\/(?:smart-status|sync-status|sync-progress|gemini-key-status|user-states|article-content-progress|summary\/voz\/status)$/.test(req.path);
+        if (!statusPoll) lastHttpActivityAt = Date.now();
         next();
     });
 
@@ -28,15 +31,16 @@ export function createHttpApp() {
         next();
     });
 
-    function waitForHttpIdle(idleMs = 2500) {
+    function waitForHttpIdle(idleMs = 2500, maxWaitMs = 30000) {
+        const deadline = Date.now() + maxWaitMs;
         return new Promise(resolve => {
             const check = () => {
                 const remaining = idleMs - (Date.now() - lastHttpActivityAt);
-                if (remaining <= 0) {
+                if (remaining <= 0 || Date.now() >= deadline) {
                     resolve();
                     return;
                 }
-                setTimeout(check, Math.min(remaining, 500));
+                setTimeout(check, Math.min(remaining, deadline - Date.now(), 500));
             };
             check();
         });

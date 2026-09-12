@@ -1,8 +1,9 @@
+import { generateWithAntigravity } from './src/ai/antigravity.js';
 /**
  * summary-engine.js — AI Summary Engine
  * 
  * Background queue that generates article summaries using Gemini APIs.
- * Uses Gemini for online generation. Local Qwen remains available only to the
+ * Uses Antigravity CLI first, with direct Gemini API keys as backup. Local Qwen remains available only to the
  * Smart clustering engine; no Qwen cloud endpoint is used here.
  */
 
@@ -286,7 +287,8 @@ async function geminiGenerate(model, prompt, options = {}) {
             body: JSON.stringify({
                 contents: [{ parts: [{ text: prompt }] }],
                 generationConfig: {
-                    maxOutputTokens: options.maxTokens || 800
+                    maxOutputTokens: options.maxTokens || 800,
+                    ...(options.json ? { responseMimeType: 'application/json' } : {})
                 }
             }),
             signal: controller.signal
@@ -383,6 +385,14 @@ async function generateWithFallback(geminiModel, prompt, options = {}) {
     
     let fallbackTrace = [];
     let lastError = null;
+    try {
+        // Reserve time for the direct Gemini API if the CLI is unavailable.
+        const result = await generateWithAntigravity(prompt, { ...options, timeoutMs: Math.min(30000, Math.max(1000, timeoutMs - 20000)) });
+        result.fallbackTrace = [];
+        return result;
+    } catch (error) {
+        fallbackTrace.push({ provider: 'antigravity', status: 'failed', reason: error.message });
+    }
 
     for (const step of sequence) {
         if (Date.now() > globalTimeout) break;
@@ -390,8 +400,9 @@ async function generateWithFallback(geminiModel, prompt, options = {}) {
         try {
             const res = await geminiGenerate(step.apiModel, prompt, {
                 maxTokens,
-                timeoutMs: step.timeout,
-                operation: options.operation || 'summary'
+                timeoutMs: Math.max(1000, Math.min(step.timeout, globalTimeout - Date.now())),
+                operation: options.operation || 'summary',
+                json: options.json
             });
             res.provider = 'gemini';
             res.modelUsed = step.displayModel;
@@ -1123,3 +1134,9 @@ export {
     stripHtml as stripHtmlForSummary,
     generateDeepAnalysis
 };
+
+export async function generateStoryBriefing(prompt, options = {}) {
+    const result = await generateWithFallback(GEMINI_PRIMARY_MODEL, prompt,
+        { maxTokens: options.maxTokens || 6000, timeoutMs: 45000, operation: options.operation || 'story-briefing', json: true });
+    return result.text;
+}

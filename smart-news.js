@@ -1,3 +1,5 @@
+import { generateWithAntigravity, antigravityAvailable, ANTIGRAVITY_MODEL } from './src/ai/antigravity.js';
+import { rankStory, retainStoryIds } from './src/articles/story-ranking.js';
 import {
   SMART_SOURCES as DEFAULT_SMART_SOURCES,
   SMART_SOURCE_DISCOVERY_POOL
@@ -71,6 +73,14 @@ const SMART_NEWS_CLUSTER_CONFIG = {
 
 const SMART_NEWS_AI_CONFIG = {
   providers: [
+    {
+      id: 'antigravity',
+      type: 'antigravity',
+      model: ANTIGRAVITY_MODEL,
+      priority: 0,
+      timeoutMs: 30000,
+      maxRetries: 0
+    },
     {
       id: 'gemini-flash-lite',
       type: 'gemini',
@@ -1709,7 +1719,8 @@ import { monitorEventLoopDelay } from 'node:perf_hooks';
 
 export async function prepareEmbeddings(
   articles,
-  onProgress = null
+  onProgress = null,
+  checkpoint = null
 ) {
   const perfMonitor = monitorEventLoopDelay({ resolution: 10 });
   perfMonitor.enable();
@@ -1747,6 +1758,7 @@ export async function prepareEmbeddings(
   const throttleMs = Number(process.env.SMART_PROGRESS_THROTTLE_MS) || 250;
   let lastProgress = 0;
 
+  let lastCheckpoint = Date.now();
   for (let start = 0; start < missing.length; start += EMBEDDING_BATCH_SIZE) {
     const batch = missing.slice(start, start + EMBEDDING_BATCH_SIZE);
 
@@ -1759,6 +1771,10 @@ export async function prepareEmbeddings(
       }
     }
 
+    if (checkpoint && (Date.now() - lastCheckpoint > 30000 || start + batch.length >= missing.length)) {
+      await checkpoint();
+      lastCheckpoint = Date.now();
+    }
     // CRITICAL: Yield the event loop to prevent server lockup!
     await new Promise(r => setTimeout(r, 50));
 
@@ -1780,8 +1796,8 @@ export async function prepareEmbeddings(
     article._vec = embeddingCache.get(embeddingCacheKey(article)) || null;
   }
 
-  if (embeddingCache.size > 5000) {
-    const keys = Array.from(embeddingCache.keys()).slice(0, embeddingCache.size - 4000);
+  if (embeddingCache.size > 20000) {
+    const keys = Array.from(embeddingCache.keys()).slice(0, embeddingCache.size - 16000);
     for (const key of keys) {
       embeddingCache.delete(key);
     }
@@ -3791,156 +3807,7 @@ function chooseRepresentative(articles) {
 }
 
 export function calculateHotness(articles) {
-  const reliableArticles = articles.filter(
-    article => article.publicationTimeReliable !== false
-  );
-
-  if (!reliableArticles.length) {
-    return 1.0;
-  }
-
-  const now = Date.now();
-
-  const latestPublishedAt = Math.max(
-    ...reliableArticles.map(article =>
-      safeDate(article.pubDate)
-    )
-  );
-
-  const latestCoverageAgeHours = Math.max(
-    0,
-    (now - latestPublishedAt) / HOUR_MS
-  );
-
-  const allSourceIds = new Set(
-    articles
-      .map(canonicalSourceIdentity)
-      .filter(Boolean)
-  );
-
-  const sourceIdsLast2Hours = new Set(
-    reliableArticles
-      .filter(
-        article =>
-          now - safeDate(article.pubDate) <=
-          2 * HOUR_MS
-      )
-      .map(canonicalSourceIdentity)
-      .filter(Boolean)
-  );
-
-  const sourceIdsLast24Hours = new Set(
-    reliableArticles
-      .filter(
-        article =>
-          now - safeDate(article.pubDate) <=
-          24 * HOUR_MS
-      )
-      .map(canonicalSourceIdentity)
-      .filter(Boolean)
-  );
-
-  const sourceCount = allSourceIds.size;
-  const sourceCountLast2Hours =
-    sourceIdsLast2Hours.size;
-  const sourceCountLast24Hours =
-    sourceIdsLast24Hours.size;
-
-  const averageAuthority =
-    articles.reduce(
-      (sum, article) =>
-        sum +
-        Number(article.sourceWeight || 1),
-      0
-    ) / Math.max(1, articles.length);
-
-  /*
-   * Total independent coverage.
-   *
-   * Approximate behavior:
-   * 1 source  -> 1.16 points
-   * 2 sources -> 1.83 points
-   * 3 sources -> 2.32 points
-   * 5 sources -> 3.00 points
-   * 10 sources -> 4.00 points
-   */
-  const coverageScore =
-    Math.min(
-      1,
-      Math.log2(1 + sourceCount) /
-      Math.log2(11)
-    ) * 4.0;
-
-  /*
-   * Immediate breaking-news velocity.
-   *
-   * 1 recent source -> 0.4
-   * 2 recent sources -> 0.8
-   * 3 recent sources -> 1.2
-   * 5 recent sources -> 2.0
-   */
-  const breakingVelocityScore =
-    Math.min(
-      1,
-      sourceCountLast2Hours / 5
-    ) * 2.0;
-
-  /*
-   * Sustained activity for stories that remain active.
-   *
-   * 5 recent sources -> 0.5
-   * 10 recent sources -> 1.0
-   */
-  const sustainedCoverageScore =
-    Math.min(
-      1,
-      sourceCountLast24Hours / 10
-    ) * 1.0;
-
-  /*
-   * Freshness of the newest coverage, not the start of the event.
-   *
-   * Half-life is approximately 8.3 hours.
-   */
-  const latestCoverageScore =
-    Math.exp(
-      -latestCoverageAgeHours / 12
-    ) * 2.0;
-
-  const authorityScore =
-    Math.min(
-      1,
-      averageAuthority / 1.12
-    ) * 1.0;
-
-  let hotness =
-    coverageScore +
-    breakingVelocityScore +
-    sustainedCoverageScore +
-    latestCoverageScore +
-    authorityScore;
-
-  /*
-   * A one-source story may be new, but it has not yet been
-   * independently confirmed as widely important.
-   */
-  if (sourceCount === 1) {
-    hotness = Math.min(
-      hotness,
-      latestCoverageAgeHours <= 1
-        ? 4.2
-        : 3.7
-    );
-  }
-
-  return (
-    Math.round(
-      Math.max(
-        1,
-        Math.min(10, hotness)
-      ) * 10
-    ) / 10
-  );
+  return rankStory(articles).score;
 }
 
 export function getHotnessLabel(cluster) {
@@ -4299,7 +4166,7 @@ export function buildCluster(
       finalArticles.length,
 
     sourceCount:
-      sourceNames.length,
+      new Set(finalArticles.map(canonicalSourceIdentity)).size,
 
     sources: sourceNames,
 
@@ -4370,6 +4237,37 @@ export function buildCluster(
             ).slice(0, 900)
         }))
   };
+}
+
+// Publish strict lexical matches before the heavier multilingual pass. Reuse
+// accepted memberships and apply the same event-conflict checks to new joins.
+export function buildEarlySmartClusters(candidates, previous = []) {
+  const byLink = new Map(candidates.map(a => [a.link, a]));
+  const claimed = new Set();
+  const groups = [];
+  for (const old of previous) {
+    const members = [old, ...(old.relatedArticles || [])].map(a => byLink.get(a.link)).filter(a => a && !claimed.has(a.link));
+    if (members.length < 2) continue;
+    const accepted = members.filter(a => a === members[0] || !detectEventConflicts(a, members[0]).hasHardConflict);
+    groups.push(accepted);
+    accepted.forEach(a => claimed.add(a.link));
+  }
+  const index = new Map();
+  const keys = a => [...titleTokens(a.title)].sort((a,b) => b.length-a.length).slice(0, 5).map(t => `${a.smartCategory}:${t}`);
+  const add = (a, id) => { for (const key of keys(a)) { if (!index.has(key)) index.set(key, new Set()); if (index.get(key).size < 80) index.get(key).add(id); } };
+  groups.forEach((group,id) => group.forEach(a => add(a,id)));
+  for (const article of candidates) {
+    if (claimed.has(article.link)) continue;
+    const possible = new Set(keys(article).flatMap(key => [...(index.get(key) || [])]));
+    const match = [...possible].find(id => groups[id].length < 50 && groups[id].every(member =>
+      Math.abs(safeDate(member.pubDate)-safeDate(article.pubDate)) <= 72 * HOUR_MS &&
+      tokenSimilarity(member.title,article.title) >= 0.78 && tokenOverlapCount(member.title,article.title) >= 5 &&
+      isGenuinelyRelated(article, member)));
+    const id = match ?? groups.length;
+    if (match === undefined) groups.push([]);
+    groups[id].push(article); claimed.add(article.link); add(article,id);
+  }
+  return retainStoryIds(groups.map(group => buildCluster(group, {validated:true, verification:{method:'lexical_pending_embeddings',provisional:true}})).filter(Boolean), previous);
 }
 
 export function cleanStoredCluster(cluster) {
@@ -4915,6 +4813,8 @@ function providerEnabled(
       .SMART_LOCAL_AI_ENABLED !==
     'false';
 
+  if (provider.type === 'antigravity') return !onlyLocal && antigravityAvailable();
+
   if (
     provider.type === 'gemini'
   ) {
@@ -4961,7 +4861,8 @@ function getEnabledVerificationProviders(
     );
     if (preferredIdx > 0) {
       const preferred = providers.splice(preferredIdx, 1)[0];
-      providers.unshift(preferred);
+      // The existing model preference orders API backups, never the primary CLI.
+      providers.splice(providers[0]?.type === 'antigravity' ? 1 : 0, 0, preferred);
     }
   }
 
@@ -5422,6 +5323,14 @@ async function callVerificationProvider(
   group,
   keyManager
 ) {
+  if (provider.type === 'antigravity') {
+    const result = await generateWithAntigravity(buildVerificationPrompt(group.articles), {
+      model: provider.model, timeoutMs: provider.timeoutMs, json: true,
+      schema: PARTITION_RESPONSE_SCHEMA, operation: 'cluster-verification'
+    });
+    return parsePartitionResponse(result.text, provider.model);
+  }
+
   if (
     provider.type === 'gemini'
   ) {
@@ -8656,7 +8565,8 @@ export function createSmartNewsEngine({
               [
                 article.link,
                 article.title,
-                article.pubDate
+                article.pubDate,
+                article.contentHash
               ].join('|')
             )
             .sort()
@@ -8781,6 +8691,21 @@ export function createSmartNewsEngine({
         storedClusterVersion !==
         SMART_CLUSTER_VERSION;
 
+      // A model restart or slow AI provider must not leave the public feed
+      // stranded on an old snapshot. This is deliberately a conservative pass.
+      const earlyClusters = buildEarlySmartClusters(candidates, existingClusters.filter(cluster => isActiveCluster(cluster)));
+      const earlyLinks = new Set(candidates.map(article => article.link));
+      const retainedClusters = existingClusters.filter(cluster =>
+        (isTargeted && cluster.smartCategory !== targetCategory) ||
+        (getLatestClusterCoverageTime(cluster) >= Date.now() - 7 * DAY_MS &&
+          ![...getClusterArticleLinks(cluster)].some(link => earlyLinks.has(link))));
+      await putManySafe(db, {
+        smartClusters: JSON.stringify([...earlyClusters, ...retainedClusters]),
+        smartClusterVersion: `${toVietnamIso(Date.now())}_${earlyClusters.length}_early`,
+        smartClusterState: JSON.stringify({ provisional: true, stage: 'embeddings', clusterCount: earlyClusters.length, publishedAt: toVietnamIso(Date.now()) })
+      }, { allowLargeReduction: true });
+      console.log(`[SMART EARLY PUBLISH] ${earlyClusters.length} current clusters before embeddings`);
+
       // Reuse one clustering worker for the lifetime of this Node process.
       // This is required because the old ONNX ARM64 native addon cannot
       // safely be unloaded and then loaded by a replacement Worker.
@@ -8822,7 +8747,7 @@ export function createSmartNewsEngine({
         const reusableExistingClusters =
           clusterVersionChanged
             ? []
-            : existingClusters;
+            : existingClusters.filter(cluster => isActiveCluster(cluster));
 
         console.log(
           '[HNSW VERSION CHECK]',
@@ -9144,6 +9069,8 @@ export function createSmartNewsEngine({
           }
         }
       }
+
+      provisionalClusters = retainStoryIds(provisionalClusters, existingClusters);
 
       const provisionalClusterVersion =
         `${toVietnamIso(Date.now())}_` +
@@ -9528,10 +9455,7 @@ export function createSmartNewsEngine({
           )
       );
 
-      clusters =
-        clusters.map(
-          cleanStoredCluster
-        );
+      clusters = retainStoryIds(clusters.map(cleanStoredCluster), existingClusters);
 
       for (const cluster of clusters) {
         if (cluster) {

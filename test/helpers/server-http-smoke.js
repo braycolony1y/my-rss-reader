@@ -111,7 +111,7 @@ try {
     assert.equal(history.articles.find(item => item.link === retained.link)?.title, retained.title);
     assert.equal(history.articles.some(item => item.link === expired.link), false);
     const smartWithDeleted = (await request('/api/data?filterType=smart&filterValue=news_world')).data;
-    const unavailable = smartWithDeleted.articles.find(item => item.link === retained.link);
+    const unavailable = [...smartWithDeleted.articles, ...(smartWithDeleted.topStories || [])].find(item => item.link === retained.link);
     assert.ok(unavailable, 'unavailable source must remain in its normal cluster');
     assert.equal(unavailable.sourceDeleted, true);
     assert.equal(unavailable.title, retained.title);

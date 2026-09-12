@@ -50,7 +50,12 @@ if (parentPort) {
         
         // 1. Embed NEW/MODIFIED articles
         fs.appendFileSync('/tmp/worker.log', 'Starting prepareEmbeddings\n');
-        await prepareEmbeddings(articles, progress => send({ type: 'progress', progress }));
+        await prepareEmbeddings(articles, progress => send({ type: 'progress', progress }), async () => {
+            if (!message.cachePath) return;
+            const temporaryPath = message.cachePath + '.tmp-' + process.pid;
+            await fs.promises.writeFile(temporaryPath, JSON.stringify(exportEmbeddingCache()));
+            await fs.promises.rename(temporaryPath, message.cachePath);
+        });
         fs.appendFileSync('/tmp/worker.log', 'Finished prepareEmbeddings\n');
         
         let autoMergedClusters = [];

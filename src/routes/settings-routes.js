@@ -37,6 +37,18 @@ export function registerSettingsRoutes({
         try {
             const { key, value } = req.body;
             if (!key) return res.status(400).json({ error: 'Missing key' });
+            if (key === 'smartTabModes') {
+                const tabs = new Set(['news', 'finance', 'news_vietnam', 'news_world', 'finance_vietnam', 'finance_global', 'tech']);
+                if (!value || typeof value !== 'object' || Array.isArray(value) || Object.entries(value).some(([tab, mode]) => !tabs.has(tab) || !['top', 'classic'].includes(mode))) {
+                    return res.status(400).json({ error: 'Choose Top stories or Classic for an existing Smart tab.' });
+                }
+            }
+            if (key === 'topStoryCounts') {
+                const tabs = new Set(['news', 'finance', 'news_vietnam', 'news_world', 'finance_vietnam', 'finance_global', 'tech']);
+                if (!value || typeof value !== 'object' || Array.isArray(value) || Object.entries(value).some(([tab, count]) => !tabs.has(tab) || !Number.isInteger(count) || count < 0 || count > 20)) {
+                    return res.status(400).json({ error: 'Top story counts must be integers from 0 to 20 for an existing Smart tab.' });
+                }
+            }
             if (key === 'clusteringModel') {
                 if (!VALID_CLUSTERING_MODELS.has(value)) {
                     return res.status(400).json({ error: 'Unsupported clustering model' });

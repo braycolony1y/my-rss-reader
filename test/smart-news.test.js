@@ -79,102 +79,16 @@ test('fetch policy identity resolves direct feeds and Google News wrappers to th
     assert.equal(sourceFetchPolicyIdentity({ domain: 'www.bbc.co.uk' }), 'bbc.co.uk');
 });
 
-test('Coverage-First Hotness and Canonical Source Identity', async (t) => {
+test('Editorial scoring permits an important exclusive to outrank syndicated minor news', async () => {
     const { calculateHotness, canonicalSourceIdentity } = await import('../smart-news.js');
-
-    await t.test('Source counting deduplication', () => {
-        const id1 = canonicalSourceIdentity({ domain: 'www.vnexpress.net' });
-        const id2 = canonicalSourceIdentity({ domain: 'vnexpress.net' });
-        const id3 = canonicalSourceIdentity({ link: 'https://vnexpress.net/rss/thoi-su' });
-        const id4 = canonicalSourceIdentity({ link: 'https://www.vnexpress.net/article' });
-        
-        assert.strictEqual(id1, 'vnexpress.net');
-        assert.strictEqual(id1, id2);
-        assert.strictEqual(id1, id3);
-        assert.strictEqual(id1, id4);
-    });
-
-    const now = Date.now();
-    const HOUR_MS = 60 * 60 * 1000;
-    
-    await t.test('Single-source ceiling', () => {
-        const newSingle = [
-            { link: '1', domain: 'a.com', pubDate: new Date(now - 10 * 60 * 1000).toISOString(), sourceWeight: 1.5 }
-        ];
-        const oldSingle = [
-            { link: '2', domain: 'b.com', pubDate: new Date(now - 3 * HOUR_MS).toISOString(), sourceWeight: 1.5 }
-        ];
-        
-        const newScore = calculateHotness(newSingle);
-        const oldScore = calculateHotness(oldSingle);
-        
-        assert.ok(newScore <= 4.2, `Expected new single-source score <= 4.2, got ${newScore}`);
-        assert.ok(oldScore <= 3.7, `Expected old single-source score <= 3.7, got ${oldScore}`);
-    });
-
-    await t.test('Ranking comparisons', () => {
-        // Eight-source, 3-hour-old story
-        const eightSources = Array.from({length: 8}, (_, i) => ({
-            link: String(i),
-            domain: `source${i}.com`,
-            pubDate: new Date(now - 3 * HOUR_MS).toISOString(),
-            sourceWeight: 1.0
-        }));
-        
-        // One-source, 10-minute-old story
-        const oneSourceNew = [
-            { link: '9', domain: 'fresh.com', pubDate: new Date(now - 10 * 60 * 1000).toISOString(), sourceWeight: 1.0 }
-        ];
-        
-        const score8 = calculateHotness(eightSources);
-        const score1 = calculateHotness(oneSourceNew);
-        
-        assert.ok(score8 > score1, `Expected multi-source (${score8}) to beat single-source (${score1})`);
-        
-        // Four sources with fast 2-hour velocity
-        const fourSourcesFast = Array.from({length: 4}, (_, i) => ({
-            link: String(i),
-            domain: `fast${i}.com`,
-            pubDate: new Date(now - 1 * HOUR_MS).toISOString(),
-            sourceWeight: 1.0
-        }));
-        
-        // Ten sources with no recent coverage
-        const tenSourcesOld = Array.from({length: 10}, (_, i) => ({
-            link: String(i),
-            domain: `old${i}.com`,
-            pubDate: new Date(now - 36 * HOUR_MS).toISOString(),
-            sourceWeight: 1.0
-        }));
-        
-        const scoreFast = calculateHotness(fourSourcesFast);
-        const scoreOld = calculateHotness(tenSourcesOld);
-        
-        assert.ok(scoreFast > scoreOld, `Expected fast coverage (${scoreFast}) to beat stale wide coverage (${scoreOld})`);
-        
-        // Old story with 5 new reports vs Old story with no new reports
-        const oldWithNew = [
-            ...Array.from({length: 5}, (_, i) => ({ link: String(i), domain: `old${i}.com`, pubDate: new Date(now - 70 * HOUR_MS).toISOString(), sourceWeight: 1.0 })),
-            ...Array.from({length: 5}, (_, i) => ({ link: String(i+5), domain: `new${i}.com`, pubDate: new Date(now - 1 * HOUR_MS).toISOString(), sourceWeight: 1.0 }))
-        ];
-        const oldNoNew = [
-            ...Array.from({length: 10}, (_, i) => ({ link: String(i), domain: `old${i}.com`, pubDate: new Date(now - 70 * HOUR_MS).toISOString(), sourceWeight: 1.0 }))
-        ];
-        
-        const scoreActive = calculateHotness(oldWithNew);
-        const scoreDead = calculateHotness(oldNoNew);
-        
-        assert.ok(scoreActive > scoreDead, `Expected active old story (${scoreActive}) to beat dead old story (${scoreDead})`);
-    });
-    
-    await t.test('Score validity', () => {
-        const h = calculateHotness([
-            { link: '1', domain: 'a.com', pubDate: new Date().toISOString() },
-            { link: '2', domain: 'b.com', pubDate: new Date().toISOString() }
-        ]);
-        assert.ok(typeof h === 'number');
-        assert.ok(h >= 1.0 && h <= 10.0);
-    });
+    assert.equal(canonicalSourceIdentity({ domain: 'www.vnexpress.net' }), 'vnexpress.net');
+    const article = { title: 'Central bank announces emergency interest rate cut', link: 'https://bank.com/story', pubDate: new Date().toISOString(), sourceWeight: 1.2 };
+    const syndicated = Array.from({ length: 50 }, (_, i) => ({ ...article, title: 'Local shop announces new weekend menu', link: `https://source${i}.com/story` }));
+    assert.ok(calculateHotness([article]) > calculateHotness(syndicated));
+    assert.ok(calculateHotness([article]) > 4.2);
+    const old = { ...article, pubDate: new Date(Date.now() - 48 * 3600000).toISOString() };
+    assert.equal(calculateHotness([old, { ...article, link: 'https://reprint.com/story' }]), calculateHotness([old]));
+    assert.ok(calculateHotness([article]) > calculateHotness([old]));
 });
 
 test('strict event gating separates sports stories with different primary news pegs', async () => {

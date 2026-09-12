@@ -36,7 +36,7 @@ test('online AI calls and the private 24-hour exporter are logged', async () => 
     assert.match(exporter, /online-ai-usage-last-24h\.log/);
 });
 
-test('summaries use 3.8 while clustering uses the cost-saving Lite-to-3.8 chain', async () => {
+test('Gemini backups retain 3.8 summaries and the Lite-to-3.8 verification chain', async () => {
     const summarySource = await read('summary-engine.js');
     const smartSource = await read('smart-news.js');
     const serverSource = await read('server.js');

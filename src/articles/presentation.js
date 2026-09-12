@@ -1,10 +1,13 @@
+import { rankStory, storyMembers } from './story-ranking.js';
+import { createStoryBriefings } from './story-briefing.js';
+import { generateStoryBriefing } from '../../summary-engine.js';
 import { normalizeArticleTitle } from '../../feed-parsers.js';
 import { normalizeArticleSourceUrl } from '../article-source-state.js';
 import { isGoogleNewsArticleUrl, isGoogleNewsHostedThumbnail } from './search-destination.js';
 import { publisherIcon, safeHttpUrl, isInvalidImage, normalizeStateUrl, mapWithConcurrency, NormalizedSet } from '../utils/article-utils.js';
 import { enhanceArticleResultForSource } from './source-results.js';
 import sourceRegistry from '../sources/index.js';
-import { cleanStoredCluster, calculateHotness } from '../../smart-news.js';
+import { cleanStoredCluster, calculateHotness, buildCluster } from '../../smart-news.js';
 import { normalizeBlockedKeywordEntries, articleContentFilterMatches } from '../filters/content-filter.js';
 
 export function createArticlePresentation({
@@ -12,6 +15,7 @@ export function createArticlePresentation({
     getLastKnownCachedArticle,
     getLastKnownCachedArticleImage = async url => (await getLastKnownCachedArticle(url))?.image,
     env,
+    generateBriefing = generateStoryBriefing,
 } = {}) {
     // Cache for parsed JSON strings (e.g. smartClusters) to avoid CPU-heavy parsing on tab clicks
     let _smartClustersHistory = {};
@@ -62,20 +66,21 @@ export function createArticlePresentation({
         // making the browser show a generated placeholder and fetching again.
         try {
             const sourceHandler = sourceRegistry.getHandler(prepared.link);
-            const currentImage = safeHttpUrl(prepared.image);
+            const readerImage = /^\/api\/og-image\?/.test(prepared.image || '');
+            const currentImage = readerImage ? prepared.image : safeHttpUrl(prepared.image);
             const needsCachedImage = !currentImage
                 || isInvalidImage(currentImage)
                 || (cameFromGoogleNews && isGoogleNewsHostedThumbnail(currentImage))
                 || sourceHandler?.isInvalidFeedImage?.(currentImage) === true;
             if (needsCachedImage && /^https?:\/\/(?:www\.)?(?:voz\.vn|tinhte\.vn)\//i.test(prepared.link)) {
-                prepared.image = `/api/cached-card-image?url=${encodeURIComponent(prepared.link)}`;
+                prepared.image = `/api/og-image?url=${encodeURIComponent(prepared.link)}`;
             } else if (needsCachedImage && safeHttpUrl(prepared.link) && !isGoogleNewsArticleUrl(prepared.link)) {
                 const cachedImage = safeHttpUrl(await getLastKnownCachedArticleImage(prepared.link));
                 if (cachedImage
                     && !isInvalidImage(cachedImage)
                     && sourceHandler?.isInvalidFeedImage?.(cachedImage) !== true) {
                     prepared.image = cachedImage;
-                } else if (cameFromGoogleNews) {
+                } else {
                     prepared.image = `/api/og-image?url=${encodeURIComponent(prepared.link)}`;
                 }
             }
@@ -90,7 +95,10 @@ export function createArticlePresentation({
         return prepared;
     }
 
+    const briefings = createStoryBriefings({ db: env?.RSS_DATA, generate: generateBriefing });
     const smartApiViewCache = new Map();
+    const storyViews = new Map();
+    let storyViewSequence = 0;
 
     let latestSmartApiVersion = '';
     const freshViewCache = new Map();
@@ -149,7 +157,7 @@ export function createArticlePresentation({
     function buildSmartApiView(rawClusters, filterValue) {
         const clusters = [];
         for (const storedArticle of rawClusters) {
-            const cleaned = cleanStoredCluster(storedArticle);
+            const cleaned = cleanStoredCluster((storedArticle.isCluster || storedArticle.clusterId) ? { ...storedArticle, isCluster: true } : buildCluster([storedArticle]));
             if (!cleaned || !smartArticleMatchesSection(cleaned, filterValue)) continue;
 
             let article = cleaned;
@@ -168,7 +176,8 @@ export function createArticlePresentation({
             }
 
             const clusterArticles = [article, ...(Array.isArray(article.relatedArticles) ? article.relatedArticles : [])];
-            clusters.push({ ...article, hotness: calculateHotness(clusterArticles) });
+            const ranking = rankStory(clusterArticles, filterValue);
+            clusters.push({ ...article, hotness: ranking.score, sourceCount: ranking.independentSources, ranking });
         }
 
         clusters.sort((left, right) =>
@@ -239,7 +248,7 @@ export function createArticlePresentation({
             latestSmartApiVersion = smartClusterVersion;
         }
 
-        const cacheKey = `${smartClusterVersion}:${filterValue}`;
+        const cacheKey = `${smartClusterVersion}:${filterValue}:${Math.floor(Date.now() / 60000)}`;
         let filteredArticles = smartApiViewCache.get(cacheKey);
         const cacheHit = Boolean(filteredArticles);
         if (!filteredArticles) {
@@ -276,11 +285,17 @@ export function createArticlePresentation({
         const matchesSearch = value => String(value || '').toLowerCase().includes(searchQuery);
 
         filteredArticles = filteredArticles
-            .map(article => markUnavailableSmartSources(article, unavailableSet))
+            .map(article => {
+                const members = storyMembers(article).filter(a => !hiddenSet.has(a.link) && !articleContentFilterMatches(a, blockedKeywordEntries));
+                if (!members.length) return null;
+                const representative = members[0];
+                return markUnavailableSmartSources({ ...article, ...representative, isCluster: true, clusterId: article.clusterId,
+                    relatedArticles: members.slice(1), clusterCount: members.length }, unavailableSet);
+            })
             .filter(Boolean)
             .filter(article => {
             if (hiddenSet.has(article.link) || articleContentFilterMatches(article, blockedKeywordEntries)) return false;
-            if (hideRead && readSet.has(article.link)) return false;
+            if (hideRead && storyMembers(article).every(member => readSet.has(member.link))) return false;
             if (!searchQuery) return true;
             return matchesSearch(article.title) ||
                 matchesSearch(article.feedTitle) ||
@@ -290,37 +305,47 @@ export function createArticlePresentation({
                 ));
             });
 
-        if (hideRead) {
-            filteredArticles = filteredArticles.map(article => {
-                if (!Array.isArray(article.relatedArticles) || !article.relatedArticles.length) return article;
-                const unreadRelated = article.relatedArticles.filter(related => !readSet.has(related.link));
-                if (unreadRelated.length === article.relatedArticles.length) return article;
-                const sources = [...new Set([article.feedTitle, ...unreadRelated.map(related => related.feedTitle)].filter(Boolean))];
-                return {
-                    ...article,
-                    relatedArticles: unreadRelated,
-                    clusterCount: unreadRelated.length + 1,
-                    sourceCount: sources.length,
-                    sources
-                };
-            });
+        filteredArticles = filteredArticles.map(article => ({ ...article,
+            relatedArticles: (article.relatedArticles || []).filter(a => !hiddenSet.has(a.link) && !articleContentFilterMatches(a, blockedKeywordEntries))
+        }));
+        const smartTabMode = ['top','classic'].includes(req.query.smartMode) ? req.query.smartMode : (userPreferences?.smartTabModes?.[filterValue] === 'classic' ? 'classic' : 'top');
+        // Both views share the same cluster list. Top mode enriches every page,
+        // while Classic changes only its presentation, so switching is immediate.
+        const ranked = (await mapWithConcurrency(filteredArticles, 8, async article => {
+            const ranking = rankStory(storyMembers(article), filterValue, Date.now(), await briefings.peek(article, filterValue));
+            return { ...article, ranking, hotness: ranking.score, sourceCount: ranking.independentSources };
+        })).sort((a,b) => b.hotness - a.hotness || b.ranking.updatedAt.localeCompare(a.ranking.updatedAt) || a.link.localeCompare(b.link));
+        const viewSignature = JSON.stringify([filterValue, hideRead, searchQuery, hiddenStates, hideRead ? readStates : [], blockedKeywords]);
+        const priorView = storyViews.get(req.query.smartView);
+        const reusableView = priorView && priorView.signature === viewSignature && Date.now() - priorView.createdAt < 30 * 60000;
+        let smartViewToken = req.query.smartView;
+        filteredArticles = reusableView ? priorView.articles : ranked;
+        if (!reusableView) {
+            smartViewToken = `${Date.now()}-${++storyViewSequence}`;
+            storyViews.set(smartViewToken, { signature: viewSignature, articles: filteredArticles, createdAt: Date.now() });
+            while (storyViews.size > 8) storyViews.delete(storyViews.keys().next().value);
         }
-
-        const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 40;
+        const viewReset = Boolean(req.query.smartView && !reusableView);
+        const page = viewReset ? 1 : Math.max(1, parseInt(req.query.page) || 1);
+        const limit = Math.max(1, Math.min(100, parseInt(req.query.limit) || 40));
         const startIndex = (page - 1) * limit;
         const endIndex = page * limit;
-        const paginatedArticles = await mapWithConcurrency(
-            filteredArticles.slice(startIndex, endIndex),
-            6,
-            article => prepareArticleForClient(article)
-        );
-
+        const pageArticles = filteredArticles.slice(startIndex, endIndex);
+        const rankingPending = smartTabMode === 'top' && filterValue ? await briefings.rankCandidates(pageArticles, filterValue) : false;
+        const paginatedArticles = await mapWithConcurrency(pageArticles, 6, async article => ({
+            ...await prepareArticleForClient(article),
+            ...(filterValue ? { briefing: await briefings.get(article, filterValue, { generate: smartTabMode === 'top' }) } : {})
+        }));
         res.setHeader('Server-Timing', `smart-data;dur=${Date.now() - startedAt}`);
         res.setHeader('X-Smart-View-Cache', cacheHit ? 'hit' : 'miss');
         res.json({
             feeds: feeds || [],
             articles: paginatedArticles,
+            topStories: [],
+            smartTabMode,
+            rankingPending,
+            smartViewToken,
+            viewReset,
             readStates: readStates || [],
             savedStates: savedStates || [],
             boardStates: boardStates || [],

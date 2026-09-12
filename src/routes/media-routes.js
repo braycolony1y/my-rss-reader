@@ -1,4 +1,4 @@
-import { safeHttpUrl, publisherIcon } from '../utils/article-utils.js';
+import { safeHttpUrl, isInvalidImage } from '../utils/article-utils.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { discardResponseBody } from '../fetch-response.js';
 
@@ -13,8 +13,10 @@ export function registerMediaRoutes({
         const url = safeHttpUrl(req.query.url);
         if (!url) return res.status(400).send('Invalid URL');
         const image = safeHttpUrl(await getLastKnownCachedArticleImage(url));
-        res.setHeader('Cache-Control', 'private, max-age=60');
-        res.redirect(image || publisherIcon(url));
+        // Older open tabs can still request this URL. Continue through the
+        // publisher image lookup on a cache miss instead of returning a logo.
+        res.setHeader('Cache-Control', 'private, no-cache');
+        res.redirect(image && !isInvalidImage(image) ? image : `/api/og-image?url=${encodeURIComponent(url)}`);
     });
 
     app.get('/api/proxy-image', authMiddleware, async (req, res) => {

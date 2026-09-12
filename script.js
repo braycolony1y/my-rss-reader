@@ -12,6 +12,70 @@
                 
                 feeds: [],
                 articles: [],
+                topStories: [],
+                smartTabMode: 'top',
+                smartModeWriteQueue: Promise.resolve(),
+                smartModeWriteVersion: 0,
+                async setSmartTabMode(mode) {
+                    if (!['top','classic'].includes(mode) || mode === this.smartTabMode) return;
+                    const tab = this.selectedFilterValue;
+                    const previous = this.smartTabMode;
+                    const writeVersion = ++this.smartModeWriteVersion;
+                    this.hideTooltip();
+                    this.smartTabMode = mode;
+                    this.userPreferences.smartTabModes = { ...(this.userPreferences.smartTabModes || {}), [tab]: mode };
+                    this.pendingPreferences.smartTabModes = { ...this.userPreferences.smartTabModes };
+                    this.topStoryError = '';
+                    // Paint first. Persistence and briefing requests must not gate the toggle.
+                    this.scheduleBriefingRefresh(0, 0);
+                    const modes = { ...this.userPreferences.smartTabModes };
+                    this.smartModeWriteQueue = this.smartModeWriteQueue.catch(() => {}).then(async () => {
+                        const response = await fetch('/api/user-preferences', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: 'smartTabModes', value: modes }) });
+                        if (!response.ok) throw new Error('Could not save this view. Please retry.');
+                    });
+                    try {
+                        await this.smartModeWriteQueue;
+                        if (writeVersion === this.smartModeWriteVersion) delete this.pendingPreferences.smartTabModes;
+                    }
+                    catch (error) {
+                        if (writeVersion !== this.smartModeWriteVersion) return;
+                        this.topStoryError = error.message;
+                        if (this.selectedFilterValue === tab && this.smartTabMode === mode) {
+                            this.smartTabMode = previous;
+                            this.userPreferences.smartTabModes[tab] = previous;
+                            this.pendingPreferences.smartTabModes = { ...this.userPreferences.smartTabModes };
+                        }
+                    }
+                },
+                topStoryError: '',
+                briefingRefreshTimer: null,
+                smartViewToken: '',
+                rankingPending: false,
+                get usesTopStories() { return this.selectedFilterType === 'smart' && this.smartTabMode === 'top'; },
+                briefingFor(article) {
+                    return article.briefing || { status: 'queued', headline: this.stripHtml(article.title), sections: [], sources: [] };
+                },
+                uniqueCitations(citations) { return [...new Map((citations || []).map(c => [c.link, c])).values()]; },
+                scheduleBriefingRefresh(attempt = 0, delay = 15000) {
+                    if (this.briefingRefreshTimer) clearTimeout(this.briefingRefreshTimer);
+                    if (attempt >= 80 || !this.usesTopStories || (!this.rankingPending && !this.articles.some(s => ['queued','pending'].includes(this.briefingFor(s).status)))) return;
+                    const tab = this.selectedFilterValue;
+                    const token = this.smartViewToken;
+                    this.briefingRefreshTimer = setTimeout(async () => {
+                        if (!this.usesTopStories || this.selectedFilterValue !== tab || this.smartViewToken !== token) return;
+                        try {
+                            const page = this.isMobile ? this.currentPage : (attempt % Math.max(1,this.currentPage)) + 1;
+                            const response = await fetch('/api/data?' + new URLSearchParams({ filterType: 'smart', filterValue: tab, smartMode: 'top', smartView: token, page, limit: this.isMobile ? 15 : 40, hideRead: this.hideRead, searchQuery: this.searchQuery || '' }));
+                            if (!response.ok) throw new Error('Briefing refresh unavailable');
+                            const latest = await response.json();
+                            if (!this.usesTopStories || this.selectedFilterValue !== tab || this.smartViewToken !== token || latest.viewReset) return;
+                            this.rankingPending = latest.rankingPending;
+                            const byId = new Map((latest.articles || []).map(s => [s.clusterId || s.link, s]));
+                            this.articles = this.articles.map(s => ({ ...s, briefing: byId.get(s.clusterId || s.link)?.briefing || s.briefing }));
+                        } catch { }
+                        this.scheduleBriefingRefresh(attempt + 1);
+                    }, delay);
+                },
                 readStates: new Set(),
                 pendingReadLinks: new Set(),
                 pendingPreferences: {},
@@ -1369,6 +1433,7 @@
                         this.isLoadingArticles = true;
                         this.loadingArticleStatus = 'Connecting to server...';
                         if (!keepVisible) this.articles = [];
+                        if (!keepVisible) this.topStories = [];
                         
                         if (this._connectTimer) clearInterval(this._connectTimer);
                         let connectWaitTime = 0;
@@ -1404,6 +1469,8 @@
                         params.set('smartVersion', this.smartClusterVersion);
                     }
                     this._preserveSmartVersionCall = false;
+                    if ((isLoadMore || (skipPageReset && this.currentPage > 1)) && this.smartViewToken) params.set('smartView', this.smartViewToken);
+                    if (this.selectedFilterType === 'smart') params.set('smartMode', this.smartTabMode);
                     params.append('_t', Date.now().toString());
 
                     try {
@@ -1460,6 +1527,12 @@
                             
                             if (requestGeneration !== this.articleRequestGeneration) return;
                             
+                            this.topStories = data.topStories || [];
+                            this.smartTabMode = this.pendingPreferences.smartTabModes?.[this.selectedFilterValue] || data.smartTabMode || 'top';
+                            this.smartViewToken = data.smartViewToken || '';
+                            this.rankingPending = data.rankingPending === true;
+
+                            if (data.viewReset) { isLoadMore = false; this.currentPage = 1; }
                             if (isLoadMore) {
                                 const existingLinks = new Set(this.articles.map(a => a.link));
                                 let newUniqueArticles = (data.articles || []).filter(a => !existingLinks.has(a.link));
@@ -1522,7 +1595,10 @@
                     } catch (e) {
                         console.error("Failed to load data:", e);
                     } finally {
-                        if (!isLoadMore && requestGeneration === this.articleRequestGeneration) this.isLoadingArticles = false;
+                        if (requestGeneration === this.articleRequestGeneration) {
+                            if (!isLoadMore) this.isLoadingArticles = false;
+                            this.scheduleBriefingRefresh();
+                        }
                     }
                 },
 
@@ -1677,8 +1753,13 @@
                         this.smartClusterVersion = '';
                     }
                     this._preserveSmartVersionCall = preserveVersion && this.selectedFilterType === 'smart';
+                    this.topStories = [];
+                    this.smartViewToken = '';
+                    this.topStoryError = '';
+                    if (this.briefingRefreshTimer) clearTimeout(this.briefingRefreshTimer);
                     this.selectedFilterType = type;
                     this.selectedFilterValue = value;
+                    this.smartTabMode = this.userPreferences.smartTabModes?.[value] || 'top';
                     window.location.hash = `${type}${value ? '/' + encodeURIComponent(value) : ''}`;
                     this.currentPage = 1;
                     this.hasMore = false;
@@ -1826,7 +1907,7 @@
                     if (isAdding) {
                         array.push(link);
                         if (list === 'savedStates' || list === 'boardStates') {
-                            const sourceArticle = [this.overlayArticle, ...(this.articles || []), ...(this.displayedArticles || [])]
+                            const sourceArticle = [this.overlayArticle, ...(this.topStories || []), ...(this.articles || []), ...(this.displayedArticles || [])]
                                 .filter(Boolean)
                                 .find(article => [article.link, article.originalLink, article.resolvedLink].includes(link));
                             const params = new URLSearchParams({
@@ -2569,7 +2650,7 @@
                 },
 
                 async flushUserPreferences() {
-                    await Promise.all(Object.entries(this.pendingPreferences).map(async ([key, value]) => {
+                    await Promise.all(Object.entries(this.pendingPreferences).filter(([key]) => key !== 'smartTabModes').map(async ([key, value]) => {
                         clearTimeout(this.syncPrefsTimer?.[key]);
                         try {
                             const res = await fetch('/api/user-preferences', {
