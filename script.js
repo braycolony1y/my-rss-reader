@@ -27,7 +27,8 @@
                     this.pendingPreferences.smartTabModes = { ...this.userPreferences.smartTabModes };
                     this.topStoryError = '';
                     // Paint first. Persistence and briefing requests must not gate the toggle.
-                    this.scheduleBriefingRefresh(0, 0);
+                    this.smartViewToken = '';
+                    this.fetchData();
                     const modes = { ...this.userPreferences.smartTabModes };
                     this.smartModeWriteQueue = this.smartModeWriteQueue.catch(() => {}).then(async () => {
                         const response = await fetch('/api/user-preferences', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: 'smartTabModes', value: modes }) });
@@ -47,6 +48,68 @@
                         }
                     }
                 },
+                smartRegion: 'world',
+                topUpdatesAvailable: false,
+                storyAnalysisOpen: {},
+                async refreshTopStories() {
+                    this.smartViewToken = '';
+                    this.storyAnalysisOpen = {};
+                    this.topUpdatesAvailable = false;
+                    await this.fetchData();
+                },
+                async setTopRegion(region) {
+                    this.smartRegion = region;
+                    await this.refreshTopStories();
+                },
+                storyExcerpt(article) {
+                    return (this.briefingFor(article).sections || []).find(s => s.label === 'What happened')?.text || this.stripHtml(article.content);
+                },
+                storyAnalysis(article) {
+                    const briefing = this.briefingFor(article);
+                    if (briefing.analysisStatus !== 'evaluated') return [];
+                    const sections = (briefing.sections || []).filter(s => s.label !== 'What happened' && s.text?.trim());
+                    const timeline = article.topStory?.timeline || [];
+                    const timelineReview = briefing.analysisReview?.find(s => s.label === 'Timeline');
+                    const useTimeline = timelineReview ? timelineReview.useful : timeline.length > 1;
+                    const byLabel = new Map(sections.map(s => [s.label, s]));
+                    if (useTimeline && timeline.length > 1 && !byLabel.has('Timeline') && !article.topStory?.conflicts?.length) byLabel.set('Timeline', { ...byLabel.get('Timeline'), label:'Timeline', timeline });
+                    return [...byLabel.values()];
+                },
+                storyAnalysisNotice(article) {
+                    const briefing = this.briefingFor(article);
+                    const vietnamese = article.topStory?.feed?.endsWith('_vietnam');
+                    if (briefing.analysisStatus === 'unavailable') return vietnamese ? 'Phân tích chưa khả dụng' : 'Analysis unavailable';
+                    if (briefing.analysisStatus === 'evaluated' || briefing.analysisStatus === 'not-applicable') return '';
+                    if (briefing.generationState === 'queued' && Number.isInteger(briefing.queueAhead) && briefing.queueAhead >= 0) return vietnamese ? `✨ Đang chờ phân tích… · Còn ${briefing.queueAhead} bài phía trước` : `✨ Waiting for analysis… · ${briefing.queueAhead} ahead`;
+                    if (briefing.generationStage === 'synthesizing') return vietnamese ? '✨ Đang tổng hợp nguồn…' : '✨ Synthesizing sources…';
+                    if (briefing.generationState === 'generating') {
+                        const progress = Number.isFinite(briefing.progressPercent) && briefing.progressPercent >= 0 && briefing.progressPercent <= 100 ? ` · ${briefing.progressPercent}%` : '';
+                        return (vietnamese ? '✨ Đang phân tích…' : '✨ Generating analysis…') + progress;
+                    }
+                    return vietnamese ? '✨ Đang chuẩn bị phân tích…' : '✨ Preparing analysis…';
+                    return '';
+                },
+                storyCoverage(article) {
+                    const groups = new Map();
+                    for (const source of [article, ...(article.relatedArticles || [])]) {
+                        let identity;
+                        try { identity = new URL(source.domain ? `https://${source.domain}` : source.link).hostname.replace(/^(www\.|m\.)/, ''); } catch { identity = source.feedTitle || source.feedUrl; }
+                        if (!groups.has(identity)) groups.set(identity, {identity, name:this.stripHtml(source.feedTitle), articles:[]});
+                        if (!groups.get(identity).articles.some(a=>a.link===source.link)) groups.get(identity).articles.push(source);
+                    }
+                    return [...groups.values()];
+                },
+                toggleStoryAnalysis(article, label) {
+                    const id = article.clusterId || article.link;
+                    this.storyAnalysisOpen[id] = this.storyAnalysisOpen[id] === label ? null : label;
+                },
+                nextStoryImage(event, article) {
+                    if (!this.usesTopStories) { event.target.src = '/public/default.jpg'; return; }
+                    const candidates = [...new Set([article.image, ...(article.imageCandidates || []), article.feedIcon, '/public/default.jpg'].filter(Boolean))];
+                    const next = Number(event.target.dataset.fallback || 0) + 1;
+                    event.target.dataset.fallback = next;
+                    if (next < candidates.length) event.target.src = this.proxyImageUrl(candidates[next]);
+                },
                 topStoryError: '',
                 briefingRefreshTimer: null,
                 smartViewToken: '',
@@ -58,20 +121,22 @@
                 uniqueCitations(citations) { return [...new Map((citations || []).map(c => [c.link, c])).values()]; },
                 scheduleBriefingRefresh(attempt = 0, delay = 15000) {
                     if (this.briefingRefreshTimer) clearTimeout(this.briefingRefreshTimer);
-                    if (attempt >= 80 || !this.usesTopStories || (!this.rankingPending && !this.articles.some(s => ['queued','pending'].includes(this.briefingFor(s).status)))) return;
+                    if (!this.usesTopStories) return;
                     const tab = this.selectedFilterValue;
                     const token = this.smartViewToken;
                     this.briefingRefreshTimer = setTimeout(async () => {
                         if (!this.usesTopStories || this.selectedFilterValue !== tab || this.smartViewToken !== token) return;
                         try {
-                            const page = this.isMobile ? this.currentPage : (attempt % Math.max(1,this.currentPage)) + 1;
-                            const response = await fetch('/api/data?' + new URLSearchParams({ filterType: 'smart', filterValue: tab, smartMode: 'top', smartView: token, page, limit: this.isMobile ? 15 : 40, hideRead: this.hideRead, searchQuery: this.searchQuery || '' }));
+                            const page = (attempt % Math.max(1,this.currentPage)) + 1;
+                            const response = await fetch('/api/data?' + new URLSearchParams({ filterType: 'smart', filterValue: tab, smartMode: 'top', smartRegion: this.smartRegion, smartView: token, page, limit: this.isMobile ? 15 : 40, hideRead: this.hideRead, searchQuery: this.searchQuery || '' }));
                             if (!response.ok) throw new Error('Briefing refresh unavailable');
                             const latest = await response.json();
-                            if (!this.usesTopStories || this.selectedFilterValue !== tab || this.smartViewToken !== token || latest.viewReset) return;
+                            if (!this.usesTopStories || this.selectedFilterValue !== tab || this.smartViewToken !== token) return;
+                            if (latest.viewReset) { this.topUpdatesAvailable = true; return; }
                             this.rankingPending = latest.rankingPending;
+                            this.topUpdatesAvailable = latest.updatesAvailable === true;
                             const byId = new Map((latest.articles || []).map(s => [s.clusterId || s.link, s]));
-                            this.articles = this.articles.map(s => ({ ...s, briefing: byId.get(s.clusterId || s.link)?.briefing || s.briefing }));
+                            for (const article of this.articles) { const updated = byId.get(article.clusterId || article.link); if (updated) Object.assign(article, updated); }
                         } catch { }
                         this.scheduleBriefingRefresh(attempt + 1);
                     }, delay);
@@ -377,6 +442,11 @@
                         for (const field of fields) {
                             if (article?.[field] !== undefined) compact[field] = article[field];
                         }
+                        if (this.usesTopStories && article?.topStory) {
+                            compact.topStory = { rank:article.topStory.rank, isTop:article.topStory.isTop, feed:article.topStory.feed, timeline:article.topStory.timeline, conflicts:article.topStory.conflicts, latest_material_update:article.topStory.latest_material_update };
+                            compact.briefing = article.briefing;
+                            compact.imageCandidates = article.imageCandidates;
+                        }
                         compact.content = String(article?.content || '').slice(0, includeRelated ? 300 : 160);
                         if (includeRelated && Array.isArray(article?.relatedArticles)) {
                             compact.relatedArticles = article.relatedArticles
@@ -397,6 +467,7 @@
                         categoryOrder: this.categoryOrder,
                         unreadCounts: this.unreadCounts,
                         smartClusterVersion: this.smartClusterVersion,
+                        smartRegion: this.smartRegion,
                         selectedFilterType: this.selectedFilterType,
                         selectedFilterValue: this.selectedFilterValue,
                         currentPage: this.currentPage,
@@ -670,6 +741,7 @@
                                     this.hiddenStates = this.dedupeStateLinks(state.hiddenStates || []);
                                     this.userPreferences = state.userPreferences || {};
                                     this.smartClusterVersion = state.smartClusterVersion || '';
+                                    this.smartRegion = state.smartRegion === 'vietnam' ? 'vietnam' : 'world';
                                     if (this.userPreferences.clusteringModel) {
                                         this.clusteringModel = this.userPreferences.clusteringModel;
                                     }
@@ -1425,6 +1497,9 @@
                 },
 
                 async fetchData(isLoadMore = false, skipPageReset = false, keepVisible = false) {
+                    const smartTiming = this.usesTopStories ? {startedAt:performance.now()} : null;
+                    const topContext = this.usesTopStories ? JSON.stringify([this.selectedFilterValue,this.smartRegion,this.hideRead,this.searchQuery]) : null;
+                    const retainTop = topContext && this._renderedTopContext === topContext && this.articles.length > 0;
                     const requestGeneration = ++this.articleRequestGeneration;
                     if (!isLoadMore && !skipPageReset) {
                         this.currentPage = 1;
@@ -1432,8 +1507,8 @@
                     if (!isLoadMore) {
                         this.isLoadingArticles = true;
                         this.loadingArticleStatus = 'Connecting to server...';
-                        if (!keepVisible) this.articles = [];
-                        if (!keepVisible) this.topStories = [];
+                        if (!keepVisible && !retainTop) this.articles = [];
+                        if (!keepVisible && !retainTop) this.topStories = [];
                         
                         if (this._connectTimer) clearInterval(this._connectTimer);
                         let connectWaitTime = 0;
@@ -1470,7 +1545,7 @@
                     }
                     this._preserveSmartVersionCall = false;
                     if ((isLoadMore || (skipPageReset && this.currentPage > 1)) && this.smartViewToken) params.set('smartView', this.smartViewToken);
-                    if (this.selectedFilterType === 'smart') params.set('smartMode', this.smartTabMode);
+                    if (this.selectedFilterType === 'smart') { params.set('smartMode', this.smartTabMode); if (this.usesTopStories) params.set('smartRegion', this.smartRegion); }
                     params.append('_t', Date.now().toString());
 
                     try {
@@ -1526,11 +1601,13 @@
                             }
                             
                             if (requestGeneration !== this.articleRequestGeneration) return;
-                            
+                            if (smartTiming) { smartTiming.fetchMs=performance.now()-smartTiming.startedAt; smartTiming.renderStartedAt=performance.now(); }
+                            this._renderedTopContext = topContext;
                             this.topStories = data.topStories || [];
                             this.smartTabMode = this.pendingPreferences.smartTabModes?.[this.selectedFilterValue] || data.smartTabMode || 'top';
                             this.smartViewToken = data.smartViewToken || '';
                             this.rankingPending = data.rankingPending === true;
+                            this.topUpdatesAvailable = data.updatesAvailable === true;
 
                             if (data.viewReset) { isLoadMore = false; this.currentPage = 1; }
                             if (isLoadMore) {
@@ -1553,7 +1630,7 @@
                                 if (this.hideRead && !['recent', 'saved', 'board'].includes(this.selectedFilterType)) {
                                     newArticles = newArticles.filter(a => !this.readStates.has(a.link));
                                 }
-                                if (keepVisible && this.articles.length > 0) {
+                                if (keepVisible && this.articles.length > 0 && !this.usesTopStories) {
                                     // A cache revalidation must not reorder, remove, or insert cards
                                     // while the user is reading. Merge fresh fields into the exact
                                     // visible list and leave membership/order for an explicit refresh.
@@ -1598,6 +1675,11 @@
                         if (requestGeneration === this.articleRequestGeneration) {
                             if (!isLoadMore) this.isLoadingArticles = false;
                             this.scheduleBriefingRefresh();
+                            if (smartTiming?.renderStartedAt) this.$nextTick(() => requestAnimationFrame(() => {
+                                window.__smartRefreshTiming = {fetchMs:smartTiming.fetchMs, renderMs:performance.now()-smartTiming.renderStartedAt, cards:this.articles.length};
+                                performance.measure('smart-top-fetch', {start:smartTiming.startedAt,end:smartTiming.renderStartedAt});
+                                performance.measure('smart-top-render', {start:smartTiming.renderStartedAt,end:performance.now()});
+                            }));
                         }
                     }
                 },
@@ -1754,6 +1836,7 @@
                     }
                     this._preserveSmartVersionCall = preserveVersion && this.selectedFilterType === 'smart';
                     this.topStories = [];
+                    this.storyAnalysisOpen = {};
                     this.smartViewToken = '';
                     this.topStoryError = '';
                     if (this.briefingRefreshTimer) clearTimeout(this.briefingRefreshTimer);

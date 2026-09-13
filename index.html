@@ -7,7 +7,7 @@
     <title>My RSS Reader</title>
     <link rel="icon"
         href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22%238b5cf6%22/><circle cx=%2230%22 cy=%2270%22 r=%2210%22 fill=%22white%22/><path d=%22M30 40a30 30 0 0 1 30 30M30 20a50 50 0 0 1 50 50%22 fill=%22none%22 stroke=%22white%22 stroke-width=%2210%22 stroke-linecap=%22round%22/></svg>">
-    <link rel="stylesheet" href="/public/styles.css?v=20260913_unified_cards">
+    <link rel="stylesheet" href="/public/styles.css?v=20260913_top_snapshot_v1">
     <script>
         // Start the first Smart News request while the browser is still parsing
         // the page. Returning visitors paint saved cards immediately instead.
@@ -5884,12 +5884,17 @@
 
                 <section x-show="selectedFilterType === 'smart' && selectedFilterValue" class="top-stories" aria-label="Top stories">
                     <div class="top-stories-heading">
-                        <div><span class="top-stories-kicker" x-text="headerTitle"></span><h2 x-text="smartTabMode === 'classic' ? 'Ranked stories' : 'Top stories'"></h2></div>
+                        <template x-if="smartTabMode === 'classic'"><div><span class="top-stories-kicker" x-text="headerTitle"></span><h2 x-text="smartTabMode === 'classic' ? 'Ranked stories' : 'Top stories'"></h2></div></template>
                         <div class="smart-view-toggle" role="group" aria-label="Story view for this tab">
                             <button type="button" :aria-pressed="smartTabMode === 'top'" @click="setSmartTabMode('top')">Top stories</button>
                             <button type="button" :aria-pressed="smartTabMode === 'classic'" @click="setSmartTabMode('classic')">Classic</button>
                         </div>
                     </div>
+                    <div x-show="usesTopStories && selectedFilterValue === 'tech'" class="story-tab-rail" aria-label="Technology region">
+                        <button type="button" :aria-pressed="smartRegion === 'vietnam'" @click="setTopRegion('vietnam')">Vietnam</button>
+                        <button type="button" :aria-pressed="smartRegion === 'world'" @click="setTopRegion('world')">World</button>
+                    </div>
+                    <button type="button" x-show="usesTopStories && topUpdatesAvailable" class="story-update-notice" @click="refreshTopStories()">New updates available</button>
                     <p role="alert" x-show="topStoryError" x-text="topStoryError"></p>
                 </section>
 
@@ -5901,10 +5906,12 @@
                             usesTopStories ? 'has-story-briefing' : ''
                         ]" @click="handleCardClick(article, $event)">
 
+                        <div class="story-divider" x-show="usesTopStories && !article.topStory?.isTop && (articleIndex === 0 || displayedArticles[articleIndex - 1]?.topStory?.isTop)">More stories</div>
+                        <span class="story-rank" x-show="usesTopStories && article.topStory?.isTop" x-text="'#' + article.topStory?.rank"></span>
                         <!-- Background Image with Gradient Overlay -->
                         <div class="article-card-image absolute inset-y-0 right-0 w-[55%] md:w-[50%] z-0">
                             <img :src="proxyImageUrl(article.image || '/public/default.jpg')"
-                                @error="$el.src='/public/default.jpg'" loading="lazy" decoding="async"
+                                @error="nextStoryImage($event, article)" loading="lazy" decoding="async"
                                 referrerpolicy="no-referrer" class="thumbnail-img w-full h-full object-cover">
                         </div>
 
@@ -5944,7 +5951,7 @@
                                     <div class="flex items-center gap-1.5 md:gap-2 ml-1"
                                         :title="(article.sources || []).join(', ')">
                                         <span class="text-white/20 hidden md:inline">•</span>
-                                        <span class="flex items-center gap-1 text-orange-300 whitespace-nowrap">
+                                        <span x-show="!usesTopStories" class="flex items-center gap-1 text-orange-300 whitespace-nowrap">
                                             <span>🔥</span><span x-text="article.hotness"></span>
                                         </span>
                                         <span class="flex items-center gap-1 text-cyan-300 whitespace-nowrap">
@@ -5990,22 +5997,46 @@
                                      @focusout="hideTooltip()"
                                      @touchstart.passive="hideTooltip()">
                                     <h2 class="text-[17px] md:text-[26px] font-extrabold text-white leading-tight md:leading-tight mb-2 md:mb-3 pr-2 md:pr-4 line-clamp-2 break-words"
-                                        x-text="usesTopStories ? (briefingFor(article).headline || stripHtml(article.title)) : stripHtml(article.title)"></h2>
+                                        x-text="stripHtml(article.title)"></h2>
                                     <p class="text-[13px] md:text-[14px] text-gray-300 line-clamp-2 md:line-clamp-2 pr-2 md:pr-4 leading-snug md:leading-relaxed break-words"
-                                        x-show="!usesTopStories || briefingFor(article).status !== 'ready'" x-text="stripHtml(article.content)"></p>
+                                        x-text="usesTopStories ? storyExcerpt(article) : stripHtml(article.content)"></p>
                                 </div>
 
                         </div>
 
                         <div x-show="usesTopStories" class="article-briefing" @click.stop>
-                            <template x-for="(section, sectionIndex) in (briefingFor(article).sections || [])" :key="sectionIndex">
-                                <div class="top-story-section">
-                                    <h4 x-show="section.label !== 'What happened'" x-text="section.label"></h4>
-                                    <p x-text="section.text"></p>
+                            <p class="story-freshness" x-show="briefingFor(article).status === 'stale' && !briefingFor(article).analysisStatus" x-text="article.topStory?.feed?.endsWith('_vietnam') ? 'Bản tóm tắt trước · đang cập nhật theo diễn biến mới' : 'Previous briefing · updating with newer reporting'"></p>
+                            <p class="story-freshness" x-show="article.topStory?.timeline?.length > 1" x-text="'Updated ' + timeAgo(article.topStory?.latest_material_update) + ' · First reported ' + timeAgo(article.topStory?.timeline?.[0]?.date)"></p>
+                            <p class="story-uncertainty" x-show="article.topStory?.conflicts?.length" x-text="article.topStory?.feed?.endsWith('_vietnam') ? 'Thông tin còn sơ bộ hoặc có khác biệt giữa các nguồn; xem bài gốc để đối chiếu.' : 'Reporting is preliminary or differs between sources; consult the original reports.'"></p>
+                            <div class="story-key-facts"><template x-for="fact in (briefingFor(article).keyFacts || [])" :key="fact.text"><span x-text="fact.text"></span></template></div>
+                            <p class="story-freshness" role="status" x-show="storyAnalysisNotice(article)" x-text="storyAnalysisNotice(article)"></p>
+                            <div class="story-tab-rail" x-show="storyAnalysis(article).length" role="group" aria-label="Story analysis">
+                                <template x-for="section in storyAnalysis(article)" :key="section.label">
+                                    <button type="button" :aria-expanded="storyAnalysisOpen[article.clusterId || article.link] === section.label" @click="toggleStoryAnalysis(article, section.label)" x-text="section.label"></button>
+                                </template>
+                            </div>
+                            <template x-for="section in storyAnalysis(article)" :key="section.label">
+                                <div class="top-story-section" x-show="storyAnalysisOpen[article.clusterId || article.link] === section.label">
+                                    <p x-text="section.text" style="white-space: pre-line"></p>
+                                    <template x-for="development in (section.timeline || [])" :key="development.id">
+                                        <div class="story-timeline-event"><time x-text="formatVietnamDateTime(development.date)"></time><p x-text="development.text"></p>
+                                            <div class="top-story-citations"><template x-for="source in development.sources" :key="source.link"><a :href="source.link" target="_blank" rel="noopener noreferrer" x-text="source.name"></a></template></div>
+                                        </div>
+                                    </template>
                                     <div class="top-story-citations"><template x-for="citation in uniqueCitations(section.citations)" :key="citation.link"><a :href="citation.link" :title="citation.quote" target="_blank" rel="noopener noreferrer" x-text="citation.name"></a></template></div>
                                 </div>
                             </template>
-                            <p x-show="briefingFor(article).status !== 'ready'" class="top-story-note" x-text="briefingFor(article).status === 'unavailable' ? 'Source excerpt · analytical briefing temporarily unavailable' : 'Source excerpt · briefing is being prepared'"></p>
+                            <div class="story-coverage-label" x-show="(article.relatedArticles || []).length">Full Coverage</div>
+                            <div class="story-coverage-rail" x-show="(article.relatedArticles || []).length">
+                                <template x-for="publisher in storyCoverage(article)" :key="publisher.identity">
+                                    <details class="story-publisher">
+                                        <summary x-text="publisher.name + (publisher.articles.length > 1 ? ' ×' + publisher.articles.length : '')"></summary>
+                                        <template x-for="source in publisher.articles" :key="source.link">
+                                            <a :href="source.link" target="_blank" rel="noopener noreferrer" x-text="stripHtml(source.title)"></a>
+                                        </template>
+                                    </details>
+                                </template>
+                            </div>
                         </div>
 
                         <!-- Action Buttons Overlay -->
@@ -7158,7 +7189,7 @@
         </section>
     </div>
 
-    <script src="/script.js?v=20260913_unified_cards"></script>
+    <script src="/script.js?v=20260913_top_snapshot_v1"></script>
 </body>
 
 </html>

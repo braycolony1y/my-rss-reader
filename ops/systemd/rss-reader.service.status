@@ -1,9 +1,9 @@
-ExecStart={ path=/usr/bin/node ; argv[]=/usr/bin/node --max-old-space-size=2560 --expose-gc /home/ubuntu/my-rss-reader/server.js ; ignore_errors=no ; start_time=[Sat 2026-09-12 21:49:17 UTC] ; stop_time=[Sat 2026-09-12 22:00:03 UTC] ; pid=1073579 ; code=dumped ; status=6/ABRT }
+ExecStart={ path=/usr/bin/node ; argv[]=/usr/bin/node --max-old-space-size=2560 --expose-gc /home/ubuntu/my-rss-reader/server.js ; ignore_errors=no ; start_time=[Sun 2026-09-13 21:54:48 UTC] ; stop_time=[n/a] ; pid=1968893 ; code=(null) ; status=0/0 }
 WorkingDirectory=/home/ubuntu/my-rss-reader
 User=ubuntu
 Group=
 LoadState=loaded
-ActiveState=activating
-SubState=auto-restart
+ActiveState=active
+SubState=running
 FragmentPath=/etc/systemd/system/rss-reader.service
 DropInPaths=/etc/systemd/system/rss-reader.service.d/ai-limits.conf /etc/systemd/system/rss-reader.service.d/gemini-debug.conf /etc/systemd/system/rss-reader.service.d/override.conf

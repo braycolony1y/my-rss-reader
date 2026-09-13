@@ -99,3 +99,46 @@
 .has-story-briefing .article-card-image::after {
     background: linear-gradient(to top, var(--card-image-fade), transparent 25%), linear-gradient(to right, var(--card-image-fade), transparent 55%);
 }
+
+/* Editorial layout applies exclusively while Smart Top Stories is selected. */
+.article-card.has-story-briefing { background:linear-gradient(125deg,rgba(244,251,255,.96),rgba(235,251,245,.9)) !important; border:1px solid rgba(183,211,211,.7) !important; border-radius:24px; box-shadow:0 8px 28px #24566a0a; backdrop-filter:blur(16px); padding:24px; color:#173342; --card-image-fade:transparent; }
+.has-story-briefing .article-card-image { position:relative; float:right; width:190px; height:140px; inset:auto; margin:0 0 16px 24px; border-radius:16px; overflow:hidden; }
+.has-story-briefing .article-card-image::after { display:none; }
+.has-story-briefing .article-card-heading { display:block; width:auto; min-height:0; padding:0; overflow:visible; }
+.has-story-briefing .article-card-heading h2 { color:#183340 !important; font-size:23px; line-height:1.3; font-weight:750; padding:0; }
+.has-story-briefing .article-card-heading p { display:block; overflow:visible; -webkit-line-clamp:unset; color:#405661 !important; font-size:15px; line-height:1.65; padding:0; white-space:pre-line; }
+.has-story-briefing .article-metadata { font-size:10px; gap:8px; margin-bottom:12px; letter-spacing:.02em; }
+.has-story-briefing .article-metadata span { color:#506776; }
+.has-story-briefing .article-metadata > span:first-child { background:#ffffff9c; border-color:#cee2df; color:#266459; }
+.has-story-briefing .article-briefing { clear:both; padding:12px 0 0; }
+.has-story-briefing .top-story-section { color:#405661; margin:12px 0; padding:14px 16px; border-radius:14px; background:#ffffff87; }
+.has-story-briefing .top-story-citations { flex-wrap:nowrap; overflow-x:auto; }
+.has-story-briefing .top-story-citations a { color:#217461; flex-shrink:0; }
+.story-rank { display:block; color:#397768; font-size:13px; font-weight:750; margin-bottom:12px; }
+.story-divider { color:#617783; text-transform:uppercase; letter-spacing:.15em; font-size:11px; padding-bottom:18px; }
+.story-tab-rail,.story-coverage-rail { display:flex; flex-wrap:nowrap; gap:8px; overflow-x:auto; max-width:100%; padding:4px 0 8px; scrollbar-width:thin; }
+.story-tab-rail button,.story-coverage-rail a { flex-shrink:0; white-space:nowrap; border:1px solid #c9dedb; border-radius:999px; padding:7px 12px; color:#395f61; background:#ffffff91; font-size:12px; }
+.story-tab-rail button[aria-expanded="true"],.story-tab-rail button[aria-pressed="true"] { background:#d7eee5; border-color:#9cc9bb; color:#205748; }
+.story-tab-rail button:focus-visible,.story-coverage-rail a:focus-visible { outline:2px solid #318776; outline-offset:2px; }
+.story-coverage-label { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.1em; color:#607a81; margin:12px 0 4px; }
+.story-coverage-rail a { display:flex; align-items:center; gap:7px; }
+.story-coverage-rail img { width:16px; height:16px; border-radius:4px; }
+.story-freshness,.story-uncertainty { font-size:12px; color:#657b82; margin-bottom:10px; }
+.story-uncertainty { color:#7d5a22; }
+.story-timeline-event { border-left:2px solid #b9d8ce; padding:0 0 14px 14px; }
+.story-timeline-event time { font-size:11px; color:#647a80; }
+.story-update-notice { border-radius:999px; background:#dceee6; color:#205748; font-size:13px; padding:8px 16px; margin-bottom:16px; }
+@media(max-width:640px) {
+    .article-card.has-story-briefing { padding:16px; border-radius:20px; }
+    .has-story-briefing .article-card-image { width:100px; height:90px; margin:0 0 12px 14px; border-radius:12px; }
+    .has-story-briefing .article-card-heading { min-height:0; }
+    .has-story-briefing .article-card-heading h2 { font-size:18px; }
+    .has-story-briefing .article-card-heading p { clear:both; padding-top:8px; font-size:14px; }
+}
+.story-key-facts { display:flex; gap:8px; overflow-x:auto; flex-wrap:nowrap; }
+.story-key-facts span { flex-shrink:0; font-size:12px; padding:6px 10px; border-radius:9px; background:#e0eee9; color:#285c4e; margin-bottom:10px; }
+
+.story-publisher { flex:0 0 auto; max-width:280px; font-size:12px; color:#395f61; }
+.story-publisher summary { cursor:pointer; white-space:nowrap; border:1px solid #c9dedb; border-radius:999px; padding:7px 12px; background:#ffffff91; }
+.story-publisher a { white-space:normal; margin-top:5px; }
+.article-briefing [role="status"] { font-size:11px; color:#71858b; margin:4px 0; }

@@ -210,13 +210,13 @@ function extractExistingState(
         candidateMembers
           .map(member =>
             cleanKey(
-              member?.articleKey
+              member?.articleKey || member?.link
             )
           )
           .filter(
             key =>
               key &&
-              activeArticlesByKey.has(key)
+              activeArticlesByKey.has(key) && activeArticlesByKey.get(key)._status !== 'MODIFIED'
           )
       )
     ];
@@ -1746,6 +1746,7 @@ export async function runIncrementalHnswClustering(
 
     autoMergedClusters.push({
       id: clusterId,
+      established: existingIds.length > 0,
       clusterId,
       articles: members,
 
@@ -1951,6 +1952,9 @@ export async function runIncrementalHnswClustering(
 
   return {
     autoMergedClusters,
-    ambiguousGroups
+    ambiguousGroups,
+    metrics: { existingMembershipsReused: activeArticles.length - queryArticles.length,
+      affectedClustersReconsidered: new Set(queryArticles.map(a => unionFind.find(a.articleKey))).size,
+      deterministicMatches: decisionStats.auto, deterministicNonMatches: decisionStats.reject }
   };
 }

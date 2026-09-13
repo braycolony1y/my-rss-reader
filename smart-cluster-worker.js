@@ -60,12 +60,14 @@ if (parentPort) {
         
         let autoMergedClusters = [];
         let ambiguousGroups = [];
+        let metrics = {};
 
         if (mode === 'full-deterministic') {
             fs.appendFileSync('/tmp/worker.log', 'Starting deterministicGroups\n');
             const result = await deterministicGroups(articles, progress => send({ type: 'progress', progress }));
             autoMergedClusters = result.autoMergedClusters;
             ambiguousGroups = result.ambiguousGroups;
+            metrics = result.metrics || {};
             fs.appendFileSync('/tmp/worker.log', 'Finished deterministicGroups\n');
         } else {
             fs.appendFileSync('/tmp/worker.log', `Starting runIncrementalHnswClustering with ${existingClusters.length} clusters\n`);
@@ -73,6 +75,7 @@ if (parentPort) {
             const result = await runIncrementalHnswClustering(articles, existingClusters, progress => send({ type: 'progress', progress }));
             autoMergedClusters = result.autoMergedClusters;
             ambiguousGroups = result.ambiguousGroups;
+            metrics = result.metrics || {};
             fs.appendFileSync('/tmp/worker.log', 'Finished runIncrementalHnswClustering\n');
         }
 
@@ -88,6 +91,7 @@ if (parentPort) {
         const result = {
             autoMergedClusters,
             ambiguousGroups,
+            metrics,
             embeddingCacheCount: Object.keys(updatedEmbeddings).length
         };
 

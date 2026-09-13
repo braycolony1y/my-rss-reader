@@ -7,7 +7,7 @@ const articleUrl = 'https://refactor.example/article-one';
 const feed = { url: feedUrl, title: 'Fixture feed', category: 'World', fetchMethods: ['direct'] };
 const article = { link: articleUrl, title: 'Fixture article', feedUrl, feedTitle: 'Fixture feed', feedCategory: 'World', pubDate: new Date().toISOString(), content: 'Fixture excerpt' };
 const snapshot = Object.fromEntries(Object.entries({
-    feeds: [feed], articles: [article], smartSources: [],
+    feeds: [feed], articles: [article], smartSources: [{url:feedUrl,title:'Fixture feed',category:'news_world',region:'foreign',enabled:true}],
     smartClusters: [{ ...article, link: 'https://refactor.example/smart', smartCategory: 'news_world', clusterId: 'fixture-cluster', relatedArticles: [] }],
     smartRawArticles: [{ ...article, link: 'https://refactor.example/raw', title: 'Saved raw Smart article' }],
     savedStates: ['https://refactor.example/raw'], readStates: [], boardStates: [], hiddenStates: [],
@@ -111,7 +111,7 @@ try {
     assert.equal(history.articles.find(item => item.link === retained.link)?.title, retained.title);
     assert.equal(history.articles.some(item => item.link === expired.link), false);
     const smartWithDeleted = (await request('/api/data?filterType=smart&filterValue=news_world')).data;
-    const unavailable = [...smartWithDeleted.articles, ...(smartWithDeleted.topStories || [])].find(item => item.link === retained.link);
+    const unavailable = [...smartWithDeleted.articles.flatMap(article => [article, ...(article.relatedArticles || [])]), ...(smartWithDeleted.topStories || [])].find(item => item.link === retained.link);
     assert.ok(unavailable, 'unavailable source must remain in its normal cluster');
     assert.equal(unavailable.sourceDeleted, true);
     assert.equal(unavailable.title, retained.title);

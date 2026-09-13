@@ -99,7 +99,7 @@ export function registerSmartRoutes({
         try {
             const result = await smartNews.sync(progress => {
                 setManualSyncProgress(requestId, progress.stage, progress.message, progress);
-            }, targetCategory);
+            }, targetCategory, { forceRebuild: req.body?.forceRebuild === true });
             finishManualSyncProgress(requestId, result.skipped ? 'Smart feed is already up to date.' : 'Smart refresh complete.', {
                 failed: result.ok === false
             });

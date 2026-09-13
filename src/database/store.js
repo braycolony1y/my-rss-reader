@@ -14,7 +14,7 @@ export function createDatabaseStore() {
     let stateOverlay = {};
 
 
-    const SMART_KEYS = new Set(['smartClusters', 'smartRawArticles', 'smartCandidateLinks', 'smartCandidateSignature', 'smartAiConfig', 'smartClusterVersion', 'smartStatus', 'storyBriefings']);
+    const SMART_KEYS = new Set(['smartClusters', 'smartRawArticles', 'smartCandidateLinks', 'smartCandidateSignature', 'smartAiConfig', 'smartClusterVersion', 'smartStatus', 'smartClusteringInputs', 'smartClusteringFailedAttempt', 'smartClusteringAlgorithmVersion', 'smartClusterState', 'smartEventVerificationCache', 'smartClusteringCounters', 'storyBriefings', 'topStoriesPublished']);
 
     const NON_PERSISTED_DB_KEYS = new Set(['smartEmbeddings']);
 
@@ -430,9 +430,10 @@ export function createDatabaseStore() {
                     }
                 }
 
-                _dbCache = next;
                 try {
                     await _persistToDisk(next, previous, Object.keys(keyValuePairs), options);
+                    _dbCache = next;
+                    for (const key of Object.keys(keyValuePairs)) delete _jsonParsedCache[key];
                 } catch (err) {
                     _dbCache = previous; // rollback on failure
                     throw err;

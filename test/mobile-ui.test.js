@@ -52,8 +52,8 @@ test('Smart News restores compact cards immediately and revalidates without blan
     assert.match(script, /saveState\(\) \{[\s\S]*compactArticle[\s\S]*relatedArticles[\s\S]*sessionStorage, localStorage/);
     assert.match(script, /setTimeout\(\(\) => this\.fetchData\(false, true, true\), 50\)/);
     assert.match(script, /async fetchData\(isLoadMore = false, skipPageReset = false, keepVisible = false\)/);
-    assert.match(script, /if \(!keepVisible\) this\.articles = \[\];/);
-    assert.match(script, /if \(keepVisible && this\.articles\.length > 0\)[\s\S]*this\.articles = this\.articles\.map/);
+    assert.match(script, /if \(!keepVisible && !retainTop\) this\.articles = \[\];/);
+    assert.match(script, /if \(keepVisible && this\.articles\.length > 0 && !this\.usesTopStories\)[\s\S]*this\.articles = this\.articles\.map/);
     assert.match(script, /canUseEarlyRequest[\s\S]*await earlyRequest\.promise/);
 });
 

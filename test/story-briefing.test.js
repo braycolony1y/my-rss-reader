@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { rankStory, retainStoryIds, storyRevision } from '../src/articles/story-ranking.js';
-import { briefingSources, validateBriefing, createStoryBriefings } from '../src/articles/story-briefing.js';
+import { briefingSources, validateBriefing, createStoryBriefings, REQUIRED_ANALYSIS_REVIEW } from '../src/articles/story-briefing.js';
 import { createArticlePresentation } from '../src/articles/presentation.js';
-const article = (id, category = 'tech', extra = {}) => ({ link: `https://${id}.com/story`, title: 'Regulator approves chip export restrictions', content: 'The regulator approved chip export restrictions on Friday. The new rules affect three manufacturers.', pubDate: new Date().toISOString(), smartCategory: category, image: 'https://images.com/photo.jpg', feedTitle: id, sourceWeight: 1.2, ...extra });
+const article = (id, category = 'tech', extra = {}) => ({ link: `https://${id}.com/story`, feedUrl: `https://${id}.com/rss`, title: 'Regulator approves chip export restrictions', content: 'The regulator approved chip export restrictions on Friday. The new rules affect three manufacturers.', pubDate: new Date().toISOString(), smartCategory: category, image: 'https://images.com/photo.jpg', feedTitle: id, sourceWeight: 1.2, ...extra });
+const readState = (state, key) => key === 'smartSources' ? (state.smartSources || (state.smartClusters || []).flatMap(c => [c, ...(c.relatedArticles || [])]).map(a => ({url:a.feedUrl,category:a.smartCategory,region:a.region}))) : state[key];
 const cluster = { ...article('one'), clusterId: 'event-one', isCluster: true, verification: { method: 'ai_fallback' }, relatedArticles: [article('two')] };
 
 test('publisher feeds and reprints cannot inflate score; material updates change the revision', () => {
@@ -31,8 +32,8 @@ test('briefing rejects fabricated sources or quotes and preserves original links
 });
 
 test('all Top stories are paginated clusters with briefings, respecting tabs and hidden sources', async () => {
-    const state = { smartClusters: [cluster, { ...article('other'), clusterId:'other', isCluster:true }, { ...article('finance', 'finance_global'), clusterId:'finance', isCluster:true }], smartRawArticles: [article('one'), article('two')], smartClusterVersion:'v1', userPreferences:{topStoryCounts:{tech:1, finance_global:0}}, hiddenStates:[article('two').link] };
-    const db = {get:async key => state[key], put:async (key,value) => state[key]=JSON.parse(value)};
+    const state = { smartClusters: [cluster, { ...article('other', 'tech', {title:'OpenWrt publishes router security patch'}), clusterId:'other', isCluster:true }, { ...article('finance', 'finance_global', {title:'Central bank cuts interest rates'}), clusterId:'finance', isCluster:true }], smartRawArticles: [article('one'), article('two')], smartClusterVersion:'v1', userPreferences:{topStoryCounts:{tech:1, finance_global:0}}, hiddenStates:[article('two').link] };
+    const db = {get:async key => readState(state,key), put:async (key,value) => state[key]=JSON.parse(value)};
     const presentation = createArticlePresentation({ env:{RSS_DATA:db}, generateBriefing:async () => { throw new Error('offline fixture'); } });
     const request = async query => { let response; await presentation.serveSmartData({query:{filterValue:'tech', limit:'1', ...query}}, {setHeader(){}, json:data=>response=data}); return response; };
     const first = await request();
@@ -52,12 +53,12 @@ test('all Top stories are paginated clusters with briefings, respecting tabs and
 
 test('briefing queue deduplicates requests and invalidates prose after updated evidence', async () => {
     const store={};let calls=0;
-    const service=createStoryBriefings({db:{get:async k=>store[k],put:async(k,v)=>store[k]=JSON.parse(v)},generate:async()=>{calls++;return JSON.stringify({headline:cluster.title,sections:[{label:'What happened',text:'The rules affect three manufacturers.',evidence:[{sourceId:1,quote:'The new rules affect three manufacturers.'}]}]});}});
+    const service=createStoryBriefings({db:{get:async k=>store[k],put:async(k,v)=>store[k]=JSON.parse(v)},generate:async()=>{calls++;return JSON.stringify({analysisReview:REQUIRED_ANALYSIS_REVIEW.map(label=>({label,useful:false,reason:'No distinct supported insight in this brief fixture.'})),headline:cluster.title,sections:[{label:'What happened',text:'The rules affect three manufacturers.',evidence:[{sourceId:1,quote:'The new rules affect three manufacturers.'}]}]});}});
     await Promise.all([service.get(cluster,'tech'), service.get(cluster,'tech')]);
     await new Promise(resolve=>setTimeout(resolve,20));
     assert.equal(calls,1);
     assert.equal((await service.get(cluster,'tech')).status,'ready');
-    assert.equal((await service.get({...cluster,content:'Updated evidence differs.'},'tech')).status,'pending');
+    assert.equal((await service.get({...cluster,content:'Updated evidence differs.'},'tech')).status,'stale');
 });
 
 test('strict early publication clusters syndicated headlines without losing unrelated candidates', async () => {
@@ -72,10 +73,10 @@ test('strict early publication clusters syndicated headlines without losing unre
 
 test('page snapshot remains stable when an AI importance score arrives', async () => {
     const one={...article('one'),isCluster:true,clusterId:'one'};
-    const two={...article('two'),isCluster:true,clusterId:'two'};
-    const three={...article('three'),isCluster:true,clusterId:'three'};
+    const two={...article('two','tech',{title:'OpenWrt publishes a security patch'}),isCluster:true,clusterId:'two'};
+    const three={...article('three','tech',{title:'Nvidia launches a new GPU architecture'}),isCluster:true,clusterId:'three'};
     const state={smartClusters:[one,two,three],smartClusterVersion:'v1',userPreferences:{topStoryCounts:{tech:1}}};
-    const db={get:async k=>state[k],put:async(k,v)=>state[k]=JSON.parse(v)};
+    const db={get:async k=>readState(state,k),put:async(k,v)=>state[k]=JSON.parse(v)};
     const presentation=createArticlePresentation({env:{RSS_DATA:db},generateBriefing:async()=>{throw new Error('offline fixture')}});
     const request=async query=>{let result;await presentation.serveSmartData({query:{filterValue:'tech',limit:1,...query}},{setHeader(){},json:r=>result=r});return result;};
     const first=await request();
@@ -84,13 +85,14 @@ test('page snapshot remains stable when an AI importance score arrives', async (
     assert.equal(second.smartViewToken,first.smartViewToken);
     assert.notEqual(second.articles[0].link,first.articles[0].link);
     const switched=await request({smartView:first.smartViewToken,smartMode:'classic',page:1});
-    assert.equal(switched.smartViewToken,first.smartViewToken);
-    assert.equal(switched.articles[0].link,first.articles[0].link);
+    assert.notEqual(switched.smartViewToken,first.smartViewToken);
+    assert.equal(switched.smartTabMode,'classic');
+    assert.equal(switched.articles[0].topStory,undefined);
 });
 
 test('an unread development stays visible when its representative has been read', async () => {
     const state={smartClusters:[cluster],smartClusterVersion:'v1',readStates:[cluster.link],userPreferences:{topStoryCounts:{tech:1}}};
-    const db={get:async k=>state[k],put:async()=>{}};
+    const db={get:async k=>readState(state,k),put:async()=>{}};
     const presentation=createArticlePresentation({env:{RSS_DATA:db},generateBriefing:async()=>{throw new Error('offline fixture')}});
     let result;await presentation.serveSmartData({query:{filterValue:'tech',hideRead:'true'}},{setHeader(){},json:r=>result=r});
     assert.equal(result.articles.length,1);
@@ -100,8 +102,8 @@ test('an unread development stays visible when its representative has been read'
 });
 
 test('Top stories is the default and Classic is independent for each tab', async () => {
-    const state={smartClusters:[cluster,{...article('finance','finance_global'),isCluster:true,clusterId:'finance'}],smartClusterVersion:'v1',userPreferences:{topStoryCounts:{tech:1},smartTabModes:{finance_global:'classic'}}};
-    const db={get:async k=>state[k],put:async()=>{}};
+    const state={smartClusters:[cluster,{...article('finance','finance_global',{title:'Central bank announces interest rate decision'}),isCluster:true,clusterId:'finance'}],smartClusterVersion:'v1',userPreferences:{topStoryCounts:{tech:1},smartTabModes:{finance_global:'classic'}}};
+    const db={get:async k=>readState(state,k),put:async()=>{}};
     const presentation=createArticlePresentation({env:{RSS_DATA:db},generateBriefing:async()=>{throw new Error('offline fixture')}});
     const request=async tab=>{let result;await presentation.serveSmartData({query:{filterValue:tab}},{setHeader(){},json:r=>result=r});return result;};
     const tech=await request('tech');assert.equal(tech.smartTabMode,'top');assert.equal(tech.topStories.length,0);assert.equal(tech.articles.length,1);assert.ok(tech.articles[0].briefing);

@@ -1,3 +1,4 @@
+import { parseClusteringJson, requestClusteringDecision } from './src/ai/clustering-json.js';
 import { generateWithAntigravity, antigravityAvailable, ANTIGRAVITY_MODEL } from './src/ai/antigravity.js';
 import { rankStory, retainStoryIds } from './src/articles/story-ranking.js';
 import {
@@ -21,7 +22,7 @@ const SMART_ITEMS_PER_SOURCE = 10;
 const SMART_CLUSTER_VERSION =
   'v2.12_named_entity_gate_20260826';
 
-const EMBEDDING_MODEL = 'Xenova/multilingual-e5-small';
+const EMBEDDING_MODEL = process.env.SMART_EMBEDDING_MODEL || 'Xenova/multilingual-e5-small';
 const EMBEDDING_CACHE_VERSION = 'e5-query-title-content-v2';
 export const EMBEDDING_CACHE_FILE =
   process.env.SMART_EMBEDDING_CACHE_FILE ||
@@ -131,8 +132,6 @@ const SMART_NEWS_AI_CONFIG = {
 
   cache: {
     enabled: true,
-    maxEntries: 500,
-    maxAgeMs: 14 * DAY_MS,
     promptVersion: 'event-verifier-v4',
     rulesVersion: 'event-rules-v4',
     schemaVersion: 'event-partition-v2'
@@ -1585,14 +1584,11 @@ export function buildEmbeddingText(article) {
 }
 
 export function embeddingCacheKey(article) {
-  if (!article.contentHash) {
-    throw new Error('article.contentHash is required for embeddingCacheKey');
-  }
   return createHash('sha256')
     .update([
-      'Xenova/multilingual-e5-small',
-      'v3',
-      article.contentHash
+      EMBEDDING_MODEL,
+      EMBEDDING_CACHE_VERSION,
+      buildEmbeddingText(article)
     ].join('\n'))
     .digest('hex');
 }
@@ -1731,7 +1727,7 @@ export async function prepareEmbeddings(
 
   for (const article of articles) {
     // If the article already has a valid vector attached, we don't need to re-embed.
-    if (article._vec) continue;
+    // Cache identity, rather than an attached vector, determines reuse.
 
     const text = buildEmbeddingText(article);
     const key = embeddingCacheKey(article);
@@ -1796,16 +1792,10 @@ export async function prepareEmbeddings(
     article._vec = embeddingCache.get(embeddingCacheKey(article)) || null;
   }
 
-  if (embeddingCache.size > 20000) {
-    const keys = Array.from(embeddingCache.keys()).slice(0, embeddingCache.size - 16000);
-    for (const key of keys) {
-      embeddingCache.delete(key);
-    }
-  }
-
   perfMonitor.disable();
   const maxDelay = Math.round(perfMonitor.max / 1e6); // nanoseconds to ms
   console.log(`[SMART PERFORMANCE] stage=embeddings durationMs=${Date.now() - startTime} maxEventLoopDelayMs=${maxDelay}`);
+  onProgress?.({ phase: 'embeddings', embeddingsReused: articles.length - missing.length, embeddingsGenerated: missing.length });
   console.log(`[SMART EMBEDDINGS] candidates=${articles.length} unique=${entries.length} hits=${entries.length - missing.length} misses=${missing.length} batches=${Math.ceil(missing.length / EMBEDDING_BATCH_SIZE)} durationMs=${Date.now() - startTime}`);
 }
 
@@ -4435,48 +4425,10 @@ function parsePartitionResponse(
   raw,
   providerName
 ) {
-  const text = String(raw || '')
-    .replace(
-      /^```(?:json)?\s*/i,
-      ''
-    )
-    .replace(/\s*```$/i, '')
-    .trim();
-
-  try {
-    return JSON.parse(text);
-  } catch {
-    const start =
-      text.indexOf('{');
-
-    const end =
-      text.lastIndexOf('}');
-
-    if (
-      start < 0 ||
-      end <= start
-    ) {
-      throw new Error(
-        `${providerName} returned invalid JSON`
-      );
-    }
-
-    try {
-      return JSON.parse(
-        text.slice(
-          start,
-          end + 1
-        )
-      );
-    } catch {
-      throw new Error(
-        `${providerName} returned invalid JSON`
-      );
-    }
-  }
+  return parseClusteringJson(raw);
 }
 
-function validatePartitionResult(
+export function validatePartitionResult(
   result,
   articles
 ) {
@@ -4490,6 +4442,17 @@ function validatePartitionResult(
       valid: false,
       reason: 'invalid_schema'
     };
+  }
+
+  if (Array.isArray(result) || Object.keys(result).some(key => !['clusters', 'uncertain'].includes(key))) {
+    return { valid: false, reason: 'wrong_root_type' };
+  }
+  for (const cluster of result.clusters) {
+    if (!cluster || typeof cluster !== 'object' || Array.isArray(cluster) ||
+        Object.keys(cluster).some(key => !['articleIds', 'confidence'].includes(key)) ||
+        (cluster.confidence !== undefined && (typeof cluster.confidence !== 'number' || !Number.isFinite(cluster.confidence) || cluster.confidence < 0 || cluster.confidence > 1))) {
+      return { valid: false, reason: 'invalid_enum' };
+    }
   }
 
   if (!result.clusters.length) {
@@ -5079,7 +5042,7 @@ async function requestGeminiPartition(
               parts: [
                 {
                   text:
-                    buildVerificationPrompt(
+                    generationOptions.repairPrompt || buildVerificationPrompt(
                       articles
                     )
                 }
@@ -5144,12 +5107,13 @@ async function requestGeminiPartition(
         )
         .join('') || '';
 
-    if (!text) {
+    if (!text && !generationOptions.rawOutput) {
       throw new Error(
         'Gemini returned an empty response'
       );
     }
 
+    if (generationOptions.rawOutput) return text;
     const parsed = parsePartitionResponse(
       text,
       model
@@ -5187,7 +5151,9 @@ async function requestLocalPartition(
   articles,
   baseUrl,
   model,
-  timeoutMs
+  timeoutMs,
+  repairPrompt = null,
+  rawOutput = false
 ) {
   const controller =
     new AbortController();
@@ -5221,7 +5187,7 @@ async function requestLocalPartition(
             {
               role: 'user',
               content:
-                buildVerificationPrompt(
+                repairPrompt || buildVerificationPrompt(
                   articles
                 )
             }
@@ -5275,6 +5241,7 @@ async function requestLocalPartition(
       );
     }
 
+    if (rawOutput) return text;
     return parsePartitionResponse(
       text,
       model
@@ -5321,14 +5288,15 @@ function isModelOutputError(
 async function callVerificationProvider(
   provider,
   group,
-  keyManager
+  keyManager,
+  repairPrompt = null
 ) {
   if (provider.type === 'antigravity') {
-    const result = await generateWithAntigravity(buildVerificationPrompt(group.articles), {
-      model: provider.model, timeoutMs: provider.timeoutMs, json: true,
+    const result = await generateWithAntigravity(repairPrompt || buildVerificationPrompt(group.articles), {
+      model: provider.model, timeoutMs: provider.timeoutMs, json: false,
       schema: PARTITION_RESPONSE_SCHEMA, operation: 'cluster-verification'
     });
-    return parsePartitionResponse(result.text, provider.model);
+    return result.text;
   }
 
   if (
@@ -5361,6 +5329,8 @@ async function callVerificationProvider(
       provider.timeoutMs,
       Number(keyObject?.index) + 1,
       {
+        repairPrompt,
+        rawOutput: true,
         maxOutputTokens:
           provider.maxOutputTokens,
         thinkingLevel:
@@ -5393,7 +5363,9 @@ async function callVerificationProvider(
       group.articles,
       provider.baseUrl,
       provider.model,
-      provider.timeoutMs
+      provider.timeoutMs,
+      repairPrompt,
+      true
     );
   }
 
@@ -5426,12 +5398,20 @@ async function attemptProviderVerification(
     );
 
     try {
-      const parsed =
-        await callVerificationProvider(
-          provider,
-          group,
-          keyManager
-        );
+      const parsed = await requestClusteringDecision({
+        request: repairPrompt => callVerificationProvider(provider, group, keyManager, repairPrompt),
+        validate: value => validatePartitionResult(value, group.articles),
+        schema: PARTITION_RESPONSE_SCHEMA,
+        onEvent: (event, error) => {
+          group.diagnostics ||= {};
+          group.diagnostics[event] = (group.diagnostics[event] || 0) + 1;
+          if (group.metrics) group.metrics[event] = (group.metrics[event] || 0) + 1;
+          if (event === 'firstPassAiCalls' || event === 'repairAttempts') group.onStage?.(event === 'repairAttempts' ? 'smart-ai-repair' : 'smart-ai');
+          console.log('[SMART JSON]', JSON.stringify({ provider: provider.id, model: provider.model,
+            operation: 'cluster-verification', event, reason: error?.reason,
+            ...(process.env.SMART_LOG_AI_DEBUG === 'true' && error?.rawResponse ? { raw: error.rawResponse.replace(/(?:Bearer\s+|AIza)[\w-]+/g, '[REDACTED]').slice(0, 2000) } : {}) }));
+        }
+      });
 
       if (
         provider.type === 'gemini' &&
@@ -6138,38 +6118,15 @@ async function attemptProviderVerification(
   };
 }
 
-function normalizedVerificationArticles(
-  articles
-) {
-  return articles
-    .map(article => ({
-      id:
-        getArticleId(article),
-      title:
-        normalizeText(
-          article.title || ''
-        ),
-      /*
-       * Do not include mutable RSS descriptions in the cache key.
-       * Cached partitions are still post-validated against the
-       * current articles before being accepted.
-       */
-      publishedAt:
-        article.pubDate,
-      language:
-        article.language,
-      category:
-        article.smartCategory
-    }))
-    .sort(
-      (left, right) =>
-        left.id.localeCompare(
-          right.id
-        )
-    );
+function normalizedVerificationArticles(articles) {
+  return articles.map(article => ({ id: getArticleId(article), title: article.title,
+    description: String(article.content || '').slice(0, 600), source: article.feedTitle,
+    domain: article.domain, language: article.language || detectArticleLanguage(article),
+    category: article.smartCategory, publishedAt: article.pubDate
+  })).sort((a, b) => a.id.localeCompare(b.id));
 }
 
-function verificationCacheKey(
+export function verificationCacheKey(
   group,
   providers
 ) {
@@ -6179,19 +6136,13 @@ function verificationCacheKey(
         group.articles
       ),
 
-    embeddingModel:
-      EMBEDDING_MODEL,
-
-    embeddingCacheVersion:
-      EMBEDDING_CACHE_VERSION,
-
     /*
      * Do not include the current enabled provider stack.
      * Gemini key availability and provider order can change between
      * refreshes without changing the correctness of cached results.
      */
     verificationCacheKeyVersion:
-      'provider-independent-v1',
+      'effective-input-v2',
 
     promptVersion:
       SMART_NEWS_AI_CONFIG
@@ -6232,7 +6183,7 @@ async function getVerificationCache(db) {
   }
 }
 
-async function getCachedVerificationDecision(
+export async function getCachedVerificationDecision(
   db,
   group,
   providers
@@ -6257,14 +6208,6 @@ async function getCachedVerificationDecision(
   const entry = cache[key];
 
   if (!entry) return null;
-
-  if (
-    !entry.expiresAt ||
-    Date.now() >
-    Number(entry.expiresAt)
-  ) {
-    return null;
-  }
 
   const validation =
     validatePartitionResult(
@@ -6294,7 +6237,7 @@ async function getCachedVerificationDecision(
   };
 }
 
-async function setCachedVerificationDecision(
+export async function setCachedVerificationDecision(
   db,
   group,
   providers,
@@ -6308,8 +6251,10 @@ async function setCachedVerificationDecision(
     return;
   }
 
+  if (!validatePartitionResult({ clusters: result.clusters, uncertain: result.uncertain }, group.articles).valid || result.uncertain || !postValidatePartition(result, group.articles)) return;
+
   verificationCacheWriteChain =
-    verificationCacheWriteChain.then(
+    verificationCacheWriteChain.catch(() => {}).then(
       async () => {
         const cache =
           await getVerificationCache(
@@ -6332,11 +6277,6 @@ async function setCachedVerificationDecision(
           verifiedAt:
             result.verifiedAt,
           createdAt: now,
-          expiresAt:
-            now +
-            SMART_NEWS_AI_CONFIG
-              .cache
-              .maxAgeMs,
           result: {
             clusters:
               result.clusters,
@@ -6344,39 +6284,10 @@ async function setCachedVerificationDecision(
           }
         };
 
-        const entries =
-          Object.entries(cache)
-            .filter(
-              ([, entry]) =>
-                Number(
-                  entry.expiresAt
-                ) > now
-            )
-            .sort(
-              (
-                [, left],
-                [, right]
-              ) =>
-                Number(
-                  right.createdAt
-                ) -
-                Number(
-                  left.createdAt
-                )
-            )
-            .slice(
-              0,
-              SMART_NEWS_AI_CONFIG
-                .cache
-                .maxEntries
-            );
-
         await db.put(
           'smartEventVerificationCache',
           JSON.stringify(
-            Object.fromEntries(
-              entries
-            )
+            cache
           )
         );
       }
@@ -6392,7 +6303,7 @@ async function setCachedVerificationDecision(
   }
 }
 
-async function verifyWithProviderChain(
+export async function verifyWithProviderChain(
   group,
   providers,
   keyManager,
@@ -6406,6 +6317,7 @@ async function verifyWithProviderChain(
     );
 
   if (cached) {
+    if (group.metrics) { group.metrics.verificationCacheHits++; group.metrics.cachedDecisionsReused++; }
     console.log(
       '[SMART VERIFY CACHE HIT]',
       JSON.stringify({
@@ -6440,6 +6352,7 @@ async function verifyWithProviderChain(
     };
   }
 
+  if (group.metrics) group.metrics.verificationCacheMisses++;
   console.log(
     '[SMART VERIFY CACHE MISS]',
     JSON.stringify({
@@ -6457,6 +6370,10 @@ async function verifyWithProviderChain(
   const attemptedProviders = [];
 
   for (const provider of providers) {
+    if (attemptedProviders.length) {
+      if (group.metrics) group.metrics.fallbackProviderAttempts++;
+      group.onStage?.('smart-ai-fallback');
+    }
     attemptedProviders.push(
       provider.id
     );
@@ -6474,6 +6391,7 @@ async function verifyWithProviderChain(
       !result.uncertain &&
       result.postValidationPassed
     ) {
+      if (group.metrics) { group.metrics.successfulVerificationDecisions++; if (attemptedProviders.length > 1) group.metrics.fallbackProviderSuccesses++; }
       const finalResult = {
         valid: true,
         uncertain: false,
@@ -6501,6 +6419,7 @@ async function verifyWithProviderChain(
     }
   }
 
+  if (group.metrics) group.metrics.allProviderFailures++;
   return {
     valid: true,
     uncertain: true,
@@ -6523,6 +6442,59 @@ async function verifyWithProviderChain(
         })
       )
   };
+}
+
+// Compare a new article with a stable event anchor; expand only structural ambiguity.
+export function prepareIncrementalReviewGroups(groups, automatic) {
+  const owner = new Map();
+  automatic.forEach((group, index) => group.articles.forEach(article => owner.set(getArticleId(article), index)));
+  const result = groups.map(group => {
+    const affected = [...new Set(group.articles.map(article => owner.get(getArticleId(article))))].filter(index => index !== undefined);
+    const established = affected.filter(index => automatic[index].established || automatic[index].articles.length > 1);
+    const conflict = established.some(index => automatic[index].articles.some(member =>
+      group.articles.some(article => owner.get(getArticleId(article)) !== index && detectEventConflicts(member, article).hasHardConflict)));
+    const fullRepartition = established.length > 1 || conflict;
+    const articles = fullRepartition ? affected.flatMap(index => automatic[index].articles) : affected.flatMap(index => {
+      const component = automatic[index];
+      if (!established.includes(index)) return component.articles;
+      return [component.articles.slice().sort((a, b) => getArticleId(a).localeCompare(getArticleId(b)))[0]];
+    });
+    return { ...group, articles, fullRepartition };
+  });
+  // Structural groups sharing a component must be partitioned together.
+  for (let i = 0; i < result.length; i++) {
+    for (let j = i + 1; j < result.length;) {
+      const ids = new Set(result[i].articles.map(getArticleId));
+      if ((result[i].fullRepartition || result[j].fullRepartition) && result[j].articles.some(a => ids.has(getArticleId(a)))) {
+        const merged = new Map([...result[i].articles, ...result[j].articles].map(a => [getArticleId(a), a]));
+        const touched = new Set([...merged.keys()].map(id => owner.get(id)));
+        result[i] = { ...result[i], fullRepartition: true, articles: [...touched].flatMap(index => automatic[index].articles) };
+        result.splice(j, 1); i = -1; break;
+      } else j++;
+    }
+  }
+  return result.map(group => ({ ...group, id: createGroupId(group.articles) }));
+}
+
+export function integrateIncrementalReviews(automatic, reviewed, requests) {
+  const broadIds = new Set(requests.filter(g => g.fullRepartition).flatMap(g => g.articles.map(getArticleId)));
+  let groups = automatic.map(group => ({ ...group, articles: group.articles.filter(a => !broadIds.has(getArticleId(a))) })).filter(g => g.articles.length);
+  for (const partition of reviewed) {
+    if (partition.articles.some(a => broadIds.has(getArticleId(a)))) { groups.push(partition); continue; }
+    // A negative pair decision leaves both automatic components intact.
+    if (partition.articles.length < 2) continue;
+    const ids = new Set(partition.articles.map(getArticleId));
+    const touched = groups.filter(g => g.articles.some(a => ids.has(getArticleId(a))));
+    const members = [...new Map(touched.flatMap(g => g.articles).map(a => [getArticleId(a), a])).values()];
+    const proposed = { clusters: [{ articleIds: members.map(getArticleId) }], uncertain: false };
+    if (!postValidatePartition(proposed, members)) {
+      const error = new Error('Incremental match conflicts with established event; retaining previous clusters.');
+      error.code = 'CLUSTER_VERIFICATION_UNRESOLVED'; throw error;
+    }
+    groups = groups.filter(g => !touched.includes(g));
+    groups.push({ ...partition, articles: members });
+  }
+  return groups;
 }
 
 async function reviewAmbiguousEventGroups(
@@ -6559,9 +6531,9 @@ async function reviewAmbiguousEventGroups(
 
     if (onProgress) {
       onProgress({
-        stage: 'smart-ai',
+        stage: 'smart-matching',
         message:
-          `Reviewing ambiguous group ${index + 1}/${ambiguousGroups.length}…`,
+          `Checking cached decisions ${index + 1}/${ambiguousGroups.length}…`,
         current: index + 1,
         total:
           ambiguousGroups.length
@@ -8111,7 +8083,8 @@ export function createSmartNewsEngine({
 
   async function sync(
     onProgress = null,
-    targetCategory = null
+    targetCategory = null,
+    options = {}
   ) {
     if (running) {
       return {
@@ -8176,6 +8149,17 @@ export function createSmartNewsEngine({
       };
 
     let smartSources = [];
+    const metrics = { articlesChecked: 0, newArticles: 0, modifiedArticles: 0, unchangedArticles: 0,
+      removedArticles: 0, embeddingsReused: 0, embeddingsGenerated: 0, existingMembershipsReused: 0,
+      affectedClustersReconsidered: 0, deterministicMatches: 0, deterministicNonMatches: 0,
+      ambiguousGroups: 0, verificationCacheHits: 0, verificationCacheMisses: 0,
+      cachedDecisionsReused: 0, cachedDecisionsInvalidated: 0, invalidationReason: null,
+      firstPassAiCalls: 0, firstPassValidJson: 0, firstPassInvalidJson: 0, markdownFenceRecoveries: 0,
+      safeExtractionRecoveries: 0, repairAttempts: 0, repairSuccesses: 0, repairFailures: 0,
+      fallbackProviderAttempts: 0, fallbackProviderSuccesses: 0, allProviderFailures: 0,
+      successfulVerificationDecisions: 0, unresolvedAmbiguousGroups: 0, fullGroupRepartitions: 0,
+      rebuildReason: null };
+    let attemptedState = null;
 
     try {
       smartSources =
@@ -8503,7 +8487,7 @@ export function createSmartNewsEngine({
           [...articleMap.values()]
         );
 
-      const previousRawArticles = (await db.get('smartRawArticles', { type: 'json', shared: true })) || [];
+      const previousRawArticles = (await db.get('smartClusteringInputs', { type: 'json', shared: true })) || (await db.get('smartRawArticles', { type: 'json', shared: true })) || [];
       const previousArticleMap = new Map();
       for (const article of previousRawArticles) {
         if (article.articleKey) {
@@ -8558,6 +8542,10 @@ export function createSmartNewsEngine({
         }
       }
 
+      metrics.articlesChecked = candidates.length;
+      for (const article of candidates) metrics[article._status === 'NEW' ? 'newArticles' : article._status === 'MODIFIED' ? 'modifiedArticles' : 'unchangedArticles']++;
+      metrics.removedArticles = [...previousArticleMap.keys()].filter(key => !activeCandidates.has(key)).length;
+      notify('smart-checking', 'Checking for changes…');
       const currentSignature =
         stableId(
           candidates
@@ -8566,7 +8554,7 @@ export function createSmartNewsEngine({
                 article.link,
                 article.title,
                 article.pubDate,
-                article.contentHash
+                article.contentHash, article.smartCategory, article.language, article.region
               ].join('|')
             )
             .sort()
@@ -8588,7 +8576,7 @@ export function createSmartNewsEngine({
                 source.url,
                 source.category,
                 source.region,
-                source.weight
+                source.weight, source.enabled, JSON.stringify(source.fetchMethods || [])
               ].join('|')
             )
             .sort()
@@ -8597,20 +8585,12 @@ export function createSmartNewsEngine({
 
       const aiConfiguration =
         [
-          ...SMART_NEWS_AI_CONFIG
-            .providers
-            .map(provider =>
-              [
-                provider.id,
-                provider.model,
-                providerEnabled(
-                  provider,
-                  hasGeminiKey()
-                )
-              ].join(':')
-            ),
+          EMBEDDING_MODEL, EMBEDDING_CACHE_VERSION,
+          SMART_NEWS_AI_CONFIG.cache.promptVersion,
+          SMART_NEWS_AI_CONFIG.cache.rulesVersion,
+          SMART_NEWS_AI_CONFIG.cache.schemaVersion,
           SMART_CLUSTER_VERSION,
-          sourceSignature
+          sourceSignature, JSON.stringify(settings), [...dynamicExcludedUrls].sort().join(',')
         ].join('|');
 
       const previousAiConfiguration =
@@ -8620,8 +8600,17 @@ export function createSmartNewsEngine({
           )
         ) || '';
 
+      attemptedState = { signature: currentSignature, configuration: aiConfiguration,
+        providers: providers.map(p => `${p.id}:${p.model}`).join('|') };
+      const failedAttempt = await db.get('smartClusteringFailedAttempt', { type: 'json' });
+      if (!options.forceRebuild && failedAttempt && Object.keys(attemptedState).every(key => attemptedState[key] === failedAttempt[key])) {
+        metrics.unresolvedAmbiguousGroups = failedAttempt.unresolvedAmbiguousGroups || 1;
+        notify('smart-error', 'Unresolved matches unchanged; previous clusters retained. Use Force Rebuild to retry.', { failed: true });
+        return { ok: false, skipped: true, reason: 'unchanged_failed_verification', metrics };
+      }
+
       if (
-        !isTargeted &&
+        !options.forceRebuild &&
         currentSignature ===
         previousSignature &&
         previousAiConfiguration ===
@@ -8648,8 +8637,8 @@ export function createSmartNewsEngine({
           newArticleCount: 0,
           providerOrder,
           aiProviders: [],
-          verificationStats:
-            null,
+          verificationStats: metrics,
+          metrics,
           progress:
             currentProgress
         };
@@ -8666,8 +8655,8 @@ export function createSmartNewsEngine({
       }
 
       notify(
-        'smart-clustering',
-        'Preparing multilingual E5 embeddings…',
+        'smart-embeddings',
+        'Generating embeddings…',
         {
           current: 0,
           total:
@@ -8688,23 +8677,9 @@ export function createSmartNewsEngine({
         ) || '';
 
       const clusterVersionChanged =
-        storedClusterVersion !==
-        SMART_CLUSTER_VERSION;
-
-      // A model restart or slow AI provider must not leave the public feed
-      // stranded on an old snapshot. This is deliberately a conservative pass.
-      const earlyClusters = buildEarlySmartClusters(candidates, existingClusters.filter(cluster => isActiveCluster(cluster)));
-      const earlyLinks = new Set(candidates.map(article => article.link));
-      const retainedClusters = existingClusters.filter(cluster =>
-        (isTargeted && cluster.smartCategory !== targetCategory) ||
-        (getLatestClusterCoverageTime(cluster) >= Date.now() - 7 * DAY_MS &&
-          ![...getClusterArticleLinks(cluster)].some(link => earlyLinks.has(link))));
-      await putManySafe(db, {
-        smartClusters: JSON.stringify([...earlyClusters, ...retainedClusters]),
-        smartClusterVersion: `${toVietnamIso(Date.now())}_${earlyClusters.length}_early`,
-        smartClusterState: JSON.stringify({ provisional: true, stage: 'embeddings', clusterCount: earlyClusters.length, publishedAt: toVietnamIso(Date.now()) })
-      }, { allowLargeReduction: true });
-      console.log(`[SMART EARLY PUBLISH] ${earlyClusters.length} current clusters before embeddings`);
+        options.forceRebuild || storedClusterVersion !== SMART_CLUSTER_VERSION;
+      metrics.rebuildReason = options.forceRebuild ? 'explicit_force_rebuild' : clusterVersionChanged ? 'clustering_policy_version_changed' : null;
+      console.log('[SMART REBUILD]', JSON.stringify({ rebuild_reason: options.forceRebuild ? 'explicit_force_rebuild' : clusterVersionChanged ? 'clustering_policy_version_changed' : null }));
 
       // Reuse one clustering worker for the lifetime of this Node process.
       // This is required because the old ONNX ARM64 native addon cannot
@@ -8720,9 +8695,10 @@ export function createSmartNewsEngine({
 
         const onMessage = msg => {
           if (msg.type === 'progress') {
+            if (msg.progress.embeddingsReused !== undefined) Object.assign(metrics, { embeddingsReused: msg.progress.embeddingsReused, embeddingsGenerated: msg.progress.embeddingsGenerated });
             notify(
-              'smart-clustering',
-              `Matching candidates… ${msg.progress.current || 0}/${msg.progress.total || 0}`,
+              msg.progress.phase === 'embeddings' ? 'smart-embeddings' : 'smart-matching',
+              msg.progress.phase === 'embeddings' ? 'Generating embeddings…' : 'Matching stories…',
               {
                 percent: msg.progress.total
                   ? Math.round((msg.progress.current / msg.progress.total) * 100)
@@ -8733,6 +8709,7 @@ export function createSmartNewsEngine({
             if (hasResult) return;
             hasResult = true;
             cleanup();
+            Object.assign(metrics, msg.result.metrics || {});
             resolve(msg.result);
           } else if (msg.type === 'error') {
             if (hasResult) return;
@@ -8778,376 +8755,18 @@ export function createSmartNewsEngine({
         });
       });
 
-      /*
-       * Two-stage publishing:
-       *
-       * 1. Publish a complete provisional result immediately after
-       *    deterministic HNSW clustering.
-       * 2. Continue AI review in the background.
-       * 3. Atomically replace this provisional result with the final
-       *    reviewed result when verification finishes.
-       *
-       * The provisional result must contain every candidate exactly
-       * once. It must not mark SMART_CLUSTER_VERSION as completed.
-       */
-      const provisionalAmbiguousArticleIds =
-        new Set(
-          ambiguousGroups
-            .flatMap(group =>
-              Array.isArray(group?.articles)
-                ? group.articles
-                : []
-            )
-            .map(article =>
-              getArticleId(article)
-            )
-            .filter(Boolean)
-        );
-
-      const provisionalClaimedArticleIds =
-        new Set();
-
-      const provisionalRawGroups = [];
-
-      /*
-       * Keep every deterministic HNSW group, while defensively
-       * preventing duplicate article assignments.
-       */
-      for (
-        const group
-        of autoMergedClusters
-      ) {
-        const articles =
-          (
-            Array.isArray(
-              group?.articles
-            )
-              ? group.articles
-              : []
-          ).filter(article => {
-            const id =
-              getArticleId(article);
-
-            if (
-              !id ||
-              provisionalClaimedArticleIds
-                .has(id)
-            ) {
-              return false;
-            }
-
-            provisionalClaimedArticleIds
-              .add(id);
-
-            return true;
-          });
-
-        if (!articles.length) {
-          continue;
-        }
-
-        const pendingAiReview =
-          articles.some(article =>
-            provisionalAmbiguousArticleIds
-              .has(
-                getArticleId(article)
-              )
-          );
-
-        provisionalRawGroups.push({
-          ...group,
-
-          id:
-            createGroupId(
-              articles
-            ),
-
-          articles,
-
-          verified:
-            !pendingAiReview,
-
-          verification: {
-            method:
-              pendingAiReview
-                ? 'pending_ai_review'
-                : (
-                  articles.length > 1
-                    ? 'e5_auto_merge'
-                    : 'singleton'
-                ),
-
-            provisional:
-              pendingAiReview
-          }
-        });
+      const reviewGroups = prepareIncrementalReviewGroups(ambiguousGroups, autoMergedClusters);
+      metrics.ambiguousGroups = reviewGroups.length;
+      metrics.fullGroupRepartitions = reviewGroups.filter(group => group.fullRepartition).length;
+      for (const group of reviewGroups) {
+        group.forceRebuild = options.forceRebuild === true;
+        group.metrics = metrics;
+        group.onStage = stage => notify(stage, stage === 'smart-ai-repair' ? 'Repairing AI response…' : stage === 'smart-ai-fallback' ? 'Trying fallback model…' : 'AI-verifying ambiguous matches…');
       }
-
-      /*
-       * HNSW implementations may omit ambiguous components from
-       * autoMergedClusters. Add every unclaimed candidate as a
-       * provisional singleton so the website always receives a
-       * complete feed while AI verification is running.
-       */
-      for (
-        const article
-        of candidates
-      ) {
-        const id =
-          getArticleId(article);
-
-        if (
-          provisionalClaimedArticleIds
-            .has(id)
-        ) {
-          continue;
-        }
-
-        provisionalClaimedArticleIds
-          .add(id);
-
-        const pendingAiReview =
-          provisionalAmbiguousArticleIds
-            .has(id);
-
-        provisionalRawGroups.push({
-          id:
-            createGroupId(
-              [article]
-            ),
-
-          articles:
-            [article],
-
-          verified:
-            !pendingAiReview,
-
-          verification: {
-            method:
-              pendingAiReview
-                ? 'pending_ai_review'
-                : 'singleton',
-
-            provisional:
-              pendingAiReview
-          }
-        });
-      }
-
-      assertEveryCandidateAppearsExactlyOnce(
-        candidates,
-        provisionalRawGroups
-      );
-
-      let provisionalClusters =
-        provisionalRawGroups
-          .map(group =>
-            buildCluster(
-              group.articles,
-              {
-                validated: true,
-                verification:
-                  group.verification
-              }
-            )
-          )
-          .filter(Boolean);
-
-      const provisionalCurrentLinks =
-        new Set(
-          candidates
-            .map(article =>
-              article.link
-            )
-            .filter(Boolean)
-        );
-
-      const provisionalSevenDaysAgo =
-        Date.now() -
-        7 * DAY_MS;
-
-      /*
-       * Preserve old clusters that are outside the current candidate
-       * set during normal incremental runs. During a clean rebuild,
-       * do not reintroduce old-version clusters.
-       */
-      const provisionalUntouchedOldClusters =
-        clusterVersionChanged
-          ? []
-          : existingClusters.filter(
-            cluster => {
-              if (
-                isTargeted &&
-                targetCategory &&
-                cluster.smartCategory !==
-                  targetCategory
-              ) {
-                return true;
-              }
-
-              const latestCoverageAt =
-                getLatestClusterCoverageTime(
-                  cluster
-                );
-
-              if (
-                !Number.isFinite(
-                  latestCoverageAt
-                ) ||
-                latestCoverageAt <
-                  provisionalSevenDaysAgo
-              ) {
-                return false;
-              }
-
-              const links =
-                getClusterArticleLinks(
-                  cluster
-                );
-
-              return ![...links].some(
-                link =>
-                  provisionalCurrentLinks
-                    .has(link)
-              );
-            }
-          );
-
-      provisionalClusters = [
-        ...provisionalUntouchedOldClusters,
-        ...provisionalClusters
-      ];
-
-      provisionalClusters.sort(
-        (left, right) =>
-          Number(
-            right.hotness || 0
-          ) -
-          Number(
-            left.hotness || 0
-          ) ||
-          Number(
-            right.sourceWeight || 1
-          ) -
-          Number(
-            left.sourceWeight || 1
-          ) ||
-          safeDate(
-            right.pubDate
-          ) -
-          safeDate(
-            left.pubDate
-          )
-      );
-
-      provisionalClusters =
-        provisionalClusters.map(
-          cleanStoredCluster
-        );
-
-      /*
-       * Do not persist embedding vectors in the provisional result.
-       */
-      for (
-        const cluster
-        of provisionalClusters
-      ) {
-        if (cluster) {
-          delete cluster._vec;
-        }
-
-        if (
-          Array.isArray(
-            cluster?.relatedArticles
-          )
-        ) {
-          for (
-            const article
-            of cluster.relatedArticles
-          ) {
-            delete article._vec;
-          }
-        }
-      }
-
-      provisionalClusters = retainStoryIds(provisionalClusters, existingClusters);
-
-      const provisionalClusterVersion =
-        `${toVietnamIso(Date.now())}_` +
-        `${provisionalClusters.length}_provisional`;
-
-      await putManySafe(
-        db,
-        {
-          smartClusters:
-            JSON.stringify(
-              provisionalClusters
-            ),
-
-          smartClusterVersion:
-            provisionalClusterVersion,
-
-          smartClusterState:
-            JSON.stringify({
-              provisional: true,
-              stage:
-                'ai_review',
-              clusterCount:
-                provisionalClusters.length,
-              ambiguousGroupsTotal:
-                ambiguousGroups.length,
-              ambiguousArticles:
-                provisionalAmbiguousArticleIds
-                  .size,
-              publishedAt:
-                toVietnamIso(
-                  Date.now()
-                )
-            })
-        },
-        {
-          allowLargeReduction:
-            true
-        }
-      );
-
-      /*
-       * Expose provisional state through the existing status endpoint.
-       */
-      await setStatus({
-        ...previousStatus,
-        state:
-          'refreshing',
-        startedAt,
-        providerOrder,
-        localModel,
-        provisional: true,
-        clusterCount:
-          provisionalClusters.length,
-        ambiguousGroupCount:
-          ambiguousGroups.length,
-        progress:
-          currentProgress
-      });
-
-      console.log(
-        '[SMART PROVISIONAL PUBLISH]',
-        JSON.stringify({
-          clusters:
-            provisionalClusters.length,
-          deterministicGroups:
-            provisionalRawGroups.length,
-          ambiguousGroups:
-            ambiguousGroups.length,
-          ambiguousArticles:
-            provisionalAmbiguousArticleIds
-              .size
-        })
-      );
 
       let reviewResult = {
         clusters:
-          ambiguousGroups.flatMap(
+          reviewGroups.flatMap(
             group =>
               group.articles.map(
                 article => ({
@@ -9172,25 +8791,25 @@ export function createSmartNewsEngine({
               )
           ),
         ambiguousGroupsTotal:
-          ambiguousGroups.length,
+          reviewGroups.length,
         ambiguousGroupsVerified:
           0,
         ambiguousGroupsFromCache:
           0,
         ambiguousGroupsKeptSeparate:
-          ambiguousGroups.length,
+          reviewGroups.length,
         reviewedArticleCount:
           0,
         allProvidersFailedCount:
           providers.length
-            ? ambiguousGroups.length
+            ? reviewGroups.length
             : 0,
         providerRequests: {},
         groupResults: []
       };
 
       if (
-        ambiguousGroups.length &&
+        reviewGroups.length &&
         providers.length &&
         SMART_NEWS_CLUSTER_CONFIG
           .heavyAI
@@ -9198,7 +8817,7 @@ export function createSmartNewsEngine({
       ) {
         reviewResult =
           await reviewAmbiguousEventGroups(
-            ambiguousGroups,
+            reviewGroups,
             providers,
             keyManager,
             db,
@@ -9213,141 +8832,14 @@ export function createSmartNewsEngine({
           );
       }
 
-      /*
-       * HNSW autoMergedClusters contains every candidate article,
-       * including articles later sent through ambiguous-group review.
-       *
-       * AI-reviewed partitions must replace those articles' original
-       * HNSW groups, not be appended on top of them.
-       */
-      const reviewedArticleIds =
-        new Set(
-          reviewResult.clusters
-            .flatMap(
-              group =>
-                Array.isArray(
-                  group?.articles
-                )
-                  ? group.articles
-                  : []
-            )
-            .map(
-              article =>
-                getArticleId(article)
-            )
-            .filter(Boolean)
-        );
-
-      /*
-       * Remove reviewed articles from their original HNSW groups.
-       * Preserve any non-reviewed remainder of an auto group.
-       */
-      const residualAutoGroups =
-        autoMergedClusters
-          .map(group => {
-            const articles =
-              (
-                Array.isArray(
-                  group?.articles
-                )
-                  ? group.articles
-                  : []
-              ).filter(
-                article =>
-                  !reviewedArticleIds.has(
-                    getArticleId(article)
-                  )
-              );
-
-            if (!articles.length) {
-              return null;
-            }
-
-            return {
-              ...group,
-              id:
-                createGroupId(
-                  articles
-                ),
-              articles
-            };
-          })
-          .filter(Boolean);
-
-      /*
-       * Reviewed groups should also be disjoint from one another.
-       * Throw a more precise error if the HNSW review components
-       * themselves overlap.
-       */
-      const reviewedSeenIds =
-        new Set();
-
-      for (
-        let groupIndex = 0;
-        groupIndex <
-          reviewResult.clusters.length;
-        groupIndex++
-      ) {
-        const group =
-          reviewResult.clusters[
-            groupIndex
-          ];
-
-        for (
-          const article
-          of (
-            Array.isArray(
-              group?.articles
-            )
-              ? group.articles
-              : []
-          )
-        ) {
-          const id =
-            getArticleId(article);
-
-          if (
-            reviewedSeenIds.has(id)
-          ) {
-            throw new Error(
-              `Invariant failed: duplicate reviewed article ${id} in reviewed group ${groupIndex}`
-            );
-          }
-
-          reviewedSeenIds.add(id);
-        }
+      if (reviewResult.ambiguousGroupsKeptSeparate > 0) {
+        const failure = new Error('Ambiguous matches remain unresolved; retaining the last valid clustering state.');
+        metrics.unresolvedAmbiguousGroups = reviewResult.ambiguousGroupsKeptSeparate;
+        failure.code = 'CLUSTER_VERIFICATION_UNRESOLVED';
+        throw failure;
       }
 
-      console.log(
-        '[SMART REVIEW REPLACEMENT]',
-        JSON.stringify({
-          autoGroupsBefore:
-            autoMergedClusters.length,
-          reviewGroups:
-            reviewResult.clusters.length,
-          reviewedArticles:
-            reviewedArticleIds.size,
-          residualAutoGroups:
-            residualAutoGroups.length
-        })
-      );
-
-      const rawGroups = [
-        ...residualAutoGroups.map(
-          group => ({
-            ...group,
-            verified: true,
-            verification: {
-              method:
-                group.articles
-                  .length > 1
-                  ? 'e5_auto_merge'
-                  : 'singleton'
-            }
-          })
-        ),
-        ...reviewResult.clusters
-      ];
+      const rawGroups = integrateIncrementalReviews(autoMergedClusters, reviewResult.clusters, reviewGroups);
 
       assertEveryCandidateAppearsExactlyOnce(
         candidates,
@@ -9502,9 +8994,12 @@ export function createSmartNewsEngine({
       const clusterVersion =
         `${toVietnamIso(Date.now())}_${clusters.length}`;
 
+      notify('smart-saving', 'Saving results…');
       await putManySafe(
         db,
         {
+          smartClusteringFailedAttempt: 'null',
+          smartClusteringInputs: JSON.stringify(candidates.map(article => ({ articleKey: article.articleKey, contentHash: article.contentHash }))),
           smartRawArticles:
             JSON.stringify(
               hiddenArticles
@@ -9570,6 +9065,7 @@ export function createSmartNewsEngine({
         await getProviderHealth(db);
 
       const completed = {
+        metrics,
         state: 'ready',
         provisional: false,
         startedAt,
@@ -9680,6 +9176,7 @@ export function createSmartNewsEngine({
         ...completed
       };
     } catch (error) {
+      if (error.code === 'CLUSTER_VERIFICATION_UNRESOLVED' && attemptedState) await db.put('smartClusteringFailedAttempt', JSON.stringify({ ...attemptedState, unresolvedAmbiguousGroups: metrics.unresolvedAmbiguousGroups }));
       notify(
         'smart-error',
         'Smart refresh failed.',
@@ -9691,6 +9188,7 @@ export function createSmartNewsEngine({
       );
 
       const failed = {
+        metrics,
         state: 'error',
         startedAt,
         completedAt:

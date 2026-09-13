@@ -1,3 +1,5 @@
+import { createTopStoriesSnapshots } from './top-stories-snapshot.js';
+import { createTopStoriesIndex } from './top-stories.js';
 import { rankStory, storyMembers } from './story-ranking.js';
 import { createStoryBriefings } from './story-briefing.js';
 import { generateStoryBriefing } from '../../summary-engine.js';
@@ -16,6 +18,7 @@ export function createArticlePresentation({
     getLastKnownCachedArticleImage = async url => (await getLastKnownCachedArticle(url))?.image,
     env,
     generateBriefing = generateStoryBriefing,
+    topStoriesConfig = {},
 } = {}) {
     // Cache for parsed JSON strings (e.g. smartClusters) to avoid CPU-heavy parsing on tab clicks
     let _smartClustersHistory = {};
@@ -95,13 +98,16 @@ export function createArticlePresentation({
         return prepared;
     }
 
-    const briefings = createStoryBriefings({ db: env?.RSS_DATA, generate: generateBriefing });
+    const briefings = createStoryBriefings({ db: env?.RSS_DATA, generate: generateBriefing, loadSource: getLastKnownCachedArticle });
+    const topIndex = createTopStoriesIndex({ db: env?.RSS_DATA, config: topStoriesConfig });
     const smartApiViewCache = new Map();
     const storyViews = new Map();
+    const filteredTopViews = new Map();
     let storyViewSequence = 0;
 
     let latestSmartApiVersion = '';
     const freshViewCache = new Map();
+    const topSnapshots = createTopStoriesSnapshots({ db: env?.RSS_DATA, config: topIndex.settings });
 
     let unavailableSourceMutation = Promise.resolve();
 
@@ -202,6 +208,9 @@ export function createArticlePresentation({
 
     async function serveSmartData(req, res) {
         const startedAt = Date.now();
+        const timings = Object.fromEntries(['rank-state-read','cluster-reconciliation','relevance-computation','signal-computation','sorting-ranking','top-cutoff','rank-persistence'].map(name=>[name,0])); let phaseAt = performance.now();
+        const mark = name => { const t = performance.now(); timings[name] = t-phaseAt; phaseAt=t; };
+        mark("request-received");
         const filterValue = req.query.filterValue || '';
         const hideRead = req.query.hideRead === 'true';
         const searchQuery = req.query.searchQuery ? req.query.searchQuery.toLowerCase() : '';
@@ -228,94 +237,123 @@ export function createArticlePresentation({
             env.RSS_DATA.get('unavailableSourceUrls', { type: 'json' })
         ]);
 
-        let smartClusterVersion = await env.RSS_DATA.get('smartClusterVersion') || '';
-        const requestedVersion = Number(req.query.page || 1) > 1 ? (req.query.smartVersion || '') : '';
-        let rawClusters;
-        if (requestedVersion && _smartClustersHistory[requestedVersion]) {
-            rawClusters = _smartClustersHistory[requestedVersion];
-            smartClusterVersion = requestedVersion;
+        const smartTabMode = ['top','classic'].includes(req.query.smartMode) ? req.query.smartMode : (userPreferences?.smartTabModes?.[filterValue] === 'classic' ? 'classic' : 'top');
+        const isTop = smartTabMode === 'top' && Boolean(filterValue);
+        let smartClusterVersion = '', filteredArticles, publishedArticles, cacheHit = false;
+        if (isTop) {
+            const snapshot = await topSnapshots.get();
+            mark('persisted-read');
+            cacheHit = Boolean(snapshot);
+            publishedArticles = snapshot?.articles;
+            smartClusterVersion = snapshot?.clusterVersion || '';
+            const destination = filterValue === 'tech' ? `tech_${req.query.smartRegion === 'vietnam' ? 'vietnam' : 'world'}` : filterValue.replace('_global', '_world');
+            filteredArticles = (snapshot?.articles || []).filter(a => a.topStory.feed === destination || (['news','finance'].includes(filterValue) && a.topStory.feed.startsWith(filterValue + '_')));
+            mark('candidate-collection');
+            // Start only after the response is handed to the transport.
+            if (res.once) res.once('finish', () => topSnapshots.schedule());
+            else topSnapshots.schedule();
         } else {
-            rawClusters = await env.RSS_DATA.get('smartClusters', { type: 'json', shared: true }) || [];
-            if (smartClusterVersion) {
-                _smartClustersHistory[smartClusterVersion] = rawClusters;
-                const historyKeys = Object.keys(_smartClustersHistory);
-                if (historyKeys.length > 6) delete _smartClustersHistory[historyKeys[0]];
+            smartClusterVersion = await env.RSS_DATA.get('smartClusterVersion') || '';
+            const requestedVersion = !isTop && Number(req.query.page || 1) > 1 ? (req.query.smartVersion || '') : '';
+            let rawClusters;
+            if (requestedVersion && _smartClustersHistory[requestedVersion]) {
+                rawClusters = _smartClustersHistory[requestedVersion];
+                smartClusterVersion = requestedVersion;
+            } else {
+                rawClusters = await env.RSS_DATA.get('smartClusters', { type: 'json', shared: true }) || [];
+                if (smartClusterVersion) {
+                    _smartClustersHistory[smartClusterVersion] = rawClusters;
+                    const historyKeys = Object.keys(_smartClustersHistory);
+                    if (historyKeys.length > 6) delete _smartClustersHistory[historyKeys[0]];
+                }
             }
-        }
 
-        if (!requestedVersion && smartClusterVersion !== latestSmartApiVersion) {
-            smartApiViewCache.clear();
-            latestSmartApiVersion = smartClusterVersion;
-        }
+            if (!requestedVersion && smartClusterVersion !== latestSmartApiVersion) {
+                smartApiViewCache.clear();
+                latestSmartApiVersion = smartClusterVersion;
+            }
 
-        const cacheKey = `${smartClusterVersion}:${filterValue}:${Math.floor(Date.now() / 60000)}`;
-        let filteredArticles = smartApiViewCache.get(cacheKey);
-        const cacheHit = Boolean(filteredArticles);
-        if (!filteredArticles) {
-            filteredArticles = buildSmartApiView(rawClusters, filterValue);
-            smartApiViewCache.set(cacheKey, filteredArticles);
-            while (smartApiViewCache.size > 7) smartApiViewCache.delete(smartApiViewCache.keys().next().value);
-        }
+            mark("persisted-read");
+            const cacheKey = `${smartClusterVersion}:${filterValue}:${Math.floor(Date.now() / 60000)}`;
+            filteredArticles = smartApiViewCache.get(cacheKey);
+            cacheHit = Boolean(filteredArticles);
+            if (!filteredArticles) {
+                filteredArticles = buildSmartApiView(rawClusters, filterValue);
+                smartApiViewCache.set(cacheKey, filteredArticles);
+                while (smartApiViewCache.size > 7) smartApiViewCache.delete(smartApiViewCache.keys().next().value);
+            }
 
-        // Fresh headlines must remain visible while embeddings and AI grouping run.
-        // Preserve grouped stories and add only articles absent from that snapshot.
-        const rawArticles = await env.RSS_DATA.get('smartRawArticles', { type: 'json', shared: true }) || [];
-        const freshKey = `${smartClusterVersion}:${filterValue}:${Math.floor(Date.now() / 60000)}`;
-        let freshView = freshViewCache.get(freshKey);
-        if (!freshView || freshView.raw !== rawArticles || freshView.clusters !== rawClusters) {
-            const represented = new NormalizedSet(rawClusters.flatMap(article =>
-                [article.link, ...(article.relatedArticles || []).map(related => related.link)]));
-            const freshArticles = rawArticles.filter(article => !represented.has(article.link)
-                && smartArticleMatchesSection(article, filterValue));
-            const articles = [...filteredArticles, ...buildSmartApiView(freshArticles, filterValue)];
-            const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-            const recent = article => Number(new Date(article.pubDate || 0).getTime() > cutoff);
-            articles.sort((a, b) => recent(b) - recent(a) || (b.hotness || 0) - (a.hotness || 0)
-                || new Date(b.pubDate || 0) - new Date(a.pubDate || 0));
-            freshView = { raw: rawArticles, clusters: rawClusters, articles };
-            freshViewCache.set(freshKey, freshView);
-            while (freshViewCache.size > 7) freshViewCache.delete(freshViewCache.keys().next().value);
+            // Fresh headlines must remain visible while embeddings and AI grouping run.
+            // Preserve grouped stories and add only articles absent from that snapshot.
+            const rawArticles = await env.RSS_DATA.get('smartRawArticles', { type: 'json', shared: true }) || [];
+            const freshKey = `${smartClusterVersion}:${filterValue}:${Math.floor(Date.now() / 60000)}`;
+            let freshView = freshViewCache.get(freshKey);
+            if (!freshView || freshView.raw !== rawArticles || freshView.clusters !== rawClusters) {
+                const represented = new NormalizedSet(rawClusters.flatMap(article =>
+                    [article.link, ...(article.relatedArticles || []).map(related => related.link)]));
+                const freshArticles = rawArticles.filter(article => !represented.has(article.link)
+                    && smartArticleMatchesSection(article, filterValue));
+                const articles = [...filteredArticles, ...buildSmartApiView(freshArticles, filterValue)];
+                const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+                const recent = article => Number(new Date(article.pubDate || 0).getTime() > cutoff);
+                articles.sort((a, b) => recent(b) - recent(a) || (b.hotness || 0) - (a.hotness || 0)
+                    || new Date(b.pubDate || 0) - new Date(a.pubDate || 0));
+                freshView = { raw: rawArticles, clusters: rawClusters, articles };
+                freshViewCache.set(freshKey, freshView);
+                while (freshViewCache.size > 7) freshViewCache.delete(freshViewCache.keys().next().value);
+            }
+            filteredArticles = freshView.articles;
+            mark("candidate-collection");
         }
-        filteredArticles = freshView.articles;
-
+        mark('ranking-total');
         const readSet = new NormalizedSet(readStates || []);
         const hiddenSet = new NormalizedSet(hiddenStates || []);
         const unavailableSet = new NormalizedSet(unavailableSourceUrls || []);
         const blockedKeywordEntries = normalizeBlockedKeywordEntries(blockedKeywords || []);
         const matchesSearch = value => String(value || '').toLowerCase().includes(searchQuery);
 
-        filteredArticles = filteredArticles
-            .map(article => {
-                const members = storyMembers(article).filter(a => !hiddenSet.has(a.link) && !articleContentFilterMatches(a, blockedKeywordEntries));
-                if (!members.length) return null;
-                const representative = members[0];
-                return markUnavailableSmartSources({ ...article, ...representative, isCluster: true, clusterId: article.clusterId,
-                    relatedArticles: members.slice(1), clusterCount: members.length }, unavailableSet);
-            })
-            .filter(Boolean)
-            .filter(article => {
-            if (hiddenSet.has(article.link) || articleContentFilterMatches(article, blockedKeywordEntries)) return false;
-            if (hideRead && storyMembers(article).every(member => readSet.has(member.link))) return false;
-            if (!searchQuery) return true;
-            return matchesSearch(article.title) ||
-                matchesSearch(article.feedTitle) ||
-                matchesSearch(article.content) ||
-                (Array.isArray(article.relatedArticles) && article.relatedArticles.some(related =>
-                    matchesSearch(related.title) || matchesSearch(related.feedTitle)
-                ));
-            });
+        const filterSignature = JSON.stringify([filterValue,req.query.smartRegion,hideRead,searchQuery,hiddenStates,hideRead ? readStates : [],blockedKeywords,unavailableSourceUrls]);
+        const cachedFiltered = isTop && filteredTopViews.get(filterSignature);
+        if (cachedFiltered && cachedFiltered.input === publishedArticles) filteredArticles = cachedFiltered.articles;
+        else {
+            const needsMemberFiltering = !isTop || hiddenSet.size > 0 || blockedKeywordEntries.length > 0 || unavailableSet.size > 0;
+            filteredArticles = filteredArticles
+                .map(article => {
+                    if (!needsMemberFiltering) return article;
+                    const members = storyMembers(article).filter(a => !hiddenSet.has(a.link) && !articleContentFilterMatches(a, blockedKeywordEntries));
+                    if (!members.length) return null;
+                    const representative = members[0];
+                    return markUnavailableSmartSources({ ...article, ...representative, isCluster: true, clusterId: article.clusterId,
+                        relatedArticles: members.slice(1), clusterCount: members.length }, unavailableSet);
+                })
+                .filter(Boolean)
+                .filter(article => {
+                if (hiddenSet.has(article.link) || articleContentFilterMatches(article, blockedKeywordEntries)) return false;
+                if (hideRead && storyMembers(article).every(member => readSet.has(member.link))) return false;
+                if (!searchQuery) return true;
+                return matchesSearch(article.title) ||
+                    matchesSearch(article.feedTitle) ||
+                    matchesSearch(article.content) ||
+                    (Array.isArray(article.relatedArticles) && article.relatedArticles.some(related =>
+                        matchesSearch(related.title) || matchesSearch(related.feedTitle)
+                    ));
+                });
 
-        filteredArticles = filteredArticles.map(article => ({ ...article,
-            relatedArticles: (article.relatedArticles || []).filter(a => !hiddenSet.has(a.link) && !articleContentFilterMatches(a, blockedKeywordEntries))
-        }));
-        const smartTabMode = ['top','classic'].includes(req.query.smartMode) ? req.query.smartMode : (userPreferences?.smartTabModes?.[filterValue] === 'classic' ? 'classic' : 'top');
-        // Both views share the same cluster list. Top mode enriches every page,
-        // while Classic changes only its presentation, so switching is immediate.
-        const ranked = (await mapWithConcurrency(filteredArticles, 8, async article => {
+            filteredArticles = filteredArticles.map(article => ({ ...article,
+                relatedArticles: (article.relatedArticles || []).filter(a => !hiddenSet.has(a.link) && !articleContentFilterMatches(a, blockedKeywordEntries))
+            }));
+            if (isTop) {
+                filteredTopViews.set(filterSignature, {input:publishedArticles,articles:filteredArticles});
+                while (filteredTopViews.size > 12) filteredTopViews.delete(filteredTopViews.keys().next().value);
+            }
+        }
+        // Classic retains its existing ranking. Top Stories is fully scored above.
+        const ranked = isTop ? filteredArticles : (await mapWithConcurrency(filteredArticles, 8, async article => {
             const ranking = rankStory(storyMembers(article), filterValue, Date.now(), await briefings.peek(article, filterValue));
             return { ...article, ranking, hotness: ranking.score, sourceCount: ranking.independentSources };
         })).sort((a,b) => b.hotness - a.hotness || b.ranking.updatedAt.localeCompare(a.ranking.updatedAt) || a.link.localeCompare(b.link));
-        const viewSignature = JSON.stringify([filterValue, hideRead, searchQuery, hiddenStates, hideRead ? readStates : [], blockedKeywords]);
+        mark("filtering");
+        const viewSignature = JSON.stringify([filterValue, smartTabMode, isTop ? req.query.smartRegion : null, hideRead, searchQuery, hiddenStates, hideRead ? readStates : [], blockedKeywords]);
         const priorView = storyViews.get(req.query.smartView);
         const reusableView = priorView && priorView.signature === viewSignature && Date.now() - priorView.createdAt < 30 * 60000;
         let smartViewToken = req.query.smartView;
@@ -330,20 +368,45 @@ export function createArticlePresentation({
         const limit = Math.max(1, Math.min(100, parseInt(req.query.limit) || 40));
         const startIndex = (page - 1) * limit;
         const endIndex = page * limit;
+        const currentById = new Map(ranked.map(a => [a.clusterId, a]));
+        const currentStory = article => isTop ? currentById.get(article.clusterId) || article : article;
         const pageArticles = filteredArticles.slice(startIndex, endIndex);
-        const rankingPending = smartTabMode === 'top' && filterValue ? await briefings.rankCandidates(pageArticles, filterValue) : false;
-        const paginatedArticles = await mapWithConcurrency(pageArticles, 6, async article => ({
-            ...await prepareArticleForClient(article),
-            ...(filterValue ? { briefing: await briefings.get(article, filterValue, { generate: smartTabMode === 'top' }) } : {})
-        }));
-        res.setHeader('Server-Timing', `smart-data;dur=${Date.now() - startedAt}`);
+        mark("snapshot-construction");
+        const rankingPending = false;
+        if (isTop && filterValue) {
+            const ahead = filteredArticles.slice(startIndex, endIndex + topIndex.settings.batchSize * topIndex.settings.lookAheadBatches);
+            const enqueue = () => {
+                const timer = setTimeout(async () => {
+                    try { for (let i=0;i<ahead.length;i++) await briefings.get(currentStory(ahead[i]), ahead[i].topStory.feed, {priority:i<pageArticles.length ? 2 : 0}); }
+                    catch (error) { console.warn('[TOP STORIES] Background briefing queue:', error.message); }
+                }, 25);
+                timer.unref?.();
+            };
+            if (res.once) res.once('finish', enqueue); else enqueue();
+        }
+        const updatesAvailable = Boolean(isTop && reusableView && JSON.stringify(ranked.map(a => [a.clusterId, a.topStory.material_version, a.topStory.isTop])) !== JSON.stringify(priorView.articles.map(a => [a.clusterId, a.topStory.material_version, a.topStory.isTop])));
+        const paginatedArticles = await mapWithConcurrency(pageArticles, 6, async article => {
+            const current = currentStory(article);
+            // A completed story update can replace its card atomically without
+            // changing the reader's pinned order or Top/More boundary.
+            const display = isTop ? {...current, topStory:{...current.topStory,
+                rank:article.topStory.rank,isTop:article.topStory.isTop,cutoff:article.topStory.cutoff}} : article;
+            return {
+                ...await prepareArticleForClient(display),
+                ...(isTop ? {title:display.title,topStory:display.topStory} : {}),
+                ...(filterValue ? {briefing:await briefings.get(current, isTop ? current.topStory.feed : filterValue, {generate:false,priority:2})} : {})
+            };
+        });
+        mark('card-preparation');
+        res.setHeader('Server-Timing', Object.entries(timings).map(([name,ms])=>`${name};dur=${ms.toFixed(3)}`).join(', '));
         res.setHeader('X-Smart-View-Cache', cacheHit ? 'hit' : 'miss');
-        res.json({
+        const payload = {
             feeds: feeds || [],
             articles: paginatedArticles,
             topStories: [],
             smartTabMode,
             rankingPending,
+            updatesAvailable,
             smartViewToken,
             viewReset,
             readStates: readStates || [],
@@ -355,7 +418,13 @@ export function createArticlePresentation({
             hasMore: endIndex < filteredArticles.length,
             currentPage: page,
             smartClusterVersion
-        });
+        };
+        if (!isTop) { res.setHeader('Server-Timing', `smart-data;dur=${Date.now()-startedAt}`); return res.json(payload); }
+        const serialized = JSON.stringify(payload); mark("serialization");
+        res.setHeader("Server-Timing", Object.entries(timings).map(([name,ms])=>`${name};dur=${ms.toFixed(3)}`).join(", "));
+        if (res.send) res.type("json").send(serialized); else res.json(payload);
+        mark("response-sent");
+        if (process.env.SMART_REFRESH_PROFILE) console.info("[SMART REFRESH]", JSON.stringify(timings));
     }
 
     return {
