@@ -14,7 +14,7 @@ export function createDatabaseStore() {
     let stateOverlay = {};
 
 
-    const SMART_KEYS = new Set(['smartClusters', 'smartRawArticles', 'smartCandidateLinks', 'smartCandidateSignature', 'smartAiConfig', 'smartClusterVersion', 'smartStatus', 'smartClusteringInputs', 'smartClusteringFailedAttempt', 'smartClusteringAlgorithmVersion', 'smartClusterState', 'smartEventVerificationCache', 'smartClusteringCounters', 'storyBriefings', 'topStoriesPublished']);
+    const SMART_KEYS = new Set(['smartClusters', 'smartRawArticles', 'smartCandidateLinks', 'smartCandidateSignature', 'smartAiConfig', 'smartClusterVersion', 'smartStatus', 'smartEmbeddingIdentity', 'smartVerificationFailures', 'smartClusteringInputs', 'smartClusteringFailedAttempt', 'smartClusteringAlgorithmVersion', 'smartClusterState', 'smartEventVerificationCache', 'smartClusteringCounters', 'storyBriefings', 'topStoriesPublished']);
 
     const NON_PERSISTED_DB_KEYS = new Set(['smartEmbeddings']);
 

@@ -592,6 +592,8 @@
                 onlineAiUsageOperation: 'all',
                 onlineAiUsageModel: 'all',
                 onlineAiUsageSearch: '',
+                onlineAiUsageCopiedKey: '',
+                onlineAiUsageCopyTimer: null,
                 newGeminiKey: '',
                 newGeminiKeyVisible: false,
                 addingGeminiKey: false,
@@ -1099,7 +1101,9 @@
                             event.error,
                             event.message,
                             event.groupId,
-                            event.keyIndex
+                            event.keyIndex,
+                            event.parserReason,
+                            event.repairReason
                         ].filter(value => value !== null && value !== undefined).join(' ').toLowerCase().includes(query);
                     });
                 },
@@ -1114,6 +1118,22 @@
 
                 formatAiUsageNumber(value) {
                     return new Intl.NumberFormat().format(Number(value) || 0);
+                },
+
+                async copyOnlineAiDiagnostic(value, key = 'raw') {
+                    const text = String(value || '');
+                    if (!text) return;
+                    try {
+                        await navigator.clipboard.writeText(text);
+                        this.onlineAiUsageCopiedKey = String(key || 'raw');
+                        if (this.onlineAiUsageCopyTimer) clearTimeout(this.onlineAiUsageCopyTimer);
+                        this.onlineAiUsageCopyTimer = setTimeout(() => {
+                            if (this.onlineAiUsageCopiedKey === String(key || 'raw')) this.onlineAiUsageCopiedKey = '';
+                            this.onlineAiUsageCopyTimer = null;
+                        }, 1600);
+                    } catch (error) {
+                        this.onlineAiUsageError = 'Could not copy the provider response.';
+                    }
                 },
 
                 async saveClusteringModel() {

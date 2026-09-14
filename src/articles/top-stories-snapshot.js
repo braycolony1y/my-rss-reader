@@ -1,5 +1,6 @@
 import { Worker } from 'node:worker_threads';
 import { createHash } from 'node:crypto';
+import { getHeapStatistics } from 'node:v8';
 import { storyText } from './story-ranking.js';
 import { TOP_STORIES_DEFAULTS } from './top-stories.js';
 import { storyMembers } from './story-ranking.js';
@@ -18,7 +19,12 @@ const valid = value => {
     return [...feeds.values()].every(feed=>feed.count<=feed.rank);
 };
 const rankInWorker = input => new Promise((resolve, reject) => {
-    const worker = new Worker(new URL('./top-stories-worker.js', import.meta.url), { workerData: input });
+    const worker = new Worker(new URL('./top-stories-worker.js', import.meta.url), {
+        workerData: input,
+        resourceLimits: {
+            maxOldGenerationSizeMb: Math.max(256, Math.min(1536, Number(process.env.TOP_STORIES_WORKER_HEAP_MB) || 1024))
+        }
+    });
     worker.once('message', result => result.error ? reject(new Error(result.error)) : resolve(result));
     worker.once('error', reject);
     worker.once('exit', code => { if (code !== 0) reject(new Error(`Ranking worker exited ${code}`)); });
@@ -70,27 +76,196 @@ export function createTopStoriesSnapshots({ db, config, compute = rankInWorker, 
         if (valid(migrated)) { await db.put('topStoriesPublished',JSON.stringify(migrated)); current=migrated; }
     }
     async function rebuild() {
-        const [clusters, raw, sources, clusterState, version, status] = await Promise.all([
-            db.get('smartClusters', {type:'json',shared:true}), db.get('smartRawArticles', {type:'json',shared:true}),
-            db.get('smartSources', {type:'json',shared:true}), db.get('smartClusterState', {type:'json'}), db.get('smartClusterVersion'), db.get('smartStatus', {type:'json'})
+        const [clusterState, finalVersion, status, progressiveState] = await Promise.all([
+            db.get('smartClusterState', {type:'json'}),
+            db.get('smartClusterVersion'),
+            db.get('smartStatus', {type:'json'}),
+            db.get('smartProgressiveClusterState', {type:'json'})
         ]);
-        // Classic can consume provisional publications. Top never promotes them.
-        if (status?.state === 'refreshing' || clusterState?.provisional || /_provisional|_early/.test(String(version))) return current;
-        const minute = Math.floor(now() / 60000);
-        if (checked && checked.clusters === clusters && checked.raw === raw && checked.sources === sources && checked.minute === minute) return current;
-        const signature = createHash('sha256').update(JSON.stringify([POLICY, config, clusters, raw, sources, minute])).digest('hex');
-        if (signature === current?.signature) { checked = {clusters, raw, sources, minute}; return current; }
-        const represented = new Set((clusters || []).flatMap(a => storyMembers(a).map(m => m.link)));
-        const candidates = [...(clusters || []), ...(raw || []).filter(a => !represented.has(a.link))];
-        const states = current?.states || (current && Object.fromEntries(current.articles.map(a=>[a.clusterId,a.topStory]))) || await db.get('topStoriesState', {type:'json'}) || {};
-        const result = await compute({ candidates, sources: sources || [], states, config, now:now() });
-        const replacement = { policy:POLICY, signature, createdAt:now(), clusterVersion:version || '', articles:result.articles, timings:result.timings };
+        const progressiveVersion = String(progressiveState?.version || '');
+        const progressiveActive = Boolean(
+            progressiveState?.active === true &&
+            progressiveState?.provisional === true &&
+            progressiveVersion
+        );
+        // During a refresh Top can rank a membership-valid progressive snapshot.
+        // Without one, retain the last durable ranking instead of reading a
+        // half-built cluster state.
+        if (status?.state === 'refreshing' && !progressiveActive) return current;
+        if (!progressiveActive && clusterState?.provisional) return current;
+
+        const selectedVersion = progressiveActive
+            ? progressiveVersion
+            : (finalVersion || '');
+        const progressiveRevision = progressiveActive
+            ? Number(progressiveState?.revision) || 0
+            : 0;
+
+        const heapLimitBytes = Number(getHeapStatistics().heap_size_limit) || (4 * 1024 * 1024 * 1024);
+        const configuredHeapMb = Number(
+            progressiveActive
+                ? process.env.TOP_STORIES_PROGRESSIVE_HEAP_MAX_MB
+                : process.env.TOP_STORIES_MAIN_HEAP_MAX_MB
+        );
+        const heapMaxBytes = Number.isFinite(configuredHeapMb) && configuredHeapMb > 0
+            ? configuredHeapMb * 1024 * 1024
+            : Math.floor(heapLimitBytes * (progressiveActive ? 0.45 : 0.55));
+        let memory = process.memoryUsage();
+        if (memory.heapUsed >= heapMaxBytes && typeof global.gc === 'function') {
+            global.gc();
+            memory = process.memoryUsage();
+        }
+        if (memory.heapUsed >= heapMaxBytes) {
+            retryAt = now() + 15000;
+            report('[TOP STORIES] Ranking deferred under memory pressure:', JSON.stringify({
+                heapUsedMB: Math.round(memory.heapUsed / 1024 / 1024),
+                heapLimitMB: Math.round(heapLimitBytes / 1024 / 1024),
+                thresholdMB: Math.round(heapMaxBytes / 1024 / 1024),
+                progressive: progressiveActive
+            }));
+            return current;
+        }
+
+        let [progressivePublication, finalClusters, raw, sources] = await Promise.all([
+            progressiveActive
+                ? db.get('smartProgressivePublication', {type:'json',shared:true})
+                : Promise.resolve(null),
+            progressiveActive
+                ? Promise.resolve(null)
+                : db.get('smartClusters', {type:'json',shared:true}),
+            db.get('smartRawArticles', {type:'json',shared:true}),
+            db.get('smartSources', {type:'json',shared:true})
+        ]);
+        let clusters;
+        if (progressiveActive) {
+            if (
+                progressivePublication?.version !== progressiveVersion ||
+                !Array.isArray(progressivePublication?.clusters)
+            ) {
+                return current;
+            }
+            clusters = progressivePublication.clusters;
+        } else {
+            clusters = finalClusters || [];
+        }
+        progressivePublication = null;
+        finalClusters = null;
+        raw = raw || [];
+        sources = sources || [];
+        if (!clusters.length) return current;
+
+        const rerankIntervalMs = Math.max(
+            60_000,
+            Math.min(
+                15 * 60_000,
+                Number(process.env.TOP_STORIES_RERANK_INTERVAL_MS) || 60_000
+            )
+        );
+        const timeBucket = Math.floor(now() / rerankIntervalMs);
+        const sourceFingerprint = createHash('sha256').update(JSON.stringify(
+            sources.map(source => [
+                source.url,
+                source.category,
+                source.region,
+                source.weight,
+                source.enabled,
+                source.excludeFromSmart
+            ])
+        )).digest('hex').slice(0,24);
+        // Cluster version/revision is the authoritative heavy-input identity.
+        // Do not JSON.stringify every cluster + raw article merely to decide
+        // whether ranking needs to run; that transient string caused multi-GB
+        // old-space spikes after Smart publication.
+        const signature = createHash('sha256').update(JSON.stringify([
+            POLICY,
+            config,
+            selectedVersion,
+            progressiveRevision,
+            sourceFingerprint,
+            raw.length,
+            timeBucket
+        ])).digest('hex');
+        if (checked === signature || signature === current?.signature) {
+            checked = signature;
+            return current;
+        }
+
+        const represented = new Set();
+        for (const cluster of clusters) {
+            for (const member of storyMembers(cluster)) {
+                if (member?.link) represented.add(member.link);
+            }
+        }
+        let candidates = [...clusters];
+        for (const article of raw) {
+            if (article?.link && !represented.has(article.link)) {
+                candidates.push(article);
+            }
+        }
+
+        memory = process.memoryUsage();
+        if (memory.heapUsed >= heapMaxBytes) {
+            candidates.length = 0;
+            represented.clear();
+            retryAt = now() + 15000;
+            report('[TOP STORIES] Ranking deferred after candidate assembly:', JSON.stringify({
+                heapUsedMB: Math.round(memory.heapUsed / 1024 / 1024),
+                thresholdMB: Math.round(heapMaxBytes / 1024 / 1024),
+                progressive: progressiveActive
+            }));
+            return current;
+        }
+
+        let states;
+        if (current?.articles?.length) {
+            states = {};
+            for (const article of current.articles) {
+                if (article?.clusterId && article?.topStory) {
+                    states[article.clusterId] = article.topStory;
+                }
+            }
+        } else {
+            states = await db.get('topStoriesState', {type:'json'}) || {};
+        }
+
+        const result = await compute({
+            candidates,
+            sources,
+            states,
+            config,
+            now: now()
+        });
+
+        // workerData has already been cloned. Drop the large input graph before
+        // serializing the replacement returned by the ranking worker.
+        candidates.length = 0;
+        candidates = null;
+        represented.clear();
+        clusters = null;
+        raw = null;
+        sources = null;
+        states = null;
+        if (typeof global.gc === 'function') global.gc();
+
+        const replacement = {
+            policy: POLICY,
+            signature,
+            createdAt: now(),
+            clusterVersion: selectedVersion,
+            progressive: progressiveActive,
+            progressiveRevision,
+            articles: result.articles,
+            timings: result.timings
+        };
         if (!valid(replacement)) throw new Error('Incomplete or empty ranked replacement');
-        // Inputs may have changed while the worker was running. Publish this
-        // complete point-in-time version; the next check reconciles newer inputs.
-        await db.put('topStoriesPublished', JSON.stringify(replacement));
+
+        let replacementJson = JSON.stringify(replacement);
+        await db.put('topStoriesPublished', replacementJson);
+        replacementJson = null;
         current = replacement;
-        checked = {clusters, raw, sources, minute};
+        checked = signature;
+        retryAt = 0;
+        if (typeof global.gc === 'function') global.gc();
         return current;
     }
     function refresh() {

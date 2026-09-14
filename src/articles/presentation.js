@@ -253,14 +253,38 @@ export function createArticlePresentation({
             if (res.once) res.once('finish', () => topSnapshots.schedule());
             else topSnapshots.schedule();
         } else {
-            smartClusterVersion = await env.RSS_DATA.get('smartClusterVersion') || '';
             const requestedVersion = !isTop && Number(req.query.page || 1) > 1 ? (req.query.smartVersion || '') : '';
             let rawClusters;
             if (requestedVersion && _smartClustersHistory[requestedVersion]) {
                 rawClusters = _smartClustersHistory[requestedVersion];
                 smartClusterVersion = requestedVersion;
             } else {
-                rawClusters = await env.RSS_DATA.get('smartClusters', { type: 'json', shared: true }) || [];
+                const [finalVersion, progressiveState] = await Promise.all([
+                    env.RSS_DATA.get('smartClusterVersion'),
+                    requestedVersion ? Promise.resolve(null) : env.RSS_DATA.get('smartProgressiveClusterState', { type: 'json' })
+                ]);
+                const progressiveVersion = String(progressiveState?.version || '');
+                let progressiveActive = Boolean(
+                    !requestedVersion &&
+                    progressiveState?.active === true &&
+                    progressiveState?.provisional === true &&
+                    progressiveVersion
+                );
+                if (progressiveActive) {
+                    const publication = await env.RSS_DATA.get('smartProgressivePublication', { type: 'json', shared: true });
+                    if (
+                        publication?.version === progressiveVersion &&
+                        Array.isArray(publication?.clusters)
+                    ) {
+                        rawClusters = publication.clusters;
+                    } else {
+                        progressiveActive = false;
+                    }
+                }
+                smartClusterVersion = requestedVersion || (progressiveActive ? progressiveVersion : (finalVersion || ''));
+                if (!progressiveActive) {
+                    rawClusters = await env.RSS_DATA.get('smartClusters', { type: 'json', shared: true }) || [];
+                }
                 if (smartClusterVersion) {
                     _smartClustersHistory[smartClusterVersion] = rawClusters;
                     const historyKeys = Object.keys(_smartClustersHistory);
@@ -372,7 +396,7 @@ export function createArticlePresentation({
         const currentStory = article => isTop ? currentById.get(article.clusterId) || article : article;
         const pageArticles = filteredArticles.slice(startIndex, endIndex);
         mark("snapshot-construction");
-        const rankingPending = false;
+        const rankingPending = Boolean(isTop && topSnapshots.pending);
         if (isTop && filterValue) {
             const ahead = filteredArticles.slice(startIndex, endIndex + topIndex.settings.batchSize * topIndex.settings.lookAheadBatches);
             const enqueue = () => {

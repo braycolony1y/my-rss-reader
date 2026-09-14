@@ -1,6 +1,7 @@
 import os from 'node:os';
 import fs from 'node:fs';
 import {
+    clearEmbeddingCache,
     deterministicGroups,
     exportEmbeddingCache,
     importEmbeddingCache,
@@ -46,6 +47,7 @@ if (parentPort) {
             console.warn('[SMART WORKER] Could not load the embedding cache:', error.message);
         }
         importEmbeddingCache(storedEmbeddings);
+        storedEmbeddings = null;
         updateBatchStopTokens(articles);
         
         // 1. Embed NEW/MODIFIED articles
@@ -80,7 +82,7 @@ if (parentPort) {
         }
 
         fs.appendFileSync('/tmp/worker.log', 'Exporting cache\n');
-        const updatedEmbeddings = exportEmbeddingCache();
+        let updatedEmbeddings = exportEmbeddingCache();
         fs.appendFileSync('/tmp/worker.log', 'Exported cache\n');
         if (message.cachePath) {
             const temporaryPath = message.cachePath + '.tmp-' + process.pid;
@@ -106,6 +108,25 @@ if (parentPort) {
             type: 'result', 
             result
         });
+
+        if (message.cachePath) {
+            // The vectors are already durable on disk. This worker is kept
+            // alive for ONNX safety, so explicitly release its JS cache after
+            // each production clustering run instead of carrying it idle.
+            // postMessage has already cloned the result into the parent. Drop
+            // this worker's references before scheduling GC so the collection
+            // runs after the message handler returns and its locals go dead.
+            result.autoMergedClusters = [];
+            result.ambiguousGroups = [];
+            autoMergedClusters = null;
+            ambiguousGroups = null;
+            updatedEmbeddings = null;
+            clearEmbeddingCache();
+            updateBatchStopTokens([]);
+            if (typeof global.gc === 'function') {
+                setImmediate(() => global.gc());
+            }
+        }
     } catch (error) {
         send({ type: 'error', error: String(error?.stack || error) });
     }

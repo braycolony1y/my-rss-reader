@@ -9,6 +9,16 @@ function number(value) {
     return Number.isFinite(parsed) ? parsed : null;
 }
 
+function rawText(value, maximum = 100000) {
+    if (value === null || value === undefined) return null;
+    const result = String(value);
+    return result ? result.slice(0, maximum) : null;
+}
+
+function booleanOrNull(value) {
+    return value === true ? true : (value === false ? false : null);
+}
+
 function journalTimestamp(value) {
     const normalized = String(value || '').replace(/([+-]\d{2})(\d{2})$/, '$1:$2');
     const timestamp = new Date(normalized);
@@ -56,6 +66,18 @@ function structuredEvent(parsedLine, payload, sequence) {
         totalTokens: number(payload.totalTokens) || 0,
         articleCount: number(payload.articleCount),
         groupId: text(payload.groupId, 160) || null,
+        parserReason: text(payload.parserReason, 160) || null,
+        rawResponse: rawText(payload.rawResponse),
+        rawResponseLength: number(payload.rawResponseLength),
+        rawResponseShownLength: number(payload.rawResponseShownLength),
+        rawResponseTruncated: payload.rawResponseTruncated === true,
+        repairAttempted: payload.repairAttempted === true,
+        repairSucceeded: booleanOrNull(payload.repairSucceeded),
+        repairReason: text(payload.repairReason, 160) || null,
+        repairRawResponse: rawText(payload.repairRawResponse),
+        repairRawResponseLength: number(payload.repairRawResponseLength),
+        repairRawResponseShownLength: number(payload.repairRawResponseShownLength),
+        repairRawResponseTruncated: payload.repairRawResponseTruncated === true,
         source: 'structured',
         precision: 'exact',
         kind: 'request',

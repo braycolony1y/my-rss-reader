@@ -166,10 +166,15 @@ export function createTopStoriesIndex({ db, config = {} } = {}) {
                 active.add(id);
                 const prior = states[id];
                 const isRoundup = Boolean(cluster.roundup?.isRoundup);
+                const broaderStoryEvents = Array.isArray(cluster.broaderStory?.events) ? cluster.broaderStory.events : [];
+                const broaderStorySignature = broaderStoryEvents.length > 1
+                    ? digest(broaderStoryEvents.map(event => [event.clusterId,event.title,event.date]))
+                    : '';
+                const relationScopeChanged = Boolean(prior && String(prior.broaderStorySignature || '') !== broaderStorySignature);
                 const scopeChanged = Boolean(prior && ((prior.roundupPolicyVersion !== 1 && prior.links.some(link => containers.has(link))) || (!isRoundup && prior.links.some(link => containers.has(link))) || (prior.isRoundup !== undefined && prior.isRoundup !== isRoundup)));
                 const revision = storyRevision({ ...members[0], relatedArticles: members.slice(1) });
                 let state = prior;
-                if (!prior || prior.relevancePolicyVersion !== 2 || prior.evidence_version !== revision || prior.feed !== home || scopeChanged) {
+                if (!prior || prior.relevancePolicyVersion !== 2 || prior.evidence_version !== revision || prior.feed !== home || scopeChanged || relationScopeChanged) {
                     dirty = true;
                     const evidence = isRoundup ? { independentSources:0, paths:[], derived:members.map(a=>({link:a.link,reason:'Multi-event container, not independent event evidence'})) } : evidencePaths(members);
                     const ordered = [...members].sort((a,b) => representativeQuality(b)-representativeQuality(a) || stamp(a)-stamp(b));
@@ -197,17 +202,35 @@ export function createTopStoriesIndex({ db, config = {} } = {}) {
                     if (numericalConflicts.length) { signals.confidence = Math.max(.15,signals.confidence-.2); signals.conflict=true; }
 
                     const materialVersion = (prior?.material_version || 0) + (materialChanged ? 1 : 0);
-                    const timeline = isRoundup ? [] : [...(prior?.timeline || [])].filter(event => !scopeChanged || (!detectRoundup({title:event.text}).isRoundup && event.sources?.some(source => members.some(a=>a.link===source.link))));
+                    const timeline = isRoundup ? [] : [...(prior?.timeline || [])]
+                        .filter(event => !event.broaderStory)
+                        .filter(event => !scopeChanged || (!detectRoundup({title:event.text}).isRoundup && event.sources?.some(source => members.some(a=>a.link===source.link))));
                     if (!materialChanged && timeline.length) timeline[timeline.length - 1] = { ...timeline.at(-1), sources:[...new Map([...timeline.at(-1).sources, ...members.map(a => ({link:a.link,name:a.feedTitle}))].map(a=>[a.link,a])).values()] };
                     if (materialChanged && !isRoundup) timeline.push({ id: digest([id, materialVersion]), date: iso(latestMaterial), text: storyText(updates[0].title), correction: Boolean(correction), sources: updates.map(a => ({ link:a.link, name:a.feedTitle })) });
-                    state = { id, feed:home, relevancePolicyVersion:2, isRoundup, roundup:cluster.roundup || null, roundupPolicyVersion:1, briefing_scope_version:(prior?.briefing_scope_version || 1) + (scopeChanged ? 1 : 0), evidence_version:revision, material_version:materialVersion, links:all.map(a=>a.link),
+                    if (!isRoundup && broaderStoryEvents.length > 1) {
+                        for (const event of broaderStoryEvents) {
+                            if (event.clusterId === cluster.clusterId || !event.title || !Date.parse(event.date)) continue;
+                            timeline.push({
+                                id: `broader:${cluster.broaderStory.id}:${event.clusterId}`,
+                                date: iso(Date.parse(event.date)),
+                                text: storyText(event.title),
+                                correction: false,
+                                broaderStory: true,
+                                broaderStoryId: cluster.broaderStory.id,
+                                sourceClusterId: event.clusterId,
+                                sources: Array.isArray(event.sources) ? event.sources : []
+                            });
+                        }
+                        timeline.sort((left,right) => Date.parse(left.date)-Date.parse(right.date) || String(left.id).localeCompare(String(right.id)));
+                    }
+                    state = { id, feed:home, relevancePolicyVersion:2, isRoundup, roundup:cluster.roundup || null, roundupPolicyVersion:1, broaderStorySignature, briefing_scope_version:(prior?.briefing_scope_version || 1) + ((scopeChanged || relationScopeChanged) ? 1 : 0), evidence_version:revision, material_version:materialVersion, links:all.map(a=>a.link),
                         contents: Object.fromEntries(members.map(a => [a.link, digest(textOf(a))])),
                         materialTexts: materialChanged ? updates.map(textOf) : prior.materialTexts,
                         representative:representative.link, representativeReason: oldRepresentative?.link === representative.link ? 'Retained: no materially stronger representative' : 'Source authority, direct reporting and original headline',
                         first_seen: prior?.first_seen || now, latest_article:Math.max(...members.map(stamp)), latest_evidence:now,
                         latest_material_update:latestMaterial, evidence, ranking:{ signals }, timeline,
                         conflicts: [...numericalConflicts, ...members.filter(a => /\b(disputed|conflicting|preliminary|corrected)\b|đính chính|mâu thuẫn/iu.test(textOf(a))).map(a=>({link:a.link, text:storyText(a.title)}))],
-                        history:[...(prior?.history || []), ...(scopeChanged ? [{type:'roundup-detached',at:now,previousLinks:prior.links}] : []), ...(overlaps.length > 1 ? [{type:'merge', ids:overlaps.map(s=>s.id), at:now}] : []), ...(inherited ? [] : overlaps.length ? [{type:'split', ids:overlaps.map(s=>s.id), at:now}] : [])],
+                        history:[...(prior?.history || []), ...(scopeChanged ? [{type:'roundup-detached',at:now,previousLinks:prior.links}] : []), ...(relationScopeChanged ? [{type:'broader-story-updated',at:now,broaderStoryId:cluster.broaderStory?.id || null}] : []), ...(overlaps.length > 1 ? [{type:'merge', ids:overlaps.map(s=>s.id), at:now}] : []), ...(inherited ? [] : overlaps.length ? [{type:'split', ids:overlaps.map(s=>s.id), at:now}] : [])],
                         rankHistory:prior?.rankHistory || [], clusterReason:cluster.verification || cluster.clusterReason || 'Upstream event cluster / exact headline or shared article' };
                     states[id] = state;
                 }

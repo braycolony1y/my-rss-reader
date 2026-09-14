@@ -48,8 +48,8 @@ Environment=SMART_LOG_GEMINI_RESPONSES=true
 
 # /etc/systemd/system/rss-reader.service.d/override.conf
 [Service]
-Environment="SMART_EMBEDDING_JOB_TIMEOUT_MS=600000"
-Environment="SMART_EMBEDDING_BATCH_SIZE=8"
+ExecStart=
+ExecStart=/usr/bin/node --max-old-space-size=4096 --expose-gc /home/ubuntu/my-rss-reader/server.js
 
-MemoryHigh=4G
-MemoryMax=5G
+MemoryHigh=5G
+MemoryMax=6G

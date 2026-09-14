@@ -7,7 +7,7 @@
     <title>My RSS Reader</title>
     <link rel="icon"
         href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22%238b5cf6%22/><circle cx=%2230%22 cy=%2270%22 r=%2210%22 fill=%22white%22/><path d=%22M30 40a30 30 0 0 1 30 30M30 20a50 50 0 0 1 50 50%22 fill=%22none%22 stroke=%22white%22 stroke-width=%2210%22 stroke-linecap=%22round%22/></svg>">
-    <link rel="stylesheet" href="/public/styles.css?v=20260913_top_snapshot_v1">
+    <link rel="stylesheet" href="/public/styles.css?v=20260914_jsonlog_v1">
     <script>
         // Start the first Smart News request while the browser is still parsing
         // the page. Returning visitors paint saved cards immediately instead.
@@ -3830,25 +3830,25 @@
                                 <div class="ai-status-muted text-xs text-gray-500 mt-1">Antigravity CLI handles AI requests first. Gemini API keys provide backup when the CLI is unavailable or a request fails.</div>
                             </div>
                             <span class="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-emerald-300"
-                                x-text="geminiKeyStatus?.lastSmartRun?.providerOrder?.[0] === 'antigravity' ? 'Antigravity first' : 'Gemini backup'"></span>
+                                x-text="geminiKeyStatus?.lastSmartRun?.providerOrder?.[0]?.startsWith('antigravity') ? 'Antigravity first' : 'Gemini backup'"></span>
                         </div>
                         <div class="space-y-2">
-                            <template x-for="(providerId, idx) in (geminiKeyStatus?.lastSmartRun?.providerOrder || ['antigravity', 'gemini-flash-lite', 'gemini-flash', 'local-qwen'])" :key="providerId">
+                            <template x-for="(providerId, idx) in (geminiKeyStatus?.lastSmartRun?.providerOrder || ['antigravity-low', 'antigravity-medium', 'antigravity-high', 'gemini-flash', 'local-qwen'])" :key="providerId">
                                 <div class="ai-status-provider-row flex items-start gap-3 rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-2.5">
                                     <span class="ai-status-provider-rank flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-violet-400/10 text-xs font-black text-violet-300" x-text="idx + 1"></span>
                                     <div class="min-w-0 flex-1 space-y-1">
                                         <div class="flex justify-between items-center">
-                                            <div class="ai-status-value text-sm font-semibold text-white" x-text="providerId === 'antigravity' ? 'Antigravity CLI' : (providerId === 'local-qwen' ? 'Local Qwen' : 'Gemini API')"></div>
+                                            <div class="ai-status-value text-sm font-semibold text-white" x-text="providerId.startsWith('antigravity') ? 'Antigravity CLI' : (providerId === 'local-qwen' ? 'Local Qwen' : 'Gemini API')"></div>
                                             <span class="text-[10px] font-bold uppercase tracking-wide" 
                                                   :class="idx === 0 ? 'text-emerald-300' : 'text-gray-500'" 
                                                   x-text="idx === 0 ? 'Primary' : 'Backup'"></span>
                                         </div>
                                         <div class="ai-status-muted truncate text-xs text-gray-500" 
-                                             x-text="providerId === 'antigravity' ? 'Gemini 3.8 Flash · CLI' : providerId === 'local-qwen' ? (geminiKeyStatus?.lastSmartRun?.localModel || 'qwen3.5:2b') : (providerId === 'gemini-flash-lite' ? 'gemini-3.5-flash-lite · minimal thinking' : 'gemini-3.8-flash · low thinking')"></div>
+                                             x-text="providerId.startsWith('antigravity') ? ('gemini-3.8-flash-' + providerId.replace('antigravity-', '') + ' · CLI') : providerId === 'local-qwen' ? (geminiKeyStatus?.lastSmartRun?.localModel || 'qwen3.5:2b') : (providerId === 'gemini-flash-lite' ? 'gemini-3.5-flash-lite · minimal thinking' : 'gemini-3.8-flash')"></div>
                                         
                                         <!-- Health stats -->
                                         <div class="mt-2 text-[11px] text-gray-400 space-y-0.5"
-                                            x-data="{ healthType: providerId === 'antigravity' ? 'antigravity' : (providerId.startsWith('local') ? 'ollama' : 'gemini') }">
+                                            x-data="{ healthType: providerId.startsWith('antigravity') ? 'antigravity' : (providerId.startsWith('local') ? 'ollama' : 'gemini') }">
                                             <div class="flex gap-2">
                                                 <span class="font-medium text-gray-300">Status:</span>
                                                 <span :class="{
@@ -3890,11 +3890,15 @@
                                     <div class="ai-status-value text-sm font-bold text-white">Smart refresh in progress</div>
                                     <div x-show="geminiKeyStatus?.lastSmartRun?.progress?.total" class="ai-status-muted text-xs text-gray-500">
                                         <span x-text="geminiKeyStatus?.lastSmartRun?.progress?.current || 0"></span>/<span x-text="geminiKeyStatus?.lastSmartRun?.progress?.total || 0"></span>
+                                        <span x-show="Number.isFinite(Number(geminiKeyStatus?.lastSmartRun?.progress?.remaining))">
+                                            · <span x-text="geminiKeyStatus?.lastSmartRun?.progress?.remaining || 0"></span> remaining
+                                        </span>
                                     </div>
                                 </div>
                                 <p class="ai-status-muted mt-1 text-xs leading-relaxed text-gray-400" x-text="geminiKeyStatus?.lastSmartRun?.progress?.message || 'Preparing Smart refresh…'"></p>
                                 <div class="ai-status-muted mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-gray-500">
-                                    <span x-show="geminiKeyStatus?.lastSmartRun?.progress?.model">Model: <strong class="ai-status-value" x-text="geminiKeyStatus?.lastSmartRun?.progress?.model"></strong></span>
+                                    <span x-show="geminiKeyStatus?.lastSmartRun?.progress?.model || geminiKeyStatus?.lastSmartRun?.progress?.providerId">Provider: <strong class="ai-status-value" x-text="geminiKeyStatus?.lastSmartRun?.progress?.model || geminiKeyStatus?.lastSmartRun?.progress?.providerId"></strong></span>
+                                    <span x-show="geminiKeyStatus?.lastSmartRun?.progress?.providerTotal">Provider step: <strong class="ai-status-value" x-text="(geminiKeyStatus?.lastSmartRun?.progress?.providerIndex || geminiKeyStatus?.lastSmartRun?.progress?.providerAttempt || 0) + '/' + geminiKeyStatus?.lastSmartRun?.progress?.providerTotal"></strong></span>
                                     <span x-show="geminiKeyStatus?.lastSmartRun?.progress?.category">Section: <strong class="ai-status-value" x-text="geminiKeyStatus?.lastSmartRun?.progress?.category?.replace('_', ' ')"></strong></span>
                                     <span x-show="geminiKeyStatus?.lastSmartRun?.progress?.batch">Batch: <strong class="ai-status-value" x-text="geminiKeyStatus?.lastSmartRun?.progress?.batch + '/' + geminiKeyStatus?.lastSmartRun?.progress?.categoryBatches"></strong></span>
                                     <span x-show="geminiKeyStatus?.lastSmartRun?.progress?.articleCount">Articles: <strong class="ai-status-value" x-text="geminiKeyStatus?.lastSmartRun?.progress?.articleCount"></strong></span>
@@ -4195,17 +4199,59 @@
                                                     <span x-show="event.totalTokens" class="rounded-md bg-white/[0.04] px-2 py-1" x-text="formatAiUsageNumber(event.totalTokens) + ' tokens (' + formatAiUsageNumber(event.promptTokens) + ' in / ' + formatAiUsageNumber(event.outputTokens) + ' out)' "></span>
                                                     <span x-show="event.articleCount !== null" class="rounded-md bg-white/[0.04] px-2 py-1" x-text="event.articleCount + ' articles'"></span>
                                                     <span x-show="event.errorCode" class="rounded-md bg-red-500/[0.07] px-2 py-1 text-red-300/80" x-text="event.errorCode"></span>
+                                                    <span x-show="event.repairAttempted"
+                                                        class="rounded-md px-2 py-1"
+                                                        :class="event.repairSucceeded === true ? 'bg-emerald-500/[0.08] text-emerald-300/80' : (event.repairSucceeded === false ? 'bg-red-500/[0.07] text-red-300/80' : 'bg-amber-500/[0.08] text-amber-300/80')"
+                                                        x-text="event.repairSucceeded === true ? 'JSON repair succeeded' : (event.repairSucceeded === false ? 'JSON repair failed' : 'JSON repair attempted')"></span>
                                                 </div>
 
                                                 <div x-show="event.error || event.message" class="mt-2 whitespace-normal break-words rounded-lg border border-red-400/10 bg-red-500/[0.04] px-3 py-2 text-[11px] leading-relaxed text-red-200/80" x-text="event.error || event.message"></div>
 
-                                                <details x-show="event.groupId || event.source" class="mt-2 text-[10px] text-gray-500">
+                                                <div x-show="event.errorCode === 'INVALID_JSON' && event.source !== 'structured' && !event.rawResponse"
+                                                    class="mt-2 rounded-lg border border-amber-400/10 bg-amber-500/[0.04] px-3 py-2 text-[11px] leading-relaxed text-amber-200/80">
+                                                    Legacy diagnostic record · Raw provider output was not captured by this version.
+                                                </div>
+
+                                                <details x-show="event.groupId || event.source || event.parserReason || event.repairAttempted" class="mt-2 text-[10px] text-gray-500">
                                                     <summary class="cursor-pointer select-none hover:text-gray-300">Technical details</summary>
                                                     <div class="mt-1 space-y-0.5 border-l border-white/10 pl-2 font-mono break-all">
                                                         <div x-show="event.groupId">Group: <span x-text="event.groupId"></span></div>
+                                                        <div x-show="event.parserReason">Parser reason: <span x-text="event.parserReason"></span></div>
+                                                        <div x-show="event.repairAttempted">Repair: <span x-text="event.repairSucceeded === true ? 'succeeded' : (event.repairSucceeded === false ? 'failed' : 'attempted')"></span></div>
+                                                        <div x-show="event.repairReason">Repair reason: <span x-text="event.repairReason"></span></div>
                                                         <div>Log format: <span x-text="event.source === 'structured' ? 'Current detailed record' : 'Earlier text record'"></span></div>
                                                         <div>Event ID: <span x-text="event.id"></span></div>
                                                     </div>
+                                                </details>
+
+                                                <details x-show="event.rawResponse" class="mt-2 rounded-lg border border-white/[0.07] bg-black/10 p-2 text-[10px] text-gray-400">
+                                                    <summary class="cursor-pointer select-none font-semibold hover:text-gray-200">Raw provider output</summary>
+                                                    <div class="mt-2 flex flex-wrap items-center justify-between gap-2">
+                                                        <span x-show="event.rawResponseTruncated"
+                                                            x-text="'Showing first ' + formatAiUsageNumber(event.rawResponseShownLength || event.rawResponse?.length || 0) + ' of ' + formatAiUsageNumber(event.rawResponseLength || 0) + ' characters'"></span>
+                                                        <span x-show="!event.rawResponseTruncated && event.rawResponseLength"
+                                                            x-text="formatAiUsageNumber(event.rawResponseLength) + ' characters'"></span>
+                                                        <button type="button"
+                                                            class="rounded-md border border-white/10 bg-white/[0.04] px-2 py-1 font-semibold text-gray-300 hover:bg-white/[0.08]"
+                                                            @click.stop.prevent="copyOnlineAiDiagnostic(event.rawResponse, event.id + ':raw')"
+                                                            x-text="onlineAiUsageCopiedKey === event.id + ':raw' ? 'Copied' : 'Copy raw response'"></button>
+                                                    </div>
+                                                    <pre class="mt-2 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-md border border-white/[0.06] bg-black/20 p-2 font-mono text-[10px] leading-relaxed text-gray-300" x-text="event.rawResponse"></pre>
+                                                </details>
+
+                                                <details x-show="event.repairRawResponse" class="mt-2 rounded-lg border border-white/[0.07] bg-black/10 p-2 text-[10px] text-gray-400">
+                                                    <summary class="cursor-pointer select-none font-semibold hover:text-gray-200">Repair provider output</summary>
+                                                    <div class="mt-2 flex flex-wrap items-center justify-between gap-2">
+                                                        <span x-show="event.repairRawResponseTruncated"
+                                                            x-text="'Showing first ' + formatAiUsageNumber(event.repairRawResponseShownLength || event.repairRawResponse?.length || 0) + ' of ' + formatAiUsageNumber(event.repairRawResponseLength || 0) + ' characters'"></span>
+                                                        <span x-show="!event.repairRawResponseTruncated && event.repairRawResponseLength"
+                                                            x-text="formatAiUsageNumber(event.repairRawResponseLength) + ' characters'"></span>
+                                                        <button type="button"
+                                                            class="rounded-md border border-white/10 bg-white/[0.04] px-2 py-1 font-semibold text-gray-300 hover:bg-white/[0.08]"
+                                                            @click.stop.prevent="copyOnlineAiDiagnostic(event.repairRawResponse, event.id + ':repair')"
+                                                            x-text="onlineAiUsageCopiedKey === event.id + ':repair' ? 'Copied' : 'Copy repair response'"></button>
+                                                    </div>
+                                                    <pre class="mt-2 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-md border border-white/[0.06] bg-black/20 p-2 font-mono text-[10px] leading-relaxed text-gray-300" x-text="event.repairRawResponse"></pre>
                                                 </details>
                                             </div>
                                         </div>
@@ -6225,10 +6271,12 @@
                         feed</p>
                     <span x-show="syncProgress.total"
                         class="text-[11px] font-bold tabular-nums text-gray-900 dark:text-gray-100"
-                        x-text="syncProgress.current + '/' + syncProgress.total"></span>
+                        x-text="syncProgress.current + '/' + syncProgress.total + (Number.isFinite(Number(syncProgress.remaining)) ? ' · ' + syncProgress.remaining + ' remaining' : '')"></span>
                 </div>
                 <p class="text-sm font-semibold text-gray-900 dark:text-gray-100 mt-1 leading-snug"
                     x-text="syncProgress.message"></p>
+                <p x-show="syncProgress.providerTotal" class="mt-1 text-[11px] text-gray-600 dark:text-gray-400"
+                    x-text="'Provider ' + (syncProgress.providerIndex || syncProgress.providerAttempt || 0) + '/' + syncProgress.providerTotal + (syncProgress.model ? ' · ' + syncProgress.model : '')"></p>
                 <div x-show="!syncProgress.done"
                     class="h-1.5 rounded-full bg-black/20 dark:bg-white/20 overflow-hidden mt-3">
                     <div class="h-full bg-gradient-to-r from-blue-500 to-indigo-500 dark:from-blue-400 dark:to-indigo-400 transition-all duration-300"

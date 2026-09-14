@@ -11,6 +11,7 @@ import { discardResponseBody } from './src/fetch-response.js';
 import { createHash } from 'node:crypto';
 import { readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
+import { getHeapStatistics } from 'node:v8';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
@@ -20,7 +21,7 @@ const VIETNAM_OFFSET_MS = 7 * HOUR_MS;
 
 const SMART_ITEMS_PER_SOURCE = 10;
 const SMART_CLUSTER_VERSION =
-  'v2.12_named_entity_gate_20260826';
+  'v2.15_component_relationship_review_20260914';
 
 const EMBEDDING_MODEL = process.env.SMART_EMBEDDING_MODEL || 'Xenova/multilingual-e5-small';
 const EMBEDDING_CACHE_VERSION = 'e5-query-title-content-v2';
@@ -68,6 +69,8 @@ const SMART_NEWS_CLUSTER_CONFIG = {
     enabled: true,
     maxArticlesPerOnlineReview: 20,
     maxArticlesPerLocalReview: 12,
+    maxComponentsPerOnlineReview: 20,
+    maxComponentsPerLocalReview: 12,
     keepSeparateOnFailure: true
   }
 };
@@ -75,20 +78,44 @@ const SMART_NEWS_CLUSTER_CONFIG = {
 const SMART_NEWS_AI_CONFIG = {
   providers: [
     {
-      id: 'antigravity',
+      id: 'antigravity-low',
       type: 'antigravity',
       model: ANTIGRAVITY_MODEL,
       priority: 0,
-      timeoutMs: 30000,
+      timeoutMs: 60_000,
       maxRetries: 0
     },
     {
+      id: 'antigravity-medium',
+      type: 'antigravity',
+      model:
+        process.env.ANTIGRAVITY_MEDIUM_MODEL ||
+        'gemini-3.8-flash-medium',
+      priority: 1,
+      timeoutMs: 120_000,
+      maxRetries: 0
+    },
+    {
+      id: 'antigravity-high',
+      type: 'antigravity',
+      model:
+        process.env.ANTIGRAVITY_HIGH_MODEL ||
+        'gemini-3.8-flash-high',
+      priority: 2,
+      timeoutMs: 180_000,
+      maxRetries: 0
+    },
+    {
+      // Retained as an explicitly disabled compatibility entry so older
+      // diagnostics/tests can still recognize the provider identifier. It is
+      // not part of the production clustering fallback chain.
       id: 'gemini-flash-lite',
       type: 'gemini',
       model:
         process.env.GEMINI_FLASH_LITE_MODEL ||
         'gemini-3.5-flash-lite',
-      priority: 1,
+      priority: 90,
+      enabled: false,
       timeoutMs: 15_000,
       maxRetries: 1,
       maxOutputTokens: 768,
@@ -100,7 +127,7 @@ const SMART_NEWS_AI_CONFIG = {
       model:
         process.env.GEMINI_MODEL ||
         'gemini-3.8-flash',
-      priority: 2,
+      priority: 3,
       timeoutMs: 25_000,
       maxRetries: 1,
       maxOutputTokens: 1024,
@@ -203,6 +230,60 @@ const PARTITION_RESPONSE_SCHEMA = {
     }
   },
   required: ['clusters', 'uncertain'],
+  additionalProperties: false
+};
+
+
+const COMPONENT_REVIEW_RESPONSE_SCHEMA = {
+  type: 'object',
+  properties: {
+    exactEventGroups: {
+      type: 'array',
+      minItems: 1,
+      items: {
+        type: 'object',
+        properties: {
+          componentIds: {
+            type: 'array',
+            minItems: 1,
+            uniqueItems: true,
+            items: { type: 'string' }
+          },
+          confidence: {
+            type: 'number',
+            minimum: 0,
+            maximum: 1
+          }
+        },
+        required: ['componentIds', 'confidence'],
+        additionalProperties: false
+      }
+    },
+    relatedDevelopments: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          componentIds: {
+            type: 'array',
+            minItems: 2,
+            maxItems: 2,
+            uniqueItems: true,
+            items: { type: 'string' }
+          },
+          confidence: {
+            type: 'number',
+            minimum: 0,
+            maximum: 1
+          }
+        },
+        required: ['componentIds', 'confidence'],
+        additionalProperties: false
+      }
+    },
+    uncertain: { type: 'boolean' }
+  },
+  required: ['exactEventGroups', 'relatedDevelopments', 'uncertain'],
   additionalProperties: false
 };
 
@@ -318,6 +399,12 @@ const ACTION_GROUPS = {
 let batchStopTokens = new Set();
 let embeddingPipeline = null;
 const embeddingCache = new Map();
+const localModelAvailabilityCache = new Map();
+const LOCAL_MODEL_AVAILABILITY_TTL_MS = 5 * 60 * 1000;
+
+// Coordinates the Smart engine with the separate background source fetch loop.
+// Only one large Smart article snapshot should exist while clustering/review runs.
+let activeSmartEngineRefreshes = 0;
 
 let providerHealthWriteChain = Promise.resolve();
 let verificationCacheWriteChain = Promise.resolve();
@@ -523,7 +610,7 @@ export function stableId(value) {
   return (hash >>> 0).toString(36);
 }
 
-function getArticleId(article) {
+export function getArticleId(article) {
   if (article?.link) {
     return `a_${stableId(article.link)}`;
   }
@@ -1854,6 +1941,10 @@ export function exportEmbeddingCache() {
   return result;
 }
 
+export function clearEmbeddingCache() {
+  embeddingCache.clear();
+}
+
 async function generateEmbeddingCacheJsonAsync() {
   let json = '{';
   let isFirst = true;
@@ -2315,6 +2406,73 @@ function getEventEvidence(
   };
 }
 
+export function getSmartDestinationPartition(article) {
+  const category =
+    String(
+      article?.smartCategory ||
+      article?.feedCategory ||
+      ''
+    ).toLowerCase();
+
+  if (category === 'news_vietnam') {
+    return 'news_vietnam';
+  }
+
+  if (category === 'news_world') {
+    return 'news_world';
+  }
+
+  if (category === 'finance_vietnam') {
+    return 'finance_vietnam';
+  }
+
+  if (
+    category === 'finance_global' ||
+    category === 'finance_world'
+  ) {
+    return 'finance_world';
+  }
+
+  if (
+    category === 'tech_vietnam' ||
+    category === 'tech_world'
+  ) {
+    return category;
+  }
+
+  if (category === 'tech') {
+    const region =
+      String(article?.region || '')
+        .toLowerCase();
+
+    if (region === 'vietnam') {
+      return 'tech_vietnam';
+    }
+
+    if (
+      region === 'foreign' ||
+      region === 'world' ||
+      region === 'global'
+    ) {
+      return 'tech_world';
+    }
+
+    const language =
+      article?.language ||
+      detectArticleLanguage(article);
+
+    if (language === 'vi') {
+      return 'tech_vietnam';
+    }
+
+    if (language === 'en') {
+      return 'tech_world';
+    }
+  }
+
+  return null;
+}
+
 export function classifyE5Match(
   articleA,
   articleB,
@@ -2336,6 +2494,18 @@ export function classifyE5Match(
     languageA !== 'unknown' &&
     languageB !== 'unknown' &&
     languageA !== languageB;
+
+  if (crossLanguage) {
+    return {
+      decision:
+        MatchDecision.REJECT,
+      conflicts: null,
+      evidence: {
+        reason:
+          'cross_language_partition_barrier'
+      }
+    };
+  }
 
   const thresholds =
     crossLanguage
@@ -2444,6 +2614,28 @@ export function isPairWithinComparisonScope(
   articleB,
   now = Date.now()
 ) {
+  const destinationA =
+    getSmartDestinationPartition(
+      articleA
+    );
+  const destinationB =
+    getSmartDestinationPartition(
+      articleB
+    );
+
+  /*
+   * Smart destinations are editorially independent. A pair from different
+   * destinations must never reach the deterministic classifier or AI review.
+   * Unknown destination membership is isolated rather than guessed.
+   */
+  if (
+    !destinationA ||
+    !destinationB ||
+    destinationA !== destinationB
+  ) {
+    return false;
+  }
+
   const timestampA =
     parsePublishedTimestamp(
       articleA?.pubDate
@@ -3569,7 +3761,23 @@ export async function deterministicGroups(
         )}`,
 
       articles:
-        groupArticles
+        groupArticles,
+
+      // Preserve the already-safe deterministic HNSW components. If the
+      // review neighborhood is too large for AI, these components are the
+      // conservative publication fallback; they must not be flattened into
+      // singletons or arbitrarily chunked for separate AI decisions.
+      deterministicComponents:
+        componentClusters.map(
+          current =>
+            finalAutoComponents[current]
+              .map(nodeIndex =>
+                getArticleId(
+                  nodes[nodeIndex].article
+                )
+              )
+              .sort()
+        )
     });
 
     await yieldIfNeeded();
@@ -4229,6 +4437,119 @@ export function buildCluster(
   };
 }
 
+export function attachBroaderStoryMetadata(clusters, relationships = []) {
+  if (!Array.isArray(clusters) || !clusters.length || !Array.isArray(relationships) || !relationships.length) {
+    return clusters;
+  }
+
+  const copies = clusters.map(cluster => ({ ...cluster }));
+  const clusterById = new Map(copies.map(cluster => [cluster.clusterId, cluster]));
+  const clusterIdByArticleId = new Map();
+
+  for (const cluster of copies) {
+    for (const article of [cluster, ...(cluster.relatedArticles || [])]) {
+      const articleId = getArticleId(article);
+      if (articleId) clusterIdByArticleId.set(articleId, cluster.clusterId);
+    }
+  }
+
+  const adjacency = new Map(copies.map(cluster => [cluster.clusterId, new Set()]));
+  const edges = [];
+  const edgeKeys = new Set();
+
+  for (const relationship of relationships) {
+    if (relationship?.type !== 'related_development') continue;
+    const leftClusterId = (relationship.leftArticleIds || [])
+      .map(articleId => clusterIdByArticleId.get(articleId))
+      .find(Boolean);
+    const rightClusterId = (relationship.rightArticleIds || [])
+      .map(articleId => clusterIdByArticleId.get(articleId))
+      .find(Boolean);
+    if (!leftClusterId || !rightClusterId || leftClusterId === rightClusterId) continue;
+
+    const leftCluster = clusterById.get(leftClusterId);
+    const rightCluster = clusterById.get(rightClusterId);
+    if (!leftCluster || !rightCluster) continue;
+    if (
+      leftCluster.smartCategory &&
+      rightCluster.smartCategory &&
+      leftCluster.smartCategory !== rightCluster.smartCategory
+    ) {
+      continue;
+    }
+
+    const key = [leftClusterId, rightClusterId].sort().join('|');
+    if (edgeKeys.has(key)) continue;
+    edgeKeys.add(key);
+    adjacency.get(leftClusterId)?.add(rightClusterId);
+    adjacency.get(rightClusterId)?.add(leftClusterId);
+    edges.push({
+      leftClusterId,
+      rightClusterId,
+      confidence: Number(relationship.confidence) || null,
+      providerId: relationship.providerId || null,
+      model: relationship.model || null,
+      reviewGroupId: relationship.reviewGroupId || null,
+      verifiedAt: relationship.verifiedAt || null
+    });
+  }
+
+  const visited = new Set();
+  for (const cluster of copies) {
+    if (visited.has(cluster.clusterId) || !adjacency.get(cluster.clusterId)?.size) continue;
+    const queue = [cluster.clusterId];
+    const storyClusterIds = [];
+    visited.add(cluster.clusterId);
+
+    while (queue.length) {
+      const current = queue.shift();
+      storyClusterIds.push(current);
+      for (const neighbor of adjacency.get(current) || []) {
+        if (visited.has(neighbor)) continue;
+        visited.add(neighbor);
+        queue.push(neighbor);
+      }
+    }
+
+    if (storyClusterIds.length < 2) continue;
+    const storyId = `story_${stableId([...storyClusterIds].sort().join('|'))}`;
+    const storyEdges = edges.filter(edge =>
+      storyClusterIds.includes(edge.leftClusterId) &&
+      storyClusterIds.includes(edge.rightClusterId)
+    );
+    const events = storyClusterIds
+      .map(clusterId => clusterById.get(clusterId))
+      .filter(Boolean)
+      .map(eventCluster => ({
+        clusterId: eventCluster.clusterId,
+        title: eventCluster.title,
+        date: eventCluster.pubDate,
+        sourceCount: eventCluster.sourceCount,
+        sources: [eventCluster, ...(eventCluster.relatedArticles || [])]
+          .filter(article => article?.link)
+          .map(article => ({ link: article.link, name: article.feedTitle }))
+          .filter((source, index, array) =>
+            array.findIndex(other => other.link === source.link) === index
+          )
+          .slice(0, 8)
+      }))
+      .sort((left, right) => safeDate(left.date) - safeDate(right.date));
+
+    for (const clusterId of storyClusterIds) {
+      const eventCluster = clusterById.get(clusterId);
+      if (!eventCluster) continue;
+      eventCluster.broaderStory = {
+        id: storyId,
+        relationship: 'related_development',
+        events,
+        edges: storyEdges
+      };
+    }
+  }
+
+  return copies;
+}
+
 // Publish strict lexical matches before the heavier multilingual pass. Reuse
 // accepted memberships and apply the same event-conflict checks to new joins.
 export function buildEarlySmartClusters(candidates, previous = []) {
@@ -4419,6 +4740,238 @@ function buildVerificationPrompt(articles) {
       { articles: input }
     )
   ].join('\n');
+}
+
+export function buildComponentReviewUnits(group) {
+  const reviewArticles =
+    group?.fullRepartition && Array.isArray(group?.reviewUniverse) && group.reviewUniverse.length
+      ? group.reviewUniverse
+      : (group?.articles || []);
+
+  const articleById = new Map(
+    reviewArticles.map(article => [getArticleId(article), article])
+  );
+
+  const sourceComponents =
+    Array.isArray(group?.deferredComponents) && group.deferredComponents.length
+      ? group.deferredComponents
+      : reviewArticles.map(article => [article]);
+
+  const assigned = new Set();
+  const cleanComponents = [];
+
+  for (const component of sourceComponents) {
+    const clean = [];
+    for (const item of component || []) {
+      const article =
+        typeof item === 'string'
+          ? articleById.get(item)
+          : articleById.get(getArticleId(item)) || item;
+      if (!article) continue;
+      const articleId = getArticleId(article);
+      if (!articleId || assigned.has(articleId)) continue;
+      assigned.add(articleId);
+      clean.push(article);
+    }
+    if (clean.length) cleanComponents.push(clean);
+  }
+
+  for (const article of reviewArticles) {
+    const articleId = getArticleId(article);
+    if (!articleId || assigned.has(articleId)) continue;
+    assigned.add(articleId);
+    cleanComponents.push([article]);
+  }
+
+  return cleanComponents.map(component => {
+    const articleIds = component.map(getArticleId).sort();
+    const representative = chooseRepresentative(component) || component[0];
+    const ordered = [...component].sort(
+      (left, right) => safeDate(right.pubDate) - safeDate(left.pubDate)
+    );
+    const timestamps = component.map(article => safeDate(article.pubDate)).filter(Boolean);
+
+    return {
+      id: `component_${stableId(articleIds.join('|'))}`,
+      articleIds,
+      articleCount: articleIds.length,
+      representativeTitle: representative?.title || '',
+      representativeExcerpt: String(
+        representative?.content || representative?.description || representative?.summary || ''
+      ).slice(0, 700),
+      publishedFrom: timestamps.length ? new Date(Math.min(...timestamps)).toISOString() : null,
+      publishedTo: timestamps.length ? new Date(Math.max(...timestamps)).toISOString() : null,
+      sources: [...new Set(component.map(article => article.feedTitle).filter(Boolean))].slice(0, 10),
+      headlines: ordered.slice(0, 8).map(article => ({
+        title: article.title,
+        source: article.feedTitle,
+        publishedAt: article.pubDate
+      })),
+      destination: representative?.smartCategory || representative?.feedCategory || null
+    };
+  });
+}
+
+function buildComponentReviewPrompt(units) {
+  const input = units.map(unit => ({
+    id: unit.id,
+    articleCount: unit.articleCount,
+    representativeTitle: unit.representativeTitle,
+    representativeExcerpt: unit.representativeExcerpt,
+    publishedFrom: unit.publishedFrom,
+    publishedTo: unit.publishedTo,
+    sources: unit.sources,
+    headlines: unit.headlines,
+    destination: unit.destination
+  }));
+
+  return [
+    'You are reviewing deterministic exact-event components from a news clustering system.',
+    '',
+    'Answer TWO separate questions:',
+    '1. Which components describe the SAME exact real-world occurrence and may be merged?',
+    '2. Which remaining exact events are distinct developments in the SAME broader story or timeline?',
+    '',
+    'SAME_EVENT is strict. Merge components only when the central action, subjects, object, place, and event stage are compatible.',
+    'Different stages such as announcement, investigation, approval, arrest, charge, trial, ruling, appeal, launch, recall, earnings release, policy response, and deal closing are normally separate exact events.',
+    '',
+    'RELATED_DEVELOPMENT means separate exact events that belong to one concrete evolving story or causal/chronological sequence.',
+    'Do not mark components related merely because they share a broad topic, company, person, country, industry, product family, tournament, or recurring issue.',
+    '',
+    'Every input component ID must appear exactly once in exactEventGroups.',
+    'A one-component exactEventGroup means keep that component as its own event.',
+    'relatedDevelopments must contain only pairs of component IDs that belong to DIFFERENT exactEventGroups.',
+    'Pairs omitted from relatedDevelopments are treated as UNRELATED.',
+    'Do not invent facts, rewrite headlines, omit IDs, duplicate IDs, or create new IDs.',
+    'When evidence is insufficient for a safe decision, set uncertain to true.',
+    '',
+    'Return valid JSON matching the supplied schema only.',
+    '',
+    JSON.stringify({ components: input })
+  ].join('\n');
+}
+
+export function validateComponentReviewResult(result, units) {
+  if (
+    !result ||
+    typeof result !== 'object' ||
+    Array.isArray(result) ||
+    !Array.isArray(result.exactEventGroups) ||
+    !Array.isArray(result.relatedDevelopments) ||
+    typeof result.uncertain !== 'boolean' ||
+    Object.keys(result).some(key => !['exactEventGroups', 'relatedDevelopments', 'uncertain'].includes(key))
+  ) {
+    return { valid: false, reason: 'invalid_component_schema' };
+  }
+
+  const requestedIds = units.map(unit => unit.id);
+  const requestedSet = new Set(requestedIds);
+  const returnedIds = [];
+  const groupByComponent = new Map();
+
+  for (let index = 0; index < result.exactEventGroups.length; index++) {
+    const group = result.exactEventGroups[index];
+    if (
+      !group ||
+      typeof group !== 'object' ||
+      Array.isArray(group) ||
+      Object.keys(group).some(key => !['componentIds', 'confidence'].includes(key)) ||
+      !Array.isArray(group.componentIds) ||
+      !group.componentIds.length ||
+      typeof group.confidence !== 'number' ||
+      !Number.isFinite(group.confidence) ||
+      group.confidence < 0 ||
+      group.confidence > 1
+    ) {
+      return { valid: false, reason: 'invalid_exact_event_group' };
+    }
+
+    for (const componentId of group.componentIds) {
+      if (!requestedSet.has(componentId)) {
+        return { valid: false, reason: 'unknown_component_id' };
+      }
+      if (groupByComponent.has(componentId)) {
+        return { valid: false, reason: 'duplicate_component_id' };
+      }
+      groupByComponent.set(componentId, index);
+      returnedIds.push(componentId);
+    }
+  }
+
+  if (
+    returnedIds.length !== requestedIds.length ||
+    requestedIds.some(componentId => !groupByComponent.has(componentId))
+  ) {
+    return { valid: false, reason: 'missing_component_id' };
+  }
+
+  const relationKeys = new Set();
+  for (const relation of result.relatedDevelopments) {
+    if (
+      !relation ||
+      typeof relation !== 'object' ||
+      Array.isArray(relation) ||
+      Object.keys(relation).some(key => !['componentIds', 'confidence'].includes(key)) ||
+      !Array.isArray(relation.componentIds) ||
+      relation.componentIds.length !== 2 ||
+      relation.componentIds[0] === relation.componentIds[1] ||
+      relation.componentIds.some(componentId => !requestedSet.has(componentId)) ||
+      typeof relation.confidence !== 'number' ||
+      !Number.isFinite(relation.confidence) ||
+      relation.confidence < 0 ||
+      relation.confidence > 1
+    ) {
+      return { valid: false, reason: 'invalid_related_development' };
+    }
+
+    const [left, right] = relation.componentIds;
+    if (groupByComponent.get(left) === groupByComponent.get(right)) {
+      return { valid: false, reason: 'relationship_inside_same_event' };
+    }
+    const key = [left, right].sort().join('|');
+    if (relationKeys.has(key)) {
+      return { valid: false, reason: 'duplicate_related_development' };
+    }
+    relationKeys.add(key);
+  }
+
+  return { valid: true, reason: null };
+}
+
+export function expandComponentReviewDecision(result, units) {
+  const unitById = new Map(units.map(unit => [unit.id, unit]));
+  const exactGroups = result.exactEventGroups.map(group => ({
+    componentIds: group.componentIds,
+    confidence: group.confidence,
+    articleIds: [...new Set(group.componentIds.flatMap(componentId => unitById.get(componentId)?.articleIds || []))].sort()
+  }));
+  const exactGroupByComponent = new Map();
+  exactGroups.forEach((group, index) => group.componentIds.forEach(componentId => exactGroupByComponent.set(componentId, index)));
+
+  const relationships = [];
+  const seen = new Set();
+  for (const relation of result.relatedDevelopments) {
+    if (relation.confidence < 0.9) continue;
+    const leftIndex = exactGroupByComponent.get(relation.componentIds[0]);
+    const rightIndex = exactGroupByComponent.get(relation.componentIds[1]);
+    if (leftIndex === undefined || rightIndex === undefined || leftIndex === rightIndex) continue;
+    const pair = [leftIndex, rightIndex].sort((a, b) => a - b);
+    const key = pair.join('|');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    relationships.push({
+      type: 'related_development',
+      confidence: relation.confidence,
+      leftArticleIds: exactGroups[pair[0]].articleIds,
+      rightArticleIds: exactGroups[pair[1]].articleIds
+    });
+  }
+
+  return {
+    clusters: exactGroups.map(group => ({ articleIds: group.articleIds, confidence: group.confidence })),
+    storyRelationships: relationships,
+    uncertain: result.uncertain === true
+  };
 }
 
 function parsePartitionResponse(
@@ -4690,6 +5243,77 @@ function postValidatePartition(
   return true;
 }
 
+const RAW_PROVIDER_DIAGNOSTIC_LIMIT = Math.max(
+  2_000,
+  Math.min(
+    100_000,
+    Number(process.env.SMART_AI_RAW_LOG_MAX_CHARS) || 24_000
+  )
+);
+
+function sanitizeProviderDiagnosticText(
+  value,
+  maximum = RAW_PROVIDER_DIAGNOSTIC_LIMIT
+) {
+  const original = String(value ?? '');
+  const sanitized = original
+    .replace(/([?&](?:key|api_key|apiKey)=)[^&\s]+/gi, '$1[REDACTED]')
+    .replace(/Bearer\s+[A-Za-z0-9._~-]+/gi, 'Bearer [REDACTED]')
+    .replace(/(?:Authorization\s*[:=]\s*)([^\r\n,}]+)/gi, 'Authorization: [REDACTED]')
+    .replace(/x-goog-api-key\s*[:=]\s*[^\s,}]+/gi, 'x-goog-api-key: [REDACTED]')
+    .replace(/AIza[A-Za-z0-9_-]{20,}/g, '[REDACTED_API_KEY]')
+    .replace(/((?:\"|')?(?:api[_-]?key|cookie)(?:\"|')?\s*[:=]\s*(?:\"|'))[^\"'\r\n]+/gi, '$1[REDACTED]');
+
+  const limit = Math.max(256, Number(maximum) || RAW_PROVIDER_DIAGNOSTIC_LIMIT);
+  return {
+    text: sanitized.slice(0, limit),
+    originalLength: original.length,
+    sanitizedLength: sanitized.length,
+    truncated: sanitized.length > limit
+  };
+}
+
+function providerJsonDiagnosticFields(diagnostics) {
+  if (!diagnostics) return {};
+
+  const originalRaw =
+    diagnostics.originalRawResponse ??
+    diagnostics.rawResponse ??
+    '';
+  const repairRaw =
+    diagnostics.repairRawResponse ??
+    '';
+  const original = sanitizeProviderDiagnosticText(originalRaw);
+  const repair = sanitizeProviderDiagnosticText(repairRaw);
+  const repairSucceeded =
+    diagnostics.repairSucceeded === true
+      ? true
+      : diagnostics.repairSucceeded === false
+        ? false
+        : null;
+
+  return {
+    parserReason:
+      String(
+        diagnostics.originalReason ??
+        diagnostics.reason ??
+        ''
+      ).slice(0, 160) || null,
+    rawResponse: original.text || null,
+    rawResponseLength: original.originalLength || 0,
+    rawResponseShownLength: original.text.length,
+    rawResponseTruncated: original.truncated,
+    repairAttempted: Boolean(diagnostics.repairAttempted),
+    repairSucceeded,
+    repairReason:
+      String(diagnostics.repairReason ?? '').slice(0, 160) || null,
+    repairRawResponse: repair.text || null,
+    repairRawResponseLength: repair.originalLength || 0,
+    repairRawResponseShownLength: repair.text.length,
+    repairRawResponseTruncated: repair.truncated
+  };
+}
+
 function sanitizeProviderErrorMessage(
   message
 ) {
@@ -4762,6 +5386,10 @@ function providerEnabled(
   provider,
   hasGeminiKey
 ) {
+  if (provider?.enabled === false) {
+    return false;
+  }
+
   const onlyLocal =
     process.env.SMART_ONLY_LOCAL ===
     'true';
@@ -4820,12 +5448,13 @@ function getEnabledVerificationProviders(
 
   if (preferredClusteringModel) {
     const preferredIdx = providers.findIndex(p =>
-      p.model === preferredClusteringModel || p.id === preferredClusteringModel
+      p.type === 'gemini' &&
+      (p.model === preferredClusteringModel || p.id === preferredClusteringModel)
     );
-    if (preferredIdx > 0) {
+    if (preferredIdx >= 0) {
       const preferred = providers.splice(preferredIdx, 1)[0];
-      // The existing model preference orders API backups, never the primary CLI.
-      providers.splice(providers[0]?.type === 'antigravity' ? 1 : 0, 0, preferred);
+      const firstApiIndex = providers.findIndex(p => p.type !== 'antigravity');
+      providers.splice(firstApiIndex >= 0 ? firstApiIndex : providers.length, 0, preferred);
     }
   }
 
@@ -5021,6 +5650,7 @@ async function requestGeminiPartition(
     const endpoint =
       `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
 
+    generationOptions.onRequest?.();
     const response =
       await fetch(endpoint, {
         method: 'POST',
@@ -5042,9 +5672,9 @@ async function requestGeminiPartition(
               parts: [
                 {
                   text:
-                    generationOptions.repairPrompt || buildVerificationPrompt(
-                      articles
-                    )
+                    generationOptions.repairPrompt ||
+                    generationOptions.prompt ||
+                    buildVerificationPrompt(articles)
                 }
               ]
             }
@@ -5055,7 +5685,7 @@ async function requestGeminiPartition(
               Math.max(
                 256,
                 Math.min(
-                  2048,
+                  4096,
                   Number(
                     generationOptions
                       .maxOutputTokens
@@ -5071,6 +5701,7 @@ async function requestGeminiPartition(
             responseMimeType:
               'application/json',
             responseJsonSchema:
+              generationOptions.schema ||
               PARTITION_RESPONSE_SCHEMA
           }
         })
@@ -5113,7 +5744,12 @@ async function requestGeminiPartition(
       );
     }
 
-    if (generationOptions.rawOutput) return text;
+    if (generationOptions.rawOutput) return { text, onlineAiUsage: {
+      keyIndex: Number(keyIndex) || null, httpStatus: response.status,
+      promptTokens: Number(payload?.usageMetadata?.promptTokenCount) || 0,
+      outputTokens: Number(payload?.usageMetadata?.candidatesTokenCount) || 0,
+      totalTokens: Number(payload?.usageMetadata?.totalTokenCount) || 0
+    } };
     const parsed = parsePartitionResponse(
       text,
       model
@@ -5147,13 +5783,73 @@ async function requestGeminiPartition(
   }
 }
 
+async function assertLocalModelAvailable(
+  baseUrl,
+  model
+) {
+  const normalizedBaseUrl =
+    String(baseUrl).replace(/\/$/, '');
+  const cacheKey =
+    `${normalizedBaseUrl}|${model}`;
+  const cached =
+    localModelAvailabilityCache.get(cacheKey);
+
+  if (
+    cached &&
+    Date.now() - cached.checkedAt < LOCAL_MODEL_AVAILABILITY_TTL_MS
+  ) {
+    if (!cached.available) {
+      const error = new Error(`Local AI model '${model}' is not installed`);
+      error.code = 'LOCAL_MODEL_UNAVAILABLE';
+      error.nonProviderFault = true;
+      throw error;
+    }
+    return;
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 3000);
+  try {
+    const response = await fetch(`${normalizedBaseUrl}/api/tags`, {
+      signal: controller.signal
+    });
+    if (!response.ok) return;
+
+    const payload = await response.json();
+    if (!Array.isArray(payload?.models)) return;
+
+    const available = payload.models.some(entry =>
+      String(entry?.name || entry?.model || '') === String(model)
+    );
+    localModelAvailabilityCache.set(cacheKey, {
+      available,
+      checkedAt: Date.now()
+    });
+
+    if (!available) {
+      const error = new Error(`Local AI model '${model}' is not installed`);
+      error.code = 'LOCAL_MODEL_UNAVAILABLE';
+      error.nonProviderFault = true;
+      throw error;
+    }
+  } catch (error) {
+    if (error?.code === 'LOCAL_MODEL_UNAVAILABLE') throw error;
+    // Availability probing is advisory. If Ollama does not expose /api/tags
+    // cleanly, let the normal /api/chat request decide provider availability.
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function requestLocalPartition(
   articles,
   baseUrl,
   model,
   timeoutMs,
   repairPrompt = null,
-  rawOutput = false
+  rawOutput = false,
+  onRequest = null,
+  generationOptions = {}
 ) {
   const controller =
     new AbortController();
@@ -5165,9 +5861,15 @@ async function requestLocalPartition(
     );
 
   try {
+    await assertLocalModelAvailable(
+      baseUrl,
+      model
+    );
+
     const endpoint =
       `${String(baseUrl).replace(/\/$/, '')}/api/chat`;
 
+    onRequest?.();
     const response =
       await fetch(endpoint, {
         method: 'POST',
@@ -5187,15 +5889,16 @@ async function requestLocalPartition(
             {
               role: 'user',
               content:
-                repairPrompt || buildVerificationPrompt(
-                  articles
-                )
+                repairPrompt ||
+                generationOptions.prompt ||
+                buildVerificationPrompt(articles)
             }
           ],
 
           stream: false,
           think: false,
           format:
+            generationOptions.schema ||
             PARTITION_RESPONSE_SCHEMA,
           keep_alive:
             LOCAL_AI_KEEP_ALIVE,
@@ -5235,7 +5938,7 @@ async function requestLocalPartition(
       payload?.message?.content ||
       '';
 
-    if (!text) {
+    if (!text && !rawOutput) {
       throw new Error(
         'Local AI returned an empty response'
       );
@@ -5249,6 +5952,366 @@ async function requestLocalPartition(
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function providerReviewArticleLimit(provider) {
+  if (provider?.type === 'ollama') {
+    return SMART_NEWS_CLUSTER_CONFIG
+      .heavyAI
+      .maxArticlesPerLocalReview;
+  }
+
+  if (
+    provider?.type === 'antigravity' ||
+    provider?.type === 'gemini'
+  ) {
+    return SMART_NEWS_CLUSTER_CONFIG
+      .heavyAI
+      .maxArticlesPerOnlineReview;
+  }
+
+  return Infinity;
+}
+
+
+function providerReviewComponentLimit(provider) {
+  if (provider?.type === 'ollama') {
+    return SMART_NEWS_CLUSTER_CONFIG
+      .heavyAI
+      .maxComponentsPerLocalReview;
+  }
+
+  if (
+    provider?.type === 'antigravity' ||
+    provider?.type === 'gemini'
+  ) {
+    return SMART_NEWS_CLUSTER_CONFIG
+      .heavyAI
+      .maxComponentsPerOnlineReview;
+  }
+
+  return Infinity;
+}
+
+function extractCompleteJsonRoots(text) {
+  const roots = [];
+  let start = -1;
+  let stack = [];
+  let quoted = false;
+  let escaped = false;
+
+  for (let index = 0; index < text.length; index++) {
+    const character = text[index];
+
+    if (start < 0) {
+      if (character === '{' || character === '[') {
+        start = index;
+        stack = [character];
+      }
+      continue;
+    }
+
+    if (quoted) {
+      if (escaped) escaped = false;
+      else if (character === '\\') escaped = true;
+      else if (character === '"') quoted = false;
+      continue;
+    }
+
+    if (character === '"') {
+      quoted = true;
+      continue;
+    }
+
+    if (character === '{' || character === '[') {
+      stack.push(character);
+      continue;
+    }
+
+    if (character !== '}' && character !== ']') continue;
+
+    const expected = character === '}' ? '{' : '[';
+    if (stack.pop() !== expected) return [];
+
+    if (!stack.length) {
+      roots.push(text.slice(start, index + 1));
+      start = -1;
+    }
+  }
+
+  return start < 0 ? roots : [];
+}
+
+function normalizeAntigravityDecision(value) {
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    Array.isArray(value) ||
+    !Array.isArray(value.clusters)
+  ) {
+    return null;
+  }
+
+  const allowedRootKeys = new Set([
+    'clusters',
+    'uncertain',
+    'toolAction',
+    'toolSummary'
+  ]);
+
+  if (
+    Object.keys(value).some(
+      key => !allowedRootKeys.has(key)
+    )
+  ) {
+    return null;
+  }
+
+  const canonicalClusters = [];
+
+  for (const cluster of value.clusters) {
+    if (
+      !cluster ||
+      typeof cluster !== 'object' ||
+      Array.isArray(cluster) ||
+      !Array.isArray(cluster.articleIds)
+    ) {
+      return null;
+    }
+
+    const allowedClusterKeys =
+      new Set(['articleIds', 'confidence']);
+
+    if (
+      Object.keys(cluster).some(
+        key => !allowedClusterKeys.has(key)
+      )
+    ) {
+      return null;
+    }
+
+    // Confidence is advisory metadata. Two Antigravity roots that express the
+    // same exact partition are semantically equivalent even when one root
+    // includes confidence and the other omits it. Canonical identity therefore
+    // depends only on membership plus the root-level uncertainty flag.
+    canonicalClusters.push({
+      articleIds:
+        cluster.articleIds
+          .map(String)
+          .sort()
+    });
+  }
+
+  canonicalClusters.sort(
+    (left, right) =>
+      JSON.stringify(left)
+        .localeCompare(
+          JSON.stringify(right)
+        )
+  );
+
+  const decision = {
+    clusters: value.clusters,
+    uncertain: value.uncertain
+  };
+
+  return {
+    decision,
+    canonical:
+      JSON.stringify({
+        clusters: canonicalClusters,
+        uncertain: value.uncertain
+      }),
+    metadataScore:
+      value.clusters.filter(cluster =>
+        typeof cluster?.confidence === 'number' &&
+        Number.isFinite(cluster.confidence)
+      ).length,
+    strippedToolMetadata:
+      Object.prototype.hasOwnProperty.call(
+        value,
+        'toolAction'
+      ) ||
+      Object.prototype.hasOwnProperty.call(
+        value,
+        'toolSummary'
+      )
+  };
+}
+
+export function normalizeAntigravityClusteringOutput(raw) {
+  const text = String(raw ?? '').trim();
+  if (!text) return text;
+
+  const roots =
+    extractCompleteJsonRoots(text);
+
+  const normalized = [];
+
+  for (const root of roots) {
+    try {
+      const candidate =
+        normalizeAntigravityDecision(
+          JSON.parse(root)
+        );
+      if (candidate) normalized.push(candidate);
+    } catch {
+      // Leave malformed roots to the existing generic JSON recovery path.
+    }
+  }
+
+  if (!normalized.length) return text;
+
+  const canonical =
+    new Set(
+      normalized.map(
+        candidate => candidate.canonical
+      )
+    );
+
+  if (canonical.size > 1) {
+    const error = new Error(
+      'Antigravity returned multiple conflicting JSON roots'
+    );
+    error.code = 'INVALID_JSON';
+    error.reason =
+      'multiple_conflicting_roots';
+    error.rawResponse = text;
+    throw error;
+  }
+
+  const strippedToolMetadata =
+    normalized.some(
+      candidate =>
+        candidate.strippedToolMetadata
+    );
+
+  if (
+    normalized.length > 1 ||
+    strippedToolMetadata
+  ) {
+    console.info(
+      '[SMART ANTIGRAVITY NORMALIZE]',
+      JSON.stringify({
+        roots: roots.length,
+        usableRoots: normalized.length,
+        deduplicated:
+          normalized.length > 1,
+        strippedToolMetadata
+      })
+    );
+  }
+
+  const preferred = normalized.reduce(
+    (best, candidate) =>
+      (candidate.metadataScore || 0) > (best.metadataScore || 0)
+        ? candidate
+        : best,
+    normalized[0]
+  );
+
+  return JSON.stringify(
+    preferred.decision
+  );
+}
+
+function normalizeAntigravityComponentDecision(value) {
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    Array.isArray(value) ||
+    !Array.isArray(value.exactEventGroups) ||
+    !Array.isArray(value.relatedDevelopments)
+  ) {
+    return null;
+  }
+
+  const allowedRootKeys = new Set([
+    'exactEventGroups',
+    'relatedDevelopments',
+    'uncertain',
+    'toolAction',
+    'toolSummary'
+  ]);
+  if (Object.keys(value).some(key => !allowedRootKeys.has(key))) return null;
+
+  const canonicalGroups = value.exactEventGroups.map(group => ({
+    componentIds: Array.isArray(group?.componentIds) ? [...group.componentIds].map(String).sort() : []
+  })).sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
+
+  const canonicalRelations = value.relatedDevelopments.map(relation => ({
+    componentIds: Array.isArray(relation?.componentIds) ? [...relation.componentIds].map(String).sort() : []
+  })).sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
+
+  return {
+    decision: {
+      exactEventGroups: value.exactEventGroups,
+      relatedDevelopments: value.relatedDevelopments,
+      uncertain: value.uncertain
+    },
+    canonical: JSON.stringify({
+      exactEventGroups: canonicalGroups,
+      relatedDevelopments: canonicalRelations,
+      uncertain: value.uncertain
+    }),
+    metadataScore:
+      value.exactEventGroups.filter(group =>
+        typeof group?.confidence === 'number' && Number.isFinite(group.confidence)
+      ).length +
+      value.relatedDevelopments.filter(relation =>
+        typeof relation?.confidence === 'number' && Number.isFinite(relation.confidence)
+      ).length,
+    strippedToolMetadata:
+      Object.prototype.hasOwnProperty.call(value, 'toolAction') ||
+      Object.prototype.hasOwnProperty.call(value, 'toolSummary')
+  };
+}
+
+function normalizeAntigravityComponentOutput(raw) {
+  const text = String(raw ?? '').trim();
+  if (!text) return text;
+
+  const roots = extractCompleteJsonRoots(text);
+  const normalized = [];
+  for (const root of roots) {
+    try {
+      const candidate = normalizeAntigravityComponentDecision(JSON.parse(root));
+      if (candidate) normalized.push(candidate);
+    } catch {
+      // Generic JSON recovery/repair handles malformed content.
+    }
+  }
+  if (!normalized.length) return text;
+
+  const canonical = new Set(normalized.map(candidate => candidate.canonical));
+  if (canonical.size > 1) {
+    const error = new Error('Antigravity returned multiple conflicting component-review JSON roots');
+    error.code = 'INVALID_JSON';
+    error.reason = 'multiple_conflicting_roots';
+    error.rawResponse = text;
+    throw error;
+  }
+
+  console.log(
+    '[SMART ANTIGRAVITY NORMALIZE]',
+    JSON.stringify({
+      operation: 'component-review',
+      roots: roots.length,
+      usableRoots: normalized.length,
+      deduplicated: normalized.length > 1,
+      strippedToolMetadata: normalized.some(candidate => candidate.strippedToolMetadata)
+    })
+  );
+
+  const preferred = normalized.reduce(
+    (best, candidate) =>
+      (candidate.metadataScore || 0) > (best.metadataScore || 0)
+        ? candidate
+        : best,
+    normalized[0]
+  );
+
+  return JSON.stringify(preferred.decision);
 }
 
 function isModelOutputError(
@@ -5267,6 +6330,8 @@ function isModelOutputError(
     code === 'INVALID_PARTITION' ||
     code === 'POST_VALIDATION_FAILED' ||
     code === 'LITE_ESCALATION_REQUIRED' ||
+    code === 'ANTIGRAVITY_ESCALATION_REQUIRED' ||
+    code === 'COMPONENT_REVIEW_UNCERTAIN' ||
     message.includes(
       'invalid json'
     ) ||
@@ -5289,36 +6354,55 @@ async function callVerificationProvider(
   provider,
   group,
   keyManager,
-  repairPrompt = null
+  repairPrompt = null,
+  reviewSpec = null
 ) {
+  const prompt =
+    reviewSpec?.prompt ||
+    buildVerificationPrompt(group.articles);
+  const schema =
+    reviewSpec?.schema ||
+    PARTITION_RESPONSE_SCHEMA;
+  const operation =
+    reviewSpec?.operation ||
+    'cluster-verification';
+
+  const onRequest = () => {
+    if (!group.metrics) return;
+    group.metrics[repairPrompt ? 'jsonRepairCalls' : 'firstPassAiCalls']++;
+    if (group.isFallback) group.metrics.fallbackProviderCalls++;
+  };
+
   if (provider.type === 'antigravity') {
-    const result = await generateWithAntigravity(repairPrompt || buildVerificationPrompt(group.articles), {
-      model: provider.model, timeoutMs: provider.timeoutMs, json: false,
-      schema: PARTITION_RESPONSE_SCHEMA, operation: 'cluster-verification'
+    const result = await generateWithAntigravity(repairPrompt || prompt, {
+      model: provider.model,
+      timeoutMs: provider.timeoutMs,
+      json: false,
+      schema,
+      operation,
+      onRequest
     });
-    return result.text;
+    return {
+      text:
+        reviewSpec?.componentReview
+          ? normalizeAntigravityComponentOutput(result.text)
+          : normalizeAntigravityClusteringOutput(result.text),
+      rawProviderText: result.text,
+      onlineAiUsage: result.onlineAiUsage || null
+    };
   }
 
-  if (
-    provider.type === 'gemini'
-  ) {
-    if (
-      keyManager?.waitForRateSlot
-    ) {
-      await keyManager.waitForRateSlot(
-        1000
-      );
+  if (provider.type === 'gemini') {
+    if (keyManager?.waitForRateSlot) {
+      await keyManager.waitForRateSlot(1000);
     }
 
     const keyObject =
       keyManager?.getCurrentKeyObj
-        ? keyManager
-          .getCurrentKeyObj()
+        ? keyManager.getCurrentKeyObj()
         : null;
 
-    if (
-      keyManager?.recordUsage
-    ) {
+    if (keyManager?.recordUsage) {
       keyManager.recordUsage();
     }
 
@@ -5330,8 +6414,12 @@ async function callVerificationProvider(
       Number(keyObject?.index) + 1,
       {
         repairPrompt,
+        prompt,
+        schema,
+        onRequest,
         rawOutput: true,
         maxOutputTokens:
+          reviewSpec?.maxOutputTokens ||
           provider.maxOutputTokens,
         thinkingLevel:
           provider.thinkingLevel
@@ -5339,23 +6427,22 @@ async function callVerificationProvider(
     );
   }
 
-  if (
-    provider.type === 'ollama'
-  ) {
-    if (
-      group.articles.length >
-      SMART_NEWS_CLUSTER_CONFIG
-        .heavyAI
-        .maxArticlesPerLocalReview
-    ) {
-      const error =
-        new Error(
-          `Local review group is too large: ${group.articles.length}`
-        );
+  if (provider.type === 'ollama') {
+    const limit =
+      reviewSpec?.componentReview
+        ? providerReviewComponentLimit(provider)
+        : providerReviewArticleLimit(provider);
+    const size =
+      reviewSpec?.componentReview
+        ? (reviewSpec.units?.length || 0)
+        : group.articles.length;
 
-      error.code =
-        'GROUP_TOO_LARGE';
-
+    if (Number.isFinite(limit) && size > limit) {
+      const error = new Error(
+        `Local review group is too large: ${size} > ${limit}`
+      );
+      error.code = 'GROUP_TOO_LARGE';
+      error.nonProviderFault = true;
       throw error;
     }
 
@@ -5365,7 +6452,12 @@ async function callVerificationProvider(
       provider.model,
       provider.timeoutMs,
       repairPrompt,
-      true
+      true,
+      onRequest,
+      {
+        prompt,
+        schema
+      }
     );
   }
 
@@ -5380,6 +6472,27 @@ async function attemptProviderVerification(
   keyManager,
   db
 ) {
+  const reviewLimit =
+    providerReviewArticleLimit(provider);
+
+  if (
+    Number.isFinite(reviewLimit) &&
+    group.articles.length > reviewLimit
+  ) {
+    const error = new Error(
+      `${provider.type === 'ollama' ? 'Local' : 'Online'} review group is too large: ${group.articles.length} > ${reviewLimit}`
+    );
+    error.code = 'GROUP_TOO_LARGE';
+    error.nonProviderFault = true;
+
+    return {
+      valid: false,
+      uncertain: true,
+      skipped: true,
+      error
+    };
+  }
+
   const maximumAttempts =
     Number(provider.maxRetries || 0) +
     1;
@@ -5397,19 +6510,28 @@ async function attemptProviderVerification(
       provider
     );
 
+    let parsed;
     try {
-      const parsed = await requestClusteringDecision({
+      parsed = await requestClusteringDecision({
         request: repairPrompt => callVerificationProvider(provider, group, keyManager, repairPrompt),
         validate: value => validatePartitionResult(value, group.articles),
         schema: PARTITION_RESPONSE_SCHEMA,
         onEvent: (event, error) => {
           group.diagnostics ||= {};
           group.diagnostics[event] = (group.diagnostics[event] || 0) + 1;
-          if (group.metrics) group.metrics[event] = (group.metrics[event] || 0) + 1;
-          if (event === 'firstPassAiCalls' || event === 'repairAttempts') group.onStage?.(event === 'repairAttempts' ? 'smart-ai-repair' : 'smart-ai');
+          if (group.metrics && event !== 'firstPassAiCalls') group.metrics[event] = (group.metrics[event] || 0) + 1;
+          if (event === 'firstPassAiCalls' || event === 'repairAttempts') {
+            group.onStage?.(
+              event === 'repairAttempts' ? 'smart-ai-repair' : 'smart-ai',
+              {
+                providerId: provider.id,
+                model: provider.model
+              }
+            );
+          }
           console.log('[SMART JSON]', JSON.stringify({ provider: provider.id, model: provider.model,
             operation: 'cluster-verification', event, reason: error?.reason,
-            ...(process.env.SMART_LOG_AI_DEBUG === 'true' && error?.rawResponse ? { raw: error.rawResponse.replace(/(?:Bearer\s+|AIza)[\w-]+/g, '[REDACTED]').slice(0, 2000) } : {}) }));
+            ...(process.env.SMART_LOG_AI_DEBUG === 'true' && error?.rawResponse ? { raw: sanitizeProviderDiagnosticText(error.rawResponse, 2000).text } : {}) }));
         }
       });
 
@@ -5755,6 +6877,36 @@ async function attemptProviderVerification(
         }
       }
 
+      if (
+        provider.type === 'antigravity' &&
+        [
+          'antigravity-low',
+          'antigravity-medium',
+          'antigravity-high'
+        ].includes(provider.id) &&
+        (
+          modelWasUncertain ||
+          splitClusters.length > 0
+        )
+      ) {
+        const effort =
+          provider.id === 'antigravity-low'
+            ? 'Low'
+            : provider.id === 'antigravity-medium'
+              ? 'Medium'
+              : 'High';
+        const error =
+          new Error(
+            `${effort}-effort Antigravity decision requires next-provider review`
+          );
+        error.code =
+          'ANTIGRAVITY_ESCALATION_REQUIRED';
+        error.expectedEscalation = true;
+        error.onlineAiUsage =
+          parsed?.onlineAiUsage || null;
+        throw error;
+      }
+
       const lowConfidenceLiteMerges =
         provider.id ===
           'gemini-flash-lite'
@@ -5796,7 +6948,7 @@ async function attemptProviderVerification(
       ) {
         const error =
           new Error(
-            'Flash-Lite decision needs Gemini 3.7 review'
+            'Flash-Lite decision requires stronger-model review'
           );
 
         error.code =
@@ -5904,8 +7056,8 @@ async function attemptProviderVerification(
       );
 
       if (
-        provider.type ===
-        'gemini'
+        provider.type === 'gemini' ||
+        provider.type === 'antigravity'
       ) {
         console.log(
           '[ONLINE AI]',
@@ -5914,7 +7066,9 @@ async function attemptProviderVerification(
               new Date()
                 .toISOString(),
             provider:
-              'gemini',
+              provider.type === 'antigravity'
+                ? 'antigravity'
+                : 'gemini',
             operation:
               'smart-clustering',
             providerId:
@@ -5959,7 +7113,10 @@ async function attemptProviderVerification(
               Number(
                 parsed?.onlineAiUsage
                   ?.totalTokens
-              ) || 0
+              ) || 0,
+            ...providerJsonDiagnosticFields(
+              parsed?.jsonRepairDiagnostics
+            )
           })
         );
       }
@@ -5977,8 +7134,8 @@ async function attemptProviderVerification(
       };
     } catch (error) {
       if (
-        provider.type ===
-        'gemini'
+        provider.type === 'gemini' ||
+        provider.type === 'antigravity'
       ) {
         console.log(
           '[ONLINE AI]',
@@ -5987,7 +7144,9 @@ async function attemptProviderVerification(
               new Date()
                 .toISOString(),
             provider:
-              'gemini',
+              provider.type === 'antigravity'
+                ? 'antigravity'
+                : 'gemini',
             operation:
               'smart-clustering',
             providerId:
@@ -6045,7 +7204,12 @@ async function attemptProviderVerification(
               Number(
                 error?.onlineAiUsage
                   ?.totalTokens
-              ) || 0
+              ) || 0,
+            ...providerJsonDiagnosticFields(
+              (error?.originalRawResponse || error?.rawResponse || error?.repairAttempted)
+                ? error
+                : (parsed?.jsonRepairDiagnostics || error)
+            )
           })
         );
       }
@@ -6060,6 +7224,15 @@ async function attemptProviderVerification(
         await recordProviderSuccess(
           db,
           provider
+        );
+      } else if (
+        error?.code === 'GROUP_TOO_LARGE' ||
+        error?.nonProviderFault === true
+      ) {
+        console.info(
+          `[SMART VERIFY SKIP] ${provider.id} ` +
+          `model=${provider.model}: ` +
+          `${error?.message || error}`
         );
       } else {
         console.warn(
@@ -6089,7 +7262,7 @@ async function attemptProviderVerification(
       }
 
       if (
-        attempt >=
+        error.repairAttempted || attempt >=
         maximumAttempts ||
         !isTransientProviderError(
           error
@@ -6115,6 +7288,486 @@ async function attemptProviderVerification(
       new Error(
         'Provider attempts exhausted'
       )
+  };
+}
+
+function componentVerificationCacheKey(group, units) {
+  const payload = {
+    kind: 'component-relationship-review-v1',
+    components: units.map(unit => ({
+      id: unit.id,
+      articleIds: unit.articleIds,
+      representativeTitle: unit.representativeTitle,
+      representativeExcerpt: unit.representativeExcerpt,
+      publishedFrom: unit.publishedFrom,
+      publishedTo: unit.publishedTo,
+      headlines: unit.headlines
+    })),
+    promptVersion: 'component-relationship-v1',
+    schemaVersion: 'component-relationship-v1',
+    clusterVersion: SMART_CLUSTER_VERSION
+  };
+  return createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+}
+
+async function getCachedComponentVerificationDecision(db, group, units) {
+  if (!SMART_NEWS_AI_CONFIG.cache.enabled) return null;
+  const cache = await getVerificationCache(db);
+  const key = componentVerificationCacheKey(group, units);
+  const entry = cache && typeof cache === 'object' ? cache[key] : null;
+  if (!entry || group.forceRebuild) return null;
+
+  const validation = validateComponentReviewResult(entry.result, units);
+  if (!validation.valid || entry.result.uncertain) return null;
+  const expanded = expandComponentReviewDecision(entry.result, units);
+  const reviewArticles =
+    group.fullRepartition && Array.isArray(group.reviewUniverse) && group.reviewUniverse.length
+      ? group.reviewUniverse
+      : group.articles;
+  if (
+    !validatePartitionResult({ clusters: expanded.clusters, uncertain: false }, reviewArticles).valid ||
+    !postValidatePartition(expanded, reviewArticles)
+  ) {
+    return null;
+  }
+
+  return {
+    providerId: entry.providerId,
+    model: entry.model,
+    verifiedAt: entry.verifiedAt,
+    clusters: expanded.clusters,
+    storyRelationships: expanded.storyRelationships
+  };
+}
+
+async function setCachedComponentVerificationDecision(db, group, units, result, provider) {
+  if (!SMART_NEWS_AI_CONFIG.cache.enabled) return;
+  const validation = validateComponentReviewResult(result, units);
+  if (!validation.valid || result.uncertain) return;
+
+  verificationCacheWriteChain = verificationCacheWriteChain.catch(() => {}).then(async () => {
+    const cache = await getVerificationCache(db);
+    const key = componentVerificationCacheKey(group, units);
+    cache[key] = {
+      kind: 'component-relationship-review-v1',
+      providerId: provider.id,
+      model: provider.model,
+      verifiedAt: new Date().toISOString(),
+      createdAt: Date.now(),
+      result: {
+        exactEventGroups: result.exactEventGroups,
+        relatedDevelopments: result.relatedDevelopments,
+        uncertain: false
+      }
+    };
+    await db.put('smartEventVerificationCache', JSON.stringify(cache));
+  });
+
+  try {
+    await verificationCacheWriteChain;
+  } catch (error) {
+    console.error('[SMART] Failed to save component verification cache:', error.message);
+  }
+}
+
+async function attemptComponentProviderVerification(
+  provider,
+  group,
+  units,
+  keyManager,
+  db
+) {
+  const reviewLimit = providerReviewComponentLimit(provider);
+  if (Number.isFinite(reviewLimit) && units.length > reviewLimit) {
+    const error = new Error(
+      `${provider.type === 'ollama' ? 'Local' : 'Online'} component review is too large: ${units.length} > ${reviewLimit}`
+    );
+    error.code = 'GROUP_TOO_LARGE';
+    error.nonProviderFault = true;
+    return { valid: false, uncertain: true, skipped: true, error };
+  }
+
+  const reviewArticles =
+    group.fullRepartition && Array.isArray(group.reviewUniverse) && group.reviewUniverse.length
+      ? group.reviewUniverse
+      : group.articles;
+  const reviewSpec = {
+    componentReview: true,
+    units,
+    prompt: buildComponentReviewPrompt(units),
+    schema: COMPONENT_REVIEW_RESPONSE_SCHEMA,
+    operation: 'cluster-verification-components',
+    maxOutputTokens: 4096
+  };
+  const maximumAttempts = Number(provider.maxRetries || 0) + 1;
+
+  for (let attempt = 1; attempt <= maximumAttempts; attempt++) {
+    const attemptStartedAt = Date.now();
+    await recordProviderAttempt(db, provider);
+    let parsed;
+
+    try {
+      parsed = await requestClusteringDecision({
+        request: repairPrompt =>
+          callVerificationProvider(
+            provider,
+            group,
+            keyManager,
+            repairPrompt,
+            reviewSpec
+          ),
+        validate: value => validateComponentReviewResult(value, units),
+        schema: COMPONENT_REVIEW_RESPONSE_SCHEMA,
+        onEvent: (event, error) => {
+          group.diagnostics ||= {};
+          group.diagnostics[event] = (group.diagnostics[event] || 0) + 1;
+          if (group.metrics && event !== 'firstPassAiCalls') {
+            group.metrics[event] = (group.metrics[event] || 0) + 1;
+          }
+          if (event === 'firstPassAiCalls' || event === 'repairAttempts') {
+            group.onStage?.(
+              event === 'repairAttempts' ? 'smart-ai-repair' : 'smart-ai',
+              {
+                providerId: provider.id,
+                model: provider.model,
+                reviewMode: 'components',
+                reviewUnitCount: units.length,
+                rawArticleCount: reviewArticles.length
+              }
+            );
+          }
+          console.log(
+            '[SMART JSON]',
+            JSON.stringify({
+              provider: provider.id,
+              model: provider.model,
+              operation: 'cluster-verification-components',
+              event,
+              reason: error?.reason,
+              reviewUnitCount: units.length
+            })
+          );
+        }
+      });
+
+      const validation = validateComponentReviewResult(parsed, units);
+      if (!validation.valid) {
+        const error = new Error(`Invalid component review: ${validation.reason}`);
+        error.code = 'INVALID_PARTITION';
+        throw error;
+      }
+
+      const confidenceFloor =
+        provider.id === 'antigravity-low'
+          ? 0.95
+          : provider.id === 'antigravity-medium'
+            ? 0.925
+            : 0.9;
+      const weakSameEvent = parsed.exactEventGroups.some(
+        exactGroup => exactGroup.componentIds.length > 1 && exactGroup.confidence < confidenceFloor
+      );
+      const weakRelationship = parsed.relatedDevelopments.some(
+        relation => relation.confidence < confidenceFloor
+      );
+
+      if (parsed.uncertain || weakSameEvent || weakRelationship) {
+        const isAntigravity = provider.type === 'antigravity';
+        const effort =
+          provider.id === 'antigravity-low'
+            ? 'Low'
+            : provider.id === 'antigravity-medium'
+              ? 'Medium'
+              : provider.id === 'antigravity-high'
+                ? 'High'
+                : null;
+        const error = new Error(
+          isAntigravity
+            ? `${effort}-effort Antigravity component review requires next-provider review`
+            : 'Component review is uncertain or below the safe confidence threshold'
+        );
+        error.code =
+          isAntigravity
+            ? 'ANTIGRAVITY_ESCALATION_REQUIRED'
+            : 'COMPONENT_REVIEW_UNCERTAIN';
+        error.expectedEscalation = true;
+        error.onlineAiUsage = parsed?.onlineAiUsage || null;
+        throw error;
+      }
+
+      const expanded = expandComponentReviewDecision(parsed, units);
+      if (
+        !validatePartitionResult(
+          { clusters: expanded.clusters, uncertain: false },
+          reviewArticles
+        ).valid ||
+        !postValidatePartition(expanded, reviewArticles)
+      ) {
+        const error = new Error('Component-level exact-event merge failed deterministic post-validation');
+        error.code = 'POST_VALIDATION_FAILED';
+        throw error;
+      }
+
+      await recordProviderSuccess(db, provider);
+
+      if (provider.type === 'gemini' || provider.type === 'antigravity') {
+        console.log(
+          '[ONLINE AI]',
+          JSON.stringify({
+            at: new Date().toISOString(),
+            provider: provider.type === 'antigravity' ? 'antigravity' : 'gemini',
+            operation: 'smart-component-review',
+            providerId: provider.id,
+            model: provider.model,
+            status: 'success',
+            durationMs: Date.now() - attemptStartedAt,
+            groupId: group?.id || null,
+            articleCount: reviewArticles.length,
+            componentCount: units.length,
+            exactEventGroupCount: expanded.clusters.length,
+            relatedDevelopmentCount: expanded.storyRelationships.length,
+            promptTokens: Number(parsed?.onlineAiUsage?.promptTokens) || 0,
+            outputTokens: Number(parsed?.onlineAiUsage?.outputTokens) || 0,
+            totalTokens: Number(parsed?.onlineAiUsage?.totalTokens) || 0
+          })
+        );
+      }
+
+      return {
+        valid: true,
+        uncertain: false,
+        clusters: expanded.clusters,
+        storyRelationships: expanded.storyRelationships,
+        componentDecision: {
+          exactEventGroups: parsed.exactEventGroups,
+          relatedDevelopments: parsed.relatedDevelopments,
+          uncertain: false
+        },
+        reviewMode: 'components'
+      };
+    } catch (error) {
+      if (provider.type === 'gemini' || provider.type === 'antigravity') {
+        console.log(
+          '[ONLINE AI]',
+          JSON.stringify({
+            at: new Date().toISOString(),
+            provider: provider.type === 'antigravity' ? 'antigravity' : 'gemini',
+            operation: 'smart-component-review',
+            providerId: provider.id,
+            model: provider.model,
+            status: 'failed',
+            errorCode: String(error?.code || error?.name || 'UNKNOWN').slice(0, 80),
+            error: String(error?.message || error || 'Unknown component review error').replace(/\s+/g, ' ').slice(0, 800),
+            durationMs: Date.now() - attemptStartedAt,
+            groupId: group?.id || null,
+            articleCount: reviewArticles.length,
+            componentCount: units.length,
+            promptTokens: Number(error?.onlineAiUsage?.promptTokens) || 0,
+            outputTokens: Number(error?.onlineAiUsage?.outputTokens) || 0,
+            totalTokens: Number(error?.onlineAiUsage?.totalTokens) || 0
+          })
+        );
+      }
+
+      if (error?.expectedEscalation) {
+        console.info(
+          `[SMART VERIFY FALLBACK] ${provider.id} model=${provider.model}: ${error?.message || error}`
+        );
+        await recordProviderSuccess(db, provider);
+      } else if (error?.code === 'GROUP_TOO_LARGE' || error?.nonProviderFault === true) {
+        console.info(
+          `[SMART VERIFY SKIP] ${provider.id} model=${provider.model}: ${error?.message || error}`
+        );
+      } else {
+        console.warn(
+          `[SMART VERIFY] ${provider.id} model=${provider.model} component review failed: ${error?.message || error}`
+        );
+        await recordProviderError(db, provider, error);
+      }
+
+      if (
+        provider.type === 'gemini' &&
+        keyManager?.reportError &&
+        !isModelOutputError(error)
+      ) {
+        keyManager.reportError(error);
+      }
+
+      if (
+        error.repairAttempted ||
+        attempt >= maximumAttempts ||
+        !isTransientProviderError(error)
+      ) {
+        return { valid: false, uncertain: true, error };
+      }
+
+      await sleep(1000 * attempt);
+    }
+  }
+
+  return {
+    valid: false,
+    uncertain: true,
+    error: new Error('Component provider attempts exhausted')
+  };
+}
+
+async function verifyComponentReviewWithProviderChain(
+  group,
+  units,
+  providers,
+  keyManager,
+  db
+) {
+  const cached = await getCachedComponentVerificationDecision(db, group, units);
+  if (cached) {
+    if (group.metrics) {
+      group.metrics.verificationCacheHits++;
+      group.metrics.cachedDecisionsReused++;
+    }
+    console.log(
+      '[SMART VERIFY COMPONENT CACHE HIT]',
+      JSON.stringify({
+        groupId: group?.id || null,
+        articleCount: group.articles.length,
+        componentCount: units.length,
+        providerId: cached.providerId || null,
+        model: cached.model || null
+      })
+    );
+    return {
+      valid: true,
+      uncertain: false,
+      providerId: cached.providerId,
+      model: cached.model,
+      clusters: cached.clusters,
+      storyRelationships: cached.storyRelationships || [],
+      verifiedAt: cached.verifiedAt,
+      attemptedProviders: [],
+      resolution: 'cached',
+      reviewMode: 'components',
+      reviewUnitCount: units.length
+    };
+  }
+
+  if (group.metrics) group.metrics.verificationCacheMisses++;
+
+  const eligibleProviders = providers.filter(provider => {
+    const limit = providerReviewComponentLimit(provider);
+    return !Number.isFinite(limit) || units.length <= limit;
+  });
+  const skippedProviders = providers.filter(provider => !eligibleProviders.includes(provider));
+
+  if (skippedProviders.length) {
+    console.info(
+      '[SMART VERIFY COMPONENT SIZE GUARD]',
+      JSON.stringify({
+        groupId: group?.id || null,
+        articleCount: group.articles.length,
+        componentCount: units.length,
+        skippedProviders: skippedProviders.map(provider => ({
+          providerId: provider.id,
+          model: provider.model,
+          limit: providerReviewComponentLimit(provider)
+        }))
+      })
+    );
+  }
+
+  if (!eligibleProviders.length) {
+    if (group.metrics) {
+      group.metrics.groupsSkippedTooLarge = (group.metrics.groupsSkippedTooLarge || 0) + 1;
+    }
+    return {
+      valid: true,
+      uncertain: true,
+      providerId: null,
+      model: null,
+      attemptedProviders: [],
+      skippedProviders: skippedProviders.map(provider => ({
+        providerId: provider.id,
+        model: provider.model,
+        limit: providerReviewComponentLimit(provider)
+      })),
+      resolution: 'deferred',
+      reviewMode: 'components',
+      reviewUnitCount: units.length,
+      fallbackReason: 'component_group_too_large',
+      clusters: [],
+      storyRelationships: []
+    };
+  }
+
+  const attemptedProviders = [];
+  for (const provider of eligibleProviders) {
+    if (attemptedProviders.length && group.metrics) {
+      group.metrics.fallbackProviderAttempts++;
+    }
+    group.isFallback = attemptedProviders.length > 0;
+    group.onStage?.(
+      group.isFallback ? 'smart-ai-fallback' : 'smart-ai',
+      {
+        providerId: provider.id,
+        model: provider.model,
+        providerAttempt: attemptedProviders.length + 1,
+        providerTotal: eligibleProviders.length,
+        reviewMode: 'components',
+        reviewUnitCount: units.length,
+        rawArticleCount: group.articles.length
+      }
+    );
+    attemptedProviders.push(provider.id);
+
+    const result = await attemptComponentProviderVerification(
+      provider,
+      group,
+      units,
+      keyManager,
+      db
+    );
+
+    if (result.valid && !result.uncertain) {
+      if (group.metrics) {
+        group.metrics.successfulVerificationDecisions++;
+        if (attemptedProviders.length > 1) group.metrics.fallbackProviderSuccesses++;
+      }
+      if (result.componentDecision) {
+        await setCachedComponentVerificationDecision(
+          db,
+          group,
+          units,
+          result.componentDecision,
+          provider
+        );
+      }
+      return {
+        valid: true,
+        uncertain: false,
+        providerId: provider.id,
+        model: provider.model,
+        clusters: result.clusters,
+        storyRelationships: result.storyRelationships || [],
+        verifiedAt: new Date().toISOString(),
+        attemptedProviders,
+        resolution: 'verified',
+        reviewMode: 'components',
+        reviewUnitCount: units.length
+      };
+    }
+  }
+
+  if (group.metrics) group.metrics.allProviderFailures++;
+  return {
+    valid: true,
+    uncertain: true,
+    providerId: null,
+    model: null,
+    attemptedProviders,
+    resolution: 'deferred',
+    reviewMode: 'components',
+    reviewUnitCount: units.length,
+    fallbackReason: 'component_review_failed_or_uncertain',
+    clusters: [],
+    storyRelationships: []
   };
 }
 
@@ -6205,8 +7858,12 @@ export async function getCachedVerificationDecision(
       providers
     );
 
-  const entry = cache[key];
+  const entry = cache && typeof cache === 'object' ? cache[key] : null;
 
+  if (group.forceRebuild && entry) {
+    if (group.metrics) { group.metrics.cachedDecisionsInvalidated++; group.metrics.invalidationReason = 'explicit_force_rebuild'; }
+    return null;
+  }
   if (!entry) return null;
 
   const validation =
@@ -6223,6 +7880,7 @@ export async function getCachedVerificationDecision(
       group.articles
     )
   ) {
+    if (group.metrics) { group.metrics.cachedDecisionsInvalidated++; group.metrics.invalidationReason = 'cached_decision_failed_validation'; }
     return null;
   }
 
@@ -6309,6 +7967,32 @@ export async function verifyWithProviderChain(
   keyManager,
   db
 ) {
+  const articleEligibleProviders = providers.filter(provider => {
+    const limit = providerReviewArticleLimit(provider);
+    return !Number.isFinite(limit) || group.articles.length <= limit;
+  });
+
+  if (providers.length && !articleEligibleProviders.length) {
+    const componentUnits = buildComponentReviewUnits(group);
+    if (componentUnits.length) {
+      console.info(
+        '[SMART VERIFY COMPONENT REVIEW]',
+        JSON.stringify({
+          groupId: group?.id || null,
+          articleCount: group.articles.length,
+          componentCount: componentUnits.length
+        })
+      );
+      return verifyComponentReviewWithProviderChain(
+        group,
+        componentUnits,
+        providers,
+        keyManager,
+        db
+      );
+    }
+  }
+
   const cached =
     await getCachedVerificationDecision(
       db,
@@ -6367,13 +8051,111 @@ export async function verifyWithProviderChain(
     })
   );
 
+  const failureKey = verificationCacheKey(group, providers) + ':' + providers.map(p => `${p.id}:${p.model}`).join('|');
+  const failures = (await db.get('smartVerificationFailures', { type: 'json' })) || {};
+  const failureRetryMs = Math.max(
+    5 * 60 * 1000,
+    Math.min(
+      24 * 60 * 60 * 1000,
+      Number(process.env.SMART_VERIFY_FAILURE_RETRY_MS) || 30 * 60 * 1000
+    )
+  );
+  const previousFailureRecord = failures[failureKey];
+  const previousFailureAt = Date.parse(previousFailureRecord?.at || '');
+  const previousFailure =
+    !group.forceRebuild &&
+    previousFailureRecord &&
+    Number.isFinite(previousFailureAt) &&
+    Date.now() - previousFailureAt < failureRetryMs;
   const attemptedProviders = [];
+  const eligibleProviders =
+    providers.filter(
+      provider => {
+        const limit =
+          providerReviewArticleLimit(provider);
+        return (
+          !Number.isFinite(limit) ||
+          group.articles.length <= limit
+        );
+      }
+    );
 
-  for (const provider of providers) {
+  const skippedProviders =
+    providers.filter(
+      provider =>
+        !eligibleProviders.includes(provider)
+    );
+
+  if (skippedProviders.length) {
+    console.info(
+      '[SMART VERIFY SIZE GUARD]',
+      JSON.stringify({
+        groupId: group?.id || null,
+        articleCount:
+          group.articles.length,
+        skippedProviders:
+          skippedProviders.map(
+            provider => ({
+              providerId: provider.id,
+              model: provider.model,
+              limit:
+                providerReviewArticleLimit(
+                  provider
+                )
+            })
+          )
+      })
+    );
+  }
+
+  if (
+    !previousFailure &&
+    providers.length &&
+    !eligibleProviders.length
+  ) {
+    if (group.metrics) {
+      group.metrics.groupsSkippedTooLarge =
+        (group.metrics.groupsSkippedTooLarge || 0) + 1;
+    }
+
+    return {
+      valid: true,
+      uncertain: true,
+      providerId: null,
+      model: null,
+      attemptedProviders,
+      skippedProviders:
+        skippedProviders.map(
+          provider => ({
+            providerId: provider.id,
+            model: provider.model,
+            limit:
+              providerReviewArticleLimit(
+                provider
+              )
+          })
+        ),
+      resolution: 'deferred',
+      fallbackReason: 'group_too_large',
+      clusters: []
+    };
+  }
+
+  for (const provider of previousFailure ? [] : eligibleProviders) {
+    const providerAttempt = attemptedProviders.length + 1;
     if (attemptedProviders.length) {
       if (group.metrics) group.metrics.fallbackProviderAttempts++;
-      group.onStage?.('smart-ai-fallback');
     }
+    group.isFallback = attemptedProviders.length > 0;
+    group.onStage?.(
+      group.isFallback ? 'smart-ai-fallback' : 'smart-ai',
+      {
+        providerId: provider.id,
+        model: provider.model,
+        providerAttempt,
+        providerTotal: eligibleProviders.length
+      }
+    );
     attemptedProviders.push(
       provider.id
     );
@@ -6408,6 +8190,7 @@ export async function verifyWithProviderChain(
           'verified'
       };
 
+      if (failures[failureKey]) { delete failures[failureKey]; await db.put('smartVerificationFailures', JSON.stringify(failures)); }
       await setCachedVerificationDecision(
         db,
         group,
@@ -6419,6 +8202,7 @@ export async function verifyWithProviderChain(
     }
   }
 
+  if (!previousFailure) { failures[failureKey] = { at: new Date().toISOString(), reason: 'all_providers_failed_or_uncertain' }; await db.put('smartVerificationFailures', JSON.stringify(failures)); }
   if (group.metrics) group.metrics.allProviderFailures++;
   return {
     valid: true,
@@ -6426,60 +8210,173 @@ export async function verifyWithProviderChain(
     providerId: null,
     model: null,
     attemptedProviders,
-    resolution:
-      'kept_separate',
+    skippedProviders:
+      skippedProviders.map(provider => ({
+        providerId: provider.id,
+        model: provider.model,
+        limit: providerReviewArticleLimit(provider)
+      })),
+    // Provider unavailability or model uncertainty is not a clustering
+    // decision. Preserve deterministic components, persist the review request
+    // for a later attempt, and continue with the rest of the refresh.
+    resolution: 'deferred',
+    reviewMode: 'articles',
+    reviewUnitCount: group.articles.length,
     fallbackReason:
       providers.length
-        ? 'all_providers_failed_or_uncertain'
+        ? (
+          eligibleProviders.length
+            ? 'all_providers_failed_or_uncertain'
+            : 'group_too_large'
+        )
         : 'no_provider_configured',
-
-    clusters:
-      group.articles.map(
-        article => ({
-          articleIds: [
-            getArticleId(article)
-          ]
-        })
-      )
+    clusters: []
   };
 }
 
 // Compare a new article with a stable event anchor; expand only structural ambiguity.
 export function prepareIncrementalReviewGroups(groups, automatic) {
   const owner = new Map();
-  automatic.forEach((group, index) => group.articles.forEach(article => owner.set(getArticleId(article), index)));
+  const articleById = new Map();
+
+  automatic.forEach((group, index) => {
+    group.articles.forEach(article => {
+      const articleId = getArticleId(article);
+      owner.set(articleId, index);
+      articleById.set(articleId, article);
+    });
+  });
+
+  for (const group of groups) {
+    for (const article of group.articles || []) {
+      articleById.set(getArticleId(article), article);
+    }
+  }
+
+  const uniqueArticles = articles =>
+    [...new Map(
+      (articles || []).map(article => [getArticleId(article), article])
+    ).values()];
+
+  const dedupeComponents = components => {
+    const result = [];
+    const seen = new Set();
+    for (const component of components || []) {
+      const articles = uniqueArticles(component).sort((left, right) =>
+        getArticleId(left).localeCompare(getArticleId(right))
+      );
+      if (!articles.length) continue;
+      const key = articles.map(getArticleId).join('|');
+      if (seen.has(key)) continue;
+      seen.add(key);
+      result.push(articles);
+    }
+    return result;
+  };
+
   const result = groups.map(group => {
-    const affected = [...new Set(group.articles.map(article => owner.get(getArticleId(article))))].filter(index => index !== undefined);
+    const originalArticles = uniqueArticles(group.articles || []);
+    const storedComponents = Array.isArray(group.deterministicComponents)
+      ? group.deterministicComponents.map(componentIds =>
+        (componentIds || [])
+          .map(articleId => articleById.get(articleId))
+          .filter(Boolean)
+      )
+      : [];
+    const affected = [...new Set(originalArticles.map(article => owner.get(getArticleId(article))))]
+      .filter(index => index !== undefined);
+    const affectedComponents = affected.map(index => automatic[index].articles);
     const established = affected.filter(index => automatic[index].established || automatic[index].articles.length > 1);
     const conflict = established.some(index => automatic[index].articles.some(member =>
-      group.articles.some(article => owner.get(getArticleId(article)) !== index && detectEventConflicts(member, article).hasHardConflict)));
+      originalArticles.some(article => owner.get(getArticleId(article)) !== index && detectEventConflicts(member, article).hasHardConflict)));
     const fullRepartition = established.length > 1 || conflict;
     const articles = fullRepartition ? affected.flatMap(index => automatic[index].articles) : affected.flatMap(index => {
       const component = automatic[index];
       if (!established.includes(index)) return component.articles;
       return [component.articles.slice().sort((a, b) => getArticleId(a).localeCompare(getArticleId(b)))[0]];
     });
-    return { ...group, articles, fullRepartition };
+    const deferredComponents = dedupeComponents([
+      ...storedComponents,
+      ...affectedComponents
+    ]);
+    const reviewUniverse = uniqueArticles([
+      ...originalArticles,
+      ...deferredComponents.flat()
+    ]);
+
+    return {
+      ...group,
+      articles: articles.length ? uniqueArticles(articles) : originalArticles,
+      fullRepartition,
+      deferredComponents:
+        deferredComponents.length
+          ? deferredComponents
+          : originalArticles.map(article => [article]),
+      reviewUniverse
+    };
   });
+
   // Structural groups sharing a component must be partitioned together.
   for (let i = 0; i < result.length; i++) {
     for (let j = i + 1; j < result.length;) {
       const ids = new Set(result[i].articles.map(getArticleId));
       if ((result[i].fullRepartition || result[j].fullRepartition) && result[j].articles.some(a => ids.has(getArticleId(a)))) {
         const merged = new Map([...result[i].articles, ...result[j].articles].map(a => [getArticleId(a), a]));
-        const touched = new Set([...merged.keys()].map(id => owner.get(id)));
-        result[i] = { ...result[i], fullRepartition: true, articles: [...touched].flatMap(index => automatic[index].articles) };
-        result.splice(j, 1); i = -1; break;
-      } else j++;
+        const touched = new Set(
+          [...merged.keys()]
+            .map(id => owner.get(id))
+            .filter(index => index !== undefined)
+        );
+        const touchedArticles = [...touched].flatMap(index => automatic[index].articles);
+        const deferredComponents = dedupeComponents([
+          ...(result[i].deferredComponents || []),
+          ...(result[j].deferredComponents || []),
+          ...[...touched].map(index => automatic[index].articles)
+        ]);
+        const reviewUniverse = uniqueArticles([
+          ...(result[i].reviewUniverse || []),
+          ...(result[j].reviewUniverse || []),
+          ...touchedArticles,
+          ...deferredComponents.flat()
+        ]);
+        result[i] = {
+          ...result[i],
+          fullRepartition: true,
+          articles: touchedArticles.length ? uniqueArticles(touchedArticles) : uniqueArticles([...merged.values()]),
+          deferredComponents,
+          reviewUniverse
+        };
+        result.splice(j, 1);
+        i = -1;
+        break;
+      } else {
+        j++;
+      }
     }
   }
-  return result.map(group => ({ ...group, id: createGroupId(group.articles) }));
+
+  return result.map(group => ({
+    ...group,
+    id: createGroupId(group.articles)
+  }));
 }
 
 export function integrateIncrementalReviews(automatic, reviewed, requests) {
-  const broadIds = new Set(requests.filter(g => g.fullRepartition).flatMap(g => g.articles.map(getArticleId)));
+  const broadIds = new Set(
+    requests
+      .filter(group => group.fullRepartition)
+      .flatMap(group => (group.reviewUniverse || group.articles).map(getArticleId))
+  );
   let groups = automatic.map(group => ({ ...group, articles: group.articles.filter(a => !broadIds.has(getArticleId(a))) })).filter(g => g.articles.length);
   for (const partition of reviewed) {
+    if (partition.verification?.method === 'deferred') {
+      const deferredIds = new Set(partition.articles.map(getArticleId));
+      groups = groups.filter(group =>
+        !group.articles.some(article => deferredIds.has(getArticleId(article)))
+      );
+      groups.push(partition);
+      continue;
+    }
     if (partition.articles.some(a => broadIds.has(getArticleId(a)))) { groups.push(partition); continue; }
     // A negative pair decision leaves both automatic components intact.
     if (partition.articles.length < 2) continue;
@@ -6494,6 +8391,22 @@ export function integrateIncrementalReviews(automatic, reviewed, requests) {
     groups = groups.filter(g => !touched.includes(g));
     groups.push({ ...partition, articles: members });
   }
+  // Do not turn an explicit AI separation into a merge through a different pair.
+  for (const request of requests) {
+    const partitions = reviewed.filter(partition => partition.reviewRequestId === request.id);
+    if (
+      partitions.length &&
+      partitions.every(partition => partition.verification?.method === 'deferred')
+    ) {
+      continue;
+    }
+    const partitionById = new Map();
+    partitions.forEach((partition, index) => partition.articles.forEach(article => partitionById.set(getArticleId(article), index)));
+    if (groups.some(group => new Set(group.articles.map(article => partitionById.get(getArticleId(article))).filter(index => index !== undefined)).size > 1)) {
+      const error = new Error('Affected comparisons disagree; retaining the last valid event state.');
+      error.code = 'CLUSTER_VERIFICATION_UNRESOLVED'; throw error;
+    }
+  }
   return groups;
 }
 
@@ -6502,7 +8415,8 @@ async function reviewAmbiguousEventGroups(
   providers,
   keyManager,
   db,
-  onProgress = null
+  onProgress = null,
+  onGroupResolved = null
 ) {
   const resolvedGroups = [];
 
@@ -6512,11 +8426,25 @@ async function reviewAmbiguousEventGroups(
     ambiguousGroupsVerified: 0,
     ambiguousGroupsFromCache: 0,
     ambiguousGroupsKeptSeparate: 0,
+    ambiguousGroupsDeferred: 0,
+    memoryPressureDeferredGroups: 0,
     reviewedArticleCount: 0,
     allProvidersFailedCount: 0,
     providerRequests: {},
+    deferredGroups: [],
+    storyRelationships: [],
     groupResults: []
   };
+
+  const configuredHeapDeferMb = Number(
+    process.env.SMART_AI_REVIEW_HEAP_DEFER_MB
+  );
+  const heapLimitBytes = Number(getHeapStatistics().heap_size_limit) || (4 * 1024 * 1024 * 1024);
+  const heapDeferBytes =
+    Number.isFinite(configuredHeapDeferMb) && configuredHeapDeferMb > 0
+      ? configuredHeapDeferMb * 1024 * 1024
+      : Math.floor(heapLimitBytes * 0.65);
+  let deferRemainingForMemoryPressure = false;
 
   for (
     let index = 0;
@@ -6530,23 +8458,83 @@ async function reviewAmbiguousEventGroups(
       group.articles.length;
 
     if (onProgress) {
+      const current = index + 1;
+      const remaining = Math.max(
+        0,
+        ambiguousGroups.length - current
+      );
       onProgress({
-        stage: 'smart-matching',
+        stage: 'smart-ai',
         message:
-          `Checking cached decisions ${index + 1}/${ambiguousGroups.length}…`,
-        current: index + 1,
-        total:
-          ambiguousGroups.length
+          `Smart Verify · Group ${current}/${ambiguousGroups.length} · ${remaining} remaining · checking cache`,
+        current,
+        total: ambiguousGroups.length,
+        remaining,
+        reviewGroupId: group.id,
+        reviewArticleCount: group.articles.length
       });
     }
 
-    const result =
-      await verifyWithProviderChain(
+    const resolvedStartIndex = resolvedGroups.length;
+
+    if (!deferRemainingForMemoryPressure) {
+      let memory = process.memoryUsage();
+      if (
+        memory.heapUsed >= heapDeferBytes &&
+        typeof global.gc === 'function'
+      ) {
+        global.gc();
+        memory = process.memoryUsage();
+      }
+
+      if (memory.heapUsed >= heapDeferBytes) {
+        deferRemainingForMemoryPressure = true;
+        console.warn(
+          '[SMART MEMORY] ai-review-pressure',
+          JSON.stringify({
+            completedGroups: index,
+            totalGroups: ambiguousGroups.length,
+            remainingGroups: ambiguousGroups.length - index,
+            rssMB: Math.round(memory.rss / 1024 / 1024),
+            heapUsedMB: Math.round(memory.heapUsed / 1024 / 1024),
+            heapTotalMB: Math.round(memory.heapTotal / 1024 / 1024),
+            heapLimitMB: Math.round(heapLimitBytes / 1024 / 1024),
+            deferThresholdMB: Math.round(heapDeferBytes / 1024 / 1024)
+          })
+        );
+      }
+    }
+
+    const result = deferRemainingForMemoryPressure
+      ? {
+        valid: true,
+        uncertain: true,
+        providerId: null,
+        model: null,
+        attemptedProviders: [],
+        skippedProviders: [],
+        resolution: 'deferred',
+        reviewMode:
+          Array.isArray(group.deferredComponents) && group.deferredComponents.length
+            ? 'components'
+            : 'articles',
+        reviewUnitCount:
+          Array.isArray(group.deferredComponents) && group.deferredComponents.length
+            ? group.deferredComponents.length
+            : group.articles.length,
+        fallbackReason: 'memory_pressure',
+        clusters: []
+      }
+      : await verifyWithProviderChain(
         group,
         providers,
         keyManager,
         db
       );
+
+    if (result.fallbackReason === 'memory_pressure') {
+      statistics.memoryPressureDeferredGroups++;
+    }
 
     for (
       const providerId
@@ -6575,6 +8563,12 @@ async function reviewAmbiguousEventGroups(
     ) {
       statistics
         .ambiguousGroupsFromCache++;
+    } else if (
+      result.resolution ===
+      'deferred'
+    ) {
+      statistics
+        .ambiguousGroupsDeferred++;
     } else {
       statistics
         .ambiguousGroupsKeptSeparate++;
@@ -6591,9 +8585,74 @@ async function reviewAmbiguousEventGroups(
         result.attemptedProviders,
       successfulProvider:
         result.providerId,
+      successfulModel:
+        result.model,
       resolution:
-        result.resolution
+        result.resolution,
+      fallbackReason:
+        result.fallbackReason || null,
+      reviewMode:
+        result.reviewMode || 'articles',
+      reviewUnitCount:
+        result.reviewUnitCount || group.articles.length,
+      relatedDevelopmentCount:
+        Array.isArray(result.storyRelationships)
+          ? result.storyRelationships.length
+          : 0
     });
+
+    if (Array.isArray(result.storyRelationships) && result.storyRelationships.length) {
+      statistics.storyRelationships.push(
+        ...result.storyRelationships.map(relationship => ({
+          ...relationship,
+          reviewGroupId: group.id,
+          providerId: result.providerId,
+          model: result.model,
+          verifiedAt: result.verifiedAt
+        }))
+      );
+    }
+
+    if (result.resolution === 'deferred') {
+      const deferredPartitions = deferredReviewPartitions(
+        group,
+        result.fallbackReason || 'group_too_large'
+      );
+      resolvedGroups.push(...deferredPartitions);
+
+      console.warn(
+        '[SMART VERIFY DEFERRED]',
+        JSON.stringify({
+          groupId: group.id,
+          articleCount: (group.reviewUniverse || group.articles).length,
+          componentCount: deferredPartitions.length,
+          reason: result.fallbackReason || 'group_too_large'
+        })
+      );
+
+      statistics.deferredGroups.push({
+        groupId: group.id,
+        reason: result.fallbackReason || 'group_too_large',
+        articleIds: (group.reviewUniverse || group.articles).map(getArticleId).sort(),
+        components: deferredPartitions.map(partition => partition.articles.map(getArticleId).sort()),
+        fullRepartition: group.fullRepartition === true,
+        deferredAt: new Date().toISOString(),
+        skippedProviders: result.skippedProviders || []
+      });
+
+      if (onProgress) {
+        onProgress({
+          stage: 'smart-ai',
+          message:
+            `Smart Verify ${index + 1}/${ambiguousGroups.length} · ${Math.max(0, ambiguousGroups.length - index - 1)} remaining · deferred; deterministic components retained`,
+          current: index + 1,
+          total: ambiguousGroups.length,
+          reviewGroupId: group.id,
+          reviewArticleCount: group.articles.length,
+          reviewResolution: 'deferred'
+        });
+      }
+    }
 
     for (
       const partition
@@ -6605,7 +8664,10 @@ async function reviewAmbiguousEventGroups(
         );
 
       const partitionArticles =
-        group.articles.filter(
+        (result.reviewMode === 'components'
+          ? (group.reviewUniverse || group.articles)
+          : group.articles
+        ).filter(
           article =>
             partitionSet.has(
               getArticleId(
@@ -6625,6 +8687,7 @@ async function reviewAmbiguousEventGroups(
         'cached';
 
       resolvedGroups.push({
+        reviewRequestId: group.id,
         id:
           createGroupId(
             partitionArticles
@@ -6663,6 +8726,84 @@ async function reviewAmbiguousEventGroups(
                 result.fallbackReason
             }
       });
+    }
+
+    const resolvedForGroup = resolvedGroups.slice(
+      resolvedStartIndex
+    );
+
+    if (onProgress) {
+      const remaining = Math.max(
+        0,
+        ambiguousGroups.length - index - 1
+      );
+      onProgress({
+        stage: 'smart-ai',
+        message:
+          `Smart Verify ${index + 1}/${ambiguousGroups.length} complete · ${remaining} remaining · result: ${result.resolution}`,
+        current: index + 1,
+        total: ambiguousGroups.length,
+        remaining,
+        reviewGroupId: group.id,
+        reviewArticleCount: group.articles.length,
+        reviewResolution: result.resolution,
+        providerId: result.providerId || null,
+        model: result.model || null
+      });
+    }
+
+    if (typeof onGroupResolved === 'function') {
+      await onGroupResolved({
+        index,
+        group,
+        result,
+        resolvedForGroup,
+        resolvedGroups,
+        statistics
+      });
+    }
+
+    if (
+      result.resolution !== 'verified' &&
+      result.resolution !== 'cached' &&
+      result.resolution !== 'deferred'
+    ) {
+      console.warn(
+        '[SMART VERIFY] Stopping remaining ambiguous reviews after unresolved group',
+        JSON.stringify({
+          groupId: group.id,
+          articleCount: group.articles.length,
+          reason:
+            result.fallbackReason ||
+            'all_providers_failed_or_uncertain',
+          remainingGroups:
+            Math.max(
+              0,
+              ambiguousGroups.length - index - 1
+            )
+        })
+      );
+
+      if (typeof global.gc === 'function') {
+        global.gc();
+      }
+
+      break;
+    }
+
+    if ((index + 1) % 10 === 0 && typeof global.gc === 'function') {
+      global.gc();
+      const memory = process.memoryUsage();
+      console.log(
+        '[SMART MEMORY] ai-review-progress',
+        JSON.stringify({
+          completedGroups: index + 1,
+          totalGroups: ambiguousGroups.length,
+          rssMB: Math.round(memory.rss / 1024 / 1024),
+          heapUsedMB: Math.round(memory.heapUsed / 1024 / 1024),
+          heapTotalMB: Math.round(memory.heapTotal / 1024 / 1024)
+        })
+      );
     }
   }
 
@@ -6766,6 +8907,214 @@ function getLatestClusterCoverageTime(cluster) {
   return times.length
     ? Math.max(...times)
     : NaN;
+}
+
+function mergeRelatedDevelopmentRelationships(
+  storedRelationships = [],
+  reviewRelationships = []
+) {
+  const relationshipKey = relationship => {
+    const left = [...(relationship.leftArticleIds || [])]
+      .sort()
+      .join('|');
+    const right = [...(relationship.rightArticleIds || [])]
+      .sort()
+      .join('|');
+    return [left, right].sort().join('::');
+  };
+
+  const relationships = new Map();
+  for (const relationship of [
+    ...storedRelationships,
+    ...reviewRelationships
+  ]) {
+    if (relationship?.type === 'related_development') {
+      relationships.set(
+        relationshipKey(relationship),
+        relationship
+      );
+    }
+  }
+
+  return [...relationships.values()];
+}
+
+function deferredReviewPartitions(
+  group,
+  reason = 'verification_pending'
+) {
+  const deferredComponents =
+    Array.isArray(group?.deferredComponents) &&
+    group.deferredComponents.length
+      ? group.deferredComponents
+      : (group?.reviewUniverse || group?.articles || [])
+        .map(article => [article]);
+
+  return deferredComponents
+    .filter(component => component?.length)
+    .map(component => ({
+      reviewRequestId: group.id,
+      id: createGroupId(component),
+      articles: component,
+      verified: false,
+      providerId: null,
+      model: null,
+      verifiedAt: null,
+      verification: {
+        method: 'deferred',
+        reason
+      }
+    }));
+}
+
+function buildPublicationClusterSnapshot({
+  candidates,
+  autoMergedClusters,
+  reviewedClusters,
+  reviewGroups,
+  clusterVersionChanged,
+  existingClusters,
+  isTargeted,
+  targetCategory,
+  storyIdRetentionClusters,
+  storyRelationships = []
+}) {
+  const rawGroups = integrateIncrementalReviews(
+    autoMergedClusters,
+    reviewedClusters,
+    reviewGroups
+  );
+
+  assertEveryCandidateAppearsExactlyOnce(
+    candidates,
+    rawGroups
+  );
+
+  let clusters = rawGroups
+    .map(group =>
+      buildCluster(
+        group.articles,
+        {
+          validated: true,
+          verification: group.verification
+        }
+      )
+    )
+    .filter(Boolean);
+
+  const currentLinks = new Set(
+    candidates.map(article => article.link)
+  );
+  const sevenDaysAgo = Date.now() - 7 * DAY_MS;
+
+  const untouchedOldClusters = clusterVersionChanged
+    ? []
+    : existingClusters.filter(cluster => {
+      const links = getClusterArticleLinks(cluster);
+
+      // Candidate identity wins before targeted-category preservation.
+      if ([...links].some(link => currentLinks.has(link))) {
+        return false;
+      }
+
+      if (
+        isTargeted &&
+        targetCategory &&
+        cluster.smartCategory !== targetCategory
+      ) {
+        return true;
+      }
+
+      const latestCoverageAt =
+        getLatestClusterCoverageTime(cluster);
+      return (
+        Number.isFinite(latestCoverageAt) &&
+        latestCoverageAt >= sevenDaysAgo
+      );
+    });
+
+  clusters = [
+    ...untouchedOldClusters,
+    ...clusters
+  ];
+
+  clusters.sort(
+    (left, right) =>
+      Number(right.hotness || 0) -
+        Number(left.hotness || 0) ||
+      Number(right.sourceWeight || 1) -
+        Number(left.sourceWeight || 1) ||
+      safeDate(right.pubDate) -
+        safeDate(left.pubDate)
+  );
+
+  clusters = retainStoryIds(
+    clusters.map(cleanStoredCluster),
+    storyIdRetentionClusters
+  );
+
+  const activeRelationshipArticleIds = new Set(
+    clusters.flatMap(cluster =>
+      [cluster, ...(cluster.relatedArticles || [])]
+        .map(getArticleId)
+    )
+  );
+
+  const activeRelationships = storyRelationships.filter(
+    relationship =>
+      (relationship.leftArticleIds || []).some(
+        articleId => activeRelationshipArticleIds.has(articleId)
+      ) &&
+      (relationship.rightArticleIds || []).some(
+        articleId => activeRelationshipArticleIds.has(articleId)
+      )
+  );
+
+  clusters = attachBroaderStoryMetadata(
+    clusters,
+    activeRelationships
+  );
+
+  for (const cluster of clusters) {
+    if (cluster) delete cluster._vec;
+    if (Array.isArray(cluster?.relatedArticles)) {
+      for (const article of cluster.relatedArticles) {
+        delete article._vec;
+      }
+    }
+  }
+
+  const publishedCounts = new Map();
+  for (const cluster of clusters) {
+    for (const article of [
+      cluster,
+      ...(cluster.relatedArticles || [])
+    ]) {
+      const id = getArticleId(article);
+      publishedCounts.set(
+        id,
+        (publishedCounts.get(id) || 0) + 1
+      );
+    }
+  }
+
+  if (
+    candidates.some(
+      article =>
+        publishedCounts.get(getArticleId(article)) !== 1
+    ) ||
+    [...publishedCounts.values()].some(count => count !== 1)
+  ) {
+    throw new Error(
+      'Final clustering snapshot failed membership validation; previous state retained.'
+    );
+  }
+
+  return {
+    clusters,
+    currentLinks,
+    storyRelationships: activeRelationships
+  };
 }
 
 function isActiveCluster(cluster, now = Date.now()) {
@@ -7054,6 +9403,7 @@ async function putManySafe(
     );
   }
 
+  if ('smartClusters' in values) throw new Error('Atomic clustering persistence is unavailable; previous state retained.');
   for (
     const [key, value]
     of Object.entries(values)
@@ -7109,13 +9459,29 @@ export async function startSmartSyncLoop(
     '🚀 [SMART SYNC] Background smart source fetch loop initialized.'
   );
 
+  // The engine schedules its first clustering refresh shortly after startup.
+  // Give that refresh first claim on memory instead of racing it with another
+  // full source snapshot.
+  await sleep(10_000);
+
   while (true) {
+    if (activeSmartEngineRefreshes > 0) {
+      console.log(
+        '[SMART SYNC] Foreground Smart refresh active; background source fetch deferred.'
+      );
+      await sleep(30_000);
+      continue;
+    }
     const cycleStartedAt =
       Date.now();
 
     try {
       if (typeof helpers.waitForHttpIdle === 'function') {
         await helpers.waitForHttpIdle();
+      }
+      if (activeSmartEngineRefreshes > 0) {
+        await sleep(15_000);
+        continue;
       }
       const configuredSources =
         await getSources();
@@ -7143,6 +9509,13 @@ export async function startSmartSyncLoop(
               headers
             )
         );
+
+      if (activeSmartEngineRefreshes > 0) {
+        console.log(
+          '[SMART SYNC] Foreground Smart refresh started during background fetch; dropping duplicate batch.'
+        );
+        continue;
+      }
 
       if (
         typeof helpers
@@ -7328,7 +9701,8 @@ export function createSmartNewsEngine({
   db,
   helpers,
   headers = {},
-  geminiKeyManager = null
+  geminiKeyManager = null,
+  clusterWorkerFactory = getClusterWorker
 }) {
   const staticGeminiKey =
     process.env.GEMINI_API_KEY ||
@@ -8040,6 +10414,7 @@ export function createSmartNewsEngine({
 
     return {
       ...stored,
+      cumulativeClusteringCounters: (await db.get('smartClusteringCounters', { type: 'json' })) || {},
       running,
       progress:
         currentProgress,
@@ -8096,6 +10471,8 @@ export function createSmartNewsEngine({
     }
 
     running = true;
+    activeSmartEngineRefreshes++;
+    let refreshLeaseActive = true;
 
     const startedAt =
       toVietnamIso(Date.now());
@@ -8118,6 +10495,37 @@ export function createSmartNewsEngine({
           stage ===
           'smart-error';
 
+        const progressExtra = {
+          ...extra
+        };
+        if (currentProgress.stage !== stage) {
+          for (const key of [
+            'current', 'total', 'remaining', 'percent',
+            'providerId', 'providerIndex', 'providerAttempt',
+            'providerTotal', 'model', 'reviewGroupId',
+            'reviewArticleCount', 'reviewResolution'
+          ]) {
+            if (!(key in progressExtra)) progressExtra[key] = undefined;
+          }
+        }
+        const current = Number(progressExtra.current);
+        const total = Number(progressExtra.total);
+        if (
+          Number.isFinite(current) &&
+          Number.isFinite(total) &&
+          total >= 0
+        ) {
+          progressExtra.remaining = Math.max(
+            0,
+            total - current
+          );
+          if (!Number.isFinite(Number(progressExtra.percent))) {
+            progressExtra.percent = total > 0
+              ? Math.round(current / total * 100)
+              : 100;
+          }
+        }
+
         currentProgress = {
           ...currentProgress,
           stage,
@@ -8127,7 +10535,7 @@ export function createSmartNewsEngine({
             toVietnamIso(
               Date.now()
             ),
-          ...extra
+          ...progressExtra
         };
 
         if (
@@ -8156,8 +10564,10 @@ export function createSmartNewsEngine({
       cachedDecisionsReused: 0, cachedDecisionsInvalidated: 0, invalidationReason: null,
       firstPassAiCalls: 0, firstPassValidJson: 0, firstPassInvalidJson: 0, markdownFenceRecoveries: 0,
       safeExtractionRecoveries: 0, repairAttempts: 0, repairSuccesses: 0, repairFailures: 0,
+      jsonRepairCalls: 0, fallbackProviderCalls: 0,
       fallbackProviderAttempts: 0, fallbackProviderSuccesses: 0, allProviderFailures: 0,
-      successfulVerificationDecisions: 0, unresolvedAmbiguousGroups: 0, fullGroupRepartitions: 0,
+      successfulVerificationDecisions: 0, unresolvedAmbiguousGroups: 0, deferredAmbiguousGroups: 0,
+      groupsSkippedTooLarge: 0, fullGroupRepartitions: 0,
       rebuildReason: null };
     let attemptedState = null;
 
@@ -8230,7 +10640,7 @@ export function createSmartNewsEngine({
         );
       }
 
-      const previousSmartArticlesForPrefetch =
+      let previousSmartArticlesForPrefetch =
         (
           await db.get(
             'smartRawArticles',
@@ -8238,7 +10648,7 @@ export function createSmartNewsEngine({
           )
         ) || [];
 
-      const sourceResults =
+      let sourceResults =
         await fetchInBatches(
           sourcesToFetch,
           16,
@@ -8281,7 +10691,7 @@ export function createSmartNewsEngine({
           );
       }
 
-      const fetchedArticles =
+      let fetchedArticles =
         sourceResults.flatMap(
           result =>
             result.articles ||
@@ -8289,10 +10699,10 @@ export function createSmartNewsEngine({
         );
 
       await helpers.observeCacheArticles?.(fetchedArticles);
-      void prefetchOpenCliOnlySmartArticles(
-        sourceResults,
-        helpers
-      ).catch(error => console.warn('[SMART PREFETCH]', error.message));
+      // Do not start a second asynchronous OpenCLI article prefetch from the
+      // clustering refresh. The dedicated background source loop performs that
+      // work when no Smart refresh is active, so these source arrays can be
+      // released before HNSW/AI review.
 
       const sourceErrors =
         sourceResults
@@ -8311,12 +10721,14 @@ export function createSmartNewsEngine({
               result.error
           }));
 
-      const previousHidden =
+      const successfulSourceCount = sourceResults.length - sourceErrors.length;
+
+      let previousHidden =
         isTargeted
           ? previousSmartArticlesForPrefetch
           : [];
 
-      const preservedHidden =
+      let preservedHidden =
         isTargeted
           ? previousHidden.filter(
             article =>
@@ -8325,7 +10737,7 @@ export function createSmartNewsEngine({
           )
           : [];
 
-      const hiddenArticles =
+      let hiddenArticles =
         isTargeted
           ? [
             ...preservedHidden,
@@ -8333,9 +10745,19 @@ export function createSmartNewsEngine({
           ]
           : fetchedArticles;
 
-      if (hiddenArticles.length) await db.put('smartRawArticles', JSON.stringify(hiddenArticles));
+      const hiddenArticleCount = hiddenArticles.length;
+      let smartRawArticlesJson = hiddenArticleCount
+        ? JSON.stringify(hiddenArticles)
+        : '[]';
+      if (hiddenArticleCount) {
+        await db.put('smartRawArticles', smartRawArticlesJson);
+      }
+      // The raw snapshot is already durable before clustering starts. Holding
+      // this second large JSON string through HNSW + sequential AI review
+      // needlessly raises the old-space floor.
+      smartRawArticlesJson = null;
 
-      const existingArticles =
+      let existingArticles =
         (
           await db.get(
             'articles',
@@ -8348,7 +10770,7 @@ export function createSmartNewsEngine({
           )
         ) || [];
 
-      const existingClusters =
+      let existingClusters =
         (
           await db.get(
             'smartClusters',
@@ -8360,7 +10782,20 @@ export function createSmartNewsEngine({
           )
         ) || [];
 
-      const feeds =
+      const previousReviewState =
+        (
+          await db.get(
+            'smartDeferredReviewGroups',
+            { type: 'json' }
+          )
+        ) || {};
+      const storedStoryRelationships =
+        previousReviewState.algorithmVersion === SMART_CLUSTER_VERSION &&
+        Array.isArray(previousReviewState.relationships)
+          ? previousReviewState.relationships
+          : [];
+
+      let feeds =
         (
           await db.get(
             'feeds',
@@ -8411,16 +10846,18 @@ export function createSmartNewsEngine({
       // These collections are large enough to freeze Express if processed in
       // one uninterrupted array chain. Yield every small batch so cached page
       // and API requests remain responsive while Smart clustering prepares.
-      const activeStoredArticles = [];
+      let activeStoredArticles = [];
       for (let index = 0; index < existingClusters.length; index++) {
         const cluster = existingClusters[index];
         if (isActiveCluster(cluster)) {
-          activeStoredArticles.push(...extractActiveClusterArticles(cluster));
+          activeStoredArticles.push(...extractActiveClusterArticles(cluster).filter(article =>
+            !isExcludedFromSmart(article, dynamicExcludedUrls) &&
+            (!article.hiddenSmartSource || smartSources.some(source => source.url === article.feedUrl))));
         }
         if (index > 0 && index % 150 === 0) await new Promise(resolve => setImmediate(resolve));
       }
 
-      const normalArticles = [];
+      let normalArticles = [];
       for (let index = 0; index < existingArticles.length; index++) {
         const article = existingArticles[index];
         if (
@@ -8433,7 +10870,7 @@ export function createSmartNewsEngine({
         if (index > 0 && index % 150 === 0) await new Promise(resolve => setImmediate(resolve));
       }
 
-      const normalizedHidden = [];
+      let normalizedHidden = [];
       for (let index = 0; index < hiddenArticles.length; index++) {
         const article = normalizeArticle(hiddenArticles[index]);
         if (
@@ -8446,7 +10883,7 @@ export function createSmartNewsEngine({
         if (index > 0 && index % 150 === 0) await new Promise(resolve => setImmediate(resolve));
       }
 
-      const articleMap =
+      let articleMap =
         new Map();
 
       let processedArticleCount = 0;
@@ -8482,21 +10919,21 @@ export function createSmartNewsEngine({
         if (processedArticleCount % 150 === 0) await new Promise(resolve => setImmediate(resolve));
       }
 
-      const rawCandidates =
+      let rawCandidates =
         dedupeGoogleNewsWrappers(
           [...articleMap.values()]
         );
 
-      const previousRawArticles = (await db.get('smartClusteringInputs', { type: 'json', shared: true })) || (await db.get('smartRawArticles', { type: 'json', shared: true })) || [];
-      const previousArticleMap = new Map();
+      let previousRawArticles = (await db.get('smartClusteringInputs', { type: 'json', shared: true })) || (await db.get('smartRawArticles', { type: 'json', shared: true })) || [];
+      let previousArticleMap = new Map();
       for (const article of previousRawArticles) {
         if (article.articleKey) {
           previousArticleMap.set(article.articleKey, article);
         }
       }
 
-      const candidates = [];
-      const activeCandidates = new Set();
+      let candidates = [];
+      let activeCandidates = new Set();
 
       for (let candidateIndex = 0; candidateIndex < rawCandidates.length; candidateIndex++) {
         const article = rawCandidates[candidateIndex];
@@ -8518,6 +10955,11 @@ export function createSmartNewsEngine({
             ].join('\n'))
             .digest('hex');
         }
+
+        article.contentHash = createHash('sha256').update(JSON.stringify({
+          embedding: buildEmbeddingText(article), verification: normalizedVerificationArticles([article]),
+          category: article.smartCategory, region: article.region
+        })).digest('hex');
 
         const prev = previousArticleMap.get(article.articleKey);
 
@@ -8615,8 +11057,13 @@ export function createSmartNewsEngine({
         previousSignature &&
         previousAiConfiguration ===
         aiConfiguration &&
-        existingClusters.length
+        (await db.get('smartClusteringAlgorithmVersion')) === SMART_CLUSTER_VERSION &&
+        (await db.get('smartEmbeddingIdentity')) === `${EMBEDDING_MODEL}:${EMBEDDING_CACHE_VERSION}` &&
+        previousSignature
       ) {
+        metrics.cachedDecisionsReused = existingClusters.filter(cluster => cluster.verification?.method === 'ai_fallback').length;
+        metrics.embeddingsReused = candidates.length;
+        metrics.existingMembershipsReused = candidates.length;
         notify(
           'smart-ready',
           'No article changes; existing Smart clusters were reused.'
@@ -8676,17 +11123,79 @@ export function createSmartNewsEngine({
           )
         ) || '';
 
-      const clusterVersionChanged =
-        options.forceRebuild || storedClusterVersion !== SMART_CLUSTER_VERSION;
-      metrics.rebuildReason = options.forceRebuild ? 'explicit_force_rebuild' : clusterVersionChanged ? 'clustering_policy_version_changed' : null;
-      console.log('[SMART REBUILD]', JSON.stringify({ rebuild_reason: options.forceRebuild ? 'explicit_force_rebuild' : clusterVersionChanged ? 'clustering_policy_version_changed' : null }));
+      const embeddingIdentity = `${EMBEDDING_MODEL}:${EMBEDDING_CACHE_VERSION}`;
+      const previousEmbeddingIdentity = await db.get('smartEmbeddingIdentity');
+      const embeddingPolicyChanged = previousEmbeddingIdentity !== embeddingIdentity;
+      const clusterVersionChanged = options.forceRebuild || storedClusterVersion !== SMART_CLUSTER_VERSION || embeddingPolicyChanged;
+      metrics.rebuildReason = options.forceRebuild ? 'explicit_force_rebuild' : storedClusterVersion !== SMART_CLUSTER_VERSION ? 'clustering_policy_version_changed' : embeddingPolicyChanged ? 'embedding_policy_changed' : null;
+      console.log('[SMART REBUILD]', JSON.stringify({ rebuild_reason: metrics.rebuildReason }));
+
+      const existingClusterCountBeforeRebuild = existingClusters.length;
+      let storyIdRetentionClusters = existingClusters;
+      if (clusterVersionChanged) {
+        // retainStoryIds needs only the previous cluster id and member links.
+        // Keeping the full old 8k+ cluster snapshot alive through a clean
+        // rebuild and minutes of AI review caused avoidable multi-GB heap use.
+        storyIdRetentionClusters = existingClusters
+          .filter(cluster => cluster?.clusterId)
+          .map(cluster => ({
+            clusterId: cluster.clusterId,
+            link: cluster.link,
+            relatedArticles: Array.isArray(cluster.relatedArticles)
+              ? cluster.relatedArticles.map(article => ({ link: article.link }))
+              : []
+          }));
+        existingClusters = [];
+      }
+
+      // Candidate preparation creates several overlapping article arrays/maps.
+      // The compact `candidates` list is now authoritative, while raw Smart
+      // articles are already serialized for publication. Release everything
+      // else before HNSW and the long sequential AI phase.
+      previousSmartArticlesForPrefetch = null;
+      sourceResults = null;
+      fetchedArticles = null;
+      previousHidden = null;
+      preservedHidden = null;
+      hiddenArticles = null;
+      existingArticles = null;
+      feeds = null;
+      activeStoredArticles.length = 0;
+      activeStoredArticles = null;
+      normalArticles.length = 0;
+      normalArticles = null;
+      normalizedHidden.length = 0;
+      normalizedHidden = null;
+      articleMap.clear();
+      articleMap = null;
+      rawCandidates.length = 0;
+      rawCandidates = null;
+      previousRawArticles = null;
+      previousArticleMap.clear();
+      previousArticleMap = null;
+      activeCandidates.clear();
+      activeCandidates = null;
+
+      if (typeof global.gc === 'function') {
+        global.gc();
+        const memory = process.memoryUsage();
+        console.log(
+          '[SMART MEMORY] pre-clustering-release',
+          JSON.stringify({
+            rssMB: Math.round(memory.rss / 1024 / 1024),
+            heapUsedMB: Math.round(memory.heapUsed / 1024 / 1024),
+            heapTotalMB: Math.round(memory.heapTotal / 1024 / 1024),
+            cleanRebuild: clusterVersionChanged
+          })
+        );
+      }
 
       // Reuse one clustering worker for the lifetime of this Node process.
       // This is required because the old ONNX ARM64 native addon cannot
       // safely be unloaded and then loaded by a replacement Worker.
-      const worker = getClusterWorker();
+      const worker = clusterWorkerFactory();
 
-      const { autoMergedClusters, ambiguousGroups } = await new Promise((resolve, reject) => {
+      let clusteringResult = await new Promise((resolve, reject) => {
         let hasResult = false;
 
         const cleanup = () => {
@@ -8700,9 +11209,13 @@ export function createSmartNewsEngine({
               msg.progress.phase === 'embeddings' ? 'smart-embeddings' : 'smart-matching',
               msg.progress.phase === 'embeddings' ? 'Generating embeddings…' : 'Matching stories…',
               {
-                percent: msg.progress.total
-                  ? Math.round((msg.progress.current / msg.progress.total) * 100)
-                  : 0
+                ...msg.progress,
+                ...(Number.isFinite(Number(msg.progress.current))
+                  ? { current: Number(msg.progress.current) }
+                  : {}),
+                ...(Number.isFinite(Number(msg.progress.total))
+                  ? { total: Number(msg.progress.total) }
+                  : {})
               }
             );
           } else if (msg.type === 'result') {
@@ -8734,7 +11247,7 @@ export function createSmartNewsEngine({
               SMART_CLUSTER_VERSION,
             clusterVersionChanged,
             storedClusters:
-              existingClusters.length,
+              existingClusterCountBeforeRebuild,
             reusableClusters:
               reusableExistingClusters.length,
             cleanRebuild:
@@ -8755,14 +11268,316 @@ export function createSmartNewsEngine({
         });
       });
 
-      const reviewGroups = prepareIncrementalReviewGroups(ambiguousGroups, autoMergedClusters);
+      let autoMergedClusters;
+      let ambiguousGroups;
+      {
+        const canonicalArticleById =
+          new Map(
+            candidates.map(
+              article => [
+                getArticleId(article),
+                article
+              ]
+            )
+          );
+
+        const rebindWorkerGroups = groups =>
+          (Array.isArray(groups) ? groups : [])
+            .map(group => ({
+              ...group,
+              articles:
+                (Array.isArray(group?.articles)
+                  ? group.articles
+                  : []
+                ).map(article => {
+                  const articleId =
+                    getArticleId(article);
+                  const canonicalArticle =
+                    canonicalArticleById.get(
+                      articleId
+                    );
+
+                  if (!canonicalArticle) {
+                    throw new Error(
+                      `Clustering worker returned unknown article ${articleId}`
+                    );
+                  }
+
+                  return canonicalArticle;
+                })
+            }));
+
+        autoMergedClusters =
+          rebindWorkerGroups(
+            clusteringResult
+              .autoMergedClusters
+          );
+        ambiguousGroups =
+          rebindWorkerGroups(
+            clusteringResult
+              .ambiguousGroups
+          );
+      }
+
+      clusteringResult = null;
+
+      if (typeof global.gc === 'function') {
+        global.gc();
+        const memory =
+          process.memoryUsage();
+        console.log(
+          '[SMART MEMORY] post-clustering-gc',
+          JSON.stringify({
+            rssMB:
+              Math.round(memory.rss / 1024 / 1024),
+            heapUsedMB:
+              Math.round(memory.heapUsed / 1024 / 1024),
+            heapTotalMB:
+              Math.round(memory.heapTotal / 1024 / 1024)
+          })
+        );
+      }
+
+      const ambiguousGroupCount = ambiguousGroups.length;
+      let reviewGroups = prepareIncrementalReviewGroups(ambiguousGroups, autoMergedClusters);
+      ambiguousGroups = null;
       metrics.ambiguousGroups = reviewGroups.length;
       metrics.fullGroupRepartitions = reviewGroups.filter(group => group.fullRepartition).length;
-      for (const group of reviewGroups) {
+      for (let reviewIndex = 0; reviewIndex < reviewGroups.length; reviewIndex++) {
+        const group = reviewGroups[reviewIndex];
         group.forceRebuild = options.forceRebuild === true;
         group.metrics = metrics;
-        group.onStage = stage => notify(stage, stage === 'smart-ai-repair' ? 'Repairing AI response…' : stage === 'smart-ai-fallback' ? 'Trying fallback model…' : 'AI-verifying ambiguous matches…');
+        group.reviewIndex = reviewIndex;
+        group.onStage = (stage, details = {}) => {
+          const current = reviewIndex + 1;
+          const remaining = Math.max(
+            0,
+            reviewGroups.length - current
+          );
+          const providerIndex = Number(
+            details.providerAttempt
+          ) || null;
+          const providerTotal = Number(
+            details.providerTotal
+          ) || null;
+          const providerLabel =
+            details.model ||
+            details.providerId ||
+            'provider';
+          const providerProgress =
+            providerIndex && providerTotal
+              ? ` · provider ${providerIndex}/${providerTotal}`
+              : '';
+          const action = stage === 'smart-ai-repair'
+            ? `repairing ${providerLabel} response`
+            : stage === 'smart-ai-fallback'
+              ? `${providerLabel}${providerProgress}`
+              : `${providerLabel}${providerProgress}`;
+
+          notify(
+            stage,
+            `Smart Verify · Group ${current}/${reviewGroups.length} · ${remaining} remaining · ${action}`,
+            {
+              current,
+              total: reviewGroups.length,
+              remaining,
+              providerIndex,
+              providerTotal,
+              reviewGroupId: group.id,
+              reviewArticleCount: group.articles.length,
+              ...details
+            }
+          );
+        };
       }
+
+      const progressiveRunId = stableId(
+        [
+          SMART_CLUSTER_VERSION,
+          startedAt,
+          currentSignature,
+          targetCategory || 'all'
+        ].join('|')
+      );
+      let progressiveRevision = 0;
+      let progressiveVersion = '';
+      let progressiveClusterCount = 0;
+      const progressiveResolvedByGroup = new Map();
+      const progressiveBaselineByGroup = new Map(
+        reviewGroups.map(group => [
+          group.id,
+          deferredReviewPartitions(
+            group,
+            'verification_pending'
+          )
+        ])
+      );
+      const progressiveHeapLimitBytes =
+        Number(getHeapStatistics().heap_size_limit) ||
+        (4 * 1024 * 1024 * 1024);
+      const configuredProgressiveHeapMb = Number(
+        process.env.SMART_PROGRESSIVE_PUBLISH_HEAP_MAX_MB
+      );
+      const progressiveHeapMaxBytes =
+        Number.isFinite(configuredProgressiveHeapMb) &&
+        configuredProgressiveHeapMb > 0
+          ? configuredProgressiveHeapMb * 1024 * 1024
+          : Math.floor(progressiveHeapLimitBytes * 0.55);
+
+      const publishProgressiveSnapshot = async ({
+        completedGroups = 0,
+        reviewRelationships = [],
+        resolution = 'deterministic_base'
+      } = {}) => {
+        if (!reviewGroups.length) return false;
+
+        let memory = process.memoryUsage();
+        if (
+          memory.heapUsed >= progressiveHeapMaxBytes &&
+          typeof global.gc === 'function'
+        ) {
+          global.gc();
+          memory = process.memoryUsage();
+        }
+        if (memory.heapUsed >= progressiveHeapMaxBytes) {
+          console.warn(
+            '[SMART PROGRESSIVE] Publication deferred under memory pressure',
+            JSON.stringify({
+              completedGroups,
+              totalGroups: reviewGroups.length,
+              heapUsedMB: Math.round(memory.heapUsed / 1024 / 1024),
+              heapLimitMB: Math.round(progressiveHeapLimitBytes / 1024 / 1024),
+              publishThresholdMB: Math.round(progressiveHeapMaxBytes / 1024 / 1024)
+            })
+          );
+          return false;
+        }
+
+        try {
+          const reviewedClusters = reviewGroups.flatMap(
+            group =>
+              progressiveResolvedByGroup.has(group.id)
+                ? progressiveResolvedByGroup.get(group.id)
+                : (progressiveBaselineByGroup.get(group.id) || [])
+          );
+          const relationships =
+            mergeRelatedDevelopmentRelationships(
+              storedStoryRelationships,
+              reviewRelationships
+            );
+          let snapshot = buildPublicationClusterSnapshot({
+            candidates,
+            autoMergedClusters,
+            reviewedClusters,
+            reviewGroups,
+            clusterVersionChanged,
+            existingClusters,
+            isTargeted,
+            targetCategory,
+            storyIdRetentionClusters,
+            storyRelationships: relationships
+          });
+
+          progressiveRevision++;
+          progressiveVersion =
+            `${progressiveRunId}_progressive_${progressiveRevision}_${snapshot.clusters.length}`;
+          progressiveClusterCount = snapshot.clusters.length;
+          const remainingGroups = Math.max(
+            0,
+            reviewGroups.length - completedGroups
+          );
+
+          notify(
+            'smart-publishing',
+            completedGroups > 0
+              ? `Publishing verified Smart updates · ${completedGroups}/${reviewGroups.length} complete · ${remainingGroups} remaining`
+              : `Publishing deterministic Smart snapshot · ${reviewGroups.length} review groups pending`,
+            {
+              current: completedGroups > 0 ? 2 : 1,
+              total: 3,
+              publicationPhase:
+                completedGroups > 0
+                  ? 'progressive_review_update'
+                  : 'deterministic_base',
+              reviewCurrent: completedGroups,
+              reviewTotal: reviewGroups.length,
+              reviewRemaining: remainingGroups,
+              reviewResolution: resolution,
+              progressive: true,
+              progressiveRevision,
+              progressiveVersion
+            }
+          );
+
+          // Publish the large cluster payload first and the tiny activation
+          // state second. Readers require matching versions, so they either see
+          // the previous complete publication, this complete publication, or
+          // safely fall back to the last final snapshot -- never a mixed pair.
+          let progressivePublicationJson = JSON.stringify({
+            version: progressiveVersion,
+            revision: progressiveRevision,
+            runId: progressiveRunId,
+            clusters: snapshot.clusters
+          });
+          await db.put(
+            'smartProgressivePublication',
+            progressivePublicationJson
+          );
+          await db.put(
+            'smartProgressiveClusterState',
+            JSON.stringify({
+              active: true,
+              provisional: true,
+              stage: 'reviewing',
+              version: progressiveVersion,
+              runId: progressiveRunId,
+              revision: progressiveRevision,
+              algorithmVersion: SMART_CLUSTER_VERSION,
+              clusterCount: snapshot.clusters.length,
+              completedReviewGroups: completedGroups,
+              totalReviewGroups: reviewGroups.length,
+              remainingReviewGroups: remainingGroups,
+              lastResolution: resolution,
+              updatedAt: toVietnamIso(Date.now())
+            })
+          );
+
+          console.log(
+            '[SMART PROGRESSIVE] Published',
+            JSON.stringify({
+              version: progressiveVersion,
+              revision: progressiveRevision,
+              clusters: snapshot.clusters.length,
+              completedGroups,
+              totalGroups: reviewGroups.length,
+              remainingGroups,
+              resolution
+            })
+          );
+
+          progressivePublicationJson = null;
+          snapshot.clusters.length = 0;
+          snapshot.currentLinks.clear();
+          snapshot = null;
+          if (typeof global.gc === 'function') global.gc();
+          return true;
+        } catch (error) {
+          console.warn(
+            '[SMART PROGRESSIVE] Publication skipped:',
+            error.message
+          );
+          return false;
+        }
+      };
+
+      // As soon as HNSW has produced a membership-valid deterministic state,
+      // make that state available without replacing the last final snapshot.
+      // AI-verified changes are layered into this separate progressive key.
+      await publishProgressiveSnapshot({
+        completedGroups: 0,
+        reviewRelationships: [],
+        resolution: 'deterministic_base'
+      });
 
       let reviewResult = {
         clusters:
@@ -8798,6 +11613,10 @@ export function createSmartNewsEngine({
           0,
         ambiguousGroupsKeptSeparate:
           reviewGroups.length,
+        ambiguousGroupsDeferred:
+          0,
+        memoryPressureDeferredGroups:
+          0,
         reviewedArticleCount:
           0,
         allProvidersFailedCount:
@@ -8805,12 +11624,13 @@ export function createSmartNewsEngine({
             ? reviewGroups.length
             : 0,
         providerRequests: {},
+        deferredGroups: [],
+        storyRelationships: [],
         groupResults: []
       };
 
       if (
         reviewGroups.length &&
-        providers.length &&
         SMART_NEWS_CLUSTER_CONFIG
           .heavyAI
           .enabled
@@ -8828,154 +11648,75 @@ export function createSmartNewsEngine({
                 progress.message ||
                 'AI verification in progress…',
                 progress
-              )
+              ),
+            async ({
+              index,
+              group,
+              result,
+              resolvedForGroup,
+              statistics
+            }) => {
+              if (
+                result.resolution !== 'verified' &&
+                result.resolution !== 'cached'
+              ) {
+                return;
+              }
+
+              progressiveResolvedByGroup.set(
+                group.id,
+                resolvedForGroup
+              );
+              await publishProgressiveSnapshot({
+                completedGroups: index + 1,
+                reviewRelationships:
+                  statistics.storyRelationships || [],
+                resolution: result.resolution
+              });
+            }
           );
       }
 
+      metrics.deferredAmbiguousGroups =
+        Number(reviewResult.ambiguousGroupsDeferred) || 0;
+      metrics.memoryPressureDeferredGroups =
+        Number(reviewResult.memoryPressureDeferredGroups) || 0;
+
       if (reviewResult.ambiguousGroupsKeptSeparate > 0) {
-        const failure = new Error('Ambiguous matches remain unresolved; retaining the last valid clustering state.');
         metrics.unresolvedAmbiguousGroups = reviewResult.ambiguousGroupsKeptSeparate;
-        failure.code = 'CLUSTER_VERIFICATION_UNRESOLVED';
-        throw failure;
+        console.warn(
+          '[SMART VERIFY DEFERRED]',
+          JSON.stringify({
+            reason: 'conservative_kept_separate_fallback',
+            groups: reviewResult.ambiguousGroupsKeptSeparate
+          })
+        );
       }
 
-      const rawGroups = integrateIncrementalReviews(autoMergedClusters, reviewResult.clusters, reviewGroups);
-
-      assertEveryCandidateAppearsExactlyOnce(
-        candidates,
-        rawGroups
-      );
-
-      let clusters =
-        rawGroups
-          .map(group =>
-            buildCluster(
-              group.articles,
-              {
-                validated: true,
-                verification:
-                  group.verification
-              }
-            )
-          )
-          .filter(Boolean);
-
-      const currentLinks =
-        new Set(
-          candidates.map(
-            article =>
-              article.link
-          )
+      const mergedStoryRelationships =
+        mergeRelatedDevelopmentRelationships(
+          storedStoryRelationships,
+          reviewResult.storyRelationships || []
         );
 
-      const sevenDaysAgo =
-        Date.now() -
-        7 * DAY_MS;
+      let finalSnapshot =
+        buildPublicationClusterSnapshot({
+          candidates,
+          autoMergedClusters,
+          reviewedClusters: reviewResult.clusters,
+          reviewGroups,
+          clusterVersionChanged,
+          existingClusters,
+          isTargeted,
+          targetCategory,
+          storyIdRetentionClusters,
+          storyRelationships: mergedStoryRelationships
+        });
 
-      /*
-       * During a clean algorithm-version rebuild, no old clusters may
-       * be reintroduced after HNSW finishes. Re-adding an old cluster
-       * can duplicate an article already assigned to a new cluster.
-       */
-      const untouchedOldClusters =
-        clusterVersionChanged
-          ? []
-          : existingClusters.filter(
-          cluster => {
-            if (
-              isTargeted &&
-              targetCategory &&
-              cluster.smartCategory !==
-              targetCategory
-            ) {
-              return true;
-            }
-
-            const latestCoverageAt =
-              getLatestClusterCoverageTime(
-                cluster
-              );
-
-            if (
-              !Number.isFinite(latestCoverageAt) ||
-              latestCoverageAt <
-              sevenDaysAgo
-            ) {
-              return false;
-            }
-
-            const links =
-              getClusterArticleLinks(
-                cluster
-              );
-
-            return ![...links].some(
-              link =>
-                currentLinks.has(
-                  link
-                )
-            );
-          }
-        );
-
-      clusters = [
-        ...untouchedOldClusters,
-        ...clusters
-      ];
-
-      clusters.sort(
-        (left, right) =>
-          Number(
-            right.hotness || 0
-          ) -
-          Number(
-            left.hotness || 0
-          ) ||
-          Number(
-            right.sourceWeight ||
-            1
-          ) -
-          Number(
-            left.sourceWeight ||
-            1
-          ) ||
-          safeDate(
-            right.pubDate
-          ) -
-          safeDate(
-            left.pubDate
-          )
-      );
-
-      clusters = retainStoryIds(clusters.map(cleanStoredCluster), existingClusters);
-
-      for (const cluster of clusters) {
-        if (cluster) {
-          delete cluster._vec;
-        }
-
-        if (
-          Array.isArray(
-            cluster
-              ?.relatedArticles
-          )
-        ) {
-          for (
-            const article
-            of cluster
-              .relatedArticles
-          ) {
-            delete article._vec;
-          }
-        }
-      }
-
-      for (
-        const article
-        of hiddenArticles
-      ) {
-        delete article._vec;
-      }
+      let clusters = finalSnapshot.clusters;
+      let currentLinks = finalSnapshot.currentLinks;
+      let storyRelationshipsForSnapshot =
+        finalSnapshot.storyRelationships;
 
       const aiProvidersUsed =
         [
@@ -8994,17 +11735,29 @@ export function createSmartNewsEngine({
       const clusterVersion =
         `${toVietnamIso(Date.now())}_${clusters.length}`;
 
-      notify('smart-saving', 'Saving results…');
+      notify(
+        'smart-publishing',
+        'Publishing final Smart snapshot…',
+        {
+          current: 3,
+          total: 3,
+          publicationPhase: 'final',
+          progressive: false
+        }
+      );
       await putManySafe(
         db,
         {
+          smartEmbeddingIdentity: embeddingIdentity,
           smartClusteringFailedAttempt: 'null',
+          smartDeferredReviewGroups:
+            JSON.stringify({
+              algorithmVersion: SMART_CLUSTER_VERSION,
+              updatedAt: toVietnamIso(Date.now()),
+              groups: reviewResult.deferredGroups || [],
+              relationships: storyRelationshipsForSnapshot
+            }),
           smartClusteringInputs: JSON.stringify(candidates.map(article => ({ articleKey: article.articleKey, contentHash: article.contentHash }))),
-          smartRawArticles:
-            JSON.stringify(
-              hiddenArticles
-            ),
-
           smartClusters:
             JSON.stringify(
               clusters
@@ -9024,8 +11777,7 @@ export function createSmartNewsEngine({
             SMART_CLUSTER_VERSION,
 
           /*
-           * The final reviewed result replaces the provisional
-           * clusters in the same save operation.
+           * Publish the completed snapshot and its identity atomically.
            */
           smartClusterState:
             JSON.stringify({
@@ -9034,10 +11786,18 @@ export function createSmartNewsEngine({
               clusterCount:
                 clusters.length,
               ambiguousGroupsTotal:
-                ambiguousGroups.length,
+                ambiguousGroupCount,
               ambiguousGroupsReviewed:
                 reviewResult
                   .ambiguousGroupsTotal,
+              ambiguousGroupsDeferred:
+                reviewResult
+                  .ambiguousGroupsDeferred || 0,
+              memoryPressureDeferredGroups:
+                reviewResult
+                  .memoryPressureDeferredGroups || 0,
+              relatedDevelopmentCount:
+                storyRelationshipsForSnapshot.length,
               completedAt:
                 toVietnamIso(
                   Date.now()
@@ -9053,7 +11813,25 @@ export function createSmartNewsEngine({
             currentSignature,
 
           smartAiConfig:
-            aiConfiguration
+            aiConfiguration,
+
+          // Final publication atomically retires the progressive view.
+          smartProgressivePublication:
+            'null',
+          smartProgressiveClusterState:
+            JSON.stringify({
+              active: false,
+              provisional: false,
+              stage: 'ready',
+              version: '',
+              runId: progressiveRunId,
+              revision: progressiveRevision,
+              algorithmVersion: SMART_CLUSTER_VERSION,
+              completedReviewGroups: reviewResult.ambiguousGroupsTotal,
+              totalReviewGroups: reviewResult.ambiguousGroupsTotal,
+              remainingReviewGroups: 0,
+              completedAt: toVietnamIso(Date.now())
+            })
         },
         {
           allowLargeReduction:
@@ -9076,14 +11854,11 @@ export function createSmartNewsEngine({
         configuredSourceCount:
           smartSources.length,
         sourceCounts,
-        successfulSourceCount:
-          sourceResults.length -
-          sourceErrors.length,
+        successfulSourceCount,
         failedSourceCount:
           sourceErrors.length,
         sourceErrors,
-        hiddenArticleCount:
-          hiddenArticles.length,
+        hiddenArticleCount,
         candidateCount:
           candidates.length,
         clusterCount:
@@ -9091,7 +11866,7 @@ export function createSmartNewsEngine({
         autoMergedClusterCount:
           autoMergedClusters.length,
         ambiguousGroupCount:
-          ambiguousGroups.length,
+          ambiguousGroupCount,
         providerOrder,
         aiProviders:
           aiProvidersUsed,
@@ -9128,6 +11903,16 @@ export function createSmartNewsEngine({
           ambiguousGroupsKeptSeparate:
             reviewResult
               .ambiguousGroupsKeptSeparate,
+          ambiguousGroupsDeferred:
+            reviewResult
+              .ambiguousGroupsDeferred || 0,
+          memoryPressureDeferredGroups:
+            reviewResult
+              .memoryPressureDeferredGroups || 0,
+          relatedDevelopmentCount:
+            (reviewResult.storyRelationships || []).length,
+          activeRelatedDevelopmentCount:
+            storyRelationshipsForSnapshot.length,
           reviewedArticleCount:
             reviewResult
               .reviewedArticleCount,
@@ -9152,20 +11937,65 @@ export function createSmartNewsEngine({
           currentProgress
       };
 
+      // The Top Stories reconciler may start as soon as status becomes
+      // ready. Release the heavy HNSW/review graph first so ranking does not
+      // overlap with several gigabytes of now-dead clustering state.
+      progressiveResolvedByGroup.clear();
+      progressiveBaselineByGroup.clear();
+      if (Array.isArray(reviewResult?.clusters)) {
+        reviewResult.clusters.length = 0;
+      }
+      reviewResult = null;
+      if (Array.isArray(autoMergedClusters)) {
+        autoMergedClusters.length = 0;
+      }
+      autoMergedClusters = null;
+      if (Array.isArray(reviewGroups)) {
+        reviewGroups.length = 0;
+      }
+      reviewGroups = null;
+      if (Array.isArray(candidates)) {
+        candidates.length = 0;
+      }
+      candidates = null;
+      storyIdRetentionClusters = null;
+      existingClusters = null;
+      if (currentLinks) currentLinks.clear();
+      currentLinks = null;
+      if (finalSnapshot?.clusters) {
+        finalSnapshot.clusters.length = 0;
+      }
+      finalSnapshot = null;
+      clusters.length = 0;
+      clusters = null;
+
+      if (typeof global.gc === 'function') {
+        global.gc();
+        const memory = process.memoryUsage();
+        console.log(
+          '[SMART MEMORY] pre-ready-gc',
+          JSON.stringify({
+            rssMB: Math.round(memory.rss / 1024 / 1024),
+            heapUsedMB: Math.round(memory.heapUsed / 1024 / 1024),
+            heapTotalMB: Math.round(memory.heapTotal / 1024 / 1024)
+          })
+        );
+      }
+
       await setStatus(
         completed
       );
 
       notify(
         'smart-ready',
-        `Smart feed ready: ${clusters.length} clusters.`
+        `Smart feed ready: ${completed.clusterCount} clusters.`
       );
 
       console.log(
         '[SMART] Ready:',
-        clusters.length,
+        completed.clusterCount,
         'clusters from',
-        candidates.length,
+        completed.candidateCount,
         'candidates; providers:',
         aiProvidersUsed.join(', ') ||
         'none'
@@ -9223,6 +12053,18 @@ export function createSmartNewsEngine({
         ...failed
       };
     } finally {
+      try {
+        const cumulative = (await db.get('smartClusteringCounters', { type: 'json' })) || {};
+        for (const [key, value] of Object.entries(metrics)) if (typeof value === 'number') cumulative[key] = (Number(cumulative[key]) || 0) + value;
+        cumulative.totalCacheEntries = Object.keys(await getVerificationCache(db)).length;
+        cumulative.totalAiCallsAvoidedByCache = cumulative.verificationCacheHits || 0;
+        await db.put('smartClusteringCounters', JSON.stringify(cumulative));
+        console.log('[SMART SYNC METRICS]', JSON.stringify(metrics));
+      } catch (error) { console.warn('[SMART METRICS]', error.message); }
+      if (refreshLeaseActive) {
+        activeSmartEngineRefreshes = Math.max(0, activeSmartEngineRefreshes - 1);
+        refreshLeaseActive = false;
+      }
       running = false;
 
       if (
