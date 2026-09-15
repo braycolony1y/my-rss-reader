@@ -1,3 +1,11 @@
+import {
+  SMART_EDITORIAL_POLICY_VERSION,
+  SMART_EDITORIAL_RESPONSE_SCHEMA,
+  applySmartEditorialAssessment,
+  buildSmartEditorialPrompt,
+  parseSmartEditorialResponse,
+  prepareSmartEditorialPlan
+} from './src/ai/smart-editorial.js';
 import { parseClusteringJson, requestClusteringDecision } from './src/ai/clustering-json.js';
 import { generateWithAntigravity, antigravityAvailable, ANTIGRAVITY_MODEL } from './src/ai/antigravity.js';
 import { rankStory, retainStoryIds } from './src/articles/story-ranking.js';
@@ -6368,9 +6376,13 @@ async function callVerificationProvider(
     'cluster-verification';
 
   const onRequest = () => {
-    if (!group.metrics) return;
-    group.metrics[repairPrompt ? 'jsonRepairCalls' : 'firstPassAiCalls']++;
-    if (group.isFallback) group.metrics.fallbackProviderCalls++;
+    if (group.metrics) {
+      group.metrics[repairPrompt ? 'jsonRepairCalls' : 'firstPassAiCalls']++;
+      if (group.isFallback) group.metrics.fallbackProviderCalls++;
+    }
+
+    // Custom consumers such as editorial assessment keep separate metrics.
+    reviewSpec?.onRequest?.();
   };
 
   if (provider.type === 'antigravity') {
@@ -6386,7 +6398,9 @@ async function callVerificationProvider(
       text:
         reviewSpec?.componentReview
           ? normalizeAntigravityComponentOutput(result.text)
-          : normalizeAntigravityClusteringOutput(result.text),
+          : reviewSpec?.editorialReview
+            ? result.text
+            : normalizeAntigravityClusteringOutput(result.text),
       rawProviderText: result.text,
       onlineAiUsage: result.onlineAiUsage || null
     };
@@ -6464,6 +6478,373 @@ async function callVerificationProvider(
   throw new Error(
     `Unsupported provider type: ${provider.type}`
   );
+}
+
+
+async function assessSmartEditorialClusters({
+  clusters,
+  sources,
+  providers,
+  keyManager,
+  db,
+  notify,
+  metrics
+}) {
+  let cache;
+
+  try {
+    cache =
+      (
+        await db.get(
+          'smartEditorialAssessmentCache',
+          {
+            type: 'json'
+          }
+        )
+      ) || {};
+  } catch {
+    cache = {};
+  }
+
+  const perDestination =
+    Math.max(
+      5,
+      Math.min(
+        100,
+        Number(
+          process.env
+            .SMART_EDITORIAL_PER_DESTINATION
+        ) || 30
+      )
+    );
+
+  const batchSize =
+    Math.max(
+      1,
+      Math.min(
+        12,
+        Number(
+          process.env
+            .SMART_EDITORIAL_BATCH_SIZE
+        ) || 12
+      )
+    );
+
+  const plan =
+    prepareSmartEditorialPlan({
+      clusters,
+      sources,
+      cache,
+      perDestination
+    });
+
+  const stats = {
+    cacheHits:
+      plan.cacheHits,
+    selected:
+      plan.selected.length,
+    assessed: 0,
+    failed: 0,
+    
+    aiCalls: 0,
+pending:
+      plan.pendingCount,
+    providerIds: []
+  };
+
+  if (
+    !plan.selected.length ||
+    !providers.length
+  ) {
+    return stats;
+  }
+
+  let cacheChanged =
+    false;
+
+  const providerIds =
+    new Set();
+
+  for (
+    let offset = 0;
+    offset <
+      plan.selected.length;
+    offset += batchSize
+  ) {
+    const batch =
+      plan.selected.slice(
+        offset,
+        offset +
+          batchSize
+      );
+
+    notify?.(
+      'smart-editorial',
+      `AI editorial assessment ${Math.min(offset + batch.length, plan.selected.length)}/${plan.selected.length}…`,
+      {
+        current:
+          Math.min(
+            offset +
+              batch.length,
+            plan.selected.length
+          ),
+        total:
+          plan.selected.length
+      }
+    );
+
+    const prompt =
+      buildSmartEditorialPrompt(
+        batch
+      );
+
+    const group = {
+      id:
+        `editorial_${offset}`,
+      articles:
+        batch.map(
+          item =>
+            item.cluster
+        ),
+      // Editorial AI must not mutate clustering metrics.
+      metrics: null,
+      isFallback:
+        false
+    };
+
+    let accepted =
+      null;
+    let lastError =
+      null;
+
+    for (
+      let providerIndex = 0;
+      providerIndex <
+        providers.length &&
+      !accepted;
+      providerIndex++
+    ) {
+      const provider =
+        providers[
+          providerIndex
+        ];
+
+      group.isFallback =
+        providerIndex > 0;
+
+      const attempts =
+        Math.max(
+          1,
+          Number(
+            provider.maxRetries ||
+            0
+          ) + 1
+        );
+
+      for (
+        let attempt = 1;
+        attempt <=
+          attempts;
+        attempt++
+      ) {
+        await recordProviderAttempt(
+          db,
+          provider
+        );
+
+        try {
+          const raw =
+            await callVerificationProvider(
+              provider,
+              group,
+              keyManager,
+              null,
+              {
+                prompt,
+                schema:
+                  SMART_EDITORIAL_RESPONSE_SCHEMA,
+                operation:
+                  'smart-editorial-assessment',
+                editorialReview:
+                  true,
+            onRequest: () => {
+              stats.aiCalls++;
+            },
+                maxOutputTokens:
+                  2048
+              }
+            );
+
+          const rows =
+            parseSmartEditorialResponse(
+              raw,
+              batch
+            );
+
+          await recordProviderSuccess(
+            db,
+            provider
+          );
+
+          accepted = {
+            rows,
+            provider
+          };
+
+          providerIds.add(
+            provider.id
+          );
+
+          break;
+        } catch (error) {
+          lastError =
+            error;
+
+          await recordProviderError(
+            db,
+            provider,
+            error
+          );
+
+          console.warn(
+            `[SMART EDITORIAL] ${provider.id} model=${provider.model} attempt=${attempt}/${attempts}: ${error?.message || error}`
+          );
+
+          if (
+            provider.type ===
+              'gemini' &&
+            keyManager
+              ?.reportError &&
+            !isModelOutputError(
+              error
+            )
+          ) {
+            keyManager.reportError(
+              error
+            );
+          }
+        }
+      }
+    }
+
+    if (!accepted) {
+      stats.failed +=
+        batch.length;
+
+      for (
+        const item
+        of batch
+      ) {
+        cache[item.key] = {
+          policyVersion:
+            SMART_EDITORIAL_POLICY_VERSION,
+          failedAt:
+            new Date()
+              .toISOString(),
+          error:
+            String(
+              lastError?.message ||
+              'all_providers_failed'
+            ).slice(
+              0,
+              300
+            )
+        };
+      }
+
+      cacheChanged =
+        true;
+
+      continue;
+    }
+
+    for (
+      const item
+      of batch
+    ) {
+      const row =
+        accepted.rows.get(
+          item.id
+        );
+
+      const assessment = {
+        policyVersion:
+          SMART_EDITORIAL_POLICY_VERSION,
+
+        revision:
+          item.key,
+
+        eligibleDestinations:
+          item.eligibleDestinations,
+
+        destination:
+          row.destination,
+
+        relevance:
+          row.relevance,
+
+        impact:
+          row.impact,
+
+        novelty:
+          row.novelty,
+
+        confidence:
+          row.confidence,
+
+        exclude:
+          row.exclude,
+
+        reason:
+          row.reason,
+
+        providerId:
+          accepted
+            .provider
+            .id,
+
+        model:
+          accepted
+            .provider
+            .model,
+
+        assessedAt:
+          new Date()
+            .toISOString()
+      };
+
+      applySmartEditorialAssessment(
+        item.cluster,
+        assessment
+      );
+
+      cache[item.key] = {
+        createdAt:
+          Date.now(),
+        assessment
+      };
+
+      stats.assessed++;
+      cacheChanged =
+        true;
+    }
+  }
+
+  stats.providerIds =
+    [
+      ...providerIds
+    ];
+
+  if (cacheChanged) {
+    await db.put(
+      'smartEditorialAssessmentCache',
+      JSON.stringify(
+        cache
+      )
+    );
+  }
+
+  return stats;
 }
 
 async function attemptProviderVerification(
@@ -11717,6 +12098,41 @@ export function createSmartNewsEngine({
       let currentLinks = finalSnapshot.currentLinks;
       let storyRelationshipsForSnapshot =
         finalSnapshot.storyRelationships;
+
+      const editorialStats =
+        await assessSmartEditorialClusters({
+          clusters,
+          sources:
+            smartSources,
+          providers,
+          keyManager,
+          db,
+          notify,
+          metrics
+        });
+
+      metrics.editorialCacheHits =
+        editorialStats.cacheHits;
+
+      metrics.editorialAssessed =
+        editorialStats.assessed;
+
+      
+
+      metrics.editorialAiCalls =
+        editorialStats.aiCalls;
+metrics.editorialAssessmentFailures =
+        editorialStats.failed;
+
+      metrics.editorialAssessmentPending =
+        editorialStats.pending;
+
+      console.log(
+        '[SMART EDITORIAL]',
+        JSON.stringify(
+          editorialStats
+        )
+      );
 
       const aiProvidersUsed =
         [

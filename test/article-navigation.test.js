@@ -308,12 +308,16 @@ test('successful Board removal uses one compact request and preserves the loaded
     app.fetchData = () => { throw Error('Removal must not refetch'); };
     let finish, calls = 0;
     app.cacheRequest = (url, options) => {
-        calls++; assert.equal(JSON.parse(options.body).compact, true);
+        calls++;
+        assert.equal(JSON.parse(options.body).compact, true);
+        assert.equal(options.keepalive, true);
         return new Promise(resolve => { finish = resolve; });
     };
     const removal = app.removeArticleFromBoard();
     assert.equal(app.boardSavePending, true); assert.equal(app.boardSavingFolder, null);
-    assert.equal(app.cacheNotice, ''); assert.equal(app.articles.length, 3);
+    assert.equal(app.cacheNotice, '');
+// Optimistic Board removal hides the row before persistence completes.
+assert.equal(app.articles.length, 2);
     await app.removeArticleFromBoard(); assert.equal(calls, 1);
     finish({ thread_id: 'voz.vn:thread:123', url: article.link, folder: null, cacheMember: { thread_id: 'voz.vn:thread:123', in_cache: false } });
     await removal;

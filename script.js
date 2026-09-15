@@ -16,22 +16,54 @@
                 smartTabMode: 'top',
                 smartModeWriteQueue: Promise.resolve(),
                 smartModeWriteVersion: 0,
+                smartModeRetryTimer: null,
                 async setSmartTabMode(mode) {
                     if (!['top','classic'].includes(mode) || mode === this.smartTabMode) return;
                     const tab = this.selectedFilterValue;
-                    const previous = this.smartTabMode;
                     const writeVersion = ++this.smartModeWriteVersion;
+                    if (this.smartModeRetryTimer) {
+                        clearTimeout(this.smartModeRetryTimer);
+                        this.smartModeRetryTimer = null;
+                    }
                     this.hideTooltip();
                     this.smartTabMode = mode;
-                    this.userPreferences.smartTabModes = { ...(this.userPreferences.smartTabModes || {}), [tab]: mode };
-                    this.pendingPreferences.smartTabModes = { ...this.userPreferences.smartTabModes };
+
+                    // Top / Classic is one Smart-wide view preference.
+                    // Keep the destination keys synchronized for backward
+                    // compatibility with older stored preferences/server code.
+                    const synchronizedModes = {
+                        ...(this.userPreferences.smartTabModes || {}),
+                        __all: mode
+                    };
+                    for (const key of [
+                        'news_vietnam',
+                        'news_world',
+                        'finance_vietnam',
+                        'finance_global',
+                        'tech'
+                    ]) {
+                        synchronizedModes[key] = mode;
+                    }
+
+                    this.userPreferences.smartTabModes = synchronizedModes;
+                    this.pendingPreferences.smartTabModes = {
+                        ...synchronizedModes
+                    };
                     this.topStoryError = '';
                     // Paint first. Persistence and briefing requests must not gate the toggle.
                     this.smartViewToken = '';
                     this.fetchData();
                     const modes = { ...this.userPreferences.smartTabModes };
                     this.smartModeWriteQueue = this.smartModeWriteQueue.catch(() => {}).then(async () => {
-                        const response = await fetch('/api/user-preferences', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: 'smartTabModes', value: modes }) });
+                        const response = await fetch('/api/user-preferences', {
+                            method: 'POST',
+                            keepalive: true,
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                key: 'smartTabModes',
+                                value: modes
+                            })
+                        });
                         if (!response.ok) throw new Error('Could not save this view. Please retry.');
                     });
                     try {
@@ -40,26 +72,108 @@
                     }
                     catch (error) {
                         if (writeVersion !== this.smartModeWriteVersion) return;
-                        this.topStoryError = error.message;
-                        if (this.selectedFilterValue === tab && this.smartTabMode === mode) {
-                            this.smartTabMode = previous;
-                            this.userPreferences.smartTabModes[tab] = previous;
-                            this.pendingPreferences.smartTabModes = { ...this.userPreferences.smartTabModes };
-                        }
+
+                        // The selected Smart view is already valid and rendered.
+                        // Persistence failure is not a Top Stories content failure,
+                        // so keep the user's choice and retry quietly.
+                        console.warn(
+                            '[SMART VIEW] Preference save failed; keeping selected view.',
+                            error
+                        );
+
+                        clearTimeout(this.smartModeRetryTimer);
+
+                        this.smartModeRetryTimer = setTimeout(() => {
+                            this.smartModeRetryTimer = null;
+
+                            const pending =
+                                this.pendingPreferences.smartTabModes;
+
+                            if (!pending) return;
+
+                            const retryModes = { ...pending };
+
+                            this.smartModeWriteQueue =
+                                this.smartModeWriteQueue
+                                    .catch(() => {})
+                                    .then(async () => {
+                                        const response = await fetch(
+                                            '/api/user-preferences',
+                                            {
+                                                method: 'POST',
+                                                keepalive: true,
+                                                headers: {
+                                                    'Content-Type':
+                                                        'application/json'
+                                                },
+                                                body: JSON.stringify({
+                                                    key: 'smartTabModes',
+                                                    value: retryModes
+                                                })
+                                            }
+                                        );
+
+                                        if (!response.ok) {
+                                            throw new Error(
+                                                `Smart view preference save failed (${response.status})`
+                                            );
+                                        }
+                                    });
+
+                            void this.smartModeWriteQueue
+                                .then(() => {
+                                    const latest =
+                                        this.pendingPreferences.smartTabModes;
+
+                                    if (
+                                        latest &&
+                                        JSON.stringify(latest) ===
+                                            JSON.stringify(retryModes)
+                                    ) {
+                                        delete this.pendingPreferences.smartTabModes;
+                                    }
+                                })
+                                .catch(retryError => {
+                                    console.warn(
+                                        '[SMART VIEW] Preference retry deferred.',
+                                        retryError
+                                    );
+                                });
+                        }, 5000);
                     }
                 },
                 smartRegion: 'world',
                 topUpdatesAvailable: false,
                 storyAnalysisOpen: {},
+                storyCoverageOpen: {},
                 async refreshTopStories() {
                     this.smartViewToken = '';
                     this.storyAnalysisOpen = {};
                     this.topUpdatesAvailable = false;
                     await this.fetchData();
                 },
+                async setSmartRegion(region) {
+                    const normalized =
+                        region === 'vietnam' ? 'vietnam' : 'world';
+
+                    if (
+                        normalized === this.smartRegion &&
+                        this.selectedFilterType === 'smart' &&
+                        this.smartSection === 'tech'
+                    ) {
+                        return;
+                    }
+
+                    this.smartRegion = normalized;
+                    this.smartViewToken = '';
+                    this.storyAnalysisOpen = {};
+                    this.topUpdatesAvailable = false;
+                    await this.fetchData();
+                },
+
+                // Backward-compatible alias for any older callers.
                 async setTopRegion(region) {
-                    this.smartRegion = region;
-                    await this.refreshTopStories();
+                    await this.setSmartRegion(region);
                 },
                 storyExcerpt(article) {
                     return (this.briefingFor(article).sections || []).find(s => s.label === 'What happened')?.text || this.stripHtml(article.content);
@@ -67,41 +181,473 @@
                 storyAnalysis(article) {
                     const briefing = this.briefingFor(article);
                     if (briefing.analysisStatus !== 'evaluated') return [];
-                    const sections = (briefing.sections || []).filter(s => s.label !== 'What happened' && s.text?.trim());
+
+                    const sections = (briefing.sections || [])
+                        .filter(section =>
+                            section.label !== 'What happened' &&
+                            section.text?.trim()
+                        );
+
                     const timeline = article.topStory?.timeline || [];
-                    const timelineReview = briefing.analysisReview?.find(s => s.label === 'Timeline');
-                    const useTimeline = timelineReview ? timelineReview.useful : timeline.length > 1;
-                    const byLabel = new Map(sections.map(s => [s.label, s]));
-                    if (useTimeline && timeline.length > 1 && !byLabel.has('Timeline') && !article.topStory?.conflicts?.length) byLabel.set('Timeline', { ...byLabel.get('Timeline'), label:'Timeline', timeline });
+                    const timelineReview =
+                        briefing.analysisReview?.find(
+                            section => section.label === 'Timeline'
+                        );
+
+                    const useTimeline = timelineReview
+                        ? timelineReview.useful
+                        : timeline.length > 1;
+
+                    const byLabel = new Map(
+                        sections.map(section => [
+                            section.label,
+                            section
+                        ])
+                    );
+
+                    if (
+                        useTimeline &&
+                        timeline.length > 1 &&
+                        !byLabel.has('Timeline') &&
+                        !article.topStory?.conflicts?.length
+                    ) {
+                        byLabel.set('Timeline', {
+                            label: 'Timeline',
+                            text: '',
+                            timeline
+                        });
+                    }
+
                     return [...byLabel.values()];
                 },
-                storyAnalysisNotice(article) {
-                    const briefing = this.briefingFor(article);
-                    const vietnamese = article.topStory?.feed?.endsWith('_vietnam');
-                    if (briefing.analysisStatus === 'unavailable') return vietnamese ? 'Phân tích chưa khả dụng' : 'Analysis unavailable';
-                    if (briefing.analysisStatus === 'evaluated' || briefing.analysisStatus === 'not-applicable') return '';
-                    if (briefing.generationState === 'queued' && Number.isInteger(briefing.queueAhead) && briefing.queueAhead >= 0) return vietnamese ? `✨ Đang chờ phân tích… · Còn ${briefing.queueAhead} bài phía trước` : `✨ Waiting for analysis… · ${briefing.queueAhead} ahead`;
-                    if (briefing.generationStage === 'synthesizing') return vietnamese ? '✨ Đang tổng hợp nguồn…' : '✨ Synthesizing sources…';
-                    if (briefing.generationState === 'generating') {
-                        const progress = Number.isFinite(briefing.progressPercent) && briefing.progressPercent >= 0 && briefing.progressPercent <= 100 ? ` · ${briefing.progressPercent}%` : '';
-                        return (vietnamese ? '✨ Đang phân tích…' : '✨ Generating analysis…') + progress;
-                    }
-                    return vietnamese ? '✨ Đang chuẩn bị phân tích…' : '✨ Preparing analysis…';
-                    return '';
+
+                storyAnalysisByLabel(article, label) {
+                    return this.storyAnalysis(article)
+                        .find(section => section.label === label) || null;
                 },
+
+                storyPrimaryAnalysis(article) {
+                    const preferred = [
+                        'Why it matters',
+                        'What changed',
+                        'What to watch'
+                    ];
+
+                    return preferred
+                        .map(label =>
+                            this.storyAnalysisByLabel(article, label)
+                        )
+                        .filter(Boolean);
+                },
+
+                storyExtraAnalysis(article) {
+                    const primary = new Set([
+                        'Why it matters',
+                        'What changed',
+                        'What to watch'
+                    ]);
+
+                    return this.storyAnalysis(article)
+                        .filter(section => !primary.has(section.label));
+                },
+
+                storyAnalysisOrdered(article) {
+                    return [
+                        ...this.storyPrimaryAnalysis(article),
+                        ...this.storyExtraAnalysis(article)
+                    ];
+                },
+
+                activeStoryAnalysisLabel(article) {
+                    const id =
+                        article.clusterId ||
+                        article.link;
+
+                    const sections =
+                        this.storyAnalysisOrdered(article);
+
+                    if (!sections.length) return null;
+
+                    const selected =
+                        this.storyAnalysisOpen[id];
+
+                    if (
+                        selected &&
+                        sections.some(
+                            section => section.label === selected
+                        )
+                    ) {
+                        return selected;
+                    }
+
+                    return sections[0].label;
+                },
+
+                activeStoryAnalysisSection(article) {
+                    const label =
+                        this.activeStoryAnalysisLabel(article);
+
+                    return label
+                        ? this.storyAnalysis(article)
+                            .find(section => section.label === label) || null
+                        : null;
+                },
+
+                storyMoreAnalysisActive(article) {
+                    const active =
+                        this.activeStoryAnalysisLabel(article);
+
+                    return this.storyExtraAnalysis(article)
+                        .some(section => section.label === active);
+                },
+
+                openMoreStoryAnalysis(article) {
+                    const extra =
+                        this.storyExtraAnalysis(article);
+
+                    if (!extra.length) return;
+
+                    const active =
+                        this.activeStoryAnalysisLabel(article);
+
+                    const selected =
+                        extra.some(section => section.label === active)
+                            ? active
+                            : extra[0].label;
+
+                    this.toggleStoryAnalysis(
+                        article,
+                        selected
+                    );
+                },
+
+                advanceStoryAnalysis(article) {
+                    const sections =
+                        this.storyAnalysisOrdered(article);
+
+                    if (sections.length < 2) return;
+
+                    const current =
+                        this.activeStoryAnalysisLabel(article);
+
+                    const currentIndex =
+                        Math.max(
+                            0,
+                            sections.findIndex(
+                                section =>
+                                    section.label === current
+                            )
+                        );
+
+                    const next =
+                        sections[
+                            (currentIndex + 1) %
+                            sections.length
+                        ];
+
+                    if (next) {
+                        this.toggleStoryAnalysis(
+                            article,
+                            next.label
+                        );
+                    }
+                },
+
+                storyKeyFactParts(value) {
+                    const text =
+                        this.stripHtml(
+                            typeof value === 'string'
+                                ? value
+                                : value?.text || ''
+                        )
+                        .replace(/\s+/g, ' ')
+                        .trim();
+
+                    if (!text) {
+                        return {
+                            value: '',
+                            label: ''
+                        };
+                    }
+
+                    const words = text.split(' ');
+
+                    if (words.length === 1) {
+                        return {
+                            value: words[0],
+                            label: ''
+                        };
+                    }
+
+                    let cut = 2;
+
+                    // 188 drones launched
+                    // +30% battery life
+                    // 48MP main camera
+                    if (/^[+\-−]?\d/i.test(words[0])) {
+                        cut = 1;
+                    }
+
+                    // A19 Pro new chip
+                    else if (
+                        /^[A-Za-z]{1,6}\d/i.test(words[0]) &&
+                        words[1] &&
+                        /^(?:pro|max|ultra|plus|mini)$/i.test(words[1])
+                    ) {
+                        cut = 2;
+                    }
+
+                    else {
+                        cut = Math.min(
+                            2,
+                            words.length - 1
+                        );
+                    }
+
+                    return {
+                        value:
+                            words.slice(0, cut).join(' '),
+                        label:
+                            words.slice(cut).join(' ')
+                    };
+                },
+
+                storyKeyFactIcon(value) {
+                    const text =
+                        this.stripHtml(
+                            typeof value === 'string'
+                                ? value
+                                : value?.text || ''
+                        ).toLowerCase();
+
+                    if (
+                        /battery|pin\b|mah\b/.test(text)
+                    ) return '🔋';
+
+                    if (
+                        /camera|photo|ảnh|mp\b/.test(text)
+                    ) return '📷';
+
+                    if (
+                        /chip|processor|cpu|gpu|soc\b/.test(text)
+                    ) return '▣';
+
+                    if (
+                        /drone|missile|rocket|tên lửa|máy bay/.test(text)
+                    ) return '✦';
+
+                    if (
+                        /power|electric|outage|điện/.test(text)
+                    ) return '⚡';
+
+                    if (
+                        /defen|security|intercept|phòng không|an ninh/.test(text)
+                    ) return '◆';
+
+                    if (
+                        /people|person|region|city|người|khu vực|thành phố/.test(text)
+                    ) return '●';
+
+                    return '✦';
+                },
+
+                storyKeyFacts(article) {
+                    return (
+                        this.briefingFor(article).keyFacts ||
+                        []
+                    )
+                    .map((fact, index) => {
+                        const text =
+                            typeof fact === 'string'
+                                ? fact
+                                : fact?.text || '';
+
+                        const parts =
+                            this.storyKeyFactParts(text);
+
+                        return {
+                            id:
+                                `${index}:${text}`,
+                            text,
+                            value:
+                                parts.value,
+                            label:
+                                parts.label,
+                            icon:
+                                this.storyKeyFactIcon(text)
+                        };
+                    })
+                    .filter(fact => fact.text);
+                },
+
+                storyAnalysisNotice(article) {
+                    const briefing =
+                        this.briefingFor(article);
+
+                    const vietnamese =
+                        article.topStory?.feed
+                            ?.endsWith('_vietnam');
+
+                    if (
+                        briefing.analysisStatus ===
+                        'unavailable'
+                    ) {
+                        return vietnamese
+                            ? 'Phân tích chưa khả dụng'
+                            : 'Analysis unavailable';
+                    }
+
+                    if (
+                        briefing.analysisStatus ===
+                            'evaluated' ||
+                        briefing.analysisStatus ===
+                            'not-applicable'
+                    ) {
+                        return '';
+                    }
+
+                    if (
+                        briefing.generationState === 'queued' &&
+                        Number.isInteger(briefing.queueAhead) &&
+                        briefing.queueAhead >= 0
+                    ) {
+                        return vietnamese
+                            ? `✨ Đang chờ phân tích… · Còn ${briefing.queueAhead} bài phía trước`
+                            : `✨ Waiting for analysis… · ${briefing.queueAhead} ahead`;
+                    }
+
+                    if (
+                        briefing.generationStage ===
+                        'synthesizing'
+                    ) {
+                        return vietnamese
+                            ? '✨ Đang tổng hợp nguồn…'
+                            : '✨ Synthesizing sources…';
+                    }
+
+                    if (
+                        briefing.generationState ===
+                        'generating'
+                    ) {
+                        const progress =
+                            Number.isFinite(
+                                briefing.progressPercent
+                            ) &&
+                            briefing.progressPercent >= 0 &&
+                            briefing.progressPercent <= 100
+                                ? ` · ${briefing.progressPercent}%`
+                                : '';
+
+                        return (
+                            vietnamese
+                                ? '✨ Đang phân tích…'
+                                : '✨ Generating analysis…'
+                        ) + progress;
+                    }
+
+                    return vietnamese
+                        ? '✨ Đang chuẩn bị phân tích…'
+                        : '✨ Preparing analysis…';
+                },
+
                 storyCoverage(article) {
                     const groups = new Map();
-                    for (const source of [article, ...(article.relatedArticles || [])]) {
+
+                    for (
+                        const source of [
+                            article,
+                            ...(article.relatedArticles || [])
+                        ]
+                    ) {
                         let identity;
-                        try { identity = new URL(source.domain ? `https://${source.domain}` : source.link).hostname.replace(/^(www\.|m\.)/, ''); } catch { identity = source.feedTitle || source.feedUrl; }
-                        if (!groups.has(identity)) groups.set(identity, {identity, name:this.stripHtml(source.feedTitle), articles:[]});
-                        if (!groups.get(identity).articles.some(a=>a.link===source.link)) groups.get(identity).articles.push(source);
+
+                        try {
+                            identity = new URL(
+                                source.domain
+                                    ? `https://${source.domain}`
+                                    : source.link
+                            )
+                            .hostname
+                            .replace(/^(www\.|m\.)/, '');
+                        }
+                        catch {
+                            identity =
+                                source.feedTitle ||
+                                source.feedUrl ||
+                                source.link;
+                        }
+
+                        if (!identity) continue;
+
+                        if (!groups.has(identity)) {
+                            const name =
+                                this.stripHtml(
+                                    source.feedTitle ||
+                                    source.sourceName ||
+                                    source.source ||
+                                    identity
+                                );
+
+                            groups.set(identity, {
+                                identity,
+                                name,
+                                icon:
+                                    source.feedIcon ||
+                                    source.icon ||
+                                    this.smartSourceIcon({
+                                        domain: identity
+                                    }),
+                                articles: []
+                            });
+                        }
+
+                        const publisher =
+                            groups.get(identity);
+
+                        if (
+                            !publisher.articles.some(
+                                item =>
+                                    item.link === source.link
+                            )
+                        ) {
+                            publisher.articles.push(source);
+                        }
+
+                        if (
+                            !publisher.icon &&
+                            source.feedIcon
+                        ) {
+                            publisher.icon =
+                                source.feedIcon;
+                        }
                     }
+
                     return [...groups.values()];
                 },
+
+                toggleStoryCoverage(article) {
+                    const id =
+                        article.clusterId ||
+                        article.link;
+
+                    this.storyCoverageOpen = {
+                        ...this.storyCoverageOpen,
+                        [id]:
+                            !this.storyCoverageOpen[id]
+                    };
+                },
+
                 toggleStoryAnalysis(article, label) {
-                    const id = article.clusterId || article.link;
-                    this.storyAnalysisOpen[id] = this.storyAnalysisOpen[id] === label ? null : label;
+                    const id =
+                        article.clusterId ||
+                        article.link;
+
+                    // Tabs always keep one section selected, matching the
+                    // reference design rather than collapsing on second tap.
+                    this.storyAnalysisOpen = {
+                        ...this.storyAnalysisOpen,
+                        [id]: label
+                    };
                 },
                 nextStoryImage(event, article) {
                     if (!this.usesTopStories) { event.target.src = '/public/default.jpg'; return; }
@@ -1565,7 +2111,10 @@
                     }
                     this._preserveSmartVersionCall = false;
                     if ((isLoadMore || (skipPageReset && this.currentPage > 1)) && this.smartViewToken) params.set('smartView', this.smartViewToken);
-                    if (this.selectedFilterType === 'smart') { params.set('smartMode', this.smartTabMode); if (this.usesTopStories) params.set('smartRegion', this.smartRegion); }
+                    if (this.selectedFilterType === 'smart') {
+                        params.set('smartMode', this.smartTabMode);
+                        params.set('smartRegion', this.smartRegion);
+                    }
                     params.append('_t', Date.now().toString());
 
                     try {
@@ -1624,7 +2173,9 @@
                             if (smartTiming) { smartTiming.fetchMs=performance.now()-smartTiming.startedAt; smartTiming.renderStartedAt=performance.now(); }
                             this._renderedTopContext = topContext;
                             this.topStories = data.topStories || [];
-                            this.smartTabMode = this.pendingPreferences.smartTabModes?.[this.selectedFilterValue] || data.smartTabMode || 'top';
+                            if (['top', 'classic'].includes(data.smartTabMode)) {
+                                this.smartTabMode = data.smartTabMode;
+                            }
                             this.smartViewToken = data.smartViewToken || '';
                             this.rankingPending = data.rankingPending === true;
                             this.topUpdatesAvailable = data.updatesAvailable === true;
@@ -1812,7 +2363,9 @@
                             news_world: 'Smart News · World',
                             finance_vietnam: 'Smart Finance · Vietnam',
                             finance_global: 'Smart Finance · Global',
-                            tech: 'Smart Technology'
+                            tech: this.smartRegion === 'vietnam'
+                                ? 'Smart Technology · Vietnam'
+                                : 'Smart Technology · Global'
                         };
                         return labels[this.selectedFilterValue] || 'Smart News';
                     }
@@ -1860,9 +2413,28 @@
                     this.smartViewToken = '';
                     this.topStoryError = '';
                     if (this.briefingRefreshTimer) clearTimeout(this.briefingRefreshTimer);
+                    const wasSmart =
+                        this.selectedFilterType === 'smart';
+                    const previousSmartMode = this.smartTabMode;
+
                     this.selectedFilterType = type;
                     this.selectedFilterValue = value;
-                    this.smartTabMode = this.userPreferences.smartTabModes?.[value] || 'top';
+
+                    if (type === 'smart') {
+                        const storedMode =
+                            this.userPreferences.smartTabModes?.__all ||
+                            this.userPreferences.smartTabModes?.[value];
+
+                        this.smartTabMode =
+                            wasSmart &&
+                            ['top', 'classic'].includes(previousSmartMode)
+                                ? previousSmartMode
+                                : (
+                                    ['top', 'classic'].includes(storedMode)
+                                        ? storedMode
+                                        : 'top'
+                                );
+                    }
                     window.location.hash = `${type}${value ? '/' + encodeURIComponent(value) : ''}`;
                     this.currentPage = 1;
                     this.hasMore = false;
@@ -2110,26 +2682,142 @@
 
                 async assignBoardFolder(folderName) {
                     if (this.boardSavePending) return;
-                    if (!this.boardModalArticle) { this.cacheNotice = 'Choose an article before saving to Board.'; return; }
+                    if (!this.boardModalArticle) {
+                        this.cacheNotice = 'Choose an article before saving to Board.';
+                        return;
+                    }
+
+                    const source = this.boardModalArticle;
+                    const id = this.boardIdentity(source);
+                    const optimisticUrl = source.originalLink || source.link;
+
+                    /*
+                     * Optimistic Board mutation:
+                     * make Save / Remove feel instant while durable persistence
+                     * completes in the background.
+                     */
+                    const rollback = {
+                        boardStates: [...this.boardStates],
+                        userPreferences: {
+                            ...this.userPreferences,
+                            boardFolders: [...(this.userPreferences.boardFolders || [])],
+                            boardFolderMappings: {
+                                ...(this.userPreferences.boardFolderMappings || {})
+                            }
+                        },
+                        articles: [...this.articles],
+                        cacheMembers: { ...this.cacheMembers }
+                    };
+
                     this.boardSavePending = true;
                     this.boardMutationVersion++;
                     this.boardSavingFolder = folderName;
                     this.cacheNotice = '';
+
+                    /*
+                     * Apply the compact result locally before doing any network
+                     * or disk work.
+                     */
+                    this.applyBoardFolderResult(
+                        {
+                            thread_id: id,
+                            url: optimisticUrl,
+                            folder: folderName
+                        },
+                        source,
+                        folderName
+                    );
+
+                    /*
+                     * Close immediately. The request below may take seconds,
+                     * but the user no longer waits on it.
+                     */
+                    this.boardModalOpen = false;
+
                     try {
-                        const source = this.boardModalArticle;
-                        // Board membership needs article metadata, never rendered HTML or inline images.
+                        // Board membership needs metadata only, never rendered
+                        // HTML or embedded image payloads.
                         const article = {};
-                        for (const key of ['link', 'resolvedLink', 'title', 'feedUrl', 'feedTitle', 'feedCategory', 'pubDate']) {
-                            const value = key === 'link' ? source.originalLink || source.link : source[key];
-                            if (typeof value === 'string') article[key] = value.slice(0, key === 'title' ? 2000 : 4096);
+
+                        for (const key of [
+                            'link',
+                            'resolvedLink',
+                            'title',
+                            'feedUrl',
+                            'feedTitle',
+                            'feedCategory',
+                            'pubDate'
+                        ]) {
+                            const value =
+                                key === 'link'
+                                    ? optimisticUrl
+                                    : source[key];
+
+                            if (typeof value === 'string') {
+                                article[key] = value.slice(
+                                    0,
+                                    key === 'title' ? 2000 : 4096
+                                );
+                            }
                         }
-                        if (typeof source.image === 'string' && /^https?:\/\//i.test(source.image) && source.image.length <= 4096) article.image = source.image;
-                        const data = await this.cacheRequest('/api/board-cache/folder', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ article, folder: folderName, compact: true }) });
-                        this.applyBoardFolderResult(data, source, folderName);
-                        this.boardModalOpen = false;
+
+                        if (
+                            typeof source.image === 'string' &&
+                            /^https?:\/\//i.test(source.image) &&
+                            source.image.length <= 4096
+                        ) {
+                            article.image = source.image;
+                        }
+
+                        const data = await this.cacheRequest(
+                            '/api/board-cache/folder',
+                            {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json'
+                                },
+                                body: JSON.stringify({
+                                    article,
+                                    folder: folderName,
+                                    compact: true
+                                }),
+                                keepalive: true
+                            }
+                        );
+
+                        /*
+                         * Reconcile with the authoritative server result.
+                         * Usually this is now a no-op visually.
+                         */
+                        this.applyBoardFolderResult(
+                            data,
+                            source,
+                            folderName
+                        );
+
                         this.cacheNotice = '';
-                    } catch (e) { this.cacheNotice = e.message; }
-                    finally { this.boardSavePending = false; this.boardSavingFolder = null; }
+                    } catch (e) {
+                        /*
+                         * Durable save failed: restore exactly what the user had
+                         * before the optimistic mutation.
+                         */
+                        this.boardStates = rollback.boardStates;
+                        this.userPreferences = rollback.userPreferences;
+                        this.articles = rollback.articles;
+                        this.cacheMembers = rollback.cacheMembers;
+
+                        this.cacheNotice =
+                            e?.message ||
+                            'Could not save Board changes';
+
+                        /*
+                         * Re-open so the failure is visible and retryable.
+                         */
+                        this.boardModalOpen = true;
+                    } finally {
+                        this.boardSavePending = false;
+                        this.boardSavingFolder = null;
+                    }
                 },
 
                 createNewBoardFolder() {

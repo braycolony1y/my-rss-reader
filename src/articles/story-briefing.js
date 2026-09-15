@@ -135,6 +135,36 @@ function usablePreviousBriefing(previous, cluster) {
 export function createStoryBriefings({ db, generate, loadSource, concurrency = 2 } = {}) {
     const jobs = new Map(), retries = new Map(), failures = new Map();
     let running = 0, cachePromise, persistence = Promise.resolve(), providerRetryAt = 0;
+    let activeViewKey = null;
+
+    const effectivePriority = job => {
+        const base = Number.isFinite(job?.priority)
+            ? job.priority
+            : 1;
+
+        // Visible work belonging to the currently viewed Top Stories page
+        // outranks visible work left behind by previously visited pages/tabs.
+        //
+        // base 2 + active boost 2 = effective 4
+        // stale visible             = effective 2
+        // ordinary                  = effective 1
+        // look-ahead                = effective 0
+        return (
+            base >= 2 &&
+            job?.viewKey &&
+            job.viewKey === activeViewKey
+        )
+            ? base + 2
+            : base;
+    };
+
+    const queuedJobs = () =>
+        [...jobs.values()]
+            .filter(job => job.state === 'queued')
+            .sort((a, b) =>
+                effectivePriority(b) - effectivePriority(a) ||
+                a.queuedAt - b.queuedAt
+            );
     const cache = () => cachePromise ||= db.get('storyBriefings', {type:'json'}).then(value=>value || {});
     const persist = (entries, job, result) => {
         // Merge inside the publication queue so concurrent completions cannot
@@ -202,13 +232,20 @@ export function createStoryBriefings({ db, generate, loadSource, concurrency = 2
     }
     function drain() {
         while (running < Math.max(1,concurrency) && Date.now() >= providerRetryAt) {
-            const job = [...jobs.values()].filter(j=>j.state==='queued').sort((a,b)=>b.priority-a.priority || a.queuedAt-b.queuedAt)[0];
+            const job = queuedJobs()[0];
             if (!job) return;
             job.state='generating'; running++;
             run(job).finally(()=>{jobs.delete(job.key);running--;drain();});
         }
     }
     return {
+        setActiveView(viewKey) {
+            activeViewKey =
+                typeof viewKey === 'string' && viewKey
+                    ? viewKey
+                    : null;
+        },
+
         async peek(cluster,tab) {
             const entries=await cache(), revision=storyRevision(cluster);
             return entries[`rank:${tab}:${revision}`] || entries[`${tab}:${revision}`] || null;
@@ -232,17 +269,60 @@ export function createStoryBriefings({ db, generate, loadSource, concurrency = 2
             const unsafePrevious = cluster.topStory?.timeline?.at(-1)?.correction === true;
             const previous=unsafePrevious ? null : cluster.topStory ? usablePreviousBriefing(previousCandidate,cluster) : previousCandidate;
             if (options.generate!==false) {
-                const existing=jobs.get(key);
-                if (existing) existing.priority=Math.max(existing.priority,options.priority ?? 1);
-                else if (Date.now()>Math.max(retries.get(key)||0,providerRetryAt)) jobs.set(key,{key,latestKey,cluster,tab,version,priority:options.priority ?? 1,queuedAt:Date.now(),state:'queued'});
+                const existing = jobs.get(key);
+                const requestedPriority = options.priority ?? 1;
+
+                if (existing) {
+                    existing.priority = Math.max(
+                        existing.priority,
+                        requestedPriority
+                    );
+
+                    // A job discovered earlier by look-ahead or another page can
+                    // become current-visible later. Only the currently active
+                    // view may take ownership, preventing delayed stale requests
+                    // from demoting a newly promoted job.
+                    if (
+                        options.viewKey &&
+                        (
+                            options.viewKey === activeViewKey ||
+                            !existing.viewKey
+                        )
+                    ) {
+                        existing.viewKey = options.viewKey;
+                    }
+                }
+                else if (
+                    Date.now() >
+                    Math.max(
+                        retries.get(key) || 0,
+                        providerRetryAt
+                    )
+                ) {
+                    jobs.set(key, {
+                        key,
+                        latestKey,
+                        cluster,
+                        tab,
+                        version,
+                        priority: requestedPriority,
+                        viewKey: options.viewKey || null,
+                        queuedAt: Date.now(),
+                        state: 'queued'
+                    });
+                }
+
                 drain();
             }
             const job=jobs.get(key);
             const failed=Date.now()<Math.max(retries.get(key)||0,providerRetryAt);
             const generationState=job?.state==='generating' ? 'generating' : failed ? 'failed' : job ? 'queued' : options.generate===false ? 'not-requested' : 'queued';
             const analysisStatus=failed ? 'unavailable' : options.generate===false ? 'not-evaluated' : 'pending';
-            const queue = [...jobs.values()].filter(j=>j.state==='queued').sort((a,b)=>b.priority-a.priority || a.queuedAt-b.queuedAt);
-            const queueAhead = job?.state === 'queued' ? queue.indexOf(job) + running : undefined;
+            const queue = queuedJobs();
+            const queueAhead =
+                job?.state === 'queued'
+                    ? queue.indexOf(job) + running
+                    : undefined;
             const diagnostic={generationState,analysisStatus,generationStage:job?.stage, ...(queueAhead !== undefined ? {queueAhead} : {}),generationError:failures.get(key)||null};
             if (previous) return {...previous,...diagnostic,...(cluster.topStory ? {analysisStatus:'evaluated',stale:true} : {}),keyFacts:cluster.topStory ? previous.keyFacts || [] : cached ? cached.keyFacts : [],status:'stale'};
             return {...diagnostic,status:failed ? 'unavailable' : job ? 'pending' : 'queued',sections:[],sources:[]};

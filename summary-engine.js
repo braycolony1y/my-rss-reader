@@ -29,6 +29,18 @@ const QUEUE_POLL_INTERVAL_MS = 3000;
 const COOLDOWN_BETWEEN_JOBS_MS = 1500;
 const GEMINI_PRIMARY_MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
 
+// A key that has exhausted Gemini quota must not be automatically retried
+// during the next 24 hours, even if the RSS Reader service restarts.
+const GEMINI_QUOTA_COOLDOWN_MS =
+    24 * 60 * 60 * 1000;
+
+const GEMINI_KEY_COOLDOWN_FILE =
+    process.env.GEMINI_KEY_COOLDOWN_FILE ||
+    path.join(
+        ARTICLE_CACHE_DIR,
+        '.gemini-key-cooldowns.json'
+    );
+
 function logOnlineAiUsage(event) {
     console.log('[ONLINE AI]', JSON.stringify({
         at: new Date().toISOString(),
@@ -47,7 +59,140 @@ export class GeminiKeyManager {
         this.requestStartChain = Promise.resolve();
         this.nextRequestStartAt = 0;
         this.rateScheduleVersion = 0;
+
+        this.cooldownState =
+            this._loadCooldownState();
+
         this.loadKeys();
+    }
+
+    _keyCooldownId(key) {
+        // Never persist the actual API key.
+        return createHash('sha256')
+            .update(String(key || ''))
+            .digest('hex');
+    }
+
+    _loadCooldownState() {
+        try {
+            const parsed = JSON.parse(
+                fsSync.readFileSync(
+                    GEMINI_KEY_COOLDOWN_FILE,
+                    'utf8'
+                )
+            );
+
+            return parsed &&
+                typeof parsed === 'object' &&
+                !Array.isArray(parsed)
+                ? parsed
+                : {};
+        } catch {
+            return {};
+        }
+    }
+
+    _saveCooldownState() {
+        try {
+            fsSync.mkdirSync(
+                path.dirname(GEMINI_KEY_COOLDOWN_FILE),
+                { recursive: true }
+            );
+
+            const tmp =
+                `${GEMINI_KEY_COOLDOWN_FILE}.tmp.${process.pid}`;
+
+            fsSync.writeFileSync(
+                tmp,
+                JSON.stringify(
+                    this.cooldownState,
+                    null,
+                    2
+                )
+            );
+
+            fsSync.renameSync(
+                tmp,
+                GEMINI_KEY_COOLDOWN_FILE
+            );
+        } catch (error) {
+            console.warn(
+                '[SUMMARY] Could not persist Gemini key cooldown:',
+                error.message
+            );
+        }
+    }
+
+    _persistKeyCooldown(keyObj) {
+        if (!keyObj?.key || !keyObj.cooldownUntil) return;
+
+        this.cooldownState[
+            this._keyCooldownId(keyObj.key)
+        ] = {
+            cooldownUntil:
+                Number(keyObj.cooldownUntil),
+            lastError:
+                keyObj.lastError || null,
+            lastErrorAt:
+                keyObj.lastErrorAt || null,
+            lastHttpStatus:
+                keyObj.lastHttpStatus || null
+        };
+
+        this._saveCooldownState();
+    }
+
+    _clearKeyCooldown(keyObj) {
+        if (!keyObj?.key) return;
+
+        const id = this._keyCooldownId(keyObj.key);
+
+        if (!(id in this.cooldownState)) return;
+
+        delete this.cooldownState[id];
+        this._saveCooldownState();
+    }
+
+    _applyPersistedCooldowns() {
+        const now = Date.now();
+        let changed = false;
+
+        for (const keyObj of this.keys) {
+            const id =
+                this._keyCooldownId(keyObj.key);
+
+            const saved =
+                this.cooldownState[id];
+
+            if (
+                saved &&
+                Number(saved.cooldownUntil) > now
+            ) {
+                keyObj.status = 'Rate Limited';
+                keyObj.cooldownUntil =
+                    Number(saved.cooldownUntil);
+
+                keyObj.lastError =
+                    saved.lastError || null;
+
+                keyObj.lastErrorAt =
+                    saved.lastErrorAt || null;
+
+                keyObj.lastHttpStatus =
+                    Number(saved.lastHttpStatus) || null;
+
+                continue;
+            }
+
+            if (saved) {
+                delete this.cooldownState[id];
+                changed = true;
+            }
+        }
+
+        if (changed) {
+            this._saveCooldownState();
+        }
     }
 
     loadKeys() {
@@ -79,7 +224,19 @@ export class GeminiKeyManager {
             });
         }
         if (this.keys.length > 0) {
-            this.keys[0].status = 'Active';
+            this._applyPersistedCooldowns();
+
+            const firstAvailable =
+                this.keys.findIndex(
+                    key =>
+                        key.status !== 'Rate Limited' &&
+                        key.status !== 'Error'
+                );
+
+            if (firstAvailable >= 0) {
+                this.activeIdx = firstAvailable;
+                this.keys[firstAvailable].status = 'Active';
+            }
         }
     }
 
@@ -88,9 +245,14 @@ export class GeminiKeyManager {
         
         const now = Date.now();
         this.keys.forEach(k => {
-            if (k.status === 'Rate Limited' && k.cooldownUntil && now > k.cooldownUntil) {
+            if (
+                k.status === 'Rate Limited' &&
+                k.cooldownUntil &&
+                now > k.cooldownUntil
+            ) {
                 k.status = 'Standby';
                 k.cooldownUntil = null;
+                this._clearKeyCooldown(k);
             }
         });
         
@@ -126,7 +288,12 @@ export class GeminiKeyManager {
         
         if (isQuotaError) {
             current.status = 'Rate Limited';
-            current.cooldownUntil = Date.now() + 15 * 60 * 1000; // 15 minutes cooldown
+            current.cooldownUntil =
+                Date.now() +
+                GEMINI_QUOTA_COOLDOWN_MS;
+
+            this._persistKeyCooldown(current);
+
             this.autoSwitchCount++;
             const switched = this._switchToNextAvailableKey();
             console.log(switched
@@ -169,6 +336,7 @@ export class GeminiKeyManager {
             this.activeIdx = index;
             this.keys[index].status = 'Active';
             this.keys[index].cooldownUntil = null;
+            this._clearKeyCooldown(this.keys[index]);
             this.keys[index].lastError = null;
             this.keys[index].lastErrorAt = null;
             this.keys[index].lastHttpStatus = null;
@@ -205,16 +373,35 @@ export class GeminiKeyManager {
         this.nextRequestStartAt = Math.max(this.nextRequestStartAt, Date.now() + delay);
     }
 
-    reportSharedRateLimit(errorObj, cooldownMs = 15 * 60 * 1000) {
-        const until = Date.now() + Math.max(60000, Number(cooldownMs) || 0);
+    reportSharedRateLimit(
+        errorObj,
+        cooldownMs = GEMINI_QUOTA_COOLDOWN_MS
+    ) {
+        const effectiveCooldown =
+            Math.max(
+                60000,
+                Number(cooldownMs) ||
+                    GEMINI_QUOTA_COOLDOWN_MS
+            );
+
+        const until =
+            Date.now() + effectiveCooldown;
+
         for (const key of this.keys) {
             key.status = 'Rate Limited';
             key.cooldownUntil = until;
-            key.lastError = errorObj?.message || 'Shared project quota exceeded';
-            key.lastHttpStatus = Number(errorObj?.status) || 429;
-            key.lastErrorAt = new Date().toISOString();
+            key.lastError =
+                errorObj?.message ||
+                'Shared project quota exceeded';
+            key.lastHttpStatus =
+                Number(errorObj?.status) || 429;
+            key.lastErrorAt =
+                new Date().toISOString();
+
+            this._persistKeyCooldown(key);
         }
-        this.deferRequests(cooldownMs);
+
+        this.deferRequests(effectiveCooldown);
     }
 
     getDebugStats() {

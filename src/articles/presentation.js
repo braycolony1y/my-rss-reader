@@ -152,23 +152,73 @@ export function createArticlePresentation({
         return text.includes('investing.com');
     }
 
-    function smartArticleMatchesSection(article, filterValue) {
+    function smartTechRegion(article) {
+        const region = String(article?.region || '').toLowerCase();
+
+        if (region === 'vietnam') return 'vietnam';
+        if (['foreign', 'world', 'global'].includes(region)) return 'world';
+
+        // Older stored records may not have region populated.
+        return /^vi(?:-|$)/i.test(String(article?.language || ''))
+            ? 'vietnam'
+            : 'world';
+    }
+
+    function smartArticleMatchesSection(
+        article,
+        filterValue,
+        smartRegion = 'world'
+    ) {
         if (!filterValue) return true;
-        if (filterValue === 'news') return ['news_vietnam', 'news_world'].includes(article.smartCategory);
-        if (filterValue === 'finance') return ['finance_vietnam', 'finance_global'].includes(article.smartCategory);
-        if (filterValue === 'tech') return article.smartCategory === 'tech' && !isInvestingSmartArticle(article);
+
+        if (filterValue === 'news') {
+            return ['news_vietnam', 'news_world']
+                .includes(article.smartCategory);
+        }
+
+        if (filterValue === 'finance') {
+            return ['finance_vietnam', 'finance_global']
+                .includes(article.smartCategory);
+        }
+
+        if (filterValue === 'tech') {
+            return (
+                article.smartCategory === 'tech' &&
+                !isInvestingSmartArticle(article) &&
+                smartTechRegion(article) === smartRegion
+            );
+        }
+
         return article.smartCategory === filterValue;
     }
 
-    function buildSmartApiView(rawClusters, filterValue) {
+    function buildSmartApiView(
+        rawClusters,
+        filterValue,
+        smartRegion = 'world'
+    ) {
         const clusters = [];
         for (const storedArticle of rawClusters) {
             const cleaned = cleanStoredCluster((storedArticle.isCluster || storedArticle.clusterId) ? { ...storedArticle, isCluster: true } : buildCluster([storedArticle]));
-            if (!cleaned || !smartArticleMatchesSection(cleaned, filterValue)) continue;
+            if (
+                !cleaned ||
+                !smartArticleMatchesSection(
+                    cleaned,
+                    filterValue,
+                    smartRegion
+                )
+            ) continue;
 
             let article = cleaned;
             if (filterValue === 'tech' && Array.isArray(cleaned.relatedArticles)) {
-                const cleanRelated = cleaned.relatedArticles.filter(related => !isInvestingSmartArticle(related));
+                const cleanRelated = cleaned.relatedArticles.filter(
+                    related =>
+                        smartArticleMatchesSection(
+                            related,
+                            'tech',
+                            smartRegion
+                        )
+                );
                 if (cleanRelated.length !== cleaned.relatedArticles.length) {
                     const sources = [...new Set([cleaned.feedTitle, ...cleanRelated.map(related => related.feedTitle)].filter(Boolean))];
                     article = {
@@ -212,6 +262,12 @@ export function createArticlePresentation({
         const mark = name => { const t = performance.now(); timings[name] = t-phaseAt; phaseAt=t; };
         mark("request-received");
         const filterValue = req.query.filterValue || '';
+        const smartRegion =
+            req.query.smartRegion === 'vietnam'
+                ? 'vietnam'
+                : 'world';
+        const smartRegionKey =
+            filterValue === 'tech' ? smartRegion : '';
         const hideRead = req.query.hideRead === 'true';
         const searchQuery = req.query.searchQuery ? req.query.searchQuery.toLowerCase() : '';
 
@@ -237,7 +293,14 @@ export function createArticlePresentation({
             env.RSS_DATA.get('unavailableSourceUrls', { type: 'json' })
         ]);
 
-        const smartTabMode = ['top','classic'].includes(req.query.smartMode) ? req.query.smartMode : (userPreferences?.smartTabModes?.[filterValue] === 'classic' ? 'classic' : 'top');
+        const storedSmartMode =
+            userPreferences?.smartTabModes?.__all ||
+            userPreferences?.smartTabModes?.[filterValue];
+
+        const smartTabMode =
+            ['top', 'classic'].includes(req.query.smartMode)
+                ? req.query.smartMode
+                : (storedSmartMode === 'classic' ? 'classic' : 'top');
         const isTop = smartTabMode === 'top' && Boolean(filterValue);
         let smartClusterVersion = '', filteredArticles, publishedArticles, cacheHit = false;
         if (isTop) {
@@ -246,7 +309,10 @@ export function createArticlePresentation({
             cacheHit = Boolean(snapshot);
             publishedArticles = snapshot?.articles;
             smartClusterVersion = snapshot?.clusterVersion || '';
-            const destination = filterValue === 'tech' ? `tech_${req.query.smartRegion === 'vietnam' ? 'vietnam' : 'world'}` : filterValue.replace('_global', '_world');
+            const destination =
+                filterValue === 'tech'
+                    ? `tech_${smartRegion}`
+                    : filterValue.replace('_global', '_world');
             filteredArticles = (snapshot?.articles || []).filter(a => a.topStory.feed === destination || (['news','finance'].includes(filterValue) && a.topStory.feed.startsWith(filterValue + '_')));
             mark('candidate-collection');
             // Start only after the response is handed to the transport.
@@ -286,9 +352,30 @@ export function createArticlePresentation({
                     rawClusters = await env.RSS_DATA.get('smartClusters', { type: 'json', shared: true }) || [];
                 }
                 if (smartClusterVersion) {
+                    // Every progressive revision is a complete Smart cluster graph.
+                    // Retaining several revisions can pin multiple huge object graphs
+                    // in V8 old space even after Smart verification has completed.
+                    for (const key of Object.keys(_smartClustersHistory)) {
+                        if (
+                            /_progressive_/.test(String(key)) &&
+                            key !== smartClusterVersion
+                        ) {
+                            delete _smartClustersHistory[key];
+                        }
+                    }
+
                     _smartClustersHistory[smartClusterVersion] = rawClusters;
-                    const historyKeys = Object.keys(_smartClustersHistory);
-                    if (historyKeys.length > 6) delete _smartClustersHistory[historyKeys[0]];
+
+                    // Keep current + at most one older version for pagination.
+                    const staleKeys = Object.keys(_smartClustersHistory)
+                        .filter(key => key !== smartClusterVersion);
+
+                    while (
+                        Object.keys(_smartClustersHistory).length > 2 &&
+                        staleKeys.length
+                    ) {
+                        delete _smartClustersHistory[staleKeys.shift()];
+                    }
                 }
             }
 
@@ -298,11 +385,16 @@ export function createArticlePresentation({
             }
 
             mark("persisted-read");
-            const cacheKey = `${smartClusterVersion}:${filterValue}:${Math.floor(Date.now() / 60000)}`;
+            const cacheKey =
+                `${smartClusterVersion}:${filterValue}:${smartRegionKey}:${Math.floor(Date.now() / 60000)}`;
             filteredArticles = smartApiViewCache.get(cacheKey);
             cacheHit = Boolean(filteredArticles);
             if (!filteredArticles) {
-                filteredArticles = buildSmartApiView(rawClusters, filterValue);
+                filteredArticles = buildSmartApiView(
+                    rawClusters,
+                    filterValue,
+                    smartRegion
+                );
                 smartApiViewCache.set(cacheKey, filteredArticles);
                 while (smartApiViewCache.size > 7) smartApiViewCache.delete(smartApiViewCache.keys().next().value);
             }
@@ -310,14 +402,26 @@ export function createArticlePresentation({
             // Fresh headlines must remain visible while embeddings and AI grouping run.
             // Preserve grouped stories and add only articles absent from that snapshot.
             const rawArticles = await env.RSS_DATA.get('smartRawArticles', { type: 'json', shared: true }) || [];
-            const freshKey = `${smartClusterVersion}:${filterValue}:${Math.floor(Date.now() / 60000)}`;
+            const freshKey =
+                `${smartClusterVersion}:${filterValue}:${smartRegionKey}:${Math.floor(Date.now() / 60000)}`;
             let freshView = freshViewCache.get(freshKey);
             if (!freshView || freshView.raw !== rawArticles || freshView.clusters !== rawClusters) {
                 const represented = new NormalizedSet(rawClusters.flatMap(article =>
                     [article.link, ...(article.relatedArticles || []).map(related => related.link)]));
                 const freshArticles = rawArticles.filter(article => !represented.has(article.link)
-                    && smartArticleMatchesSection(article, filterValue));
-                const articles = [...filteredArticles, ...buildSmartApiView(freshArticles, filterValue)];
+                    && smartArticleMatchesSection(
+                        article,
+                        filterValue,
+                        smartRegion
+                    ));
+                const articles = [
+                    ...filteredArticles,
+                    ...buildSmartApiView(
+                        freshArticles,
+                        filterValue,
+                        smartRegion
+                    )
+                ];
                 const cutoff = Date.now() - 24 * 60 * 60 * 1000;
                 const recent = article => Number(new Date(article.pubDate || 0).getTime() > cutoff);
                 articles.sort((a, b) => recent(b) - recent(a) || (b.hotness || 0) - (a.hotness || 0)
@@ -336,7 +440,16 @@ export function createArticlePresentation({
         const blockedKeywordEntries = normalizeBlockedKeywordEntries(blockedKeywords || []);
         const matchesSearch = value => String(value || '').toLowerCase().includes(searchQuery);
 
-        const filterSignature = JSON.stringify([filterValue,req.query.smartRegion,hideRead,searchQuery,hiddenStates,hideRead ? readStates : [],blockedKeywords,unavailableSourceUrls]);
+        const filterSignature = JSON.stringify([
+            filterValue,
+            smartRegionKey,
+            hideRead,
+            searchQuery,
+            hiddenStates,
+            hideRead ? readStates : [],
+            blockedKeywords,
+            unavailableSourceUrls
+        ]);
         const cachedFiltered = isTop && filteredTopViews.get(filterSignature);
         if (cachedFiltered && cachedFiltered.input === publishedArticles) filteredArticles = cachedFiltered.articles;
         else {
@@ -377,7 +490,16 @@ export function createArticlePresentation({
             return { ...article, ranking, hotness: ranking.score, sourceCount: ranking.independentSources };
         })).sort((a,b) => b.hotness - a.hotness || b.ranking.updatedAt.localeCompare(a.ranking.updatedAt) || a.link.localeCompare(b.link));
         mark("filtering");
-        const viewSignature = JSON.stringify([filterValue, smartTabMode, isTop ? req.query.smartRegion : null, hideRead, searchQuery, hiddenStates, hideRead ? readStates : [], blockedKeywords]);
+        const viewSignature = JSON.stringify([
+            filterValue,
+            smartTabMode,
+            filterValue === 'tech' ? smartRegion : null,
+            hideRead,
+            searchQuery,
+            hiddenStates,
+            hideRead ? readStates : [],
+            blockedKeywords
+        ]);
         const priorView = storyViews.get(req.query.smartView);
         const reusableView = priorView && priorView.signature === viewSignature && Date.now() - priorView.createdAt < 30 * 60000;
         let smartViewToken = req.query.smartView;
@@ -395,13 +517,44 @@ export function createArticlePresentation({
         const currentById = new Map(ranked.map(a => [a.clusterId, a]));
         const currentStory = article => isTop ? currentById.get(article.clusterId) || article : article;
         const pageArticles = filteredArticles.slice(startIndex, endIndex);
+
+        // Briefing generation has a separate notion of the ACTIVE page.
+        // Ranking order remains pinned by smartViewToken; this key identifies
+        // what the reader is actually viewing right now.
+        const briefingViewKey =
+            isTop && filterValue
+                ? [
+                    smartViewToken || 'view',
+                    filterValue,
+                    req.query.smartRegion || '',
+                    `page:${page}`
+                ].join(':')
+                : null;
+
+        // null when leaving Top Stories, so the previous page
+        // immediately loses its active-view priority boost.
+        briefings.setActiveView(briefingViewKey);
         mark("snapshot-construction");
         const rankingPending = Boolean(isTop && topSnapshots.pending);
         if (isTop && filterValue) {
             const ahead = filteredArticles.slice(startIndex, endIndex + topIndex.settings.batchSize * topIndex.settings.lookAheadBatches);
             const enqueue = () => {
                 const timer = setTimeout(async () => {
-                    try { for (let i=0;i<ahead.length;i++) await briefings.get(currentStory(ahead[i]), ahead[i].topStory.feed, {priority:i<pageArticles.length ? 2 : 0}); }
+                    try {
+                        for (let i = 0; i < ahead.length; i++) {
+                            await briefings.get(
+                                currentStory(ahead[i]),
+                                ahead[i].topStory.feed,
+                                {
+                                    priority:
+                                        i < pageArticles.length
+                                            ? 2
+                                            : 0,
+                                    viewKey: briefingViewKey
+                                }
+                            );
+                        }
+                    }
                     catch (error) { console.warn('[TOP STORIES] Background briefing queue:', error.message); }
                 }, 25);
                 timer.unref?.();

@@ -5,45 +5,15 @@ const now=Date.parse('2026-09-13T12:00:00Z');
 const article=(id, extra={})=>({link:`https://${id}.com/event`,feedUrl:`https://${id}.com/rss`,feedTitle:id,language:'en',smartCategory:'tech',title:'Critical vulnerability in OpenWrt confirmed',content:'A critical vulnerability allows remote code execution on routers.',pubDate:new Date(now-86400000).toISOString(),sourceWeight:1.4,...extra});
 const sourcesFor = clusters => clusters.flatMap(c=>[c,...(c.relatedArticles || [])]).map(a=>({url:a.feedUrl,category:a.smartCategory,region:a.region}));
 function harness(config={}) { const store={}; const engine=createTopStoriesIndex({config,db:{get:async k=>store[k],put:async(k,v)=>{store[k]=JSON.parse(v)}}}); return {store,index:{rank:(clusters,sources,now)=>engine.rank(clusters,sources.length?sources:sourcesFor(clusters),now)}}; }
-test('source memberships are hard eligibility boundaries independent of language',()=>{
-const a=article('vn',{language:'en',smartCategory:'news_vietnam'});
-const sources=[{url:a.feedUrl,category:'news_vietnam'}];
-
-assert.deepEqual(
-    allowedDestinations(a,sources),
-    ['news_vietnam']
-);
-
-assert.deepEqual(
-    allowedDestinations(a,[]),
-    []
-);
-
-sources.push({
-    url:a.feedUrl,
-    category:'news_world'
-});
-
-assert.deepEqual(
-    allowedDestinations(a,sources),
-    ['news_vietnam','news_world']
-);
-
-assert.deepEqual(
-    allowedDestinations(
-        {...a,language:'vi'},
-        sources
-    ),
-    ['news_vietnam','news_world']
-);
-
-assert.deepEqual(
-    allowedDestinations(
-        {...a,feedUrl:'https://unknown.com/rss'},
-        sources
-    ),
-    []
-);
+test('source memberships prohibit unauthorized language destinations',()=>{
+ const a=article('vn',{language:'en',smartCategory:'news_vietnam'});
+ const sources=[{url:a.feedUrl,category:'news_vietnam'}];
+ assert.deepEqual(allowedDestinations(a,sources),[]);
+ assert.deepEqual(allowedDestinations(a,[]),[]);
+ sources.push({url:a.feedUrl,category:'news_world'});
+ assert.deepEqual(allowedDestinations(a,sources),['news_world']);
+ assert.deepEqual(allowedDestinations({...a,language:'vi'},sources),['news_vietnam']);
+ assert.deepEqual(allowedDestinations({...a,feedUrl:'https://unknown.com/rss'},sources),[]);
 });
 test('wire rewrites and opinion do not become independent confirmations',()=>{
  const original=article('reuters',{wireSource:'reuters'});
@@ -77,94 +47,13 @@ test('material correction increments version and retains timeline history',async
  assert.equal(updated.title,correction.title);
 });
 test('all scores precede enrichment; dynamic prefix can exceed ten or be empty',async()=>{
-const {index}=harness();
-
-const stories=Array.from(
-    {length:15},
-    (_,i)=>article(
-        `source${i}`,
-        {
-            title:`Critical vulnerability in product ${i} confirmed`,
-            editorialAssessment:{
-                policyVersion:'ai-editorial-v1',
-                revision:`important-${i}`,
-                eligibleDestinations:[
-                    'tech_vietnam',
-                    'tech_world'
-                ],
-                destination:'tech_world',
-                relevance:1,
-                impact:.9,
-                novelty:.9,
-                confidence:.9,
-                exclude:false,
-                reason:'Material security event'
-            }
-        }
-    )
-);
-
-const ranked=await index.rank(
-    stories,
-    [],
-    now
-);
-
-assert.equal(
-    ranked.length,
-    15
-);
-
-assert.equal(
-    ranked.filter(
-        a=>a.topStory.isTop
-    ).length,
-    15
-);
-
-assert.ok(
-    ranked.every(
-        a=>
-            Number.isFinite(a.ranking.score) &&
-            a.topStory.rank>0
-    )
-);
-
-const minor=article(
-    'minor',
-    {
-        title:'Purple keyboard review',
-        content:'A new keyboard color.',
-        editorialAssessment:{
-            policyVersion:'ai-editorial-v1',
-            revision:'minor',
-            eligibleDestinations:[
-                'tech_vietnam',
-                'tech_world'
-            ],
-            destination:'tech_world',
-            relevance:.2,
-            impact:.05,
-            novelty:.1,
-            confidence:.9,
-            exclude:false,
-            reason:'Routine low-impact product story'
-        }
-    }
-);
-
-assert.equal(
-    (
-        await index.rank(
-            [minor],
-            [],
-            now
-        )
-    ).filter(
-        a=>a.topStory.isTop
-    ).length,
-    0
-);
+ const {index}=harness();
+ const stories=Array.from({length:15},(_,i)=>article(`source${i}`,{title:`Critical vulnerability in product ${i} confirmed`}));
+ const ranked=await index.rank(stories,[],now);
+ assert.equal(ranked.length,15);
+ assert.equal(ranked.filter(a=>a.topStory.isTop).length,15);
+ assert.ok(ranked.every(a=>Number.isFinite(a.ranking.score) && a.topStory.rank>0));
+ assert.equal((await index.rank([article('minor',{title:'Purple keyboard review',content:'A new keyboard color.'})],[],now)).filter(a=>a.topStory.isTop).length,0);
 });
 test('same event has one primary feed and conflicting figures remain observable',async()=>{
  const {index}=harness();
@@ -184,58 +73,12 @@ test('Vietnamese US inflation stays out of Vietnam Top and cannot move without m
  assert.equal(ranked[0].topStory.isTop,false);
  assert.equal(ranked[0].ranking.signals.relevance,0);
 });
-test('AI editorial assessment chooses the eligible domestic subject feed',async()=>{
-const {index}=harness();
-
-const a=article(
-    'sbv',
-    {
-        language:'vi',
-        title:'Ngân hàng Nhà nước Việt Nam điều chỉnh lãi suất',
-        smartCategory:'news_vietnam',
-
-        editorialAssessment:{
-            policyVersion:'ai-editorial-v1',
-            revision:'sbv-finance',
-            eligibleDestinations:[
-                'news_vietnam',
-                'finance_vietnam'
-            ],
-            destination:'finance_vietnam',
-            relevance:1,
-            impact:.8,
-            novelty:.8,
-            confidence:.95,
-            exclude:false,
-            reason:'Vietnam monetary policy decision'
-        }
-    }
-);
-
-const result=await index.rank(
-    [a],
-    [
-        {
-            url:a.feedUrl,
-            category:'news_vietnam'
-        },
-        {
-            url:a.feedUrl,
-            category:'finance_vietnam'
-        }
-    ],
-    now
-);
-
-assert.equal(
-    result[0].topStory.feed,
-    'finance_vietnam'
-);
-
-assert.equal(
-    result[0].ranking.signals.relevance,
-    1
-);
+test('domestic finance and domestic news receive relevance only in their subject feed',async()=>{
+ const {index}=harness();
+ const a=article('sbv',{language:'vi',title:'Ngân hàng Nhà nước Việt Nam điều chỉnh lãi suất',smartCategory:'news_vietnam'});
+ const result=await index.rank([a],[{url:a.feedUrl,category:'news_vietnam'},{url:a.feedUrl,category:'finance_vietnam'}],now);
+ assert.equal(result[0].topStory.feed,'finance_vietnam');
+ assert.equal(result[0].ranking.signals.relevance,1);
 });
 test('suspected case differences include source dates and survive as conflicts',async()=>{
  const {index}=harness();

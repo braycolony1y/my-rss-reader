@@ -5,7 +5,7 @@ import { storyMembers, storyText, storyRevision, publisherId } from './story-ran
 
 export const TOP_STORIES_DEFAULTS = {
     weights: { impact: 3.6, relevance: 1.2, novelty: 1.2, confidence: 1, attention: .3, independentCorroboration: .7 },
-    freshnessHours: 48, topImpact: .55, topRelevance: .55, cutoffDeviation: .35, cutoffHysteresis: .15,
+    freshnessHours: 48, topImpact: .55, cutoffDeviation: .35, cutoffHysteresis: .15,
     representativeImprovement: .3, materialSimilarity: .6, batchSize: 12, lookAheadBatches: 2,
     substantialRankMove: 5, roundupMatchSimilarity: .65, roundupMinSharedTokens: 4, roundupMatchMargin: .1
 };
@@ -17,67 +17,29 @@ const stamp = a => a.publicationTimeReliable === false ? 0 : Date.parse(a.pubDat
 const iso = time => new Date(time || 0).toISOString();
 const vi = /[ăâđêôơưạảấầẩẫậắằẳẵặẹẻẽếềểễệỉịọỏốồổỗộớờởỡợụủứừửữựỳỵỷỹ]/iu;
 export const articleLanguage = a => /^(vi|en)/i.exec(a.language || a.lang || '')?.[1].toLowerCase() || (vi.test(storyText(a.title + ' ' + (a.content || ''))) ? 'vi' : 'en');
-const destinationsForSource = (category, region) => {
-    if (category === 'tech') {
-        if (region === 'vietnam') return ['tech_vietnam'];
-        if (region) return ['tech_world'];
-        return ['tech_vietnam', 'tech_world'];
-    }
-    const destination = category?.replace('_global', '_world').replace('_foreign', '_world');
-    return destination ? [destination] : [];
-};
+const destination = (category, region, language) => category === 'tech' ? `tech_${region === 'vietnam' ? 'vietnam' : region ? 'world' : language === 'vi' ? 'vietnam' : 'world'}` : category?.replace('_global', '_world');
 export function allowedDestinations(article, sources) {
-    // Source/feed configuration is the hard eligibility boundary.
-    // Language is metadata, not geography.
-    const configured = sources.filter(
-        source =>
-            source.enabled !== false &&
-            (
-                source.url === article.feedUrl ||
-                source.fallbackUrl === article.feedUrl
-            )
-    );
-    return [
-        ...new Set(
-            configured.flatMap(
-                source =>
-                    destinationsForSource(
-                        source.category,
-                        source.region
-                    )
-            )
-        )
-    ].filter(Boolean);
+    const language = articleLanguage(article);
+    // Match the configured feed URL first; publisher matching must never grant a
+    // destination belonging to another feed from that publisher.
+    const configured = sources.filter(s => s.enabled !== false && (s.url === article.feedUrl || s.fallbackUrl === article.feedUrl));
+    const memberships = configured.map(s => destination(s.category, s.region, language));
+    return [...new Set(memberships)].filter(d => d && (language === 'vi' ? d.endsWith('_vietnam') : d.endsWith('_world')));
 }
 // Editorial scope is independent of publisher membership and writing language.
 export function feedRelevance(article, feed) {
-    const editorial =
-        article?.editorialAssessment;
-
-    if (!editorial) return 0;
-
-    if (
-        editorial.exclude === true ||
-        editorial.destination === 'none' ||
-        editorial.destination !== feed
-    ) {
-        return 0;
-    }
-
-    const relevance =
-        Number(
-            editorial.relevance
-        );
-
-    return Number.isFinite(relevance)
-        ? Math.max(
-            0,
-            Math.min(
-                1,
-                relevance
-            )
-        )
-        : 0;
+    const title = storyText(article.title).toLowerCase();
+    const finance = /\b(inflation|fed|federal reserve|treasury yields?|earnings|interest rates?|etf|stocks?|vn-index|sbv)\b|lạm phát|lãi suất|chứng khoán|ngân hàng nhà nước|lợi nhuận/u;
+    const tech = /\b(gpu|vulnerability|software|openwrt|routers?|firmware|ai|cybersecurity|data breach)\b|công nghệ|lỗ hổng|trí tuệ nhân tạo/u;
+    const news = /\b(war|election|earthquake|ceasefire|sanctions|killed|ministry|hospital)\b|chiến tranh|bầu cử|động đất|ngừng bắn|ngộ độc|chính phủ|bộ y tế/u;
+    const category = finance.test(title) ? 'finance' : tech.test(title) ? 'tech' : news.test(title) ? 'news' : null;
+    const domestic = /\b(vietnam|viet nam|sbv|vn-index|hanoi|hue)\b|việt nam|hà nội|huế|tp\.?hcm|ngân hàng nhà nước/u.test(title);
+    const foreign = /\b(u\.?s\.?|fed|federal reserve|treasury|ukraine|russia|israel|china|global|international|world)\b|mỹ|hoa kỳ|trung quốc|nga|thế giới|quốc tế/u.test(title);
+    const region = domestic && !foreign ? 'vietnam' : foreign ? 'world' : category === 'tech' ? 'world' : null;
+    const [feedCategory, feedRegion] = feed.split('_');
+    if ((category && category !== feedCategory) || (region && region !== feedRegion)) return 0;
+    // Unknown scope may remain in More Stories, but is not evidence of relevance.
+    return category && region ? 1 : .35;
 }
 const evidenceIdentity = value => {
     const identity = String(typeof value === 'object' ? value?.name || value?.url || '' : value || '').toLowerCase();
@@ -109,115 +71,15 @@ export function evidencePaths(members) {
 const representativeQuality = a => (Number(a.sourceWeight) || 1) + (a.isPrimarySource || a.originalReporting || a.directEvidence ? .6 : 0)
     - (a.syndicatedFrom || a.wireSource ? .5 : 0) - (/\b(opinion|rumor|rumour)\b/i.test(a.title) ? .4 : 0);
 function signalsFor(members, evidence, prior, materialChanged, isRoundup = false) {
-    if (isRoundup) {
-        return {
-            impact: 0,
-            relevance: 0,
-            novelty: 0,
-            confidence: 0,
-            attention: 0,
-            independentCorroboration: 0,
-            uncertain: false,
-            conflict: false
-        };
-    }
-
-    const editorial =
-        members
-            .map(
-                article =>
-                    article?.editorialAssessment
-            )
-            .find(Boolean);
-
-    const clamp =
-        value =>
-            Math.max(
-                0,
-                Math.min(
-                    1,
-                    Number(value) || 0
-                )
-            );
-
-    const sourceConfidence =
-        Math.max(
-            .15,
-            Math.min(
-                1,
-                Math.max(
-                    ...members.map(
-                        article =>
-                            Number(
-                                article.sourceWeight
-                            ) || 1
-                    )
-                ) / 1.5
-            )
-        );
-
-    const semanticConfidence =
-        editorial
-            ? clamp(
-                editorial.confidence
-            )
-            : 0;
-
-    return {
-        impact:
-            editorial
-                ? clamp(
-                    editorial.impact
-                )
-                : 0,
-
-        relevance:
-            editorial
-                ? clamp(
-                    editorial.relevance
-                )
-                : 0,
-
-        novelty:
-            editorial
-                ? clamp(
-                    editorial.novelty
-                )
-                : 0,
-
-        // Source evidence remains the primary confidence signal.
-        confidence:
-            editorial
-                ? clamp(
-                    sourceConfidence * .7 +
-                    semanticConfidence * .3
-                )
-                : sourceConfidence,
-
-        attention:
-            Math.min(
-                1,
-                Math.log1p(
-                    new Set(
-                        members.map(
-                            publisherId
-                        )
-                    ).size
-                ) /
-                Math.log(32)
-            ),
-
-        independentCorroboration:
-            1 -
-            1 /
-            Math.max(
-                1,
-                evidence.independentSources
-            ),
-
-        uncertain: false,
-        conflict: false
-    };
+    if (isRoundup) return { impact:0, relevance:0, novelty:0, confidence:0, attention:0, independentCorroboration:0, uncertain:false, conflict:false };
+    const text = members.map(textOf).join(' ');
+    const impact = /\b(invasion|ceasefire|earthquake|interest rate|central bank|tariff|sanctions|critical vulnerability|chip export|earnings|antitrust|data breach|bankruptcy)\b|chiến tranh|ngừng bắn|động đất|lãi suất|thuế quan|lạm phát|phá sản|lỗ hổng nghiêm trọng/u.test(text) ? .85 : /\b(launch|approv|regulat|security|election|acquisition)/u.test(text) ? .6 : .25;
+    const uncertain = /\b(rumou?r|unconfirmed|reportedly|alleged|disputed|conflicting|preliminary)\b|tin đồn|chưa xác nhận|sơ bộ/u.test(text);
+    const conflict = /\b(disputed|conflicting|correction|corrected|retract)\b|đính chính|mâu thuẫn/u.test(text);
+    return { impact, relevance: 1, novelty: /\b(opinion|recap|roundup|explainer|background|preview)\b|nhìn lại|điểm tin/u.test(text) ? .2 : materialChanged ? .8 : prior?.ranking.signals.novelty ?? .4,
+        confidence: Math.max(.15, Math.min(1, Math.max(...members.map(a => Number(a.sourceWeight) || 1)) / 1.5) - (uncertain ? .25 : 0) - (conflict ? .2 : 0)),
+        attention: Math.min(1, Math.log1p(new Set(members.map(publisherId)).size) / Math.log(32)),
+        independentCorroboration: 1 - 1 / Math.max(1, evidence.independentSources), uncertain, conflict };
 }
 export function createTopStoriesIndex({ db, config = {} } = {}) {
     const configured = process.env.TOP_STORIES_CONFIG ? JSON.parse(process.env.TOP_STORIES_CONFIG) : {};
@@ -311,17 +173,8 @@ export function createTopStoriesIndex({ db, config = {} } = {}) {
                 const relationScopeChanged = Boolean(prior && String(prior.broaderStorySignature || '') !== broaderStorySignature);
                 const scopeChanged = Boolean(prior && ((prior.roundupPolicyVersion !== 1 && prior.links.some(link => containers.has(link))) || (!isRoundup && prior.links.some(link => containers.has(link))) || (prior.isRoundup !== undefined && prior.isRoundup !== isRoundup)));
                 const revision = storyRevision({ ...members[0], relatedArticles: members.slice(1) });
-                const editorialRevision = digest(
-                    members
-                        .map(
-                            article =>
-                                article?.editorialAssessment?.revision ||
-                                'unassessed'
-                        )
-                        .sort()
-                );
                 let state = prior;
-                if (!prior || prior.relevancePolicyVersion !== 3 || prior.evidence_version !== revision || prior.editorial_revision !== editorialRevision || prior.feed !== home || scopeChanged || relationScopeChanged) {
+                if (!prior || prior.relevancePolicyVersion !== 2 || prior.evidence_version !== revision || prior.feed !== home || scopeChanged || relationScopeChanged) {
                     dirty = true;
                     const evidence = isRoundup ? { independentSources:0, paths:[], derived:members.map(a=>({link:a.link,reason:'Multi-event container, not independent event evidence'})) } : evidencePaths(members);
                     const ordered = [...members].sort((a,b) => representativeQuality(b)-representativeQuality(a) || stamp(a)-stamp(b));
@@ -370,7 +223,7 @@ export function createTopStoriesIndex({ db, config = {} } = {}) {
                         }
                         timeline.sort((left,right) => Date.parse(left.date)-Date.parse(right.date) || String(left.id).localeCompare(String(right.id)));
                     }
-                    state = { id, feed:home, relevancePolicyVersion:3, editorial_revision:editorialRevision, isRoundup, roundup:cluster.roundup || null, roundupPolicyVersion:1, broaderStorySignature, briefing_scope_version:(prior?.briefing_scope_version || 1) + ((scopeChanged || relationScopeChanged) ? 1 : 0), evidence_version:revision, material_version:materialVersion, links:all.map(a=>a.link),
+                    state = { id, feed:home, relevancePolicyVersion:2, isRoundup, roundup:cluster.roundup || null, roundupPolicyVersion:1, broaderStorySignature, briefing_scope_version:(prior?.briefing_scope_version || 1) + ((scopeChanged || relationScopeChanged) ? 1 : 0), evidence_version:revision, material_version:materialVersion, links:all.map(a=>a.link),
                         contents: Object.fromEntries(members.map(a => [a.link, digest(textOf(a))])),
                         materialTexts: materialChanged ? updates.map(textOf) : prior.materialTexts,
                         representative:representative.link, representativeReason: oldRepresentative?.link === representative.link ? 'Retained: no materially stronger representative' : 'Source authority, direct reporting and original headline',
@@ -385,8 +238,7 @@ export function createTopStoriesIndex({ db, config = {} } = {}) {
                 const total = Object.values(settings.weights).reduce((a,b)=>a+b,0);
                 const raw = Object.entries(settings.weights).reduce((sum,[key,weight])=>sum+weight*s[key],0)/total;
                 const freshness = Math.exp(-Math.max(0,now-state.latest_material_update)/3600000/settings.freshnessHours);
-                const semanticRelevance = Math.max(0, Math.min(1, Number(s.relevance) || 0));
-                const score = raw * semanticRelevance * (.45 + .55*freshness);
+                const score = (s.relevance < 1 ? 0 : raw) * (.45 + .55*freshness);
                 const representative = members.find(a=>a.link===state.representative) || members[0];
                 const coverage = [representative, ...members.filter(a=>a.link!==representative.link).sort((a,b)=>Number(state.evidence.derived.some(d=>d.link===a.link))-Number(state.evidence.derived.some(d=>d.link===b.link)) || representativeQuality(b)-representativeQuality(a))];
                 results.push({ ...cluster, ...representative, members:undefined, clusterId:id, isCluster:true,
@@ -407,15 +259,7 @@ export function createTopStoriesIndex({ db, config = {} } = {}) {
                 const old=cutoffs.get(feed) || new Set(Object.values(states).filter(s=>s.feed===feed && s.isTop).map(s=>s.id));
                 let count=0;
                 for (const item of items) {
-                    if (
-                        item.topStory.isRoundup ||
-                        item.ranking.signals.relevance < settings.topRelevance ||
-                        item.ranking.score < boundary - (
-                            old.has(item.clusterId)
-                                ? deviation * settings.cutoffHysteresis
-                                : 0
-                        )
-                    ) break;
+                    if (item.topStory.isRoundup || item.ranking.signals.relevance < 1 || item.ranking.signals.impact < settings.topImpact || item.ranking.score < boundary-(old.has(item.clusterId)?deviation*settings.cutoffHysteresis:0)) break;
                     count++;
                 }
                 cutoffs.set(feed,new Set(items.slice(0,count).map(a=>a.clusterId)));
@@ -425,7 +269,7 @@ export function createTopStoriesIndex({ db, config = {} } = {}) {
                     state.rank=i+1;
                     if (state.isTop !== (i<count)) { state.cutoffHistory=[...(state.cutoffHistory || []),{at:now,isTop:i<count,boundary}].slice(-20); dirty=true; }
                     state.isTop=i<count;
-                    Object.assign(item.topStory,{...state,ranking:item.topStory.ranking,rank:i+1,isTop:i<count,cutoff:{count,boundary,mean,deviation,reason:'Contiguous AI-semantic quality prefix relative to feed strength; no count quota'}});
+                    Object.assign(item.topStory,{...state,ranking:item.topStory.ranking,rank:i+1,isTop:i<count,cutoff:{count,boundary,mean,deviation,reason:'Contiguous quality prefix relative to feed strength; no count quota'}});
                 });
             }
             mark("top-cutoff");

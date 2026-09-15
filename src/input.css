@@ -142,3 +142,4637 @@
 .story-publisher summary { cursor:pointer; white-space:nowrap; border:1px solid #c9dedb; border-radius:999px; padding:7px 12px; background:#ffffff91; }
 .story-publisher a { white-space:normal; margin-top:5px; }
 .article-briefing [role="status"] { font-size:11px; color:#71858b; margin:4px 0; }
+
+
+/* v3.2.7 — Top Stories right-image soft blend
+   Applies to EVERY card while Top Stories mode is active.
+   Classic cards are intentionally untouched. */
+
+.article-card.has-story-briefing {
+    position: relative;
+    isolation: isolate;
+}
+
+/*
+ * Large right-side editorial image.
+ *
+ * The image remains completely sharp on the right.
+ * Only its LEFT side is alpha-masked so it dissolves naturally
+ * into whatever card/theme is underneath it.
+ */
+.article-card.has-story-briefing .article-card-image {
+    position: absolute;
+    float: none;
+    top: 0;
+    right: 0;
+    bottom: auto;
+    left: auto;
+
+    width: 48%;
+    height: 220px;
+
+    margin: 0;
+    border-radius: 0 24px 0 0;
+    overflow: hidden;
+
+    z-index: 0;
+    pointer-events: none;
+}
+
+.article-card.has-story-briefing .article-card-image img {
+    display: block;
+    width: 100%;
+    height: 100%;
+
+    object-fit: cover;
+    object-position: center;
+
+    opacity: 1;
+
+    /*
+     * Theme-independent fade.
+     *
+     * Using an alpha mask instead of painting a white gradient means
+     * this works in Light Glass, Dark Glass and the normal dark theme.
+     */
+    -webkit-mask-image: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(0, 0, 0, 0.05) 8%,
+        rgba(0, 0, 0, 0.18) 18%,
+        rgba(0, 0, 0, 0.48) 32%,
+        rgba(0, 0, 0, 0.82) 44%,
+        #000 56%,
+        #000 100%
+    );
+
+    mask-image: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(0, 0, 0, 0.05) 8%,
+        rgba(0, 0, 0, 0.18) 18%,
+        rgba(0, 0, 0, 0.48) 32%,
+        rgba(0, 0, 0, 0.82) 44%,
+        #000 56%,
+        #000 100%
+    );
+
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+
+    -webkit-mask-size: 100% 100%;
+    mask-size: 100% 100%;
+}
+
+/*
+ * Disable the old color-gradient pseudo overlay.
+ * The alpha mask above now performs the blending.
+ */
+.article-card.has-story-briefing .article-card-image::after {
+    display: none !important;
+}
+
+/*
+ * Let text intentionally enter the transparent portion of the image.
+ * It stops before the photograph becomes fully opaque.
+ */
+.article-card.has-story-briefing .article-card-heading {
+    position: relative;
+    z-index: 2;
+
+    display: block;
+    width: 72%;
+    min-height: 176px;
+
+    padding: 0;
+    overflow: visible;
+}
+
+/* Everything below the headline stays above the photograph. */
+.article-card.has-story-briefing .article-briefing {
+    position: relative;
+    z-index: 2;
+}
+
+/* Rank / More Stories labels must never fall behind the image. */
+.article-card.has-story-briefing .story-rank,
+.article-card.has-story-briefing .story-divider {
+    position: relative;
+    z-index: 3;
+}
+
+
+/* -------------------------
+   Tablet
+   ------------------------- */
+
+@media (max-width: 900px) {
+    .article-card.has-story-briefing .article-card-image {
+        width: 51%;
+        height: 205px;
+    }
+
+    .article-card.has-story-briefing .article-card-heading {
+        width: 74%;
+        min-height: 164px;
+    }
+}
+
+
+/* -------------------------
+   Mobile
+   ------------------------- */
+
+@media (max-width: 640px) {
+    .article-card.has-story-briefing .article-card-image {
+        position: absolute;
+
+        top: 0;
+        right: 0;
+
+        width: 58%;
+        height: 165px;
+
+        margin: 0;
+        border-radius: 0 20px 0 0;
+    }
+
+    .article-card.has-story-briefing .article-card-image img {
+        /*
+         * Give text slightly more clear space on narrow screens.
+         */
+        -webkit-mask-image: linear-gradient(
+            90deg,
+            transparent 0%,
+            rgba(0, 0, 0, 0.03) 12%,
+            rgba(0, 0, 0, 0.18) 28%,
+            rgba(0, 0, 0, 0.55) 44%,
+            #000 64%,
+            #000 100%
+        );
+
+        mask-image: linear-gradient(
+            90deg,
+            transparent 0%,
+            rgba(0, 0, 0, 0.03) 12%,
+            rgba(0, 0, 0, 0.18) 28%,
+            rgba(0, 0, 0, 0.55) 44%,
+            #000 64%,
+            #000 100%
+        );
+    }
+
+    .article-card.has-story-briefing .article-card-heading {
+        width: 80%;
+        min-height: 145px;
+    }
+}
+
+
+/* Very narrow phones */
+@media (max-width: 400px) {
+    .article-card.has-story-briefing .article-card-image {
+        width: 61%;
+        height: 150px;
+    }
+
+    .article-card.has-story-briefing .article-card-heading {
+        width: 84%;
+        min-height: 135px;
+    }
+}
+
+
+/* v3.2.7a — stronger full-card Top Stories image blend
+   Applies to every card while Top Stories mode is active. */
+
+.article-card.has-story-briefing {
+    --top-story-fade-solid: rgba(244, 251, 252, 1);
+    --top-story-fade-near: rgba(244, 251, 252, .97);
+    --top-story-fade-mid: rgba(244, 251, 252, .76);
+    --top-story-fade-soft: rgba(244, 251, 252, .34);
+}
+
+/*
+ * Let the image fill the entire right side of the card rather than
+ * stopping after 220px.
+ */
+.article-card.has-story-briefing .article-card-image {
+    position: absolute !important;
+    float: none !important;
+
+    top: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    left: auto !important;
+
+    width: 55% !important;
+    height: 100% !important;
+
+    margin: 0 !important;
+    border-radius: 0 24px 24px 0 !important;
+    overflow: hidden;
+
+    z-index: 0;
+}
+
+/*
+ * Keep the photograph itself fully sharp.
+ * The visible fade is now handled by the overlay instead of relying
+ * only on mask-image, which was too subtle in Chrome.
+ */
+.article-card.has-story-briefing .article-card-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center;
+
+    opacity: 1;
+
+    -webkit-mask-image: none !important;
+    mask-image: none !important;
+}
+
+/*
+ * Strong gradual blend:
+ *
+ * card ───────────────░░░▒▒▓▓████ image
+ *
+ * The transition occupies most of the left half of the photo, so
+ * there is no visible rectangular seam.
+ */
+.article-card.has-story-briefing .article-card-image::after {
+    content: "" !important;
+    display: block !important;
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+
+    background:
+        linear-gradient(
+            90deg,
+            var(--top-story-fade-solid) 0%,
+            var(--top-story-fade-solid) 8%,
+            var(--top-story-fade-near) 20%,
+            var(--top-story-fade-mid) 38%,
+            var(--top-story-fade-soft) 56%,
+            rgba(244, 251, 252, .10) 70%,
+            transparent 84%
+        );
+}
+
+/*
+ * Stop text before the photograph becomes visually strong.
+ * It may enter only the very soft part of the fade.
+ */
+.article-card.has-story-briefing .article-card-heading {
+    position: relative;
+    z-index: 2;
+
+    width: 61% !important;
+    min-height: 185px !important;
+
+    padding: 0 !important;
+    overflow: visible;
+}
+
+/* Keep long Top Story headlines compact around the image. */
+.article-card.has-story-briefing .article-card-heading h2 {
+    display: -webkit-box !important;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3 !important;
+    overflow: hidden !important;
+}
+
+.article-card.has-story-briefing .article-card-heading p {
+    display: -webkit-box !important;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 4 !important;
+    overflow: hidden !important;
+}
+
+/*
+ * Briefing/facts/analysis remain on top of the image fade.
+ */
+.article-card.has-story-briefing .article-briefing {
+    position: relative;
+    z-index: 2;
+}
+
+
+/* ---------- tablet ---------- */
+
+@media (max-width: 900px) {
+    .article-card.has-story-briefing .article-card-image {
+        width: 57% !important;
+    }
+
+    .article-card.has-story-briefing .article-card-heading {
+        width: 65% !important;
+        min-height: 170px !important;
+    }
+}
+
+
+/* ---------- mobile ---------- */
+
+@media (max-width: 640px) {
+    .article-card.has-story-briefing .article-card-image {
+        width: 62% !important;
+        height: 100% !important;
+        border-radius: 0 20px 20px 0 !important;
+    }
+
+    .article-card.has-story-briefing .article-card-image::after {
+        background:
+            linear-gradient(
+                90deg,
+                var(--top-story-fade-solid) 0%,
+                var(--top-story-fade-solid) 12%,
+                var(--top-story-fade-near) 27%,
+                var(--top-story-fade-mid) 45%,
+                var(--top-story-fade-soft) 62%,
+                rgba(244, 251, 252, .08) 78%,
+                transparent 90%
+            );
+    }
+
+    .article-card.has-story-briefing .article-card-heading {
+        width: 70% !important;
+        min-height: 145px !important;
+    }
+
+    .article-card.has-story-briefing .article-card-heading h2 {
+        -webkit-line-clamp: 3 !important;
+    }
+
+    .article-card.has-story-briefing .article-card-heading p {
+        -webkit-line-clamp: 3 !important;
+    }
+}
+
+
+/* ============================================================
+   v3.2.7b — state-safe image blending
+
+   Do NOT paint a guessed card color over images.
+   Alpha-mask the image instead, allowing the real card
+   background to show through.
+
+   This fixes:
+   - unread -> read transition
+   - hover state
+   - light/dark/glass theme differences
+   - Classic image seam
+   - Top Stories image seam
+   ============================================================ */
+
+
+/* ------------------------------------------------------------
+   ALL ARTICLE CARDS
+
+   Kill the old color overlay. It is the source of the hard edge
+   whenever the card background changes.
+   ------------------------------------------------------------ */
+
+.article-card .article-card-image::after {
+    content: none !important;
+    display: none !important;
+}
+
+
+/* ------------------------------------------------------------
+   CLASSIC
+
+   Preserve the existing Classic geometry.
+   Only replace its painted gradient with real alpha blending.
+   ------------------------------------------------------------ */
+
+.article-card:not(.has-story-briefing) .article-card-image {
+    -webkit-mask-image: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(0, 0, 0, 0.04) 8%,
+        rgba(0, 0, 0, 0.16) 20%,
+        rgba(0, 0, 0, 0.42) 34%,
+        rgba(0, 0, 0, 0.72) 48%,
+        rgba(0, 0, 0, 0.94) 62%,
+        #000 72%,
+        #000 100%
+    );
+
+    mask-image: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(0, 0, 0, 0.04) 8%,
+        rgba(0, 0, 0, 0.16) 20%,
+        rgba(0, 0, 0, 0.42) 34%,
+        rgba(0, 0, 0, 0.72) 48%,
+        rgba(0, 0, 0, 0.94) 62%,
+        #000 72%,
+        #000 100%
+    );
+
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+
+    -webkit-mask-size: 100% 100%;
+    mask-size: 100% 100%;
+}
+
+
+/* ------------------------------------------------------------
+   TOP STORIES
+
+   v3.2.7a already establishes:
+   - full-height right image
+   - 55% width
+   - text/image overlap
+
+   Keep that geometry but replace the fixed-colored overlay with
+   a wider alpha fade.
+   ------------------------------------------------------------ */
+
+.article-card.has-story-briefing .article-card-image {
+    position: absolute !important;
+
+    top: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    left: auto !important;
+
+    width: 55% !important;
+    height: 100% !important;
+
+    margin: 0 !important;
+    float: none !important;
+
+    border-radius: 0 24px 24px 0 !important;
+
+    /*
+     * Transparent at the left edge, gradually becoming fully
+     * opaque. Since this is a mask, the actual live card
+     * background is what appears beneath it.
+     */
+    -webkit-mask-image: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(0, 0, 0, 0.015) 8%,
+        rgba(0, 0, 0, 0.06) 18%,
+        rgba(0, 0, 0, 0.18) 30%,
+        rgba(0, 0, 0, 0.40) 42%,
+        rgba(0, 0, 0, 0.68) 54%,
+        rgba(0, 0, 0, 0.88) 65%,
+        #000 76%,
+        #000 100%
+    );
+
+    mask-image: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(0, 0, 0, 0.015) 8%,
+        rgba(0, 0, 0, 0.06) 18%,
+        rgba(0, 0, 0, 0.18) 30%,
+        rgba(0, 0, 0, 0.40) 42%,
+        rgba(0, 0, 0, 0.68) 54%,
+        rgba(0, 0, 0, 0.88) 65%,
+        #000 76%,
+        #000 100%
+    );
+
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+
+    -webkit-mask-size: 100% 100%;
+    mask-size: 100% 100%;
+}
+
+
+/*
+ * The IMG itself must stay fully opaque.
+ * The parent controls transparency.
+ */
+.article-card.has-story-briefing .article-card-image img,
+.article-card:not(.has-story-briefing) .article-card-image img {
+    opacity: 1 !important;
+
+    -webkit-mask-image: none !important;
+    mask-image: none !important;
+}
+
+
+/* ------------------------------------------------------------
+   READ STATE
+
+   Never substitute another fade/background for the image.
+   Let whatever existing .is-read treatment the app uses affect
+   the card normally.
+   ------------------------------------------------------------ */
+
+.article-card.is-read .article-card-image,
+.article-card.is-read:hover .article-card-image {
+    transition:
+        opacity 180ms ease,
+        filter 180ms ease;
+}
+
+
+/* ------------------------------------------------------------
+   HOVER
+
+   Do not swap or paint another image background on hover.
+   Keep the exact same alpha blend so no vertical seam appears
+   when entering/leaving hover.
+   ------------------------------------------------------------ */
+
+.article-card:hover .article-card-image {
+    -webkit-mask-composite: source-over;
+    mask-composite: add;
+}
+
+
+/* ------------------------------------------------------------
+   MOBILE TOP STORIES
+   ------------------------------------------------------------ */
+
+@media (max-width: 640px) {
+    .article-card.has-story-briefing .article-card-image {
+        width: 62% !important;
+
+        border-radius: 0 20px 20px 0 !important;
+
+        -webkit-mask-image: linear-gradient(
+            90deg,
+            transparent 0%,
+            rgba(0, 0, 0, 0.01) 12%,
+            rgba(0, 0, 0, 0.07) 25%,
+            rgba(0, 0, 0, 0.22) 39%,
+            rgba(0, 0, 0, 0.50) 53%,
+            rgba(0, 0, 0, 0.78) 66%,
+            #000 80%,
+            #000 100%
+        );
+
+        mask-image: linear-gradient(
+            90deg,
+            transparent 0%,
+            rgba(0, 0, 0, 0.01) 12%,
+            rgba(0, 0, 0, 0.07) 25%,
+            rgba(0, 0, 0, 0.22) 39%,
+            rgba(0, 0, 0, 0.50) 53%,
+            rgba(0, 0, 0, 0.78) 66%,
+            #000 80%,
+            #000 100%
+        );
+    }
+}
+
+
+/* v3.2.7c — show more of the clear image on Top Stories */
+
+.article-card.has-story-briefing .article-card-image {
+    -webkit-mask-image: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(0, 0, 0, 0.04) 8%,
+        rgba(0, 0, 0, 0.16) 18%,
+        rgba(0, 0, 0, 0.42) 30%,
+        rgba(0, 0, 0, 0.72) 42%,
+        rgba(0, 0, 0, 0.94) 53%,
+        #000 61%,
+        #000 100%
+    ) !important;
+
+    mask-image: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(0, 0, 0, 0.04) 8%,
+        rgba(0, 0, 0, 0.16) 18%,
+        rgba(0, 0, 0, 0.42) 30%,
+        rgba(0, 0, 0, 0.72) 42%,
+        rgba(0, 0, 0, 0.94) 53%,
+        #000 61%,
+        #000 100%
+    ) !important;
+}
+
+@media (max-width: 640px) {
+    .article-card.has-story-briefing .article-card-image {
+        -webkit-mask-image: linear-gradient(
+            90deg,
+            transparent 0%,
+            rgba(0, 0, 0, 0.04) 12%,
+            rgba(0, 0, 0, 0.18) 24%,
+            rgba(0, 0, 0, 0.48) 36%,
+            rgba(0, 0, 0, 0.78) 48%,
+            #000 60%,
+            #000 100%
+        ) !important;
+
+        mask-image: linear-gradient(
+            90deg,
+            transparent 0%,
+            rgba(0, 0, 0, 0.04) 12%,
+            rgba(0, 0, 0, 0.18) 24%,
+            rgba(0, 0, 0, 0.48) 36%,
+            rgba(0, 0, 0, 0.78) 48%,
+            #000 60%,
+            #000 100%
+        ) !important;
+    }
+}
+
+
+/* ============================================================
+   v3.2.7d — narrow fade, preserve image contrast
+   Only the far-left edge blends into the card.
+   Most of the Top Stories image is fully opaque.
+   ============================================================ */
+
+.article-card.has-story-briefing .article-card-image {
+    -webkit-mask-image: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(0,0,0,.08) 7%,
+        rgba(0,0,0,.28) 14%,
+        rgba(0,0,0,.58) 21%,
+        rgba(0,0,0,.84) 28%,
+        rgba(0,0,0,.97) 34%,
+        #000 39%,
+        #000 100%
+    ) !important;
+
+    mask-image: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(0,0,0,.08) 7%,
+        rgba(0,0,0,.28) 14%,
+        rgba(0,0,0,.58) 21%,
+        rgba(0,0,0,.84) 28%,
+        rgba(0,0,0,.97) 34%,
+        #000 39%,
+        #000 100%
+    ) !important;
+}
+
+/*
+ * Keep the image completely untouched once it reaches the
+ * opaque portion of the mask.
+ */
+.article-card.has-story-briefing .article-card-image img {
+    opacity: 1 !important;
+    filter: none !important;
+}
+
+/* Mobile needs a slightly wider transition because the image
+   occupies more of the card width. */
+@media (max-width: 640px) {
+    .article-card.has-story-briefing .article-card-image {
+        -webkit-mask-image: linear-gradient(
+            90deg,
+            transparent 0%,
+            rgba(0,0,0,.08) 9%,
+            rgba(0,0,0,.30) 18%,
+            rgba(0,0,0,.62) 27%,
+            rgba(0,0,0,.88) 35%,
+            #000 43%,
+            #000 100%
+        ) !important;
+
+        mask-image: linear-gradient(
+            90deg,
+            transparent 0%,
+            rgba(0,0,0,.08) 9%,
+            rgba(0,0,0,.30) 18%,
+            rgba(0,0,0,.62) 27%,
+            rgba(0,0,0,.88) 35%,
+            #000 43%,
+            #000 100%
+        ) !important;
+    }
+}
+
+
+/* ============================================================
+   v3.2.7e — reset Top Stories image rendering
+
+   The right ~80% of the photograph must be the untouched source.
+   Only a narrow strip at the left is allowed to fade.
+   ============================================================ */
+
+/* Reset every visual effect that may be inherited from older rules. */
+.article-card.has-story-briefing .article-card-image {
+    opacity: 1 !important;
+    filter: none !important;
+    -webkit-filter: none !important;
+
+    mix-blend-mode: normal !important;
+    background: none !important;
+
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+
+    transition: none !important;
+
+    /*
+     * Extremely narrow alpha transition:
+     *
+     * 0–18% = blend
+     * 18–100% = ORIGINAL IMAGE
+     */
+    -webkit-mask-image: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(0,0,0,.15) 4%,
+        rgba(0,0,0,.45) 8%,
+        rgba(0,0,0,.75) 12%,
+        rgba(0,0,0,.95) 16%,
+        #000 19%,
+        #000 100%
+    ) !important;
+
+    mask-image: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(0,0,0,.15) 4%,
+        rgba(0,0,0,.45) 8%,
+        rgba(0,0,0,.75) 12%,
+        rgba(0,0,0,.95) 16%,
+        #000 19%,
+        #000 100%
+    ) !important;
+}
+
+
+/* The real <img> must also be completely clean. */
+.article-card.has-story-briefing .article-card-image img {
+    opacity: 1 !important;
+
+    filter: none !important;
+    -webkit-filter: none !important;
+
+    mix-blend-mode: normal !important;
+
+    -webkit-mask-image: none !important;
+    mask-image: none !important;
+
+    transform: none !important;
+
+    background: transparent !important;
+
+    object-fit: cover !important;
+}
+
+
+/* Absolutely no pseudo-element may wash the photograph out. */
+.article-card.has-story-briefing .article-card-image::before,
+.article-card.has-story-briefing .article-card-image::after {
+    content: none !important;
+    display: none !important;
+
+    opacity: 0 !important;
+    background: none !important;
+}
+
+
+/* Hover must not alter the photograph. */
+.article-card.has-story-briefing:hover .article-card-image,
+.article-card.has-story-briefing:hover .article-card-image img {
+    opacity: 1 !important;
+    filter: none !important;
+    -webkit-filter: none !important;
+}
+
+
+/* Read state may affect text/card styling, but not image clarity. */
+.article-card.has-story-briefing.is-read .article-card-image,
+.article-card.has-story-briefing.is-read .article-card-image img {
+    opacity: 1 !important;
+    filter: none !important;
+    -webkit-filter: none !important;
+}
+
+
+/* Mobile: slightly wider blend strip, but most remains untouched. */
+@media (max-width: 640px) {
+    .article-card.has-story-briefing .article-card-image {
+        -webkit-mask-image: linear-gradient(
+            90deg,
+            transparent 0%,
+            rgba(0,0,0,.12) 5%,
+            rgba(0,0,0,.42) 10%,
+            rgba(0,0,0,.76) 16%,
+            rgba(0,0,0,.96) 21%,
+            #000 25%,
+            #000 100%
+        ) !important;
+
+        mask-image: linear-gradient(
+            90deg,
+            transparent 0%,
+            rgba(0,0,0,.12) 5%,
+            rgba(0,0,0,.42) 10%,
+            rgba(0,0,0,.76) 16%,
+            rgba(0,0,0,.96) 21%,
+            #000 25%,
+            #000 100%
+        ) !important;
+    }
+}
+
+
+/* ============================================================
+   v3.2.7e — reset Top Stories image rendering
+
+   The right ~80% of the photograph must be the untouched source.
+   Only a narrow strip at the left is allowed to fade.
+   ============================================================ */
+
+/* Reset every visual effect that may be inherited from older rules. */
+.article-card.has-story-briefing .article-card-image {
+    opacity: 1 !important;
+    filter: none !important;
+    -webkit-filter: none !important;
+
+    mix-blend-mode: normal !important;
+    background: none !important;
+
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+
+    transition: none !important;
+
+    /*
+     * Extremely narrow alpha transition:
+     *
+     * 0–18% = blend
+     * 18–100% = ORIGINAL IMAGE
+     */
+    -webkit-mask-image: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(0,0,0,.15) 4%,
+        rgba(0,0,0,.45) 8%,
+        rgba(0,0,0,.75) 12%,
+        rgba(0,0,0,.95) 16%,
+        #000 19%,
+        #000 100%
+    ) !important;
+
+    mask-image: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(0,0,0,.15) 4%,
+        rgba(0,0,0,.45) 8%,
+        rgba(0,0,0,.75) 12%,
+        rgba(0,0,0,.95) 16%,
+        #000 19%,
+        #000 100%
+    ) !important;
+}
+
+
+/* The real <img> must also be completely clean. */
+.article-card.has-story-briefing .article-card-image img {
+    opacity: 1 !important;
+
+    filter: none !important;
+    -webkit-filter: none !important;
+
+    mix-blend-mode: normal !important;
+
+    -webkit-mask-image: none !important;
+    mask-image: none !important;
+
+    transform: none !important;
+
+    background: transparent !important;
+
+    object-fit: cover !important;
+}
+
+
+/* Absolutely no pseudo-element may wash the photograph out. */
+.article-card.has-story-briefing .article-card-image::before,
+.article-card.has-story-briefing .article-card-image::after {
+    content: none !important;
+    display: none !important;
+
+    opacity: 0 !important;
+    background: none !important;
+}
+
+
+/* Hover must not alter the photograph. */
+.article-card.has-story-briefing:hover .article-card-image,
+.article-card.has-story-briefing:hover .article-card-image img {
+    opacity: 1 !important;
+    filter: none !important;
+    -webkit-filter: none !important;
+}
+
+
+/* Read state may affect text/card styling, but not image clarity. */
+.article-card.has-story-briefing.is-read .article-card-image,
+.article-card.has-story-briefing.is-read .article-card-image img {
+    opacity: 1 !important;
+    filter: none !important;
+    -webkit-filter: none !important;
+}
+
+
+/* Mobile: slightly wider blend strip, but most remains untouched. */
+@media (max-width: 640px) {
+    .article-card.has-story-briefing .article-card-image {
+        -webkit-mask-image: linear-gradient(
+            90deg,
+            transparent 0%,
+            rgba(0,0,0,.12) 5%,
+            rgba(0,0,0,.42) 10%,
+            rgba(0,0,0,.76) 16%,
+            rgba(0,0,0,.96) 21%,
+            #000 25%,
+            #000 100%
+        ) !important;
+
+        mask-image: linear-gradient(
+            90deg,
+            transparent 0%,
+            rgba(0,0,0,.12) 5%,
+            rgba(0,0,0,.42) 10%,
+            rgba(0,0,0,.76) 16%,
+            rgba(0,0,0,.96) 21%,
+            #000 25%,
+            #000 100%
+        ) !important;
+    }
+}
+
+
+/* ============================================================
+   v3.2.7f — balanced Top Stories blend
+
+   Goals:
+   - softer transition from card -> image
+   - image beneath text remains cloudy enough for readability
+   - right half of image stays completely untouched / crisp
+   ============================================================ */
+
+.article-card.has-story-briefing .article-card-image {
+    -webkit-mask-image: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(0,0,0,.03) 6%,
+        rgba(0,0,0,.10) 12%,
+        rgba(0,0,0,.22) 18%,
+        rgba(0,0,0,.40) 24%,
+        rgba(0,0,0,.62) 30%,
+        rgba(0,0,0,.82) 36%,
+        rgba(0,0,0,.95) 42%,
+        #000 47%,
+        #000 100%
+    ) !important;
+
+    mask-image: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(0,0,0,.03) 6%,
+        rgba(0,0,0,.10) 12%,
+        rgba(0,0,0,.22) 18%,
+        rgba(0,0,0,.40) 24%,
+        rgba(0,0,0,.62) 30%,
+        rgba(0,0,0,.82) 36%,
+        rgba(0,0,0,.95) 42%,
+        #000 47%,
+        #000 100%
+    ) !important;
+}
+
+
+/* Keep the actual photograph untouched.
+   Only the container mask performs blending. */
+.article-card.has-story-briefing .article-card-image img {
+    opacity: 1 !important;
+    filter: none !important;
+    -webkit-filter: none !important;
+}
+
+
+/* Mobile: slightly longer transition because text overlaps
+   proportionally more of the photograph. */
+@media (max-width: 640px) {
+    .article-card.has-story-briefing .article-card-image {
+        -webkit-mask-image: linear-gradient(
+            90deg,
+            transparent 0%,
+            rgba(0,0,0,.025) 7%,
+            rgba(0,0,0,.10) 14%,
+            rgba(0,0,0,.24) 21%,
+            rgba(0,0,0,.44) 28%,
+            rgba(0,0,0,.66) 35%,
+            rgba(0,0,0,.85) 42%,
+            rgba(0,0,0,.96) 48%,
+            #000 53%,
+            #000 100%
+        ) !important;
+
+        mask-image: linear-gradient(
+            90deg,
+            transparent 0%,
+            rgba(0,0,0,.025) 7%,
+            rgba(0,0,0,.10) 14%,
+            rgba(0,0,0,.24) 21%,
+            rgba(0,0,0,.44) 28%,
+            rgba(0,0,0,.66) 35%,
+            rgba(0,0,0,.85) 42%,
+            rgba(0,0,0,.96) 48%,
+            #000 53%,
+            #000 100%
+        ) !important;
+    }
+}
+
+
+/* ============================================================
+   v3.2.7f — balanced Top Stories blend
+
+   Goals:
+   - softer transition from card -> image
+   - image beneath text remains cloudy enough for readability
+   - right half of image stays completely untouched / crisp
+   ============================================================ */
+
+.article-card.has-story-briefing .article-card-image {
+    -webkit-mask-image: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(0,0,0,.03) 6%,
+        rgba(0,0,0,.10) 12%,
+        rgba(0,0,0,.22) 18%,
+        rgba(0,0,0,.40) 24%,
+        rgba(0,0,0,.62) 30%,
+        rgba(0,0,0,.82) 36%,
+        rgba(0,0,0,.95) 42%,
+        #000 47%,
+        #000 100%
+    ) !important;
+
+    mask-image: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(0,0,0,.03) 6%,
+        rgba(0,0,0,.10) 12%,
+        rgba(0,0,0,.22) 18%,
+        rgba(0,0,0,.40) 24%,
+        rgba(0,0,0,.62) 30%,
+        rgba(0,0,0,.82) 36%,
+        rgba(0,0,0,.95) 42%,
+        #000 47%,
+        #000 100%
+    ) !important;
+}
+
+
+/* Keep the actual photograph untouched.
+   Only the container mask performs blending. */
+.article-card.has-story-briefing .article-card-image img {
+    opacity: 1 !important;
+    filter: none !important;
+    -webkit-filter: none !important;
+}
+
+
+/* Mobile: slightly longer transition because text overlaps
+   proportionally more of the photograph. */
+@media (max-width: 640px) {
+    .article-card.has-story-briefing .article-card-image {
+        -webkit-mask-image: linear-gradient(
+            90deg,
+            transparent 0%,
+            rgba(0,0,0,.025) 7%,
+            rgba(0,0,0,.10) 14%,
+            rgba(0,0,0,.24) 21%,
+            rgba(0,0,0,.44) 28%,
+            rgba(0,0,0,.66) 35%,
+            rgba(0,0,0,.85) 42%,
+            rgba(0,0,0,.96) 48%,
+            #000 53%,
+            #000 100%
+        ) !important;
+
+        mask-image: linear-gradient(
+            90deg,
+            transparent 0%,
+            rgba(0,0,0,.025) 7%,
+            rgba(0,0,0,.10) 14%,
+            rgba(0,0,0,.24) 21%,
+            rgba(0,0,0,.44) 28%,
+            rgba(0,0,0,.66) 35%,
+            rgba(0,0,0,.85) 42%,
+            rgba(0,0,0,.96) 48%,
+            #000 53%,
+            #000 100%
+        ) !important;
+    }
+}
+
+
+/* v3.2.7g — More stories divider belongs between cards, not inside one */
+
+.story-divider-outside {
+    position: relative;
+    z-index: 4;
+
+    padding: 0 !important;
+    margin: 6px 0 14px 8px;
+
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1;
+
+    letter-spacing: .16em;
+    text-transform: uppercase;
+
+    color: #607a81;
+}
+
+@media (max-width: 640px) {
+    .story-divider-outside {
+        margin: 4px 0 11px 4px;
+        font-size: 10px;
+    }
+}
+
+
+/* ============================================================
+   v3.2.7h — Classic uses the same fade balance as Top Stories
+   ============================================================ */
+
+.article-card:not(.has-story-briefing) .article-card-image {
+    -webkit-mask-image: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(0,0,0,.03) 6%,
+        rgba(0,0,0,.10) 12%,
+        rgba(0,0,0,.22) 18%,
+        rgba(0,0,0,.40) 24%,
+        rgba(0,0,0,.62) 30%,
+        rgba(0,0,0,.82) 36%,
+        rgba(0,0,0,.95) 42%,
+        #000 47%,
+        #000 100%
+    ) !important;
+
+    mask-image: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(0,0,0,.03) 6%,
+        rgba(0,0,0,.10) 12%,
+        rgba(0,0,0,.22) 18%,
+        rgba(0,0,0,.40) 24%,
+        rgba(0,0,0,.62) 30%,
+        rgba(0,0,0,.82) 36%,
+        rgba(0,0,0,.95) 42%,
+        #000 47%,
+        #000 100%
+    ) !important;
+
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+
+    -webkit-mask-size: 100% 100%;
+    mask-size: 100% 100%;
+
+    opacity: 1 !important;
+    filter: none !important;
+    -webkit-filter: none !important;
+}
+
+.article-card:not(.has-story-briefing) .article-card-image img {
+    opacity: 1 !important;
+    filter: none !important;
+    -webkit-filter: none !important;
+
+    -webkit-mask-image: none !important;
+    mask-image: none !important;
+}
+
+.article-card:not(.has-story-briefing) .article-card-image::before,
+.article-card:not(.has-story-briefing) .article-card-image::after {
+    content: none !important;
+    display: none !important;
+}
+
+@media (max-width: 640px) {
+    .article-card:not(.has-story-briefing) .article-card-image {
+        -webkit-mask-image: linear-gradient(
+            90deg,
+            transparent 0%,
+            rgba(0,0,0,.025) 7%,
+            rgba(0,0,0,.10) 14%,
+            rgba(0,0,0,.24) 21%,
+            rgba(0,0,0,.44) 28%,
+            rgba(0,0,0,.66) 35%,
+            rgba(0,0,0,.85) 42%,
+            rgba(0,0,0,.96) 48%,
+            #000 53%,
+            #000 100%
+        ) !important;
+
+        mask-image: linear-gradient(
+            90deg,
+            transparent 0%,
+            rgba(0,0,0,.025) 7%,
+            rgba(0,0,0,.10) 14%,
+            rgba(0,0,0,.24) 21%,
+            rgba(0,0,0,.44) 28%,
+            rgba(0,0,0,.66) 35%,
+            rgba(0,0,0,.85) 42%,
+            rgba(0,0,0,.96) 48%,
+            #000 53%,
+            #000 100%
+        ) !important;
+    }
+}
+
+
+/* ============================================================
+   v3.2.10 — reference-style Top Stories briefing
+   ============================================================ */
+
+/* ---------- Top-right Full Coverage publisher orbs ---------- */
+
+.article-card.has-story-briefing .story-coverage-orbs {
+    position: absolute;
+    top: 14px;
+    right: 16px;
+    z-index: 18;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    max-width: min(52%, 230px);
+}
+
+.article-card.has-story-briefing .story-coverage-orb {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid rgba(166, 194, 202, .54);
+    border-radius: 999px;
+    background: rgba(250, 253, 253, .84);
+    box-shadow:
+        0 2px 10px rgba(30, 70, 82, .08),
+        inset 0 1px 0 rgba(255,255,255,.9);
+    color: #3f5e67;
+    text-decoration: none;
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+}
+
+.article-card.has-story-briefing .story-coverage-orb:hover {
+    transform: translateY(-1px);
+    border-color: rgba(92, 142, 160, .64);
+    background: rgba(255,255,255,.94);
+}
+
+.article-card.has-story-briefing .story-coverage-orb-fallback {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    font-size: 11px;
+    font-weight: 800;
+    color: #4b6870;
+}
+
+.article-card.has-story-briefing .story-coverage-orb img {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    height: 100%;
+    padding: 5px;
+    border-radius: inherit;
+    object-fit: contain;
+    background: rgba(255,255,255,.9);
+}
+
+.article-card.has-story-briefing .story-coverage-more {
+    font-size: 11px;
+    font-weight: 800;
+    color: #4267c7;
+}
+
+
+/* ---------- Key fact strip ---------- */
+
+.article-card.has-story-briefing .story-key-facts {
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+    max-width: 100%;
+    margin: 3px 0 12px;
+    padding: 0 0 2px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    flex-wrap: nowrap;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+}
+
+.article-card.has-story-briefing .story-key-facts::-webkit-scrollbar {
+    display: none;
+}
+
+.article-card.has-story-briefing .story-key-fact {
+    display: grid;
+    grid-template-columns: 32px minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+    flex: 0 0 auto;
+    min-width: 142px;
+    max-width: 205px;
+    min-height: 50px;
+    padding: 7px 11px 7px 8px;
+    border: 1px solid rgba(187, 209, 214, .42);
+    border-radius: 14px;
+    background:
+        linear-gradient(
+            145deg,
+            rgba(255,255,255,.62),
+            rgba(244,250,251,.38)
+        );
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.75),
+        0 3px 12px rgba(33, 82, 95, .035);
+    color: #233f4b;
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+}
+
+.article-card.has-story-briefing .story-key-fact-icon {
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+    background: rgba(255,255,255,.66);
+    color: #4267cb;
+    font-size: 17px;
+    line-height: 1;
+    box-shadow: inset 0 0 0 1px rgba(113,151,164,.08);
+}
+
+.article-card.has-story-briefing .story-key-fact-copy {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    line-height: 1.12;
+}
+
+.article-card.has-story-briefing .story-key-fact-copy strong {
+    display: block;
+    overflow: hidden;
+    color: #193542;
+    font-size: 13px;
+    font-weight: 800;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.article-card.has-story-briefing .story-key-fact-copy > span {
+    display: -webkit-box;
+    margin-top: 3px;
+    overflow: hidden;
+    color: #667b83;
+    font-size: 10.5px;
+    font-weight: 500;
+    line-height: 1.18;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+}
+
+
+/* ---------- Analysis tabs/panel ---------- */
+
+.article-card.has-story-briefing .story-analysis-shell {
+    position: relative;
+    overflow: hidden;
+    margin-top: 5px;
+    border: 1px solid rgba(187, 209, 214, .43);
+    border-radius: 17px;
+    background: rgba(255,255,255,.51);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.74),
+        0 5px 18px rgba(32,72,86,.035);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+}
+
+.article-card.has-story-briefing .story-analysis-tabs {
+    display: flex;
+    align-items: stretch;
+    width: 100%;
+    min-height: 48px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    border-bottom: 1px solid rgba(176,202,208,.36);
+}
+
+.article-card.has-story-briefing .story-analysis-tabs::-webkit-scrollbar {
+    display: none;
+}
+
+.article-card.has-story-briefing .story-analysis-tabs > button {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    flex: 1 0 auto;
+    min-width: 132px;
+    padding: 11px 14px 10px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: #4b5f68;
+    font-size: 12px;
+    font-weight: 650;
+    white-space: nowrap;
+    transition:
+        color .18s ease,
+        background .18s ease;
+}
+
+.article-card.has-story-briefing .story-analysis-tabs > button::after {
+    content: "";
+    position: absolute;
+    right: 14px;
+    bottom: 0;
+    left: 14px;
+    height: 2px;
+    border-radius: 99px 99px 0 0;
+    background: transparent;
+    transition: background .18s ease;
+}
+
+.article-card.has-story-briefing .story-analysis-tabs > button svg {
+    width: 19px;
+    height: 19px;
+    flex: 0 0 auto;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.article-card.has-story-briefing .story-analysis-tabs > button.is-active {
+    color: #2860d7;
+    background:
+        linear-gradient(
+            180deg,
+            rgba(74,122,235,.055),
+            rgba(74,122,235,0)
+        );
+}
+
+.article-card.has-story-briefing .story-analysis-tabs > button.is-active::after {
+    background: #5d80dc;
+}
+
+.article-card.has-story-briefing .story-analysis-body {
+    padding: 0;
+}
+
+.article-card.has-story-briefing .story-analysis-copy {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 36px;
+    align-items: center;
+    min-height: 72px;
+    padding: 15px 12px 15px 17px;
+}
+
+.article-card.has-story-briefing .story-analysis-text {
+    min-width: 0;
+    color: #324d59;
+    font-size: 13px;
+    line-height: 1.48;
+}
+
+.article-card.has-story-briefing .story-analysis-section-label {
+    margin-bottom: 6px;
+    color: #60747c;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+
+.article-card.has-story-briefing .story-analysis-next {
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 42px;
+    margin-left: 4px;
+    border-radius: 12px;
+    color: #3064d4;
+    transition:
+        background .18s ease,
+        transform .18s ease;
+}
+
+.article-card.has-story-briefing .story-analysis-next:hover {
+    background: rgba(63,105,210,.08);
+    transform: translateX(1px);
+}
+
+.article-card.has-story-briefing .story-analysis-next svg {
+    width: 21px;
+    height: 21px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2.3;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.article-card.has-story-briefing .story-more-analysis-rail {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    padding: 9px 12px 0;
+    scrollbar-width: none;
+}
+
+.article-card.has-story-briefing .story-more-analysis-rail::-webkit-scrollbar {
+    display: none;
+}
+
+.article-card.has-story-briefing .story-more-analysis-rail button {
+    flex: 0 0 auto;
+    padding: 5px 9px;
+    border: 1px solid rgba(173,200,207,.52);
+    border-radius: 999px;
+    background: rgba(255,255,255,.48);
+    color: #5d727b;
+    font-size: 10px;
+    white-space: nowrap;
+}
+
+.article-card.has-story-briefing .story-more-analysis-rail button.is-active {
+    border-color: rgba(85,119,206,.45);
+    background: rgba(69,108,207,.09);
+    color: #315dc6;
+}
+
+
+/* ---------- Expanded publishers after +N ---------- */
+
+.article-card.has-story-briefing .story-coverage-expanded {
+    display: grid;
+    gap: 7px;
+    margin-top: 10px;
+    padding: 10px;
+    border: 1px solid rgba(182,206,211,.44);
+    border-radius: 14px;
+    background: rgba(255,255,255,.46);
+}
+
+.article-card.has-story-briefing .story-coverage-expanded-publisher {
+    padding: 8px 9px;
+    border-radius: 10px;
+    background: rgba(255,255,255,.46);
+}
+
+.article-card.has-story-briefing .story-coverage-expanded-heading {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-bottom: 4px;
+    color: #2d4d59;
+    font-size: 11px;
+}
+
+.article-card.has-story-briefing .story-coverage-expanded-icon {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    overflow: hidden;
+    border: 1px solid rgba(170,196,201,.5);
+    border-radius: 999px;
+    background: #fff;
+    font-size: 9px;
+    font-weight: 800;
+}
+
+.article-card.has-story-briefing .story-coverage-expanded-icon img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    padding: 3px;
+    object-fit: contain;
+    background: #fff;
+}
+
+.article-card.has-story-briefing .story-coverage-expanded-publisher > a {
+    display: block;
+    margin: 3px 0 0 29px;
+    overflow: hidden;
+    color: #486873;
+    font-size: 10px;
+    line-height: 1.3;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+
+/* Old bottom coverage presentation is no longer used in Top Stories. */
+.article-card.has-story-briefing .story-coverage-label,
+.article-card.has-story-briefing .story-coverage-rail {
+    display: none !important;
+}
+
+
+/* ============================================================
+   Mobile image/readability
+   ============================================================ */
+
+@media (max-width: 640px) {
+
+    /*
+     * Fill the entire card with the source image.
+     * Full opacity starts around the middle/right of the card instead
+     * of beginning only near the far-right edge.
+     */
+    .article-card.has-story-briefing .article-card-image {
+        position: absolute !important;
+        top: 0 !important;
+        right: 0 !important;
+        bottom: 0 !important;
+        left: 0 !important;
+
+        width: 100% !important;
+        height: 100% !important;
+
+        margin: 0 !important;
+        border-radius: 0 !important;
+
+        opacity: 1 !important;
+        filter: none !important;
+        -webkit-filter: none !important;
+
+        -webkit-mask-image: linear-gradient(
+            90deg,
+            transparent 0%,
+            rgba(0,0,0,.02) 16%,
+            rgba(0,0,0,.06) 25%,
+            rgba(0,0,0,.14) 33%,
+            rgba(0,0,0,.29) 39%,
+            rgba(0,0,0,.49) 44%,
+            rgba(0,0,0,.69) 48%,
+            rgba(0,0,0,.86) 51%,
+            rgba(0,0,0,.96) 54%,
+            #000 56%,
+            #000 100%
+        ) !important;
+
+        mask-image: linear-gradient(
+            90deg,
+            transparent 0%,
+            rgba(0,0,0,.02) 16%,
+            rgba(0,0,0,.06) 25%,
+            rgba(0,0,0,.14) 33%,
+            rgba(0,0,0,.29) 39%,
+            rgba(0,0,0,.49) 44%,
+            rgba(0,0,0,.69) 48%,
+            rgba(0,0,0,.86) 51%,
+            rgba(0,0,0,.96) 54%,
+            #000 56%,
+            #000 100%
+        ) !important;
+
+        -webkit-mask-size: 100% 100% !important;
+        mask-size: 100% 100% !important;
+
+        -webkit-mask-repeat: no-repeat !important;
+        mask-repeat: no-repeat !important;
+    }
+
+    /*
+     * Bias the crop toward the useful right-hand side of source photos.
+     */
+    .article-card.has-story-briefing .article-card-image img {
+        width: 100% !important;
+        height: 100% !important;
+        object-fit: cover !important;
+        object-position: 70% center !important;
+
+        opacity: 1 !important;
+        filter: none !important;
+        -webkit-filter: none !important;
+        transform: none !important;
+    }
+
+    /*
+     * A non-blurred readability wash. It sits above the image and below
+     * all text, so photographs stay crisp on the right.
+     */
+    .article-card.has-story-briefing::before {
+        content: "" !important;
+        position: absolute !important;
+        inset: 0 !important;
+        z-index: 2 !important;
+        display: block !important;
+        pointer-events: none !important;
+
+        background: linear-gradient(
+            90deg,
+            rgba(244,251,255,.98) 0%,
+            rgba(244,251,255,.94) 25%,
+            rgba(244,251,255,.80) 38%,
+            rgba(244,251,255,.54) 47%,
+            rgba(244,251,255,.25) 55%,
+            rgba(244,251,255,.07) 63%,
+            transparent 72%
+        ) !important;
+    }
+
+    .article-card.has-story-briefing .article-card-heading,
+    .article-card.has-story-briefing .article-briefing,
+    .article-card.has-story-briefing .story-rank {
+        position: relative;
+        z-index: 10;
+    }
+
+    .article-card.has-story-briefing .story-coverage-orbs {
+        top: 11px;
+        right: 11px;
+        z-index: 18;
+        gap: 4px;
+        max-width: 48%;
+    }
+
+    .article-card.has-story-briefing .story-coverage-orb {
+        width: 27px;
+        height: 27px;
+    }
+
+    .article-card.has-story-briefing .story-coverage-orb img {
+        padding: 4px;
+    }
+
+    .article-card.has-story-briefing .story-coverage-more {
+        font-size: 9px;
+    }
+
+    /*
+     * Leave the top-right publisher row breathing room.
+     */
+    .article-card.has-story-briefing .article-metadata {
+        max-width: calc(100% - 112px);
+    }
+
+    .article-card.has-story-briefing .story-key-facts {
+        margin-top: 5px;
+        margin-right: -4px;
+    }
+
+    .article-card.has-story-briefing .story-key-fact {
+        min-width: 136px;
+        max-width: 175px;
+        min-height: 47px;
+        grid-template-columns: 29px minmax(0, 1fr);
+        gap: 7px;
+        padding: 6px 9px 6px 7px;
+        border-radius: 13px;
+    }
+
+    .article-card.has-story-briefing .story-key-fact-icon {
+        width: 29px;
+        height: 29px;
+        border-radius: 9px;
+        font-size: 15px;
+    }
+
+    .article-card.has-story-briefing .story-key-fact-copy strong {
+        font-size: 12px;
+    }
+
+    .article-card.has-story-briefing .story-key-fact-copy > span {
+        font-size: 9.5px;
+    }
+
+    .article-card.has-story-briefing .story-analysis-shell {
+        margin-right: -4px;
+        margin-left: -4px;
+        border-radius: 15px;
+    }
+
+    .article-card.has-story-briefing .story-analysis-tabs {
+        min-height: 44px;
+        scroll-snap-type: x proximity;
+    }
+
+    .article-card.has-story-briefing .story-analysis-tabs > button {
+        flex: 0 0 auto;
+        min-width: 126px;
+        padding: 10px 12px 9px;
+        font-size: 10.5px;
+        scroll-snap-align: start;
+    }
+
+    .article-card.has-story-briefing .story-analysis-tabs > button svg {
+        width: 17px;
+        height: 17px;
+    }
+
+    .article-card.has-story-briefing .story-analysis-copy {
+        grid-template-columns: minmax(0, 1fr) 31px;
+        min-height: 65px;
+        padding: 12px 9px 13px 13px;
+    }
+
+    .article-card.has-story-briefing .story-analysis-text {
+        font-size: 11.5px;
+        line-height: 1.45;
+    }
+
+    .article-card.has-story-briefing .story-analysis-next {
+        width: 29px;
+        height: 38px;
+    }
+
+    .article-card.has-story-briefing .story-analysis-next svg {
+        width: 19px;
+        height: 19px;
+    }
+}
+
+
+
+/* ============================================================
+   v3.2.10a — mobile image position + analysis readability
+   ============================================================ */
+
+@media (max-width: 640px) {
+
+    /*
+     * Physically shift the photograph to the RIGHT.
+     *
+     * The image is enlarged first so moving it right cannot expose
+     * an empty strip on the left edge.
+     */
+    .article-card.has-story-briefing .article-card-image img {
+        width: 124% !important;
+        max-width: none !important;
+        height: 100% !important;
+
+        object-fit: cover !important;
+        object-position: center center !important;
+
+        transform: translateX(10%) !important;
+        transform-origin: center center !important;
+    }
+
+
+    /*
+     * Make the analysis card substantially more opaque.
+     * The background image should provide atmosphere, not compete
+     * with the analysis text.
+     */
+    .article-card.has-story-briefing .story-analysis-shell {
+        background: rgba(248, 252, 252, .92) !important;
+
+        border-color: rgba(173, 197, 204, .72) !important;
+
+        box-shadow:
+            inset 0 1px 0 rgba(255,255,255,.96),
+            0 5px 18px rgba(32,72,86,.06) !important;
+
+        -webkit-backdrop-filter: blur(14px) !important;
+        backdrop-filter: blur(14px) !important;
+    }
+
+
+    /*
+     * Keep the tab rail especially clean because this is where the
+     * image currently makes the labels difficult to read.
+     */
+    .article-card.has-story-briefing .story-analysis-tabs {
+        background: rgba(247, 251, 251, .94) !important;
+
+        border-bottom-color:
+            rgba(154, 184, 193, .52) !important;
+    }
+
+
+    .article-card.has-story-briefing
+    .story-analysis-tabs > button {
+        color: #415861 !important;
+    }
+
+
+    .article-card.has-story-briefing
+    .story-analysis-tabs > button.is-active {
+        color: #285fcf !important;
+
+        background:
+            linear-gradient(
+                180deg,
+                rgba(72, 113, 221, .08),
+                rgba(72, 113, 221, .015)
+            ) !important;
+    }
+
+
+    /*
+     * Analysis prose also gets its own opaque layer.
+     */
+    .article-card.has-story-briefing .story-analysis-body {
+        background: rgba(250, 253, 253, .91) !important;
+    }
+
+
+    .article-card.has-story-briefing .story-analysis-text {
+        color: #304750 !important;
+    }
+}
+
+
+/* ============================================================
+   v3.2.10b — analysis readability on all screen sizes
+   ============================================================ */
+
+.article-card.has-story-briefing .story-analysis-shell {
+    background: rgba(248, 252, 252, .92) !important;
+    border-color: rgba(173, 197, 204, .72) !important;
+
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.96),
+        0 5px 18px rgba(32,72,86,.06) !important;
+
+    -webkit-backdrop-filter: blur(14px) !important;
+    backdrop-filter: blur(14px) !important;
+}
+
+.article-card.has-story-briefing .story-analysis-tabs {
+    background: rgba(247, 251, 251, .94) !important;
+    border-bottom-color: rgba(154, 184, 193, .52) !important;
+}
+
+.article-card.has-story-briefing .story-analysis-tabs > button {
+    color: #415861 !important;
+}
+
+.article-card.has-story-briefing .story-analysis-tabs > button.is-active {
+    color: #285fcf !important;
+
+    background:
+        linear-gradient(
+            180deg,
+            rgba(72, 113, 221, .08),
+            rgba(72, 113, 221, .015)
+        ) !important;
+}
+
+.article-card.has-story-briefing .story-analysis-body {
+    background: rgba(250, 253, 253, .91) !important;
+}
+
+.article-card.has-story-briefing .story-analysis-text {
+    color: #304750 !important;
+}
+
+
+/* ============================================================
+   v3.2.10c — mobile image focal point
+   Move source-image center into the clear right-hand region.
+   ============================================================ */
+
+@media (max-width: 640px) {
+
+    .article-card.has-story-briefing .article-card-image img {
+        width: 100% !important;
+        max-width: 100% !important;
+        height: 100% !important;
+
+        object-fit: cover !important;
+
+        /*
+         * IMPORTANT:
+         * Lower than 50% shifts the visible source image RIGHT.
+         *
+         * With these landscape news photos cropped into a tall
+         * mobile card, 35% puts the original image center around
+         * the clear center/right part of the card.
+         */
+        object-position: 35% 50% !important;
+
+        transform: none !important;
+        transform-origin: center center !important;
+    }
+}
+
+
+/* ============================================================
+   v3.2.10d
+   - stronger mobile image focal shift
+   - readable Liquid Glass analysis panel on all screen sizes
+   ============================================================ */
+
+
+/* ------------------------------------------------------------
+   ANALYSIS PANEL — desktop + mobile
+   ------------------------------------------------------------ */
+
+.article-card.has-story-briefing .story-analysis-shell {
+    background:
+        linear-gradient(
+            135deg,
+            rgba(250, 253, 253, .64),
+            rgba(237, 247, 249, .52)
+        ) !important;
+
+    border: 1px solid rgba(175, 199, 205, .66) !important;
+
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, .82),
+        inset 0 -1px 0 rgba(255, 255, 255, .24),
+        0 6px 22px rgba(31, 67, 80, .07) !important;
+
+    -webkit-backdrop-filter:
+        blur(18px)
+        saturate(1.12) !important;
+
+    backdrop-filter:
+        blur(18px)
+        saturate(1.12) !important;
+}
+
+
+/*
+ * Don't stack another almost-opaque layer over the shell.
+ * This was what made v3.2.10b look solid white.
+ */
+.article-card.has-story-briefing .story-analysis-tabs {
+    background: rgba(248, 252, 253, .30) !important;
+
+    border-bottom-color:
+        rgba(148, 180, 190, .46) !important;
+}
+
+
+.article-card.has-story-briefing .story-analysis-body {
+    background: rgba(250, 253, 253, .18) !important;
+}
+
+
+.article-card.has-story-briefing
+.story-analysis-tabs > button {
+    color: #405862 !important;
+    text-shadow:
+        0 1px 0 rgba(255, 255, 255, .45);
+}
+
+
+.article-card.has-story-briefing
+.story-analysis-tabs > button.is-active {
+    color: #245ecf !important;
+
+    background:
+        linear-gradient(
+            180deg,
+            rgba(80, 123, 224, .10),
+            rgba(80, 123, 224, .025)
+        ) !important;
+}
+
+
+.article-card.has-story-briefing
+.story-analysis-tabs > button.is-active::after {
+    background: #557bdc !important;
+}
+
+
+.article-card.has-story-briefing .story-analysis-text {
+    color: #2d4650 !important;
+}
+
+
+.article-card.has-story-briefing .story-analysis-copy {
+    text-shadow:
+        0 1px 0 rgba(255,255,255,.30);
+}
+
+
+/* ------------------------------------------------------------
+   MOBILE IMAGE
+   ------------------------------------------------------------ */
+
+@media (max-width: 640px) {
+
+    /*
+     * Landscape news photos lose a large amount of horizontal
+     * content with object-fit: cover.
+     *
+     * 20% shifts the original image centre substantially RIGHT
+     * inside the visible mobile card.
+     */
+    .article-card.has-story-briefing
+    .article-card-image img {
+
+        width: 100% !important;
+        max-width: 100% !important;
+        height: 100% !important;
+
+        object-fit: cover !important;
+        object-position: 20% 50% !important;
+
+        transform: none !important;
+    }
+
+
+    /*
+     * Keep text side protected, but let the image become visually
+     * clear sooner once we reach the right half of the card.
+     */
+    .article-card.has-story-briefing
+    .article-card-image {
+
+        -webkit-mask-image:
+            linear-gradient(
+                90deg,
+                transparent 0%,
+                rgba(0,0,0,.02) 15%,
+                rgba(0,0,0,.07) 24%,
+                rgba(0,0,0,.17) 32%,
+                rgba(0,0,0,.34) 39%,
+                rgba(0,0,0,.57) 45%,
+                rgba(0,0,0,.78) 50%,
+                rgba(0,0,0,.92) 54%,
+                #000 58%,
+                #000 100%
+            ) !important;
+
+        mask-image:
+            linear-gradient(
+                90deg,
+                transparent 0%,
+                rgba(0,0,0,.02) 15%,
+                rgba(0,0,0,.07) 24%,
+                rgba(0,0,0,.17) 32%,
+                rgba(0,0,0,.34) 39%,
+                rgba(0,0,0,.57) 45%,
+                rgba(0,0,0,.78) 50%,
+                rgba(0,0,0,.92) 54%,
+                #000 58%,
+                #000 100%
+            ) !important;
+    }
+
+
+    /*
+     * Readability wash remains strong under the actual text,
+     * but stops earlier than before so the relocated subject
+     * can remain clear.
+     */
+    .article-card.has-story-briefing::before {
+
+        background:
+            linear-gradient(
+                90deg,
+                rgba(244,251,255,.98) 0%,
+                rgba(244,251,255,.95) 22%,
+                rgba(244,251,255,.84) 34%,
+                rgba(244,251,255,.62) 42%,
+                rgba(244,251,255,.36) 49%,
+                rgba(244,251,255,.14) 55%,
+                rgba(244,251,255,.03) 61%,
+                transparent 67%
+            ) !important;
+    }
+}
+
+
+/* ============================================================
+   v3.2.10e — readable Liquid Glass
+   Blur background detail instead of making panels opaque
+   ============================================================ */
+
+
+/* ------------------------------------------------------------
+   1. HEADLINE + EXCERPT READABILITY
+   Soft glass field behind the text only.
+   No visible hard-edged rectangle.
+   ------------------------------------------------------------ */
+
+.article-card.has-story-briefing .article-card-heading {
+    isolation: isolate;
+}
+
+.article-card.has-story-briefing .article-card-heading::before {
+    content: "";
+    position: absolute;
+
+    /* Cover the part of the card occupied by headline/excerpt */
+    top: -14px;
+    bottom: -14px;
+    left: -18px;
+    width: min(70%, 760px);
+
+    z-index: -1;
+    pointer-events: none;
+
+    border-radius: 22px;
+
+    /*
+     * Still transparent: the photograph remains visible,
+     * but detail behind the text is strongly softened.
+     */
+    background:
+        linear-gradient(
+            90deg,
+            rgba(247, 253, 253, .52) 0%,
+            rgba(247, 253, 253, .43) 55%,
+            rgba(247, 253, 253, .20) 78%,
+            rgba(247, 253, 253, 0) 100%
+        );
+
+    -webkit-backdrop-filter:
+        blur(22px)
+        saturate(.82)
+        brightness(1.05);
+
+    backdrop-filter:
+        blur(22px)
+        saturate(.82)
+        brightness(1.05);
+
+    /*
+     * Fade the glass itself out toward the image so it doesn't
+     * look like a rectangular panel behind the headline.
+     */
+    -webkit-mask-image:
+        linear-gradient(
+            90deg,
+            #000 0%,
+            #000 64%,
+            rgba(0,0,0,.82) 76%,
+            rgba(0,0,0,.38) 89%,
+            transparent 100%
+        );
+
+    mask-image:
+        linear-gradient(
+            90deg,
+            #000 0%,
+            #000 64%,
+            rgba(0,0,0,.82) 76%,
+            rgba(0,0,0,.38) 89%,
+            transparent 100%
+        );
+}
+
+
+/* ------------------------------------------------------------
+   2. ANALYSIS PANEL
+   Keep transparency, increase actual glass blur.
+   ------------------------------------------------------------ */
+
+.article-card.has-story-briefing .story-analysis-shell {
+    background:
+        linear-gradient(
+            135deg,
+            rgba(250, 254, 254, .54),
+            rgba(237, 247, 249, .38)
+        ) !important;
+
+    border-color:
+        rgba(166, 194, 202, .68) !important;
+
+    -webkit-backdrop-filter:
+        blur(28px)
+        saturate(.82)
+        brightness(1.07) !important;
+
+    backdrop-filter:
+        blur(28px)
+        saturate(.82)
+        brightness(1.07) !important;
+
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.84),
+        inset 0 -1px 0 rgba(255,255,255,.20),
+        0 7px 24px rgba(29,67,80,.075) !important;
+}
+
+
+/*
+ * These remain very transparent.
+ * The shell blur does the readability work.
+ */
+.article-card.has-story-briefing .story-analysis-tabs {
+    background:
+        linear-gradient(
+            180deg,
+            rgba(250,253,253,.22),
+            rgba(250,253,253,.10)
+        ) !important;
+
+    border-bottom-color:
+        rgba(137,170,181,.44) !important;
+}
+
+.article-card.has-story-briefing .story-analysis-body {
+    background: rgba(250,253,253,.08) !important;
+}
+
+
+/* Stronger foreground contrast without making the glass solid. */
+
+.article-card.has-story-briefing .story-analysis-text {
+    color: #263f49 !important;
+}
+
+.article-card.has-story-briefing
+.story-analysis-tabs > button {
+    color: #38525d !important;
+    text-shadow: 0 1px 1px rgba(255,255,255,.55);
+}
+
+.article-card.has-story-briefing
+.story-analysis-tabs > button.is-active {
+    color: #245ed0 !important;
+
+    background:
+        linear-gradient(
+            180deg,
+            rgba(71,113,218,.11),
+            rgba(71,113,218,.025)
+        ) !important;
+}
+
+
+/* ------------------------------------------------------------
+   3. MOBILE
+   Slightly stronger blur because image occupies more of card.
+   Image positioning itself remains controlled by v3.2.10d.
+   ------------------------------------------------------------ */
+
+@media (max-width: 640px) {
+
+    .article-card.has-story-briefing
+    .article-card-heading::before {
+        top: -10px;
+        bottom: -12px;
+        left: -12px;
+
+        width: 78%;
+
+        -webkit-backdrop-filter:
+            blur(24px)
+            saturate(.80)
+            brightness(1.06);
+
+        backdrop-filter:
+            blur(24px)
+            saturate(.80)
+            brightness(1.06);
+    }
+
+    .article-card.has-story-briefing
+    .story-analysis-shell {
+        -webkit-backdrop-filter:
+            blur(30px)
+            saturate(.80)
+            brightness(1.07) !important;
+
+        backdrop-filter:
+            blur(30px)
+            saturate(.80)
+            brightness(1.07) !important;
+    }
+}
+
+
+/* ============================================================
+   v3.2.10f — hide source footer inside Smart analysis panels
+   ============================================================ */
+
+/*
+ * Hide only the section-level citation/footer:
+ *   Cong An Nhan Dan
+ *   Reuters World
+ *   Tuoi Tre
+ * etc.
+ *
+ * Timeline event citations remain available.
+ */
+.article-card.has-story-briefing
+.story-analysis-text > .top-story-citations {
+    display: none !important;
+}
+
+
+/* ============================================================
+   v3.2.10g — stronger readable Liquid Glass
+   Desktop + mobile
+   ============================================================ */
+
+
+/* ------------------------------------------------------------
+   HEADLINE / EXCERPT GLASS
+   ------------------------------------------------------------ */
+
+.article-card.has-story-briefing
+.article-card-heading::before {
+    top: -18px !important;
+    bottom: -18px !important;
+    left: -20px !important;
+
+    /*
+     * Extend slightly farther into the image because long excerpts
+     * can reach well beyond the previous glass field.
+     */
+    width: min(76%, 840px) !important;
+
+    background:
+        linear-gradient(
+            90deg,
+            rgba(248,253,253,.74) 0%,
+            rgba(248,253,253,.69) 38%,
+            rgba(246,252,252,.58) 60%,
+            rgba(244,251,252,.36) 75%,
+            rgba(244,251,252,.14) 88%,
+            transparent 100%
+        ) !important;
+
+    -webkit-backdrop-filter:
+        blur(30px)
+        saturate(.72)
+        brightness(1.07) !important;
+
+    backdrop-filter:
+        blur(30px)
+        saturate(.72)
+        brightness(1.07) !important;
+
+    /*
+     * Preserve the soft transition into the uncovered photograph.
+     */
+    -webkit-mask-image:
+        linear-gradient(
+            90deg,
+            #000 0%,
+            #000 67%,
+            rgba(0,0,0,.90) 76%,
+            rgba(0,0,0,.62) 86%,
+            rgba(0,0,0,.25) 94%,
+            transparent 100%
+        ) !important;
+
+    mask-image:
+        linear-gradient(
+            90deg,
+            #000 0%,
+            #000 67%,
+            rgba(0,0,0,.90) 76%,
+            rgba(0,0,0,.62) 86%,
+            rgba(0,0,0,.25) 94%,
+            transparent 100%
+        ) !important;
+}
+
+
+/* Make foreground article text a little stronger. */
+
+.article-card.has-story-briefing
+.article-card-heading h2 {
+    color: #16313c !important;
+}
+
+.article-card.has-story-briefing
+.article-card-heading p {
+    color: #354e59 !important;
+}
+
+
+/* ------------------------------------------------------------
+   ANALYSIS — stronger glass, still visibly translucent
+   ------------------------------------------------------------ */
+
+.article-card.has-story-briefing
+.story-analysis-shell {
+    background:
+        linear-gradient(
+            135deg,
+            rgba(249,253,254,.72) 0%,
+            rgba(242,250,251,.66) 52%,
+            rgba(235,246,249,.58) 100%
+        ) !important;
+
+    border-color:
+        rgba(149,184,194,.72) !important;
+
+    -webkit-backdrop-filter:
+        blur(34px)
+        saturate(.70)
+        brightness(1.08) !important;
+
+    backdrop-filter:
+        blur(34px)
+        saturate(.70)
+        brightness(1.08) !important;
+
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.90),
+        inset 0 -1px 0 rgba(255,255,255,.24),
+        0 7px 26px rgba(30,67,80,.08) !important;
+}
+
+
+/*
+ * Keep child layers light.
+ * They should NOT each be 70–90% opaque, otherwise the combination
+ * becomes the solid-white panel you disliked earlier.
+ */
+
+.article-card.has-story-briefing
+.story-analysis-tabs {
+    background:
+        linear-gradient(
+            180deg,
+            rgba(250,253,254,.30),
+            rgba(246,251,252,.18)
+        ) !important;
+
+    border-bottom-color:
+        rgba(126,164,176,.50) !important;
+}
+
+.article-card.has-story-briefing
+.story-analysis-body {
+    background:
+        rgba(248,252,253,.12) !important;
+}
+
+
+/* Analysis text contrast */
+
+.article-card.has-story-briefing
+.story-analysis-text {
+    color: #223c46 !important;
+}
+
+.article-card.has-story-briefing
+.story-analysis-tabs > button {
+    color: #344d57 !important;
+    font-weight: 650 !important;
+
+    text-shadow:
+        0 1px 1px rgba(255,255,255,.65);
+}
+
+.article-card.has-story-briefing
+.story-analysis-tabs > button.is-active {
+    color: #205acb !important;
+
+    background:
+        linear-gradient(
+            180deg,
+            rgba(65,108,214,.13),
+            rgba(65,108,214,.035)
+        ) !important;
+}
+
+
+/* ------------------------------------------------------------
+   MOBILE — slightly stronger because image occupies whole card
+   ------------------------------------------------------------ */
+
+@media (max-width: 640px) {
+
+    .article-card.has-story-briefing
+    .article-card-heading::before {
+        left: -14px !important;
+        width: 82% !important;
+
+        background:
+            linear-gradient(
+                90deg,
+                rgba(248,253,253,.79) 0%,
+                rgba(248,253,253,.74) 38%,
+                rgba(246,252,252,.63) 58%,
+                rgba(244,251,252,.39) 73%,
+                rgba(244,251,252,.15) 88%,
+                transparent 100%
+            ) !important;
+
+        -webkit-backdrop-filter:
+            blur(32px)
+            saturate(.70)
+            brightness(1.08) !important;
+
+        backdrop-filter:
+            blur(32px)
+            saturate(.70)
+            brightness(1.08) !important;
+    }
+
+
+    .article-card.has-story-briefing
+    .story-analysis-shell {
+        background:
+            linear-gradient(
+                135deg,
+                rgba(249,253,254,.76),
+                rgba(238,248,250,.64)
+            ) !important;
+
+        -webkit-backdrop-filter:
+            blur(36px)
+            saturate(.68)
+            brightness(1.08) !important;
+
+        backdrop-filter:
+            blur(36px)
+            saturate(.68)
+            brightness(1.08) !important;
+    }
+}
+
+
+/* ============================================================
+   v3.2.10h — slightly stronger readable Liquid Glass
+   ============================================================ */
+
+
+/* Headline / excerpt */
+.article-card.has-story-briefing
+.article-card-heading::before {
+    background:
+        linear-gradient(
+            90deg,
+            rgba(248,253,253,.79) 0%,
+            rgba(248,253,253,.74) 38%,
+            rgba(246,252,252,.64) 60%,
+            rgba(244,251,252,.42) 75%,
+            rgba(244,251,252,.18) 88%,
+            transparent 100%
+        ) !important;
+
+    -webkit-backdrop-filter:
+        blur(34px)
+        saturate(.68)
+        brightness(1.08) !important;
+
+    backdrop-filter:
+        blur(34px)
+        saturate(.68)
+        brightness(1.08) !important;
+}
+
+
+/* Analysis panel */
+.article-card.has-story-briefing
+.story-analysis-shell {
+    background:
+        linear-gradient(
+            135deg,
+            rgba(249,253,254,.78) 0%,
+            rgba(242,250,251,.72) 52%,
+            rgba(235,246,249,.64) 100%
+        ) !important;
+
+    -webkit-backdrop-filter:
+        blur(40px)
+        saturate(.66)
+        brightness(1.09) !important;
+
+    backdrop-filter:
+        blur(40px)
+        saturate(.66)
+        brightness(1.09) !important;
+}
+
+
+/*
+ * Keep the inner layers transparent so it still looks like glass
+ * rather than a white card.
+ */
+.article-card.has-story-briefing
+.story-analysis-tabs {
+    background:
+        linear-gradient(
+            180deg,
+            rgba(250,253,254,.32),
+            rgba(246,251,252,.18)
+        ) !important;
+}
+
+.article-card.has-story-briefing
+.story-analysis-body {
+    background:
+        rgba(248,252,253,.14) !important;
+}
+
+
+/* Mobile gets just a touch more */
+@media (max-width: 640px) {
+
+    .article-card.has-story-briefing
+    .article-card-heading::before {
+        background:
+            linear-gradient(
+                90deg,
+                rgba(248,253,253,.83) 0%,
+                rgba(248,253,253,.78) 38%,
+                rgba(246,252,252,.68) 58%,
+                rgba(244,251,252,.45) 73%,
+                rgba(244,251,252,.19) 88%,
+                transparent 100%
+            ) !important;
+
+        -webkit-backdrop-filter:
+            blur(36px)
+            saturate(.66)
+            brightness(1.09) !important;
+
+        backdrop-filter:
+            blur(36px)
+            saturate(.66)
+            brightness(1.09) !important;
+    }
+
+    .article-card.has-story-briefing
+    .story-analysis-shell {
+        background:
+            linear-gradient(
+                135deg,
+                rgba(249,253,254,.80),
+                rgba(238,248,250,.70)
+            ) !important;
+
+        -webkit-backdrop-filter:
+            blur(42px)
+            saturate(.64)
+            brightness(1.09) !important;
+
+        backdrop-filter:
+            blur(42px)
+            saturate(.64)
+            brightness(1.09) !important;
+    }
+}
+
+
+/* ============================================================
+   v3.2.10i — mobile image transition farther right
+   Keep more of the text area clean/readable.
+   Desktop unchanged.
+   ============================================================ */
+
+@media (max-width: 640px) {
+
+    /*
+     * Reveal the source image later.
+     *
+     * Previous:
+     *   strong image around 45–55%
+     *   fully visible around 58%
+     *
+     * New:
+     *   image stays very faint through the text area
+     *   strong reveal starts around 62–68%
+     *   fully visible around 76%
+     */
+    .article-card.has-story-briefing
+    .article-card-image {
+        -webkit-mask-image:
+            linear-gradient(
+                90deg,
+                transparent 0%,
+                transparent 24%,
+                rgba(0,0,0,.02) 34%,
+                rgba(0,0,0,.06) 43%,
+                rgba(0,0,0,.14) 51%,
+                rgba(0,0,0,.28) 57%,
+                rgba(0,0,0,.48) 62%,
+                rgba(0,0,0,.68) 67%,
+                rgba(0,0,0,.86) 72%,
+                #000 76%,
+                #000 100%
+            ) !important;
+
+        mask-image:
+            linear-gradient(
+                90deg,
+                transparent 0%,
+                transparent 24%,
+                rgba(0,0,0,.02) 34%,
+                rgba(0,0,0,.06) 43%,
+                rgba(0,0,0,.14) 51%,
+                rgba(0,0,0,.28) 57%,
+                rgba(0,0,0,.48) 62%,
+                rgba(0,0,0,.68) 67%,
+                rgba(0,0,0,.86) 72%,
+                #000 76%,
+                #000 100%
+            ) !important;
+    }
+
+
+    /*
+     * Extend the light readability wash farther to the right too.
+     * This prevents the image from fighting with long excerpts.
+     */
+    .article-card.has-story-briefing::before {
+        background:
+            linear-gradient(
+                90deg,
+                rgba(244,251,255,.99) 0%,
+                rgba(244,251,255,.98) 30%,
+                rgba(244,251,255,.94) 42%,
+                rgba(244,251,255,.84) 52%,
+                rgba(244,251,255,.68) 59%,
+                rgba(244,251,255,.47) 65%,
+                rgba(244,251,255,.27) 71%,
+                rgba(244,251,255,.11) 76%,
+                rgba(244,251,255,.03) 80%,
+                transparent 84%
+            ) !important;
+    }
+}
+
+
+/* ============================================================
+   v3.2.10j — mobile image transition slightly farther right
+   ============================================================ */
+
+@media (max-width: 640px) {
+
+    .article-card.has-story-briefing
+    .article-card-image {
+        -webkit-mask-image:
+            linear-gradient(
+                90deg,
+                transparent 0%,
+                transparent 30%,
+                rgba(0,0,0,.01) 40%,
+                rgba(0,0,0,.04) 49%,
+                rgba(0,0,0,.10) 56%,
+                rgba(0,0,0,.21) 62%,
+                rgba(0,0,0,.38) 68%,
+                rgba(0,0,0,.58) 73%,
+                rgba(0,0,0,.78) 78%,
+                rgba(0,0,0,.92) 82%,
+                #000 85%,
+                #000 100%
+            ) !important;
+
+        mask-image:
+            linear-gradient(
+                90deg,
+                transparent 0%,
+                transparent 30%,
+                rgba(0,0,0,.01) 40%,
+                rgba(0,0,0,.04) 49%,
+                rgba(0,0,0,.10) 56%,
+                rgba(0,0,0,.21) 62%,
+                rgba(0,0,0,.38) 68%,
+                rgba(0,0,0,.58) 73%,
+                rgba(0,0,0,.78) 78%,
+                rgba(0,0,0,.92) 82%,
+                #000 85%,
+                #000 100%
+            ) !important;
+    }
+
+
+    .article-card.has-story-briefing::before {
+        background:
+            linear-gradient(
+                90deg,
+                rgba(244,251,255,.99) 0%,
+                rgba(244,251,255,.99) 35%,
+                rgba(244,251,255,.96) 48%,
+                rgba(244,251,255,.90) 57%,
+                rgba(244,251,255,.78) 65%,
+                rgba(244,251,255,.59) 72%,
+                rgba(244,251,255,.38) 78%,
+                rgba(244,251,255,.20) 83%,
+                rgba(244,251,255,.08) 87%,
+                transparent 91%
+            ) !important;
+    }
+}
+
+
+/* ============================================================
+   v3.2.10k — mobile feather seam removal
+   Same transition position, much longer/smoother feather.
+   ============================================================ */
+
+@media (max-width: 640px) {
+
+    /* Ensure the headline glass can feather beyond the text column. */
+    .article-card.has-story-briefing
+    .article-card-heading {
+        overflow: visible !important;
+    }
+
+
+    /*
+     * Extend the headline/excerpt glass well past the text area.
+     * The transparency now dies gradually instead of ending at
+     * the edge of the text column.
+     */
+    .article-card.has-story-briefing
+    .article-card-heading::before {
+
+        left: -14px !important;
+        width: 150% !important;
+
+        background:
+            linear-gradient(
+                90deg,
+                rgba(248,253,253,.83) 0%,
+                rgba(248,253,253,.80) 36%,
+                rgba(247,252,253,.73) 52%,
+                rgba(246,252,252,.62) 64%,
+                rgba(245,251,252,.49) 73%,
+                rgba(244,251,252,.35) 81%,
+                rgba(244,251,252,.23) 87%,
+                rgba(244,251,252,.14) 92%,
+                rgba(244,251,252,.07) 96%,
+                rgba(244,251,252,.025) 98%,
+                rgba(244,251,252,0) 100%
+            ) !important;
+
+        -webkit-mask-image:
+            linear-gradient(
+                90deg,
+                #000 0%,
+                #000 53%,
+                rgba(0,0,0,.96) 63%,
+                rgba(0,0,0,.85) 73%,
+                rgba(0,0,0,.68) 82%,
+                rgba(0,0,0,.48) 89%,
+                rgba(0,0,0,.28) 94%,
+                rgba(0,0,0,.12) 97%,
+                transparent 100%
+            ) !important;
+
+        mask-image:
+            linear-gradient(
+                90deg,
+                #000 0%,
+                #000 53%,
+                rgba(0,0,0,.96) 63%,
+                rgba(0,0,0,.85) 73%,
+                rgba(0,0,0,.68) 82%,
+                rgba(0,0,0,.48) 89%,
+                rgba(0,0,0,.28) 94%,
+                rgba(0,0,0,.12) 97%,
+                transparent 100%
+            ) !important;
+    }
+
+
+    /*
+     * Smooth the image reveal itself too.
+     * Same general location as v3.2.10j, but there is no sudden
+     * jump from partially visible to fully visible.
+     */
+    .article-card.has-story-briefing
+    .article-card-image {
+
+        -webkit-mask-image:
+            linear-gradient(
+                90deg,
+                transparent 0%,
+                transparent 30%,
+                rgba(0,0,0,.01) 40%,
+                rgba(0,0,0,.03) 48%,
+                rgba(0,0,0,.07) 55%,
+                rgba(0,0,0,.13) 61%,
+                rgba(0,0,0,.22) 67%,
+                rgba(0,0,0,.34) 72%,
+                rgba(0,0,0,.48) 77%,
+                rgba(0,0,0,.62) 82%,
+                rgba(0,0,0,.75) 86%,
+                rgba(0,0,0,.85) 90%,
+                rgba(0,0,0,.92) 93%,
+                rgba(0,0,0,.97) 96%,
+                #000 100%
+            ) !important;
+
+        mask-image:
+            linear-gradient(
+                90deg,
+                transparent 0%,
+                transparent 30%,
+                rgba(0,0,0,.01) 40%,
+                rgba(0,0,0,.03) 48%,
+                rgba(0,0,0,.07) 55%,
+                rgba(0,0,0,.13) 61%,
+                rgba(0,0,0,.22) 67%,
+                rgba(0,0,0,.34) 72%,
+                rgba(0,0,0,.48) 77%,
+                rgba(0,0,0,.62) 82%,
+                rgba(0,0,0,.75) 86%,
+                rgba(0,0,0,.85) 90%,
+                rgba(0,0,0,.92) 93%,
+                rgba(0,0,0,.97) 96%,
+                #000 100%
+            ) !important;
+    }
+
+
+    /*
+     * The general card wash also fades all the way to 100%.
+     * This is important: v3.2.10j reached transparent around 91%,
+     * which can expose a visible boundary on some photographs.
+     */
+    .article-card.has-story-briefing::before {
+
+        background:
+            linear-gradient(
+                90deg,
+                rgba(244,251,255,.99) 0%,
+                rgba(244,251,255,.99) 35%,
+                rgba(244,251,255,.97) 48%,
+                rgba(244,251,255,.91) 58%,
+                rgba(244,251,255,.80) 66%,
+                rgba(244,251,255,.65) 73%,
+                rgba(244,251,255,.49) 79%,
+                rgba(244,251,255,.34) 84%,
+                rgba(244,251,255,.22) 89%,
+                rgba(244,251,255,.13) 93%,
+                rgba(244,251,255,.07) 96%,
+                rgba(244,251,255,.025) 98%,
+                rgba(244,251,255,0) 100%
+            ) !important;
+    }
+}
+
+
+/* ============================================================
+   v3.2.10l — curved mobile image feather
+   Curved transition from top-left toward bottom-right.
+   ============================================================ */
+
+@media (max-width: 640px) {
+
+    /*
+     * Remove the separate rectangular headline glass.
+     * A single card-wide curved glass layer below replaces it.
+     */
+    .article-card.has-story-briefing
+    .article-card-heading::before {
+        display: none !important;
+    }
+
+
+    /*
+     * IMAGE REVEAL
+     *
+     * Ellipse is anchored at bottom-left:
+     *
+     *       ╭──────── image
+     *      )
+     *     )
+     *    )
+     *   )
+     * text
+     *
+     * 72% = where curve reaches the bottom edge
+     * 101% = makes curve begin near the top-left
+     */
+    .article-card.has-story-briefing
+    .article-card-image {
+        -webkit-mask-image:
+            radial-gradient(
+                ellipse 72% 101% at 0% 100%,
+
+                transparent 0%,
+                transparent 80%,
+
+                rgba(0,0,0,.03) 85%,
+                rgba(0,0,0,.10) 89%,
+                rgba(0,0,0,.22) 93%,
+                rgba(0,0,0,.38) 97%,
+                rgba(0,0,0,.56) 101%,
+                rgba(0,0,0,.72) 104%,
+                rgba(0,0,0,.86) 107%,
+                rgba(0,0,0,.95) 110%,
+
+                #000 114%
+            ) !important;
+
+        mask-image:
+            radial-gradient(
+                ellipse 72% 101% at 0% 100%,
+
+                transparent 0%,
+                transparent 80%,
+
+                rgba(0,0,0,.03) 85%,
+                rgba(0,0,0,.10) 89%,
+                rgba(0,0,0,.22) 93%,
+                rgba(0,0,0,.38) 97%,
+                rgba(0,0,0,.56) 101%,
+                rgba(0,0,0,.72) 104%,
+                rgba(0,0,0,.86) 107%,
+                rgba(0,0,0,.95) 110%,
+
+                #000 114%
+            ) !important;
+    }
+
+
+    /*
+     * MATCHING CURVED FROSTED-GLASS AREA
+     *
+     * This is the inverse shape of the image mask.
+     * Blur and light wash gradually disappear along the same curve.
+     */
+    .article-card.has-story-briefing::before {
+        content: "" !important;
+
+        position: absolute !important;
+        inset: 0 !important;
+        z-index: 2 !important;
+
+        display: block !important;
+        pointer-events: none !important;
+
+        background:
+            rgba(246,252,254,.76) !important;
+
+        -webkit-backdrop-filter:
+            blur(32px)
+            saturate(.68)
+            brightness(1.08) !important;
+
+        backdrop-filter:
+            blur(32px)
+            saturate(.68)
+            brightness(1.08) !important;
+
+        -webkit-mask-image:
+            radial-gradient(
+                ellipse 72% 101% at 0% 100%,
+
+                #000 0%,
+                #000 78%,
+
+                rgba(0,0,0,.98) 82%,
+                rgba(0,0,0,.93) 87%,
+                rgba(0,0,0,.82) 92%,
+                rgba(0,0,0,.65) 97%,
+                rgba(0,0,0,.46) 101%,
+                rgba(0,0,0,.29) 105%,
+                rgba(0,0,0,.15) 108%,
+                rgba(0,0,0,.06) 111%,
+
+                transparent 115%
+            ) !important;
+
+        mask-image:
+            radial-gradient(
+                ellipse 72% 101% at 0% 100%,
+
+                #000 0%,
+                #000 78%,
+
+                rgba(0,0,0,.98) 82%,
+                rgba(0,0,0,.93) 87%,
+                rgba(0,0,0,.82) 92%,
+                rgba(0,0,0,.65) 97%,
+                rgba(0,0,0,.46) 101%,
+                rgba(0,0,0,.29) 105%,
+                rgba(0,0,0,.15) 108%,
+                rgba(0,0,0,.06) 111%,
+
+                transparent 115%
+            ) !important;
+    }
+
+
+    /*
+     * Keep real content above the new curved glass.
+     */
+    .article-card.has-story-briefing
+    .article-card-heading,
+
+    .article-card.has-story-briefing
+    .article-briefing,
+
+    .article-card.has-story-briefing
+    .story-rank,
+
+    .article-card.has-story-briefing
+    .story-coverage-orbs {
+        position: relative;
+        z-index: 10;
+    }
+}
+
+
+/* ============================================================
+   v3.2.10m — shift curved mobile transition slightly right
+   Keep existing curve/feather, protect text near faces.
+   ============================================================ */
+
+@media (max-width: 640px) {
+
+    /*
+     * Previous curve: ellipse 72% 101%
+     * New curve:      ellipse 79% 102%
+     *
+     * Wider ellipse pushes the reveal boundary farther right,
+     * especially through the headline/excerpt area.
+     */
+    .article-card.has-story-briefing
+    .article-card-image {
+        -webkit-mask-image:
+            radial-gradient(
+                ellipse 79% 102% at 0% 100%,
+
+                transparent 0%,
+                transparent 80%,
+
+                rgba(0,0,0,.02) 85%,
+                rgba(0,0,0,.07) 89%,
+                rgba(0,0,0,.17) 93%,
+                rgba(0,0,0,.32) 97%,
+                rgba(0,0,0,.50) 101%,
+                rgba(0,0,0,.68) 105%,
+                rgba(0,0,0,.83) 109%,
+                rgba(0,0,0,.94) 112%,
+
+                #000 117%
+            ) !important;
+
+        mask-image:
+            radial-gradient(
+                ellipse 79% 102% at 0% 100%,
+
+                transparent 0%,
+                transparent 80%,
+
+                rgba(0,0,0,.02) 85%,
+                rgba(0,0,0,.07) 89%,
+                rgba(0,0,0,.17) 93%,
+                rgba(0,0,0,.32) 97%,
+                rgba(0,0,0,.50) 101%,
+                rgba(0,0,0,.68) 105%,
+                rgba(0,0,0,.83) 109%,
+                rgba(0,0,0,.94) 112%,
+
+                #000 117%
+            ) !important;
+    }
+
+
+    /*
+     * Matching curved frosted/readability layer.
+     * Move its fade to exactly the same geometry.
+     */
+    .article-card.has-story-briefing::before {
+        -webkit-mask-image:
+            radial-gradient(
+                ellipse 79% 102% at 0% 100%,
+
+                #000 0%,
+                #000 79%,
+
+                rgba(0,0,0,.98) 83%,
+                rgba(0,0,0,.93) 88%,
+                rgba(0,0,0,.83) 93%,
+                rgba(0,0,0,.69) 98%,
+                rgba(0,0,0,.51) 103%,
+                rgba(0,0,0,.34) 107%,
+                rgba(0,0,0,.20) 111%,
+                rgba(0,0,0,.09) 114%,
+
+                transparent 118%
+            ) !important;
+
+        mask-image:
+            radial-gradient(
+                ellipse 79% 102% at 0% 100%,
+
+                #000 0%,
+                #000 79%,
+
+                rgba(0,0,0,.98) 83%,
+                rgba(0,0,0,.93) 88%,
+                rgba(0,0,0,.83) 93%,
+                rgba(0,0,0,.69) 98%,
+                rgba(0,0,0,.51) 103%,
+                rgba(0,0,0,.34) 107%,
+                rgba(0,0,0,.20) 111%,
+                rgba(0,0,0,.09) 114%,
+
+                transparent 118%
+            ) !important;
+    }
+}
+
+
+/* ============================================================
+   v3.2.10n — mobile image focal point farther top-right
+   Curve/fade unchanged.
+   ============================================================ */
+
+@media (max-width: 640px) {
+
+    .article-card.has-story-briefing
+    .article-card-image img {
+        /*
+         * X: 20% -> 8%
+         * Lower X shifts the photographed subject farther RIGHT.
+         *
+         * Y: 50% -> 65%
+         * Higher Y shifts the photographed subject slightly UP.
+         */
+        object-position: 8% 65% !important;
+
+        transform: none !important;
+    }
+}
+
+
+/* ============================================================
+   v3.2.10o — much softer curved mobile feather
+   Geometry and image position unchanged.
+   ============================================================ */
+
+@media (max-width: 640px) {
+
+    /*
+     * IMAGE MASK
+     *
+     * Keep:
+     *   ellipse 79% 102% at 0% 100%
+     *
+     * But spread the reveal over a much larger distance.
+     */
+    .article-card.has-story-briefing
+    .article-card-image {
+        -webkit-mask-image:
+            radial-gradient(
+                ellipse 79% 102% at 0% 100%,
+
+                transparent 0%,
+                transparent 68%,
+
+                rgba(0,0,0,.005) 72%,
+                rgba(0,0,0,.012) 75%,
+                rgba(0,0,0,.025) 78%,
+                rgba(0,0,0,.045) 81%,
+                rgba(0,0,0,.075) 84%,
+                rgba(0,0,0,.115) 87%,
+                rgba(0,0,0,.165) 90%,
+                rgba(0,0,0,.225) 93%,
+                rgba(0,0,0,.295) 96%,
+                rgba(0,0,0,.375) 99%,
+                rgba(0,0,0,.46) 102%,
+                rgba(0,0,0,.55) 105%,
+                rgba(0,0,0,.64) 108%,
+                rgba(0,0,0,.72) 111%,
+                rgba(0,0,0,.79) 114%,
+                rgba(0,0,0,.85) 117%,
+                rgba(0,0,0,.90) 120%,
+                rgba(0,0,0,.94) 123%,
+                rgba(0,0,0,.97) 126%,
+                rgba(0,0,0,.99) 129%,
+
+                #000 133%
+            ) !important;
+
+        mask-image:
+            radial-gradient(
+                ellipse 79% 102% at 0% 100%,
+
+                transparent 0%,
+                transparent 68%,
+
+                rgba(0,0,0,.005) 72%,
+                rgba(0,0,0,.012) 75%,
+                rgba(0,0,0,.025) 78%,
+                rgba(0,0,0,.045) 81%,
+                rgba(0,0,0,.075) 84%,
+                rgba(0,0,0,.115) 87%,
+                rgba(0,0,0,.165) 90%,
+                rgba(0,0,0,.225) 93%,
+                rgba(0,0,0,.295) 96%,
+                rgba(0,0,0,.375) 99%,
+                rgba(0,0,0,.46) 102%,
+                rgba(0,0,0,.55) 105%,
+                rgba(0,0,0,.64) 108%,
+                rgba(0,0,0,.72) 111%,
+                rgba(0,0,0,.79) 114%,
+                rgba(0,0,0,.85) 117%,
+                rgba(0,0,0,.90) 120%,
+                rgba(0,0,0,.94) 123%,
+                rgba(0,0,0,.97) 126%,
+                rgba(0,0,0,.99) 129%,
+
+                #000 133%
+            ) !important;
+    }
+
+
+    /*
+     * MATCHING FROSTED WASH
+     *
+     * Also feather the light/blur layer over the same broad region.
+     * This is important — otherwise the image can be smooth while the
+     * white wash itself still exposes a visible curved edge.
+     */
+    .article-card.has-story-briefing::before {
+        -webkit-mask-image:
+            radial-gradient(
+                ellipse 79% 102% at 0% 100%,
+
+                #000 0%,
+                #000 67%,
+
+                rgba(0,0,0,.995) 71%,
+                rgba(0,0,0,.985) 74%,
+                rgba(0,0,0,.965) 77%,
+                rgba(0,0,0,.935) 80%,
+                rgba(0,0,0,.895) 83%,
+                rgba(0,0,0,.845) 86%,
+                rgba(0,0,0,.785) 89%,
+                rgba(0,0,0,.715) 92%,
+                rgba(0,0,0,.635) 95%,
+                rgba(0,0,0,.55) 98%,
+                rgba(0,0,0,.465) 101%,
+                rgba(0,0,0,.38) 104%,
+                rgba(0,0,0,.30) 107%,
+                rgba(0,0,0,.23) 110%,
+                rgba(0,0,0,.17) 113%,
+                rgba(0,0,0,.12) 116%,
+                rgba(0,0,0,.08) 119%,
+                rgba(0,0,0,.05) 122%,
+                rgba(0,0,0,.027) 125%,
+                rgba(0,0,0,.012) 128%,
+                rgba(0,0,0,.004) 131%,
+
+                transparent 135%
+            ) !important;
+
+        mask-image:
+            radial-gradient(
+                ellipse 79% 102% at 0% 100%,
+
+                #000 0%,
+                #000 67%,
+
+                rgba(0,0,0,.995) 71%,
+                rgba(0,0,0,.985) 74%,
+                rgba(0,0,0,.965) 77%,
+                rgba(0,0,0,.935) 80%,
+                rgba(0,0,0,.895) 83%,
+                rgba(0,0,0,.845) 86%,
+                rgba(0,0,0,.785) 89%,
+                rgba(0,0,0,.715) 92%,
+                rgba(0,0,0,.635) 95%,
+                rgba(0,0,0,.55) 98%,
+                rgba(0,0,0,.465) 101%,
+                rgba(0,0,0,.38) 104%,
+                rgba(0,0,0,.30) 107%,
+                rgba(0,0,0,.23) 110%,
+                rgba(0,0,0,.17) 113%,
+                rgba(0,0,0,.12) 116%,
+                rgba(0,0,0,.08) 119%,
+                rgba(0,0,0,.05) 122%,
+                rgba(0,0,0,.027) 125%,
+                rgba(0,0,0,.012) 128%,
+                rgba(0,0,0,.004) 131%,
+
+                transparent 135%
+            ) !important;
+    }
+}
+
+
+/* ============================================================
+   v3.2.10p — soften active analysis-tab highlight edges
+   Desktop + mobile
+   ============================================================ */
+
+.article-card.has-story-briefing
+.story-analysis-tabs > button {
+    position: relative;
+    isolation: isolate;
+}
+
+
+/*
+ * Remove the old hard rectangular active-tab fill.
+ */
+.article-card.has-story-briefing
+.story-analysis-tabs > button.is-active {
+    background: transparent !important;
+}
+
+
+/*
+ * Replace it with a wider feathered glass tint.
+ * It extends slightly underneath the neighboring tabs so there
+ * is no visible vertical cutoff.
+ */
+.article-card.has-story-briefing
+.story-analysis-tabs > button.is-active::before {
+    content: "";
+
+    position: absolute;
+    top: 0;
+    bottom: 0;
+
+    left: -22px;
+    right: -30px;
+
+    z-index: -1;
+    pointer-events: none;
+
+    background:
+        linear-gradient(
+            90deg,
+            transparent 0%,
+            rgba(72,113,221,.025) 10%,
+            rgba(72,113,221,.075) 24%,
+            rgba(72,113,221,.105) 44%,
+            rgba(72,113,221,.09) 62%,
+            rgba(72,113,221,.055) 76%,
+            rgba(72,113,221,.022) 88%,
+            transparent 100%
+        );
+}
+
+
+/*
+ * Keep the blue underline, but feather its ends as well.
+ */
+.article-card.has-story-briefing
+.story-analysis-tabs > button.is-active::after {
+    right: 10px !important;
+    left: 10px !important;
+
+    height: 2px !important;
+
+    background:
+        linear-gradient(
+            90deg,
+            transparent 0%,
+            #557bdc 10%,
+            #557bdc 90%,
+            transparent 100%
+        ) !important;
+
+    box-shadow:
+        0 0 5px rgba(85,123,220,.16);
+}
+
+
+/* Mobile: slightly wider feather because the tabs are narrower. */
+@media (max-width: 640px) {
+
+    .article-card.has-story-briefing
+    .story-analysis-tabs > button.is-active::before {
+        left: -18px;
+        right: -26px;
+
+        background:
+            linear-gradient(
+                90deg,
+                transparent 0%,
+                rgba(72,113,221,.025) 9%,
+                rgba(72,113,221,.07) 23%,
+                rgba(72,113,221,.10) 43%,
+                rgba(72,113,221,.085) 61%,
+                rgba(72,113,221,.05) 76%,
+                rgba(72,113,221,.018) 90%,
+                transparent 100%
+            );
+    }
+}
+
+
+/* ============================================================
+   v3.2.10q — identical analysis glass on desktop + mobile
+   Use the current mobile blur/transparency everywhere.
+   ============================================================ */
+
+.article-card.has-story-briefing
+.story-analysis-shell {
+    background:
+        linear-gradient(
+            135deg,
+            rgba(249,253,254,.80),
+            rgba(238,248,250,.70)
+        ) !important;
+
+    border-color:
+        rgba(149,184,194,.72) !important;
+
+    -webkit-backdrop-filter:
+        blur(42px)
+        saturate(.64)
+        brightness(1.09) !important;
+
+    backdrop-filter:
+        blur(42px)
+        saturate(.64)
+        brightness(1.09) !important;
+
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.90),
+        inset 0 -1px 0 rgba(255,255,255,.24),
+        0 7px 26px rgba(30,67,80,.08) !important;
+}
+
+
+/* Same internal transparency on every screen size. */
+
+.article-card.has-story-briefing
+.story-analysis-tabs {
+    background:
+        linear-gradient(
+            180deg,
+            rgba(250,253,254,.32),
+            rgba(246,251,252,.18)
+        ) !important;
+
+    border-bottom-color:
+        rgba(126,164,176,.50) !important;
+}
+
+.article-card.has-story-briefing
+.story-analysis-body {
+    background:
+        rgba(248,252,253,.14) !important;
+}
+
+
+/* Same foreground contrast too. */
+
+.article-card.has-story-briefing
+.story-analysis-text {
+    color: #223c46 !important;
+}
+
+.article-card.has-story-briefing
+.story-analysis-tabs > button {
+    color: #344d57 !important;
+    font-weight: 650 !important;
+    text-shadow:
+        0 1px 1px rgba(255,255,255,.65);
+}
+
+.article-card.has-story-briefing
+.story-analysis-tabs > button.is-active {
+    color: #205acb !important;
+}
+
+
+/* ============================================================
+   v3.2.10r — remove stray white glass box on hover
+   Desktop + mobile
+   ============================================================ */
+
+
+/*
+ * DESKTOP:
+ * Keep headline/excerpt Liquid Glass, but constrain it strictly
+ * to the heading itself.
+ *
+ * Previous rules used negative top/bottom/left offsets, allowing
+ * the backdrop-filter surface to spill into the area above the
+ * heading. Browser compositing made that particularly visible
+ * while hover tooltip/action layers were active.
+ */
+@media (min-width: 641px) {
+
+    .article-card.has-story-briefing
+    .article-card-heading::before {
+        top: 0 !important;
+        bottom: 0 !important;
+        left: 0 !important;
+
+        width: min(76%, 840px) !important;
+
+        /*
+         * Keep the existing readable glass characteristics.
+         */
+        background:
+            linear-gradient(
+                90deg,
+                rgba(248,253,253,.79) 0%,
+                rgba(248,253,253,.74) 38%,
+                rgba(246,252,252,.64) 60%,
+                rgba(244,251,252,.42) 75%,
+                rgba(244,251,252,.18) 88%,
+                transparent 100%
+            ) !important;
+
+        -webkit-backdrop-filter:
+            blur(34px)
+            saturate(.68)
+            brightness(1.08) !important;
+
+        backdrop-filter:
+            blur(34px)
+            saturate(.68)
+            brightness(1.08) !important;
+
+        /*
+         * Do not let its compositor surface paint outside
+         * the intended heading area.
+         */
+        overflow: hidden !important;
+        contain: paint !important;
+
+        border-radius:
+            18px 0 0 18px !important;
+    }
+}
+
+
+/*
+ * MOBILE:
+ * v3.2.10l+ already uses the large curved card-wide frost.
+ * Make absolutely sure the old heading glass cannot reappear
+ * because of hover/focus/compositor state.
+ */
+@media (max-width: 640px) {
+
+    .article-card.has-story-briefing
+    .article-card-heading::before,
+
+    .article-card.has-story-briefing:hover
+    .article-card-heading::before,
+
+    .article-card.has-story-briefing:focus-within
+    .article-card-heading::before {
+        display: none !important;
+        content: none !important;
+    }
+}
+
+
+/*
+ * Stabilize the card's clipping/compositing when tooltip and
+ * action overlays appear.
+ */
+.article-card.has-story-briefing {
+    isolation: isolate;
+}
+
+
+/* ============================================================
+   v3.2.10s — Liquid Glass action toolbar
+   Removes the solid white hover rectangle.
+   Desktop + mobile.
+   ============================================================ */
+
+.article-card.has-story-briefing
+.article-actions-overlay {
+    background:
+        linear-gradient(
+            135deg,
+            rgba(250,253,254,.62),
+            rgba(238,248,250,.48)
+        ) !important;
+
+    border-color:
+        rgba(154,184,194,.58) !important;
+
+    -webkit-backdrop-filter:
+        blur(26px)
+        saturate(.76)
+        brightness(1.06) !important;
+
+    backdrop-filter:
+        blur(26px)
+        saturate(.76)
+        brightness(1.06) !important;
+
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.78),
+        inset 0 -1px 0 rgba(255,255,255,.16),
+        0 6px 20px rgba(28,63,76,.10) !important;
+}
+
+
+/*
+ * Keep the individual buttons visually clean.
+ */
+.article-card.has-story-briefing
+.article-actions-overlay > button,
+
+.article-card.has-story-briefing
+.article-actions-overlay > a {
+    background: transparent !important;
+}
+
+
+/*
+ * Mobile uses the same glass treatment, just slightly more blur
+ * because the background photograph fills the whole card.
+ */
+@media (max-width: 640px) {
+
+    .article-card.has-story-briefing
+    .article-actions-overlay {
+        background:
+            linear-gradient(
+                135deg,
+                rgba(250,253,254,.66),
+                rgba(238,248,250,.52)
+            ) !important;
+
+        -webkit-backdrop-filter:
+            blur(30px)
+            saturate(.72)
+            brightness(1.07) !important;
+
+        backdrop-filter:
+            blur(30px)
+            saturate(.72)
+            brightness(1.07) !important;
+    }
+}
+
+
+/* ============================================================
+   v3.2.10t
+   - desktop analysis: more transparent + stronger blur
+   - desktop toolbar: identical to current mobile toolbar
+   - mobile analysis unchanged
+   ============================================================ */
+
+
+/* ------------------------------------------------------------
+   DESKTOP ONLY — analysis Liquid Glass
+   ------------------------------------------------------------ */
+
+@media (min-width: 641px) {
+
+    /*
+     * Current desktop/mobile shared state was roughly:
+     *   background .80 / .70
+     *   blur 42px
+     *
+     * Desktop now becomes slightly MORE transparent while using
+     * stronger blur to preserve readability.
+     */
+    .article-card.has-story-briefing
+    .story-analysis-shell {
+        background:
+            linear-gradient(
+                135deg,
+                rgba(249,253,254,.72) 0%,
+                rgba(238,248,250,.60) 100%
+            ) !important;
+
+        border-color:
+            rgba(149,184,194,.68) !important;
+
+        -webkit-backdrop-filter:
+            blur(50px)
+            saturate(.62)
+            brightness(1.08) !important;
+
+        backdrop-filter:
+            blur(50px)
+            saturate(.62)
+            brightness(1.08) !important;
+
+        box-shadow:
+            inset 0 1px 0 rgba(255,255,255,.86),
+            inset 0 -1px 0 rgba(255,255,255,.20),
+            0 7px 26px rgba(30,67,80,.07) !important;
+    }
+
+
+    /*
+     * Keep the tab header visibly glassy instead of layering
+     * another opaque surface on top of the shell.
+     */
+    .article-card.has-story-briefing
+    .story-analysis-tabs {
+        background:
+            linear-gradient(
+                180deg,
+                rgba(250,253,254,.24),
+                rgba(246,251,252,.11)
+            ) !important;
+
+        border-bottom-color:
+            rgba(126,164,176,.46) !important;
+    }
+
+
+    .article-card.has-story-briefing
+    .story-analysis-body {
+        background:
+            rgba(248,252,253,.09) !important;
+    }
+
+
+    /*
+     * DESKTOP TOOLBAR:
+     * use exactly the values currently used by mobile.
+     */
+    .article-card.has-story-briefing
+    .article-actions-overlay {
+        background:
+            linear-gradient(
+                135deg,
+                rgba(250,253,254,.66),
+                rgba(238,248,250,.52)
+            ) !important;
+
+        border-color:
+            rgba(154,184,194,.58) !important;
+
+        -webkit-backdrop-filter:
+            blur(30px)
+            saturate(.72)
+            brightness(1.07) !important;
+
+        backdrop-filter:
+            blur(30px)
+            saturate(.72)
+            brightness(1.07) !important;
+
+        box-shadow:
+            inset 0 1px 0 rgba(255,255,255,.78),
+            inset 0 -1px 0 rgba(255,255,255,.16),
+            0 6px 20px rgba(28,63,76,.10) !important;
+    }
+}
+
+
+/* ============================================================
+   v3.2.10u — remove desktop rectangular headline glass
+   Replace it with full-card feathered frost.
+   ============================================================ */
+
+
+/* ------------------------------------------------------------
+   DESKTOP ONLY
+   ------------------------------------------------------------ */
+
+@media (min-width: 641px) {
+
+    /*
+     * Completely disable the old heading-attached glass.
+     * This is the white rectangle visible during hover/repaint.
+     */
+    .article-card.has-story-briefing
+    .article-card-heading::before,
+
+    .article-card.has-story-briefing:hover
+    .article-card-heading::before,
+
+    .article-card.has-story-briefing:focus-within
+    .article-card-heading::before {
+        content: none !important;
+        display: none !important;
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+    }
+
+
+    /*
+     * Use one full-card frost layer instead.
+     *
+     * Since it covers the entire card, there is no rectangular
+     * top/left boundary around the headline area.
+     */
+    .article-card.has-story-briefing::before {
+        content: "" !important;
+
+        position: absolute !important;
+        inset: 0 !important;
+
+        z-index: 2 !important;
+        pointer-events: none !important;
+
+        display: block !important;
+
+        background:
+            linear-gradient(
+                90deg,
+                rgba(247,252,253,.80) 0%,
+                rgba(247,252,253,.76) 26%,
+                rgba(246,251,252,.66) 42%,
+                rgba(245,251,252,.49) 54%,
+                rgba(244,250,251,.29) 64%,
+                rgba(244,250,251,.13) 72%,
+                rgba(244,250,251,.04) 79%,
+                transparent 86%
+            ) !important;
+
+        -webkit-backdrop-filter:
+            blur(34px)
+            saturate(.68)
+            brightness(1.07) !important;
+
+        backdrop-filter:
+            blur(34px)
+            saturate(.68)
+            brightness(1.07) !important;
+
+        /*
+         * Feather the frost itself so there is no visible
+         * vertical boundary either.
+         */
+        -webkit-mask-image:
+            linear-gradient(
+                90deg,
+                #000 0%,
+                #000 43%,
+                rgba(0,0,0,.96) 50%,
+                rgba(0,0,0,.82) 59%,
+                rgba(0,0,0,.60) 67%,
+                rgba(0,0,0,.37) 74%,
+                rgba(0,0,0,.17) 80%,
+                rgba(0,0,0,.05) 85%,
+                transparent 89%
+            ) !important;
+
+        mask-image:
+            linear-gradient(
+                90deg,
+                #000 0%,
+                #000 43%,
+                rgba(0,0,0,.96) 50%,
+                rgba(0,0,0,.82) 59%,
+                rgba(0,0,0,.60) 67%,
+                rgba(0,0,0,.37) 74%,
+                rgba(0,0,0,.17) 80%,
+                rgba(0,0,0,.05) 85%,
+                transparent 89%
+            ) !important;
+    }
+
+
+    /*
+     * Ensure card content remains above the frost.
+     */
+    .article-card.has-story-briefing
+    .article-card-heading,
+
+    .article-card.has-story-briefing
+    .article-briefing,
+
+    .article-card.has-story-briefing
+    .story-rank,
+
+    .article-card.has-story-briefing
+    .story-coverage-orbs,
+
+    .article-card.has-story-briefing
+    .article-actions-overlay {
+        position: relative;
+        z-index: 10;
+    }
+}
+
+
+/* ============================================================
+   v3.2.10v — restore floating action toolbar positioning
+   ============================================================ */
+
+.article-card.has-story-briefing
+.article-actions-overlay {
+    position: absolute !important;
+    z-index: 20 !important;
+
+    width: max-content !important;
+}
+
+
+/* Desktop: float at right-center, as originally intended. */
+@media (min-width: 641px) {
+
+    .article-card.has-story-briefing
+    .article-actions-overlay {
+        top: 50% !important;
+        right: 16px !important;
+        bottom: auto !important;
+        left: auto !important;
+
+        transform: translateY(-50%) !important;
+
+        max-width: calc(100% - 32px) !important;
+    }
+}
+
+
+/* Mobile: float at bottom-right. */
+@media (max-width: 640px) {
+
+    .article-card.has-story-briefing
+    .article-actions-overlay {
+        top: auto !important;
+        right: 16px !important;
+        bottom: 16px !important;
+        left: auto !important;
+
+        transform: none !important;
+
+        width: max-content !important;
+        max-width: 85% !important;
+    }
+}
+
+
+/* ============================================================
+   v3.2.10w
+   - prevent image crop movement when changing analysis tabs
+   - prevent action toolbar from overlapping analysis
+   - desktop + mobile
+   ============================================================ */
+
+
+/* ------------------------------------------------------------
+   STABLE ANALYSIS HEIGHT
+   ------------------------------------------------------------ */
+
+/*
+ * The analysis body must not resize the card when changing tabs.
+ *
+ * Make it a fixed-height viewport. More-analysis chips consume
+ * space inside this viewport instead of increasing card height.
+ */
+.article-card.has-story-briefing
+.story-analysis-body {
+    display: flex !important;
+    flex-direction: column !important;
+
+    height: 11.5rem !important;
+    min-height: 11.5rem !important;
+
+    overflow: hidden !important;
+}
+
+
+/*
+ * Normal analysis content fills whatever space remains.
+ */
+.article-card.has-story-briefing
+.story-analysis-copy {
+    display: grid !important;
+
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+
+    height: auto !important;
+}
+
+
+/*
+ * If an analysis section is longer than the reserved area,
+ * scroll the prose instead of resizing the whole story card.
+ */
+.article-card.has-story-briefing
+.story-analysis-text {
+    min-height: 0 !important;
+    max-height: 100% !important;
+
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+}
+
+
+/*
+ * More-analysis selector remains inside the fixed-height body.
+ */
+.article-card.has-story-briefing
+.story-more-analysis-rail {
+    flex: 0 0 auto !important;
+}
+
+
+/* ------------------------------------------------------------
+   ACTION TOOLBAR
+   ------------------------------------------------------------ */
+
+/*
+ * Do not position the toolbar from the card's vertical center.
+ * Tab content can no longer move it.
+ */
+.article-card.has-story-briefing
+.article-actions-overlay {
+    position: absolute !important;
+
+    top: 72px !important;
+    right: 16px !important;
+    bottom: auto !important;
+    left: auto !important;
+
+    width: max-content !important;
+    max-width: calc(100% - 32px) !important;
+
+    transform: none !important;
+
+    z-index: 30 !important;
+}
+
+
+/* ------------------------------------------------------------
+   MOBILE
+   ------------------------------------------------------------ */
+
+@media (max-width: 640px) {
+
+    /*
+     * Slightly shorter fixed analysis viewport on mobile.
+     * Still enough for the typical 5–7 line briefing.
+     */
+    .article-card.has-story-briefing
+    .story-analysis-body {
+        height: 10.75rem !important;
+        min-height: 10.75rem !important;
+    }
+
+
+    /*
+     * Put toolbar beneath the top-right publisher controls.
+     * It no longer sits at the bottom where it can cover analysis.
+     */
+    .article-card.has-story-briefing
+    .article-actions-overlay {
+        top: 58px !important;
+        right: 12px !important;
+        bottom: auto !important;
+        left: auto !important;
+
+        transform: none !important;
+
+        width: max-content !important;
+        max-width: calc(100% - 24px) !important;
+    }
+}
+
+
+/* ============================================================
+   v3.2.11 — Smart Classic uses Top Stories card presentation
+   while preserving Classic content/behavior.
+   ============================================================ */
+
+/*
+ * Smart Classic now inherits the same has-story-briefing visual
+ * treatment as Top Stories:
+ *
+ * - card shape / border / glass
+ * - desktop image treatment
+ * - mobile curved image feather
+ * - text readability frost
+ * - metadata appearance
+ * - toolbar appearance
+ * - responsive geometry
+ *
+ * Preserve Classic's existing excerpt truncation, however.
+ */
+.article-card.is-smart-classic-card
+.article-card-heading p {
+    display: -webkit-box !important;
+    overflow: hidden !important;
+
+    -webkit-box-orient: vertical !important;
+    -webkit-line-clamp: 2 !important;
+
+    white-space: normal !important;
+}
+
+
+/*
+ * Top-only containers must stay absent in Classic even if a future
+ * markup/CSS change accidentally overrides Alpine's display state.
+ */
+.article-card.is-smart-classic-card
+.article-briefing,
+.article-card.is-smart-classic-card
+.story-rank,
+.article-card.is-smart-classic-card
+.story-coverage-orbs {
+    display: none !important;
+}
+
+
+/* ============================================================
+   v3.2.11a — Full Coverage shared by Top Stories + Classic
+   ============================================================ */
+
+
+/* ------------------------------------------------------------
+   Fix coverage positioning.
+   Earlier frost layering accidentally changed this to relative.
+   ------------------------------------------------------------ */
+
+.article-card.has-story-briefing
+.story-coverage-orbs {
+    position: absolute !important;
+
+    top: 14px !important;
+    right: 16px !important;
+    bottom: auto !important;
+    left: auto !important;
+
+    z-index: 32 !important;
+
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+
+    width: max-content !important;
+    max-width: min(52%, 230px) !important;
+
+    transform: none !important;
+}
+
+
+/*
+ * v3.2.11 initially hid this because coverage was considered
+ * Top-Stories-only. Classic now intentionally shares coverage.
+ */
+.article-card.is-smart-classic-card
+.story-coverage-orbs {
+    display: flex !important;
+}
+
+
+/* ------------------------------------------------------------
+   Classic +N popup
+   ------------------------------------------------------------ */
+
+.article-card.is-smart-classic-card
+.story-coverage-classic-popover {
+    position: absolute !important;
+
+    top: 56px !important;
+    right: 16px !important;
+    left: auto !important;
+
+    z-index: 40 !important;
+
+    width: min(330px, calc(100% - 32px)) !important;
+    max-height: 310px;
+
+    overflow-y: auto;
+    overflow-x: hidden;
+
+    margin: 0 !important;
+
+    background:
+        linear-gradient(
+            135deg,
+            rgba(250,253,254,.72),
+            rgba(238,248,250,.60)
+        ) !important;
+
+    border:
+        1px solid rgba(154,184,194,.62) !important;
+
+    border-radius: 16px !important;
+
+    -webkit-backdrop-filter:
+        blur(30px)
+        saturate(.72)
+        brightness(1.07) !important;
+
+    backdrop-filter:
+        blur(30px)
+        saturate(.72)
+        brightness(1.07) !important;
+
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.82),
+        0 8px 26px rgba(28,63,76,.12) !important;
+}
+
+
+/* ------------------------------------------------------------
+   Mobile coverage position
+   ------------------------------------------------------------ */
+
+@media (max-width: 640px) {
+
+    .article-card.has-story-briefing
+    .story-coverage-orbs {
+        top: 11px !important;
+        right: 11px !important;
+
+        gap: 4px !important;
+
+        max-width: 48% !important;
+    }
+
+
+    .article-card.is-smart-classic-card
+    .story-coverage-classic-popover {
+        top: 48px !important;
+        right: 11px !important;
+
+        width: min(300px, calc(100% - 22px)) !important;
+
+        max-height: 260px;
+    }
+}
+
+
+/* ============================================================
+   v3.2.12a — coverage visibility fix
+   Coverage exists only when Smart coverage is actually available.
+   ============================================================ */
+
+/*
+ * Respect Alpine x-show.
+ * Previous display:flex!important overrode x-show's display:none.
+ */
+.article-card.has-story-briefing
+.story-coverage-orbs[style*="display: none"] {
+    display: none !important;
+}
+
+
+/*
+ * Normal / non-Smart articles NEVER show Full Coverage.
+ */
+.article-card.is-standard-card
+.story-coverage-orbs,
+.article-card.is-standard-card
+.story-coverage-expanded,
+.article-card.is-standard-card
+.story-coverage-classic-popover {
+    display: none !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+}
+
+
+/*
+ * Smart Top / Smart Classic can show coverage normally.
+ * Don't use !important here because x-show must remain in control.
+ */
+.article-card:not(.is-standard-card)
+.story-coverage-orbs {
+    visibility: visible;
+    pointer-events: auto;
+}
+
+
+/* ============================================================
+   v3.2.12b — mobile curved feather:
+   finish transition earlier so right side remains clear
+   ============================================================ */
+
+@media (max-width: 640px) {
+
+    /*
+     * New geometry:
+     *
+     * top of clear region    ≈ 55–60% across card
+     * bottom clear region    ≈ 70% across card
+     *
+     * Feather happens mostly LEFT of that boundary.
+     * Everything to the right becomes clear quickly.
+     */
+    .article-card.has-story-briefing
+    .article-card-image {
+        -webkit-mask-image:
+            radial-gradient(
+                ellipse 66% 150% at 0% 100%,
+
+                transparent 0%,
+                transparent 70%,
+
+                rgba(0,0,0,.01) 73%,
+                rgba(0,0,0,.025) 76%,
+                rgba(0,0,0,.05) 79%,
+                rgba(0,0,0,.09) 82%,
+                rgba(0,0,0,.15) 85%,
+                rgba(0,0,0,.23) 88%,
+                rgba(0,0,0,.33) 91%,
+                rgba(0,0,0,.45) 94%,
+                rgba(0,0,0,.58) 97%,
+                rgba(0,0,0,.70) 100%,
+                rgba(0,0,0,.81) 103%,
+                rgba(0,0,0,.90) 105%,
+                rgba(0,0,0,.96) 107%,
+                rgba(0,0,0,.99) 108.5%,
+
+                #000 110%
+            ) !important;
+
+        mask-image:
+            radial-gradient(
+                ellipse 66% 150% at 0% 100%,
+
+                transparent 0%,
+                transparent 70%,
+
+                rgba(0,0,0,.01) 73%,
+                rgba(0,0,0,.025) 76%,
+                rgba(0,0,0,.05) 79%,
+                rgba(0,0,0,.09) 82%,
+                rgba(0,0,0,.15) 85%,
+                rgba(0,0,0,.23) 88%,
+                rgba(0,0,0,.33) 91%,
+                rgba(0,0,0,.45) 94%,
+                rgba(0,0,0,.58) 97%,
+                rgba(0,0,0,.70) 100%,
+                rgba(0,0,0,.81) 103%,
+                rgba(0,0,0,.90) 105%,
+                rgba(0,0,0,.96) 107%,
+                rgba(0,0,0,.99) 108.5%,
+
+                #000 110%
+            ) !important;
+    }
+
+
+    /*
+     * Matching inverse frost.
+     *
+     * The important part: this reaches ZERO around the same
+     * curved blue-line boundary, so it doesn't keep whitening
+     * the supposedly-clear right side.
+     */
+    .article-card.has-story-briefing::before {
+        -webkit-mask-image:
+            radial-gradient(
+                ellipse 66% 150% at 0% 100%,
+
+                #000 0%,
+                #000 70%,
+
+                rgba(0,0,0,.99) 73%,
+                rgba(0,0,0,.975) 76%,
+                rgba(0,0,0,.95) 79%,
+                rgba(0,0,0,.91) 82%,
+                rgba(0,0,0,.85) 85%,
+                rgba(0,0,0,.77) 88%,
+                rgba(0,0,0,.67) 91%,
+                rgba(0,0,0,.55) 94%,
+                rgba(0,0,0,.42) 97%,
+                rgba(0,0,0,.30) 100%,
+                rgba(0,0,0,.19) 103%,
+                rgba(0,0,0,.10) 105%,
+                rgba(0,0,0,.04) 107%,
+                rgba(0,0,0,.01) 108.5%,
+
+                transparent 110%
+            ) !important;
+
+        mask-image:
+            radial-gradient(
+                ellipse 66% 150% at 0% 100%,
+
+                #000 0%,
+                #000 70%,
+
+                rgba(0,0,0,.99) 73%,
+                rgba(0,0,0,.975) 76%,
+                rgba(0,0,0,.95) 79%,
+                rgba(0,0,0,.91) 82%,
+                rgba(0,0,0,.85) 85%,
+                rgba(0,0,0,.77) 88%,
+                rgba(0,0,0,.67) 91%,
+                rgba(0,0,0,.55) 94%,
+                rgba(0,0,0,.42) 97%,
+                rgba(0,0,0,.30) 100%,
+                rgba(0,0,0,.19) 103%,
+                rgba(0,0,0,.10) 105%,
+                rgba(0,0,0,.04) 107%,
+                rgba(0,0,0,.01) 108.5%,
+
+                transparent 110%
+            ) !important;
+    }
+}
+

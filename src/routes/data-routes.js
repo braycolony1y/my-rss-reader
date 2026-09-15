@@ -86,8 +86,25 @@ export function registerDataRoutes({
                 smartClusters = smartClusters.map(article => cleanStoredCluster(article));
                 if (smartClusterVersion) {
                     presentation._smartClustersHistory[smartClusterVersion] = smartClusters;
-                    const historyKeys = Object.keys(presentation._smartClustersHistory);
-                    if (historyKeys.length > 6) delete presentation._smartClustersHistory[historyKeys[0]];
+
+                    for (const key of Object.keys(presentation._smartClustersHistory)) {
+                        if (
+                            /_progressive_/.test(String(key)) &&
+                            key !== smartClusterVersion
+                        ) {
+                            delete presentation._smartClustersHistory[key];
+                        }
+                    }
+
+                    const staleKeys = Object.keys(presentation._smartClustersHistory)
+                        .filter(key => key !== smartClusterVersion);
+
+                    while (
+                        Object.keys(presentation._smartClustersHistory).length > 2 &&
+                        staleKeys.length
+                    ) {
+                        delete presentation._smartClustersHistory[staleKeys.shift()];
+                    }
                 }
             }
             filteredArticles = smartClusters

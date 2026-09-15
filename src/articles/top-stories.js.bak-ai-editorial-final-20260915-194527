@@ -17,67 +17,40 @@ const stamp = a => a.publicationTimeReliable === false ? 0 : Date.parse(a.pubDat
 const iso = time => new Date(time || 0).toISOString();
 const vi = /[ăâđêôơưạảấầẩẫậắằẳẵặẹẻẽếềểễệỉịọỏốồổỗộớờởỡợụủứừửữựỳỵỷỹ]/iu;
 export const articleLanguage = a => /^(vi|en)/i.exec(a.language || a.lang || '')?.[1].toLowerCase() || (vi.test(storyText(a.title + ' ' + (a.content || ''))) ? 'vi' : 'en');
-const destinationsForSource = (category, region) => {
-    if (category === 'tech') {
-        if (region === 'vietnam') return ['tech_vietnam'];
-        if (region) return ['tech_world'];
-        return ['tech_vietnam', 'tech_world'];
-    }
-    const destination = category?.replace('_global', '_world').replace('_foreign', '_world');
-    return destination ? [destination] : [];
-};
+const destination = (category, region, language) => category === 'tech' ? `tech_${region === 'vietnam' ? 'vietnam' : region ? 'world' : language === 'vi' ? 'vietnam' : 'world'}` : category?.replace('_global', '_world');
 export function allowedDestinations(article, sources) {
-    // Source/feed configuration is the hard eligibility boundary.
-    // Language is metadata, not geography.
-    const configured = sources.filter(
-        source =>
-            source.enabled !== false &&
-            (
-                source.url === article.feedUrl ||
-                source.fallbackUrl === article.feedUrl
-            )
-    );
-    return [
-        ...new Set(
-            configured.flatMap(
-                source =>
-                    destinationsForSource(
-                        source.category,
-                        source.region
-                    )
-            )
-        )
-    ].filter(Boolean);
+    const language = articleLanguage(article);
+    // Match the configured feed URL first; publisher matching must never grant a
+    // destination belonging to another feed from that publisher.
+    const configured = sources.filter(s => s.enabled !== false && (s.url === article.feedUrl || s.fallbackUrl === article.feedUrl));
+    const memberships = configured.map(s => destination(s.category, s.region, language));
+    // Source configuration controls where a story is allowed to appear.
+    // Writing language must NOT be treated as geographic scope.
+    return [...new Set(memberships)].filter(Boolean);
 }
 // Editorial scope is independent of publisher membership and writing language.
 export function feedRelevance(article, feed) {
-    const editorial =
-        article?.editorialAssessment;
+    const editorial = article?.editorialAssessment;
 
-    if (!editorial) return 0;
+    // During rollout / provider failure, an unassessed story can remain in
+    // More Stories but cannot qualify for Top.
+    if (!editorial) return .5;
 
     if (
         editorial.exclude === true ||
-        editorial.destination === 'none' ||
-        editorial.destination !== feed
+        editorial.destination === 'none'
     ) {
         return 0;
     }
 
-    const relevance =
-        Number(
-            editorial.relevance
-        );
+    if (editorial.destination !== feed) {
+        return 0;
+    }
 
-    return Number.isFinite(relevance)
-        ? Math.max(
-            0,
-            Math.min(
-                1,
-                relevance
-            )
-        )
-        : 0;
+    const relevance = Number(editorial.relevance);
+    if (!Number.isFinite(relevance)) return 0;
+
+    return Math.max(0, Math.min(1, relevance));
 }
 const evidenceIdentity = value => {
     const identity = String(typeof value === 'object' ? value?.name || value?.url || '' : value || '').toLowerCase();
@@ -122,101 +95,74 @@ function signalsFor(members, evidence, prior, materialChanged, isRoundup = false
         };
     }
 
-    const editorial =
-        members
-            .map(
-                article =>
-                    article?.editorialAssessment
-            )
-            .find(Boolean);
+    const text = members.map(textOf).join(' ');
+    const editorial = members
+        .map(article => article?.editorialAssessment)
+        .find(value => value && typeof value === 'object');
 
-    const clamp =
-        value =>
-            Math.max(
-                0,
-                Math.min(
-                    1,
-                    Number(value) || 0
-                )
-            );
+    const clamp = value =>
+        Math.max(0, Math.min(1, Number(value) || 0));
 
+    // These semantic signals now come from the cached AI editorial assessment.
+    // No headline keyword list is allowed to determine Impact.
+    const impact = editorial
+        ? clamp(editorial.impact)
+        : clamp(prior?.ranking?.signals?.impact ?? .35);
+
+    const deterministicNovelty =
+        /(opinion|recap|roundup|explainer|background|preview)|nhìn lại|điểm tin/u.test(text)
+            ? .2
+            : materialChanged
+                ? .8
+                : prior?.ranking?.signals?.novelty ?? .4;
+
+    const novelty =
+        editorial && Number.isFinite(Number(editorial.novelty))
+            ? clamp(editorial.novelty)
+            : clamp(deterministicNovelty);
+
+    const uncertain =
+        /(rumou?r|unconfirmed|reportedly|alleged|disputed|conflicting|preliminary)|tin đồn|chưa xác nhận|sơ bộ/u.test(text);
+
+    const conflict =
+        /(disputed|conflicting|correction|corrected|retract)|đính chính|mâu thuẫn/u.test(text);
+
+    // Keep factual/source confidence grounded in actual source evidence.
     const sourceConfidence =
         Math.max(
             .15,
             Math.min(
                 1,
-                Math.max(
-                    ...members.map(
-                        article =>
-                            Number(
-                                article.sourceWeight
-                            ) || 1
-                    )
-                ) / 1.5
-            )
+                Math.max(...members.map(a => Number(a.sourceWeight) || 1)) / 1.5
+            ) -
+            (uncertain ? .25 : 0) -
+            (conflict ? .2 : 0)
         );
 
-    const semanticConfidence =
-        editorial
-            ? clamp(
-                editorial.confidence
-            )
-            : 0;
+    // AI may contribute semantic confidence, but cannot replace source evidence.
+    const confidence =
+        editorial && Number.isFinite(Number(editorial.confidence))
+            ? clamp(sourceConfidence * .7 + clamp(editorial.confidence) * .3)
+            : clamp(sourceConfidence);
 
     return {
-        impact:
-            editorial
-                ? clamp(
-                    editorial.impact
-                )
-                : 0,
-
+        impact,
         relevance:
-            editorial
-                ? clamp(
-                    editorial.relevance
-                )
-                : 0,
-
-        novelty:
-            editorial
-                ? clamp(
-                    editorial.novelty
-                )
-                : 0,
-
-        // Source evidence remains the primary confidence signal.
-        confidence:
-            editorial
-                ? clamp(
-                    sourceConfidence * .7 +
-                    semanticConfidence * .3
-                )
-                : sourceConfidence,
-
+            editorial && Number.isFinite(Number(editorial.relevance))
+                ? clamp(editorial.relevance)
+                : .5,
+        novelty,
+        confidence,
         attention:
             Math.min(
                 1,
-                Math.log1p(
-                    new Set(
-                        members.map(
-                            publisherId
-                        )
-                    ).size
-                ) /
-                Math.log(32)
+                Math.log1p(new Set(members.map(publisherId)).size) /
+                    Math.log(32)
             ),
-
         independentCorroboration:
-            1 -
-            1 /
-            Math.max(
-                1,
-                evidence.independentSources
-            ),
-
-        uncertain: false,
-        conflict: false
+            1 - 1 / Math.max(1, evidence.independentSources),
+        uncertain,
+        conflict
     };
 }
 export function createTopStoriesIndex({ db, config = {} } = {}) {
@@ -311,17 +257,8 @@ export function createTopStoriesIndex({ db, config = {} } = {}) {
                 const relationScopeChanged = Boolean(prior && String(prior.broaderStorySignature || '') !== broaderStorySignature);
                 const scopeChanged = Boolean(prior && ((prior.roundupPolicyVersion !== 1 && prior.links.some(link => containers.has(link))) || (!isRoundup && prior.links.some(link => containers.has(link))) || (prior.isRoundup !== undefined && prior.isRoundup !== isRoundup)));
                 const revision = storyRevision({ ...members[0], relatedArticles: members.slice(1) });
-                const editorialRevision = digest(
-                    members
-                        .map(
-                            article =>
-                                article?.editorialAssessment?.revision ||
-                                'unassessed'
-                        )
-                        .sort()
-                );
                 let state = prior;
-                if (!prior || prior.relevancePolicyVersion !== 3 || prior.evidence_version !== revision || prior.editorial_revision !== editorialRevision || prior.feed !== home || scopeChanged || relationScopeChanged) {
+                if (!prior || prior.relevancePolicyVersion !== 2 || prior.evidence_version !== revision || prior.feed !== home || scopeChanged || relationScopeChanged) {
                     dirty = true;
                     const evidence = isRoundup ? { independentSources:0, paths:[], derived:members.map(a=>({link:a.link,reason:'Multi-event container, not independent event evidence'})) } : evidencePaths(members);
                     const ordered = [...members].sort((a,b) => representativeQuality(b)-representativeQuality(a) || stamp(a)-stamp(b));
@@ -370,7 +307,7 @@ export function createTopStoriesIndex({ db, config = {} } = {}) {
                         }
                         timeline.sort((left,right) => Date.parse(left.date)-Date.parse(right.date) || String(left.id).localeCompare(String(right.id)));
                     }
-                    state = { id, feed:home, relevancePolicyVersion:3, editorial_revision:editorialRevision, isRoundup, roundup:cluster.roundup || null, roundupPolicyVersion:1, broaderStorySignature, briefing_scope_version:(prior?.briefing_scope_version || 1) + ((scopeChanged || relationScopeChanged) ? 1 : 0), evidence_version:revision, material_version:materialVersion, links:all.map(a=>a.link),
+                    state = { id, feed:home, relevancePolicyVersion:2, isRoundup, roundup:cluster.roundup || null, roundupPolicyVersion:1, broaderStorySignature, briefing_scope_version:(prior?.briefing_scope_version || 1) + ((scopeChanged || relationScopeChanged) ? 1 : 0), evidence_version:revision, material_version:materialVersion, links:all.map(a=>a.link),
                         contents: Object.fromEntries(members.map(a => [a.link, digest(textOf(a))])),
                         materialTexts: materialChanged ? updates.map(textOf) : prior.materialTexts,
                         representative:representative.link, representativeReason: oldRepresentative?.link === representative.link ? 'Retained: no materially stronger representative' : 'Source authority, direct reporting and original headline',
@@ -385,8 +322,7 @@ export function createTopStoriesIndex({ db, config = {} } = {}) {
                 const total = Object.values(settings.weights).reduce((a,b)=>a+b,0);
                 const raw = Object.entries(settings.weights).reduce((sum,[key,weight])=>sum+weight*s[key],0)/total;
                 const freshness = Math.exp(-Math.max(0,now-state.latest_material_update)/3600000/settings.freshnessHours);
-                const semanticRelevance = Math.max(0, Math.min(1, Number(s.relevance) || 0));
-                const score = raw * semanticRelevance * (.45 + .55*freshness);
+                const score = (s.relevance < 1 ? 0 : raw) * (.45 + .55*freshness);
                 const representative = members.find(a=>a.link===state.representative) || members[0];
                 const coverage = [representative, ...members.filter(a=>a.link!==representative.link).sort((a,b)=>Number(state.evidence.derived.some(d=>d.link===a.link))-Number(state.evidence.derived.some(d=>d.link===b.link)) || representativeQuality(b)-representativeQuality(a))];
                 results.push({ ...cluster, ...representative, members:undefined, clusterId:id, isCluster:true,
@@ -407,15 +343,7 @@ export function createTopStoriesIndex({ db, config = {} } = {}) {
                 const old=cutoffs.get(feed) || new Set(Object.values(states).filter(s=>s.feed===feed && s.isTop).map(s=>s.id));
                 let count=0;
                 for (const item of items) {
-                    if (
-                        item.topStory.isRoundup ||
-                        item.ranking.signals.relevance < settings.topRelevance ||
-                        item.ranking.score < boundary - (
-                            old.has(item.clusterId)
-                                ? deviation * settings.cutoffHysteresis
-                                : 0
-                        )
-                    ) break;
+                    if (item.topStory.isRoundup || item.ranking.signals.relevance < 1 || item.ranking.signals.impact < settings.topImpact || item.ranking.score < boundary-(old.has(item.clusterId)?deviation*settings.cutoffHysteresis:0)) break;
                     count++;
                 }
                 cutoffs.set(feed,new Set(items.slice(0,count).map(a=>a.clusterId)));
@@ -425,7 +353,7 @@ export function createTopStoriesIndex({ db, config = {} } = {}) {
                     state.rank=i+1;
                     if (state.isTop !== (i<count)) { state.cutoffHistory=[...(state.cutoffHistory || []),{at:now,isTop:i<count,boundary}].slice(-20); dirty=true; }
                     state.isTop=i<count;
-                    Object.assign(item.topStory,{...state,ranking:item.topStory.ranking,rank:i+1,isTop:i<count,cutoff:{count,boundary,mean,deviation,reason:'Contiguous AI-semantic quality prefix relative to feed strength; no count quota'}});
+                    Object.assign(item.topStory,{...state,ranking:item.topStory.ranking,rank:i+1,isTop:i<count,cutoff:{count,boundary,mean,deviation,reason:'Contiguous quality prefix relative to feed strength; no count quota'}});
                 });
             }
             mark("top-cutoff");

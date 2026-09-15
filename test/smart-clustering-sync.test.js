@@ -35,23 +35,59 @@ test('A/B/P/Q/R/S refresh, failure retention, browser read and explicit rebuild'
     const progress=p=>stages.push(p.stage);
     let result=await engine.sync(progress,category);
     assert.equal(result.ok,true,result.error); assert.equal(commits.length,1);
+
+    assert.equal(result.metrics.firstPassAiCalls,0);
+    assert.equal(result.metrics.editorialAiCalls,aiCalls);
+
+    const initialAiCalls=aiCalls;
     const firstSnapshot=values.smartClusters, firstVersion=values.smartClusterVersion;
+
     stages.length=0;
     result=await engine.sync(progress,category);
-    assert.equal(result.skipped,true,JSON.stringify(result)); assert.equal(workerCalls,1);assert.equal(aiCalls,0);
-    assert.equal(result.metrics.embeddingsGenerated,0);assert.equal(values.smartClusters,firstSnapshot);
-    assert.ok(!stages.includes('smart-ai'));assert.ok(!stages.includes('smart-embeddings'));
-    await engine.getStatus(); assert.equal(workerCalls,1);assert.equal(aiCalls,0);
-    console.log('UNCHANGED_REFRESH_COUNTS',JSON.stringify({aiCalls,embeddingsGenerated:result.metrics.embeddingsGenerated,workerCallsDuringRefresh:0}));
+
+    assert.equal(result.skipped,true,JSON.stringify(result));
+    assert.equal(workerCalls,1);
+    assert.equal(aiCalls,initialAiCalls);
+
+    assert.equal(result.metrics.embeddingsGenerated,0);
+    assert.equal(values.smartClusters,firstSnapshot);
+    assert.ok(!stages.includes('smart-ai'));
+    assert.ok(!stages.includes('smart-embeddings'));
+
+    await engine.getStatus();
+    assert.equal(workerCalls,1);
+    assert.equal(aiCalls,initialAiCalls);
+
+    console.log('UNCHANGED_REFRESH_COUNTS',JSON.stringify({
+      aiCalls,
+      initialAiCalls,
+      embeddingsGenerated:result.metrics.embeddingsGenerated,
+      workerCallsDuringRefresh:0
+    }));
     result=await engine.sync(progress,category,{forceRebuild:true});
     assert.equal(result.ok,true,result.error);assert.equal(result.metrics.rebuildReason,'explicit_force_rebuild');assert.equal(workerCalls,2);
     values.smartClusteringAlgorithmVersion='incompatible-old-policy';
     result=await engine.sync(progress,category);
     assert.equal(result.ok,true,result.error);assert.equal(result.metrics.rebuildReason,'clustering_policy_version_changed');assert.equal(workerCalls,3);
     const validSnapshot=values.smartClusters, validVersion=values.smartClusterVersion, validCommits=commits.length;
+    const beforeAmbiguousAiCalls=aiCalls;
+
     articles.push({...articles[0],link:'https://fixture.test/two',title:'NASA plans next Artemis rocket launch'});ambiguity=true;
     result=await engine.sync(progress,category);
-    assert.equal(result.ok,true,result.error);assert.equal(aiCalls,2);assert.equal(commits.length,validCommits+1);
+
+    assert.equal(result.ok,true,result.error);
+    assert.equal(result.metrics.firstPassAiCalls,1);
+    assert.equal(result.metrics.jsonRepairCalls,1);
+
+    // Transport calls = clustering first pass + repair
+    // + any separately-accounted editorial assessment.
+    assert.equal(
+      aiCalls-beforeAmbiguousAiCalls,
+      2 + result.metrics.editorialAiCalls
+    );
+
+    const afterAmbiguousAiCalls=aiCalls;
+    assert.equal(commits.length,validCommits+1);
     assert.notEqual(values.smartClusters,validSnapshot);assert.notEqual(values.smartClusterVersion,validVersion);
     assert.ok(stages.includes('smart-ai-repair'));assert.equal(result.metrics.repairAttempts,1);assert.equal(result.metrics.repairFailures,1);
     assert.equal(result.metrics.deferredAmbiguousGroups,1);assert.equal(result.metrics.unresolvedAmbiguousGroups,0);
@@ -60,7 +96,13 @@ test('A/B/P/Q/R/S refresh, failure retention, browser read and explicit rebuild'
     const deferredSnapshot=values.smartClusters, deferredVersion=values.smartClusterVersion, deferredWorkerCalls=workerCalls;
     result=await engine.sync(progress,category);
     assert.equal(result.ok,true,result.error);assert.equal(result.skipped,true,JSON.stringify(result));
-    assert.equal(workerCalls,deferredWorkerCalls);assert.equal(aiCalls,2);assert.equal(values.smartClusters,deferredSnapshot);assert.equal(values.smartClusterVersion,deferredVersion);
+    assert.equal(workerCalls,deferredWorkerCalls);
+
+    // Cached/deferred refresh performs no additional AI work.
+    assert.equal(aiCalls,afterAmbiguousAiCalls);
+
+    assert.equal(values.smartClusters,deferredSnapshot);
+    assert.equal(values.smartClusterVersion,deferredVersion);
     ambiguity=false;failPersistence=true;
     result=await engine.sync(progress,category,{forceRebuild:true});
     assert.equal(result.ok,false);assert.equal(values.smartClusters,deferredSnapshot);assert.equal(values.smartClusterVersion,deferredVersion);

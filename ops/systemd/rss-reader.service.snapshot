@@ -53,3 +53,5 @@ ExecStart=/usr/bin/node --max-old-space-size=4096 --expose-gc /home/ubuntu/my-rs
 
 MemoryHigh=5G
 MemoryMax=6G
+
+Environment=TOP_STORIES_RERANK_INTERVAL_MS=900000

@@ -8,8 +8,90 @@ import { canonicalIdentity, canonicalUrl, reconcilePosts, upgradeArchiveTimes } 
 export function createBoardCache({ env, fetchPage, writeJson, directory = './article_cache/threads', loadLegacy = async () => [], now = () => Date.now(), retentionMs = Number(process.env.CACHE_DISMISSAL_RETENTION_DAYS || 30) * 86400000 }) {
     retentionMs = Number.isFinite(retentionMs) && retentionMs > 0 ? retentionMs : 30 * 86400000;
     const db = env.RSS_DATA;
-    let queue = Promise.resolve();
-    const locked = fn => { const result = queue.then(fn); queue = result.catch(() => {}); return result; };
+    // Board mutations still run one at a time, but foreground
+    // interactions must not sit behind a large backlog of cache
+    // maintenance jobs.
+    let lockActive = false;
+    let lockSequence = 0;
+    const lockWaiters = [];
+
+    const runNextLock = () => {
+        if (lockActive || !lockWaiters.length) return;
+
+        lockWaiters.sort(
+            (a, b) =>
+                b.priority - a.priority ||
+                a.sequence - b.sequence
+        );
+
+        const entry = lockWaiters.shift();
+        lockActive = true;
+
+        const startedAt = Date.now();
+        const waitedMs = startedAt - entry.queuedAt;
+
+        const waitWarningMs =
+            entry.priority >= 100 ? 500 : 5000;
+
+        if (waitedMs >= waitWarningMs) {
+            console.warn(
+                `[BOARD LOCK] #${entry.sequence} ` +
+                `${entry.label} waited ${waitedMs}ms`
+            );
+        }
+
+        Promise.resolve()
+            .then(entry.fn)
+            .then(entry.resolve, entry.reject)
+            .finally(() => {
+                const heldMs = Date.now() - startedAt;
+
+                const holdWarningMs =
+                    entry.priority >= 100 ? 500 : 5000;
+
+                if (heldMs >= holdWarningMs) {
+                    console.warn(
+                        `[BOARD LOCK] #${entry.sequence} ` +
+                        `${entry.label} held ${heldMs}ms`
+                    );
+                }
+
+                lockActive = false;
+                queueMicrotask(runNextLock);
+            });
+    };
+
+    const locked = (
+        fn,
+        {
+            priority = 0,
+            label = 'background'
+        } = {}
+    ) => new Promise((resolve, reject) => {
+        lockWaiters.push({
+            fn,
+            resolve,
+            reject,
+            priority,
+            label,
+            sequence: ++lockSequence,
+            queuedAt: Date.now()
+        });
+
+        runNextLock();
+    });
+
+    const foregroundLocked = (
+        fn,
+        label = 'foreground'
+    ) => locked(
+        fn,
+        {
+            priority: 100,
+            label
+        }
+    );
+
     const inFlight = new Map();
     let ticking = null;
     let activeSyncs = 0;
@@ -260,7 +342,15 @@ export function createBoardCache({ env, fetchPage, writeJson, directory = './art
                     members[candidate.id] = { thread_id: candidate.id, url, article: { ...candidate.article, link: url }, active_caching: true, in_cache: true, left_cache_at: null, archive_expired_at: null, auto_added: true };
                     ledger.articles[candidate.id].auto_added = true;
                     delete ledger.articles[candidate.id].pending;
-                    await db.putMany({ cacheMembers: JSON.stringify(members), cacheIdentityLedger: JSON.stringify(ledger), boardStates: JSON.stringify(board), userPreferences: JSON.stringify(prefs) });
+                    await db.putMany(
+                        {
+                            cacheMembers: JSON.stringify(members),
+                            cacheIdentityLedger: JSON.stringify(ledger),
+                            boardStates: JSON.stringify(board),
+                            userPreferences: JSON.stringify(prefs)
+                        },
+                        { lightweight: true }
+                    );
                 });
                 await syncOne(candidate.id, firstPage);
             } catch (error) { console.warn('[AUTO CACHE]', error.message); }
@@ -363,10 +453,12 @@ export function createBoardCache({ env, fetchPage, writeJson, directory = './art
         if (folder !== null && (typeof folder !== 'string' || !folder.trim() || folder.length > 120)) throw new Error('Use a folder name of 1–120 characters');
         if (folder !== null) folder = isCache(folder.trim()) ? 'cache' : folder.trim();
         let startSync = false;
-        const result = await locked(async () => {
+        const result = await foregroundLocked(
+            async () => {
             const prefs = await get('userPreferences', {});
             const board = await get('boardStates', []);
             const members = await get('cacheMembers', {});
+
             const url = board.find(link => identity(link) === id) || canonicalUrl(article);
             const member = members[id];
             const currentFolder = Object.entries(prefs.boardFolderMappings || {}).find(([link]) => identity(link) === id)?.[1];
@@ -404,6 +496,7 @@ export function createBoardCache({ env, fetchPage, writeJson, directory = './art
             // Inspect the discovery ledger without copying its megabytes for a
             // normal folder move. Only write it when discovery/dismissal changes.
             const knownLedger = await db.get('cacheIdentityLedger', { type: 'json', shared: true });
+
             if (!knownLedger?.articles[id] || knownLedger.articles[id].pending ||
                 (folder === 'cache' && knownLedger.dismissals[id]) || (folder !== 'cache' && member?.auto_added && writes.cacheMembers)) {
                 const ledger = structuredClone(knownLedger || { initialized_at: now(), articles: {}, dismissals: {} });
@@ -413,10 +506,23 @@ export function createBoardCache({ env, fetchPage, writeJson, directory = './art
                 else if (member?.auto_added && writes.cacheMembers) ledger.dismissals[id] = { last_seen_at: now(), expires_at: now() + retentionMs };
                 writes.cacheIdentityLedger = JSON.stringify(ledger);
             }
+
             await db.putMany(writes, { lightweight: true });
+
             return response();
-        });
-        if (startSync) setImmediate(() => void syncOne(id).catch(e => console.warn('[CACHE ADD]', e.message)));
+        },
+        'setFolder'
+        );
+
+
+        if (startSync) {
+            setImmediate(() =>
+                void syncOne(id).catch(
+                    e => console.warn('[CACHE ADD]', e.message)
+                )
+            );
+        }
+
         return result;
     }
     async function setActive(url, active) {

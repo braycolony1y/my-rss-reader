@@ -3,7 +3,60 @@ import assert from 'node:assert/strict';
 import { rankStory, retainStoryIds, storyRevision } from '../src/articles/story-ranking.js';
 import { briefingSources, validateBriefing, createStoryBriefings, REQUIRED_ANALYSIS_REVIEW } from '../src/articles/story-briefing.js';
 import { createArticlePresentation } from '../src/articles/presentation.js';
-const article = (id, category = 'tech', extra = {}) => ({ link: `https://${id}.com/story`, feedUrl: `https://${id}.com/rss`, title: 'Regulator approves chip export restrictions', content: 'The regulator approved chip export restrictions on Friday. The new rules affect three manufacturers.', pubDate: new Date().toISOString(), smartCategory: category, image: 'https://images.com/photo.jpg', feedTitle: id, sourceWeight: 1.2, ...extra });
+const fixtureEditorialAssessment = (id, category) => {
+    const destination =
+        category === 'finance_global'
+            ? 'finance_world'
+            : category === 'news_vietnam'
+                ? 'news_vietnam'
+                : category === 'news_world'
+                    ? 'news_world'
+                    : category === 'tech_vietnam'
+                        ? 'tech_vietnam'
+                        : 'tech_world';
+
+    return {
+        policyVersion: 'ai-editorial-v1',
+        revision: `fixture-${id}-${category}`,
+        eligibleDestinations:
+            category === 'tech'
+                ? ['tech_vietnam', 'tech_world']
+                : [destination],
+        destination,
+        relevance: .95,
+        impact: .8,
+        novelty: .8,
+        confidence: .9,
+        exclude: false,
+        reason: 'Fixture editorial assessment'
+    };
+};
+
+const article = (id, category = 'tech', extra = {}) => {
+    const smartCategory =
+        extra.smartCategory || category;
+
+    return {
+        link: `https://${id}.com/story`,
+        feedUrl: `https://${id}.com/rss`,
+        title:
+            extra.title ||
+            'Regulator approves chip export restrictions',
+
+        content:
+            extra.content ||
+            'The regulator approved chip export restrictions on Friday. The new rules affect three manufacturers.',
+        pubDate: new Date().toISOString(),
+        smartCategory,
+        image: 'https://images.com/photo.jpg',
+        feedTitle: id,
+        sourceWeight: 1.2,
+        editorialAssessment:
+            extra.editorialAssessment ??
+            fixtureEditorialAssessment(id, smartCategory),
+        ...extra
+    };
+};
 const readState = (state, key) => key === 'smartSources' ? (state.smartSources || (state.smartClusters || []).flatMap(c => [c, ...(c.relatedArticles || [])]).map(a => ({url:a.feedUrl,category:a.smartCategory,region:a.region}))) : state[key];
 const cluster = { ...article('one'), clusterId: 'event-one', isCluster: true, verification: { method: 'ai_fallback' }, relatedArticles: [article('two')] };
 

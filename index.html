@@ -7,7 +7,7 @@
     <title>My RSS Reader</title>
     <link rel="icon"
         href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22%238b5cf6%22/><circle cx=%2230%22 cy=%2270%22 r=%2210%22 fill=%22white%22/><path d=%22M30 40a30 30 0 0 1 30 30M30 20a50 50 0 0 1 50 50%22 fill=%22none%22 stroke=%22white%22 stroke-width=%2210%22 stroke-linecap=%22round%22/></svg>">
-    <link rel="stylesheet" href="/public/styles.css?v=20260914_jsonlog_v1">
+    <link rel="stylesheet" href="/public/styles.css?v=20260915_card_unify_v3212b">
     <script>
         // Start the first Smart News request while the browser is still parsing
         // the page. Returning visitors paint saved cards immediately instead.
@@ -5290,8 +5290,20 @@
                             x-text="smartSection === 'news' ? 'World' : 'Global'"></button>
                     </div>
                     <div x-show="(sidebarExpanded || isMobile) && selectedFilterType === 'smart' && smartSection === 'tech'"
-                        x-transition.opacity class="mb-2 px-2 py-1 text-[10px] text-center text-gray-500">Vietnam +
-                        global technology sources</div>
+                        x-transition.opacity class="grid grid-cols-2 gap-1 mb-2 transition-opacity duration-300">
+                        <button
+                            @click="setSmartRegion('vietnam')"
+                            class="px-2 py-1.5 rounded-lg text-[11px] font-medium transition border"
+                            :class="smartRegion === 'vietnam' ? (theme === 'glass-light' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-teal-400/10 border-teal-400/30 text-teal-200') : (theme === 'glass-light' ? 'border-transparent text-gray-500 hover:text-gray-900 hover:bg-gray-100' : 'border-transparent text-gray-500 hover:text-white hover:bg-white/5')">
+                            Vietnam
+                        </button>
+                        <button
+                            @click="setSmartRegion('world')"
+                            class="px-2 py-1.5 rounded-lg text-[11px] font-medium transition border"
+                            :class="smartRegion === 'world' ? (theme === 'glass-light' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-teal-400/10 border-teal-400/30 text-teal-200') : (theme === 'glass-light' ? 'border-transparent text-gray-500 hover:text-gray-900 hover:bg-gray-100' : 'border-transparent text-gray-500 hover:text-white hover:bg-white/5')">
+                            Global
+                        </button>
+                    </div>
                     <li @click="setFilter('today', null)"
                         class="relative flex items-center justify-between px-3 py-2 rounded-md cursor-pointer transition-all duration-300 font-medium text-sm mt-4 overflow-hidden"
                         :class="selectedFilterType === 'today' ? (theme === 'glass-light' ? 'bg-emerald-50 text-emerald-700 shadow-sm' : 'bg-teal-900/40 text-teal-400 shadow-[inset_0_0_10px_rgba(20,184,166,0.1)]') : (theme === 'glass-light' ? 'text-gray-600 hover:bg-gray-100/50 hover:text-gray-900' : 'text-gray-400 hover:bg-white/5 hover:text-white')">
@@ -5877,6 +5889,55 @@
                         :class="selectedFilterValue === 'finance_global' ? 'bg-teal-900/70 text-teal-300' : 'text-gray-500 hover:text-white'">Global</button>
                 </div>
 
+                <div x-show="selectedFilterType === 'smart' && smartSection === 'tech'"
+                    class="flex items-center flex-shrink-0 rounded-full bg-[#111827] border border-white/10 p-1 gap-0.5"
+                    role="group" aria-label="Technology region">
+                    <button
+                        type="button"
+                        @click="setSmartRegion('vietnam')"
+                        class="px-3 py-1.5 rounded-full text-xs font-medium transition"
+                        :class="smartRegion === 'vietnam' ? 'bg-teal-900/70 text-teal-300' : 'text-gray-500 hover:text-white'">
+                        Vietnam
+                    </button>
+                    <button
+                        type="button"
+                        @click="setSmartRegion('world')"
+                        class="px-3 py-1.5 rounded-full text-xs font-medium transition"
+                        :class="smartRegion === 'world' ? 'bg-teal-900/70 text-teal-300' : 'text-gray-500 hover:text-white'">
+                        Global
+                    </button>
+                </div>
+
+                <button
+                    x-show="selectedFilterType === 'smart'"
+                    type="button"
+                    role="switch"
+                    :aria-checked="smartTabMode === 'classic'"
+                    aria-label="Toggle between Top stories and Classic"
+                    @click="setSmartTabMode(smartTabMode === 'top' ? 'classic' : 'top')"
+                    class="flex items-center flex-shrink-0 gap-2.5 rounded-full bg-[#111827] border border-white/10 px-3 py-1.5 transition hover:border-white/20">
+                    <span
+                        class="text-xs font-semibold transition-colors"
+                        :class="smartTabMode === 'top' ? 'text-emerald-400' : 'text-gray-500'">
+                        Top stories
+                    </span>
+
+                    <span
+                        class="relative inline-flex h-5 w-9 flex-shrink-0 rounded-full transition-colors duration-200"
+                        :class="smartTabMode === 'classic' ? 'bg-emerald-500' : 'bg-emerald-500'">
+                        <span
+                            class="absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform duration-200"
+                            :class="smartTabMode === 'classic' ? 'translate-x-4' : 'translate-x-0'">
+                        </span>
+                    </span>
+
+                    <span
+                        class="text-xs font-semibold transition-colors"
+                        :class="smartTabMode === 'classic' ? 'text-emerald-400' : 'text-gray-500'">
+                        Classic
+                    </span>
+                </button>
+
                 <div class="w-px h-7 bg-white/10 flex-shrink-0 mx-1"></div>
 
                 <button @click="setFilter('today', null)"
@@ -5928,31 +5989,40 @@
                     "<span x-text="searchQuery" class="text-white"></span>"
                 </div>
 
-                <section x-show="selectedFilterType === 'smart' && selectedFilterValue" class="top-stories" aria-label="Top stories">
-                    <div class="top-stories-heading">
-                        <template x-if="smartTabMode === 'classic'"><div><span class="top-stories-kicker" x-text="headerTitle"></span><h2 x-text="smartTabMode === 'classic' ? 'Ranked stories' : 'Top stories'"></h2></div></template>
-                        <div class="smart-view-toggle" role="group" aria-label="Story view for this tab">
-                            <button type="button" :aria-pressed="smartTabMode === 'top'" @click="setSmartTabMode('top')">Top stories</button>
-                            <button type="button" :aria-pressed="smartTabMode === 'classic'" @click="setSmartTabMode('classic')">Classic</button>
-                        </div>
-                    </div>
-                    <div x-show="usesTopStories && selectedFilterValue === 'tech'" class="story-tab-rail" aria-label="Technology region">
-                        <button type="button" :aria-pressed="smartRegion === 'vietnam'" @click="setTopRegion('vietnam')">Vietnam</button>
-                        <button type="button" :aria-pressed="smartRegion === 'world'" @click="setTopRegion('world')">World</button>
-                    </div>
-                    <button type="button" x-show="usesTopStories && topUpdatesAvailable" class="story-update-notice" @click="refreshTopStories()">New updates available</button>
-                    <p role="alert" x-show="topStoryError" x-text="topStoryError"></p>
-                </section>
+                <div
+                    x-show="selectedFilterType === 'smart' && ((usesTopStories && topUpdatesAvailable) || topStoryError)"
+                    class="mb-4 px-2 md:px-0">
+                    <button
+                        type="button"
+                        x-show="usesTopStories && topUpdatesAvailable"
+                        class="story-update-notice"
+                        @click="refreshTopStories()">
+                        New updates available
+                    </button>
+                    <p
+                        role="alert"
+                        x-show="topStoryError"
+                        x-text="topStoryError">
+                    </p>
+                </div>
 
                 <template x-for="(article, articleIndex) in displayedArticles" :key="articleRowKey(article, articleIndex)">
-                    <div class="article-card mb-4 md:mb-5 relative overflow-hidden bg-[#111827] rounded-2xl cursor-pointer group border border-white/5 hover:border-white/20 transition-all duration-300 shadow-lg"
-                        :class="[
-                            (isMobile && mobileActiveCard === article.link) ? 'ring-2 ring-emerald-500' : '',
-                            readStates.has(article.link) ? 'is-read' : '',
-                            usesTopStories ? 'has-story-briefing' : ''
-                        ]" @click="handleCardClick(article, $event)">
+                    <div class="article-row">
+                        <div
+                            class="story-divider story-divider-outside"
+                            x-show="usesTopStories && !article.topStory?.isTop && (articleIndex === 0 || displayedArticles[articleIndex - 1]?.topStory?.isTop)">
+                            More stories
+                        </div>
 
-                        <div class="story-divider" x-show="usesTopStories && !article.topStory?.isTop && (articleIndex === 0 || displayedArticles[articleIndex - 1]?.topStory?.isTop)">More stories</div>
+                        <div class="article-card mb-4 md:mb-5 relative overflow-hidden bg-[#111827] rounded-2xl cursor-pointer group border border-white/5 hover:border-white/20 transition-all duration-300 shadow-lg"
+                            :class="[
+                                (isMobile && mobileActiveCard === article.link) ? 'ring-2 ring-emerald-500' : '',
+                                readStates.has(article.link) ? 'is-read' : '',
+                                'has-story-briefing',
+                            selectedFilterType === 'smart' && smartTabMode === 'classic' ? 'is-smart-classic-card' : '',
+                            selectedFilterType !== 'smart' ? 'is-standard-card' : ''
+                            ]" @click="handleCardClick(article, $event)">
+
                         <span class="story-rank" x-show="usesTopStories && article.topStory?.isTop" x-text="'#' + article.topStory?.rank"></span>
                         <!-- Background Image with Gradient Overlay -->
                         <div class="article-card-image absolute inset-y-0 right-0 w-[55%] md:w-[50%] z-0">
@@ -5960,6 +6030,102 @@
                                 @error="nextStoryImage($event, article)" loading="lazy" decoding="async"
                                 referrerpolicy="no-referrer" class="thumbnail-img w-full h-full object-cover">
                         </div>
+
+                        <!-- v3.2.10 — compact Full Coverage at top-right -->
+                        <div
+                            class="story-coverage-orbs"
+                            x-show="selectedFilterType === 'smart' && storyCoverage(article).length > 1"
+                            @click.stop
+                            aria-label="Full coverage publishers">
+
+                            <template
+                                x-for="publisher in storyCoverage(article).slice(0, 4)"
+                                :key="publisher.identity">
+
+                                <a
+                                    class="story-coverage-orb"
+                                    :href="publisher.articles[0]?.link"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    @click.stop
+                                    :title="publisher.name + (publisher.articles.length > 1 ? ' · ' + publisher.articles.length + ' reports' : '')">
+
+                                    <span
+                                        class="story-coverage-orb-fallback"
+                                        x-text="publisher.name?.slice(0, 1)?.toUpperCase() || '?'">
+                                    </span>
+
+                                    <img
+                                        x-show="publisher.icon"
+                                        :src="publisher.icon"
+                                        referrerpolicy="no-referrer"
+                                        loading="lazy"
+                                        @error="$el.style.display='none'"
+                                        alt="">
+                                </a>
+                            </template>
+
+                            <button
+                                type="button"
+                                class="story-coverage-orb story-coverage-more"
+                                x-show="storyCoverage(article).length > 4"
+                                @click.stop="toggleStoryCoverage(article)"
+                                :aria-expanded="!!storyCoverageOpen[article.clusterId || article.link]"
+                                :title="'Show ' + (storyCoverage(article).length - 4) + ' more publishers'"
+                                x-text="'+' + (storyCoverage(article).length - 4)">
+                            </button>
+                        </div>
+
+                        <!-- v3.2.11a — Classic Full Coverage expansion -->
+                        <template
+                            x-if="selectedFilterType === 'smart'
+                                && smartTabMode === 'classic'
+                                && storyCoverageOpen[article.clusterId || article.link]
+                                && storyCoverage(article).length > 4">
+
+                            <div
+                                class="story-coverage-expanded story-coverage-classic-popover"
+                                @click.stop>
+
+                                <template
+                                    x-for="publisher in storyCoverage(article).slice(4)"
+                                    :key="publisher.identity">
+
+                                    <div class="story-coverage-expanded-publisher">
+
+                                        <div class="story-coverage-expanded-heading">
+                                            <span class="story-coverage-expanded-icon">
+                                                <span
+                                                    x-text="publisher.name?.slice(0, 1)?.toUpperCase() || '?'">
+                                                </span>
+
+                                                <img
+                                                    x-show="publisher.icon"
+                                                    :src="publisher.icon"
+                                                    @error="$el.style.display='none'"
+                                                    referrerpolicy="no-referrer"
+                                                    alt="">
+                                            </span>
+
+                                            <strong x-text="publisher.name"></strong>
+                                        </div>
+
+                                        <template
+                                            x-for="source in publisher.articles"
+                                            :key="source.link">
+
+                                            <a
+                                                :href="source.link"
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                @click.stop
+                                                x-text="stripHtml(source.title)">
+                                            </a>
+                                        </template>
+                                    </div>
+                                </template>
+                            </div>
+                        </template>
 
                         <!-- Content over background -->
                         <div
@@ -6051,42 +6217,296 @@
                         </div>
 
                         <div x-show="usesTopStories" class="article-briefing" @click.stop>
-                            <p class="story-freshness" x-show="briefingFor(article).status === 'stale' && !briefingFor(article).analysisStatus" x-text="article.topStory?.feed?.endsWith('_vietnam') ? 'Bản tóm tắt trước · đang cập nhật theo diễn biến mới' : 'Previous briefing · updating with newer reporting'"></p>
-                            <p class="story-freshness" x-show="article.topStory?.timeline?.length > 1" x-text="'Updated ' + timeAgo(article.topStory?.latest_material_update) + ' · First reported ' + timeAgo(article.topStory?.timeline?.[0]?.date)"></p>
-                            <p class="story-uncertainty" x-show="article.topStory?.conflicts?.length" x-text="article.topStory?.feed?.endsWith('_vietnam') ? 'Thông tin còn sơ bộ hoặc có khác biệt giữa các nguồn; xem bài gốc để đối chiếu.' : 'Reporting is preliminary or differs between sources; consult the original reports.'"></p>
-                            <div class="story-key-facts"><template x-for="fact in (briefingFor(article).keyFacts || [])" :key="fact.text"><span x-text="fact.text"></span></template></div>
-                            <p class="story-freshness" role="status" x-show="storyAnalysisNotice(article)" x-text="storyAnalysisNotice(article)"></p>
-                            <div class="story-tab-rail" x-show="storyAnalysis(article).length" role="group" aria-label="Story analysis">
-                                <template x-for="section in storyAnalysis(article)" :key="section.label">
-                                    <button type="button" :aria-expanded="storyAnalysisOpen[article.clusterId || article.link] === section.label" @click="toggleStoryAnalysis(article, section.label)" x-text="section.label"></button>
+
+                            <p
+                                class="story-freshness"
+                                x-show="briefingFor(article).status === 'stale' && !briefingFor(article).analysisStatus"
+                                x-text="article.topStory?.feed?.endsWith('_vietnam') ? 'Bản tóm tắt trước · đang cập nhật theo diễn biến mới' : 'Previous briefing · updating with newer reporting'">
+                            </p>
+
+                            <p
+                                class="story-freshness"
+                                x-show="article.topStory?.timeline?.length > 1"
+                                x-text="'Updated ' + timeAgo(article.topStory?.latest_material_update) + ' · First reported ' + timeAgo(article.topStory?.timeline?.[0]?.date)">
+                            </p>
+
+                            <p
+                                class="story-uncertainty"
+                                x-show="article.topStory?.conflicts?.length"
+                                x-text="article.topStory?.feed?.endsWith('_vietnam') ? 'Thông tin còn sơ bộ hoặc có khác biệt giữa các nguồn; xem bài gốc để đối chiếu.' : 'Reporting is preliminary or differs between sources; consult the original reports.'">
+                            </p>
+
+                            <!-- Screenshot-style key fact cards -->
+                            <div
+                                class="story-key-facts"
+                                x-show="storyKeyFacts(article).length">
+
+                                <template
+                                    x-for="fact in storyKeyFacts(article)"
+                                    :key="fact.id">
+
+                                    <div class="story-key-fact">
+                                        <span
+                                            class="story-key-fact-icon"
+                                            aria-hidden="true"
+                                            x-text="fact.icon">
+                                        </span>
+
+                                        <span class="story-key-fact-copy">
+                                            <strong
+                                                x-text="fact.value">
+                                            </strong>
+
+                                            <span
+                                                x-show="fact.label"
+                                                x-text="fact.label">
+                                            </span>
+                                        </span>
+                                    </div>
                                 </template>
                             </div>
-                            <template x-for="section in storyAnalysis(article)" :key="section.label">
-                                <div class="top-story-section" x-show="storyAnalysisOpen[article.clusterId || article.link] === section.label">
-                                    <p x-text="section.text" style="white-space: pre-line"></p>
-                                    <template x-for="development in (section.timeline || [])" :key="development.id">
-                                        <div class="story-timeline-event"><time x-text="formatVietnamDateTime(development.date)"></time><p x-text="development.text"></p>
-                                            <div class="top-story-citations"><template x-for="source in development.sources" :key="source.link"><a :href="source.link" target="_blank" rel="noopener noreferrer" x-text="source.name"></a></template></div>
+
+                            <p
+                                class="story-freshness"
+                                role="status"
+                                x-show="storyAnalysisNotice(article)"
+                                x-text="storyAnalysisNotice(article)">
+                            </p>
+
+                            <!-- Screenshot-style analysis panel -->
+                            <div
+                                class="story-analysis-shell"
+                                x-show="storyAnalysis(article).length">
+
+                                <div
+                                    class="story-analysis-tabs"
+                                    role="tablist"
+                                    aria-label="Story analysis">
+
+                                    <button
+                                        type="button"
+                                        role="tab"
+                                        x-show="storyAnalysisByLabel(article, 'Why it matters')"
+                                        :aria-selected="activeStoryAnalysisLabel(article) === 'Why it matters'"
+                                        :class="{ 'is-active': activeStoryAnalysisLabel(article) === 'Why it matters' }"
+                                        @click.stop="toggleStoryAnalysis(article, 'Why it matters')">
+
+                                        <svg
+                                            viewBox="0 0 24 24"
+                                            aria-hidden="true">
+                                            <circle cx="12" cy="12" r="9"></circle>
+                                            <path d="M3 12h18M12 3c2.4 2.5 3.6 5.5 3.6 9S14.4 18.5 12 21M12 3c-2.4 2.5-3.6 5.5-3.6 9S9.6 18.5 12 21"></path>
+                                        </svg>
+
+                                        <span>Why it matters</span>
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        role="tab"
+                                        x-show="storyAnalysisByLabel(article, 'What changed')"
+                                        :aria-selected="activeStoryAnalysisLabel(article) === 'What changed'"
+                                        :class="{ 'is-active': activeStoryAnalysisLabel(article) === 'What changed' }"
+                                        @click.stop="toggleStoryAnalysis(article, 'What changed')">
+
+                                        <svg
+                                            viewBox="0 0 24 24"
+                                            aria-hidden="true">
+                                            <path d="M4 7h13M13 3l4 4-4 4M20 17H7M11 13l-4 4 4 4"></path>
+                                        </svg>
+
+                                        <span>What changed</span>
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        role="tab"
+                                        x-show="storyAnalysisByLabel(article, 'What to watch')"
+                                        :aria-selected="activeStoryAnalysisLabel(article) === 'What to watch'"
+                                        :class="{ 'is-active': activeStoryAnalysisLabel(article) === 'What to watch' }"
+                                        @click.stop="toggleStoryAnalysis(article, 'What to watch')">
+
+                                        <svg
+                                            viewBox="0 0 24 24"
+                                            aria-hidden="true">
+                                            <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"></path>
+                                            <circle cx="12" cy="12" r="2.6"></circle>
+                                        </svg>
+
+                                        <span>What to watch</span>
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        role="tab"
+                                        class="story-analysis-more-tab"
+                                        x-show="storyExtraAnalysis(article).length"
+                                        :aria-selected="storyMoreAnalysisActive(article)"
+                                        :class="{ 'is-active': storyMoreAnalysisActive(article) }"
+                                        @click.stop="openMoreStoryAnalysis(article)">
+
+                                        <svg
+                                            viewBox="0 0 24 24"
+                                            aria-hidden="true">
+                                            <path d="M4 19V13M10 19V9M16 19V5M22 19H2"></path>
+                                        </svg>
+
+                                        <span
+                                            x-text="'More analysis (' + storyExtraAnalysis(article).length + ')'">
+                                        </span>
+                                    </button>
+                                </div>
+
+                                <template
+                                    x-if="activeStoryAnalysisSection(article)">
+
+                                    <div class="story-analysis-body">
+
+                                        <div
+                                            class="story-more-analysis-rail"
+                                            x-show="storyMoreAnalysisActive(article)">
+
+                                            <template
+                                                x-for="section in storyExtraAnalysis(article)"
+                                                :key="section.label">
+
+                                                <button
+                                                    type="button"
+                                                    :class="{ 'is-active': activeStoryAnalysisLabel(article) === section.label }"
+                                                    @click.stop="toggleStoryAnalysis(article, section.label)"
+                                                    x-text="section.label">
+                                                </button>
+                                            </template>
+                                        </div>
+
+                                        <div class="story-analysis-copy">
+
+                                            <div class="story-analysis-text">
+                                                <div
+                                                    class="story-analysis-section-label"
+                                                    x-show="storyMoreAnalysisActive(article)"
+                                                    x-text="activeStoryAnalysisSection(article)?.label">
+                                                </div>
+
+                                                <p
+                                                    x-show="activeStoryAnalysisSection(article)?.text"
+                                                    x-text="activeStoryAnalysisSection(article)?.text"
+                                                    style="white-space: pre-line">
+                                                </p>
+
+                                                <template
+                                                    x-for="development in (activeStoryAnalysisSection(article)?.timeline || [])"
+                                                    :key="development.id">
+
+                                                    <div class="story-timeline-event">
+                                                        <time
+                                                            x-text="formatVietnamDateTime(development.date)">
+                                                        </time>
+
+                                                        <p
+                                                            x-text="development.text">
+                                                        </p>
+
+                                                        <div class="top-story-citations">
+                                                            <template
+                                                                x-for="source in development.sources"
+                                                                :key="source.link">
+
+                                                                <a
+                                                                    :href="source.link"
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    x-text="source.name">
+                                                                </a>
+                                                            </template>
+                                                        </div>
+                                                    </div>
+                                                </template>
+
+                                                <div class="top-story-citations">
+                                                    <template
+                                                        x-for="citation in uniqueCitations(activeStoryAnalysisSection(article)?.citations)"
+                                                        :key="citation.link">
+
+                                                        <a
+                                                            :href="citation.link"
+                                                            :title="citation.quote"
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            x-text="citation.name">
+                                                        </a>
+                                                    </template>
+                                                </div>
+                                            </div>
+
+                                            <button
+                                                type="button"
+                                                class="story-analysis-next"
+                                                x-show="storyAnalysis(article).length > 1"
+                                                @click.stop="advanceStoryAnalysis(article)"
+                                                aria-label="Next analysis section">
+
+                                                <svg
+                                                    viewBox="0 0 24 24"
+                                                    aria-hidden="true">
+                                                    <path d="m9 5 7 7-7 7"></path>
+                                                </svg>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+
+                            <!-- Only appears after pressing +N at top-right -->
+                            <template
+                                x-if="storyCoverageOpen[article.clusterId || article.link] && storyCoverage(article).length > 4">
+
+                                <div class="story-coverage-expanded">
+                                    <template
+                                        x-for="publisher in storyCoverage(article).slice(4)"
+                                        :key="publisher.identity">
+
+                                        <div class="story-coverage-expanded-publisher">
+
+                                            <div class="story-coverage-expanded-heading">
+                                                <span class="story-coverage-expanded-icon">
+                                                    <span
+                                                        x-text="publisher.name?.slice(0, 1)?.toUpperCase() || '?'">
+                                                    </span>
+
+                                                    <img
+                                                        x-show="publisher.icon"
+                                                        :src="publisher.icon"
+                                                        @error="$el.style.display='none'"
+                                                        referrerpolicy="no-referrer"
+                                                        alt="">
+                                                </span>
+
+                                                <strong
+                                                    x-text="publisher.name">
+                                                </strong>
+                                            </div>
+
+                                            <template
+                                                x-for="source in publisher.articles"
+                                                :key="source.link">
+
+                                                <a
+                                                    :href="source.link"
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    @click.stop
+                                                    x-text="stripHtml(source.title)">
+                                                </a>
+                                            </template>
                                         </div>
                                     </template>
-                                    <div class="top-story-citations"><template x-for="citation in uniqueCitations(section.citations)" :key="citation.link"><a :href="citation.link" :title="citation.quote" target="_blank" rel="noopener noreferrer" x-text="citation.name"></a></template></div>
                                 </div>
                             </template>
-                            <div class="story-coverage-label" x-show="(article.relatedArticles || []).length">Full Coverage</div>
-                            <div class="story-coverage-rail" x-show="(article.relatedArticles || []).length">
-                                <template x-for="publisher in storyCoverage(article)" :key="publisher.identity">
-                                    <details class="story-publisher">
-                                        <summary x-text="publisher.name + (publisher.articles.length > 1 ? ' ×' + publisher.articles.length : '')"></summary>
-                                        <template x-for="source in publisher.articles" :key="source.link">
-                                            <a :href="source.link" target="_blank" rel="noopener noreferrer" x-text="stripHtml(source.title)"></a>
-                                        </template>
-                                    </details>
-                                </template>
-                            </div>
                         </div>
 
                         <!-- Action Buttons Overlay -->
-                        <div class="absolute right-4 items-center gap-1.5 p-1.5 rounded-xl border shadow-xl flex-wrap justify-end z-20"
+                        <div class="article-actions-overlay absolute right-4 items-center gap-1.5 p-1.5 rounded-xl border shadow-xl flex-wrap justify-end z-20"
                             :class="[(isMobile && mobileActiveCard === article.link) ? 'flex bottom-4 max-w-[85%]' : 'top-1/2 -translate-y-1/2 hidden md:group-hover:flex', theme === 'glass-light' ? 'bg-white/95 border-gray-200 shadow-[0_4px_24px_rgba(0,0,0,0.15)] backdrop-blur-xl' : 'bg-[#111827] border-white/10']">
 
                             <button @click.stop="toggleState('hiddenStates', article.link)"
@@ -6176,6 +6596,7 @@
                                 </svg>
                             </a>
                         </div>
+                    </div>
                     </div>
                 </template>
 
@@ -7237,7 +7658,7 @@
         </section>
     </div>
 
-    <script src="/script.js?v=20260913_top_snapshot_v1"></script>
+    <script src="/script.js?v=20260915_top_briefing_v3210"></script>
 </body>
 
 </html>

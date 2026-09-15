@@ -49,12 +49,7 @@ export function createTopStoriesSnapshots({ db, config, compute = rankInWorker, 
         for (const state of Object.values(states)) {
             // Old persistence did not include full cards. Derive only when all
             // ranked evidence is still present and byte-equivalent after normalization.
-            if (
-                !state.contents ||
-                !state.rank ||
-                !state.ranking?.signals ||
-                state.relevancePolicyVersion !== 3
-            ) return;
+            if (!state.contents || !state.rank || !state.ranking?.signals) return;
             const members = Object.keys(state.contents).map(link=>byLink.get(link));
             if (members.some(a=>!a)) return;
             for (const a of members) {
@@ -66,7 +61,7 @@ export function createTopStoriesSnapshots({ db, config, compute = rankInWorker, 
             if (!representative) return;
             const signals=state.ranking.signals;
             const rawScore=Object.entries(weights).reduce((sum,[key,w])=>sum+w*signals[key],0)/Object.values(weights).reduce((a,b)=>a+b,0);
-            const score=rawScore*Math.max(0,Math.min(1,Number(signals.relevance)||0))*(.45+.55*Math.exp(-Math.max(0,now()-state.latest_material_update)/3600000/(config?.freshnessHours || 48)));
+            const score=(signals.relevance<1?0:rawScore)*(.45+.55*Math.exp(-Math.max(0,now()-state.latest_material_update)/3600000/(config?.freshnessHours || 48)));
             articles.push({...representative,clusterId:state.id,isCluster:true,relatedArticles:members.filter(a=>a!==representative),clusterCount:members.length,
                 topStory:{...state,ranking:{score,signals}},ranking:{score,signals},hotness:score,imageCandidates:members.map(a=>a.image).filter(Boolean)});
         }
