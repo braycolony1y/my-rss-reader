@@ -959,8 +959,8 @@ export function createFeedSync({
         // article itself is rotated out. Read Later and Boards are intentional
         // archives, so they are deliberately never pruned here.
         try {
-            const smartClusters = await env.RSS_DATA.get('smartClusters', { type: 'json' }) || [];
-            const smartRawArticles = await env.RSS_DATA.get('smartRawArticles', { type: 'json' }) || [];
+            const smartClusters = await env.RSS_DATA.get('smartClusters', { type: 'json', shared: true }) || [];
+            const smartRawArticles = await env.RSS_DATA.get('smartRawArticles', { type: 'json', shared: true }) || [];
             const retainedLinks = new Set(latestArticles.map(article => normalizeStateUrl(article.link)));
 
             for (const article of smartRawArticles) {
@@ -1044,7 +1044,15 @@ export function createFeedSync({
                 console.log(`[SYNC QUEUE] Cycle finished in ${Math.round(cycleDuration / 1000)}s. Sleeping for ${Math.round(waitTime / 1000)}s to enforce 10-minute minimum...`);
                 await new Promise(resolve => setTimeout(resolve, waitTime));
             } else {
-                console.log(`[SYNC QUEUE] Cycle took ${Math.round(cycleDuration / 1000)}s. Restarting immediately...`);
+                // An overrun usually means the process is already under heavy
+                // CPU/GC/I/O pressure. Starting another full feed cycle
+                // immediately compounds queued board/database work.
+                const recoveryDelay = 60 * 1000;
+                console.log(
+                    `[SYNC QUEUE] Cycle took ${Math.round(cycleDuration / 1000)}s. ` +
+                    `Cooling down for ${Math.round(recoveryDelay / 1000)}s before the next cycle...`
+                );
+                await new Promise(resolve => setTimeout(resolve, recoveryDelay));
             }
         }
     }

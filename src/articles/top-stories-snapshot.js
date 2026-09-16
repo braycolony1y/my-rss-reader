@@ -18,6 +18,71 @@ const valid = value => {
     }
     return [...feeds.values()].every(feed=>feed.count<=feed.rank);
 };
+const PRIVATE_PUBLISHED_FIELDS = new Set([
+    'contents',
+    'materialTexts',
+    'evidence',
+    'links',
+    'representative',
+    'representativeReason',
+    'rankHistory',
+    'cutoffHistory',
+    'history',
+    // article.ranking already carries the public ranking result.
+    'ranking'
+]);
+
+const hasPrivatePublishedState = value =>
+    Boolean(
+        value &&
+        typeof value === 'object' &&
+        [...PRIVATE_PUBLISHED_FIELDS].some(key =>
+            Object.prototype.hasOwnProperty.call(value, key)
+        )
+    );
+
+const compactPublishedTopStory = value => {
+    if (!value || typeof value !== 'object') return value;
+
+    const compact = { ...value };
+    for (const key of PRIVATE_PUBLISHED_FIELDS) delete compact[key];
+    return compact;
+};
+
+const compactPublishedArticlesInPlace = articles => {
+    let changed = false;
+
+    for (const article of articles || []) {
+        if (!article?.topStory || !hasPrivatePublishedState(article.topStory)) {
+            continue;
+        }
+
+        article.topStory = compactPublishedTopStory(article.topStory);
+        changed = true;
+    }
+
+    return changed;
+};
+
+const extractFullStates = articles => {
+    const states = {};
+
+    for (const article of articles || []) {
+        if (!article?.clusterId || !article?.topStory) continue;
+        states[article.clusterId] = article.topStory;
+    }
+
+    return states;
+};
+
+const rawStateJson = async db => {
+    const value = await db.get('topStoriesState');
+
+    if (typeof value === 'string') return value || '{}';
+
+    return JSON.stringify(value || {});
+};
+
 const rankInWorker = input => new Promise((resolve, reject) => {
     const worker = new Worker(new URL('./top-stories-worker.js', import.meta.url), {
         workerData: input,
@@ -35,12 +100,47 @@ const rankInWorker = input => new Promise((resolve, reject) => {
 export function createTopStoriesSnapshots({ db, config, compute = rankInWorker, now = Date.now, report = console.warn } = {}) {
     let current, loading, pending, scheduled, checked, retryAt = 0;
     const load = async () => {
-        if (!loading) loading = db.get('topStoriesPublished', { type: 'json', shared: true }).then(value => { if (valid(value)) current = value; });
+        if (!loading) {
+            loading = db
+                .get('topStoriesPublished', { type: 'json', shared: true })
+                .then(async value => {
+                    if (!valid(value)) return;
+
+                    const needsMigration = (value.articles || []).some(
+                        article => hasPrivatePublishedState(article?.topStory)
+                    );
+
+                    if (needsMigration) {
+                        let fullStates = extractFullStates(value.articles);
+                        let fullStatesJson = JSON.stringify(fullStates);
+                        fullStates = null;
+
+                        // State first. If interrupted, migration is safely
+                        // repeatable from the old published snapshot.
+                        await db.put('topStoriesState', fullStatesJson);
+                        fullStatesJson = null;
+
+                        compactPublishedArticlesInPlace(value.articles);
+
+                        let publishedJson = JSON.stringify(value);
+                        await db.put('topStoriesPublished', publishedJson);
+                        publishedJson = null;
+
+                        if (typeof global.gc === 'function') global.gc();
+                    }
+
+                    current = value;
+                });
+        }
+
         await loading;
         return current;
     };
     async function migrate() {
-        const states = await db.get('topStoriesState', {type:'json'});
+        const states = await db.get(
+            'topStoriesState',
+            { type: 'json', shared: true }
+        );
         if (!states || !Object.keys(states).length) return;
         const [clusters, raw] = await Promise.all(['smartClusters','smartRawArticles'].map(key=>db.get(key,{type:'json',shared:true})));
         const byLink = new Map([...(clusters || []).flatMap(storyMembers), ...(raw || [])].map(a=>[a.link,a]));
@@ -77,7 +177,8 @@ export function createTopStoriesSnapshots({ db, config, compute = rankInWorker, 
             if (items.some((a,i)=>a.topStory.rank!==i+1 || a.topStory.isTop!==(i<count))) return;
             for (const a of items) a.topStory.cutoff={count,reason:'Preserved persisted editorial cutoff'};
         }
-        const migrated={policy:POLICY,articles,createdAt:now(),signature:'legacy',clusterVersion:'persisted-top'};
+        compactPublishedArticlesInPlace(articles);
+const migrated={policy:POLICY,articles,createdAt:now(),signature:'legacy',clusterVersion:'persisted-top'};
         if (valid(migrated)) { await db.put('topStoriesPublished',JSON.stringify(migrated)); current=migrated; }
     }
     async function rebuild() {
@@ -221,22 +322,14 @@ export function createTopStoriesSnapshots({ db, config, compute = rankInWorker, 
             return current;
         }
 
-        let states;
-        if (current?.articles?.length) {
-            states = {};
-            for (const article of current.articles) {
-                if (article?.clusterId && article?.topStory) {
-                    states[article.clusterId] = article.topStory;
-                }
-            }
-        } else {
-            states = await db.get('topStoriesState', {type:'json'}) || {};
-        }
+        // Keep the full ranking state serialized in the parent process.
+        // The worker parses it in its isolated heap.
+        let statesJson = await rawStateJson(db);
 
         const result = await compute({
             candidates,
             sources,
-            states,
+            statesJson,
             config,
             now: now()
         });
@@ -249,7 +342,30 @@ export function createTopStoriesSnapshots({ db, config, compute = rankInWorker, 
         clusters = null;
         raw = null;
         sources = null;
-        states = null;
+        statesJson = null;
+        if (typeof global.gc === 'function') global.gc();
+
+        // Normal worker path: full internal state comes back as one JSON
+        // string rather than another large parsed graph.
+        let nextStatesJson =
+            typeof result.statesJson === 'string'
+                ? result.statesJson
+                : null;
+
+        // Compatibility path for custom compute implementations/tests.
+        if (!nextStatesJson && Array.isArray(result.articles)) {
+            let fullStates = extractFullStates(result.articles);
+            nextStatesJson = JSON.stringify(fullStates);
+            fullStates = null;
+        }
+
+        if (nextStatesJson) {
+            await db.put('topStoriesState', nextStatesJson);
+        }
+
+        compactPublishedArticlesInPlace(result.articles);
+
+        nextStatesJson = null;
         if (typeof global.gc === 'function') global.gc();
 
         const replacement = {

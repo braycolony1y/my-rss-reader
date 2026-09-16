@@ -212,3 +212,229 @@ test('Smart News normalizes malformed source links before persistence', async ()
     assert.equal(article.link, 'https://tienphong.vn/story-post1870739.tpo');
     assert.equal(article.articleKey, article.link);
 });
+
+
+test('validated buildCluster preserves every candidate after the membership invariant', async () => {
+    const { buildCluster } = await import('../smart-news.js');
+
+    const direct = {
+        title: 'Lý do khiến tiền đạo trẻ nhất tuyển Việt Nam chưa ra sân tại ASEAN Cup 2026',
+        link: 'https://vtcnews.vn/article-ar1036199.html',
+        pubDate: new Date().toISOString(),
+        feedTitle: 'VTC News',
+        smartCategory: 'news_vietnam'
+    };
+
+    const wrapper = {
+        title: 'Lý do khiến tiền đạo trẻ nhất tuyển Việt Nam chưa ra sân tại ASEAN Cup 2026 - Báo điện tử VTC News',
+        link: 'https://news.google.com/rss/articles/membership-test?oc=5',
+        pubDate: new Date().toISOString(),
+        feedTitle: 'VTC News',
+        smartCategory: 'news_vietnam'
+    };
+
+    // Normal preprocessing still removes the redundant Google wrapper.
+    const normal = buildCluster([wrapper, direct]);
+    assert.equal(normal.clusterCount, 1);
+
+    // Once the raw group has passed the exactly-once publication invariant,
+    // buildCluster must not silently remove one of those candidates.
+    const validated = buildCluster(
+        [wrapper, direct],
+        {
+            validated: true,
+            verification: {
+                method: 'test_validated_membership'
+            }
+        }
+    );
+
+    const links = [
+        validated,
+        ...(validated.relatedArticles || [])
+    ].map(article => article.link);
+
+    assert.equal(validated.clusterCount, 2);
+    assert.equal(links.length, 2);
+    assert.deepEqual(
+        new Set(links),
+        new Set([wrapper.link, direct.link])
+    );
+});
+
+
+test('final publication preserves membership of newly validated clusters', async () => {
+    const {
+        buildPublicationClusterSnapshot
+    } = await import('../smart-news.js');
+
+    const now = new Date().toISOString();
+
+    const vietjet = {
+        title: 'Vietjet mở bán 3,1 triệu vé Tết Đinh Mùi 2027',
+        link: 'https://vnexpress.net/test-vietjet-membership.html',
+        feedTitle: 'vnexpress.net',
+        pubDate: now,
+        smartCategory: 'news_vietnam',
+        feedCategory: 'news_vietnam',
+        content: ''
+    };
+
+    const vietnamAirlines = {
+        title: 'Mùa vé Tết 2027 khởi động: Vietnam Airlines mở bán gần 3,7 triệu chỗ',
+        link: 'https://kenh14.vn/test-vietnam-airlines-membership.chn',
+        feedTitle: 'kenh14.vn',
+        pubDate: now,
+        smartCategory: 'news_vietnam',
+        feedCategory: 'news_vietnam',
+        content: ''
+    };
+
+    const snapshot = buildPublicationClusterSnapshot({
+        candidates: [
+            vietjet,
+            vietnamAirlines
+        ],
+        autoMergedClusters: [
+            {
+                id: 'g_membership_regression',
+                articles: [
+                    vietjet,
+                    vietnamAirlines
+                ],
+                verification: {
+                    method: 'test_validated_membership'
+                }
+            }
+        ],
+        reviewedClusters: [],
+        reviewGroups: [],
+        clusterVersionChanged: true,
+        existingClusters: [],
+        isTargeted: false,
+        targetCategory: null,
+        storyIdRetentionClusters: [],
+        storyRelationships: []
+    });
+
+    const links = snapshot.clusters.flatMap(
+        cluster => [
+            cluster,
+            ...(cluster.relatedArticles || [])
+        ].map(article => article.link)
+    );
+
+    assert.equal(links.length, 2);
+    assert.deepEqual(
+        new Set(links),
+        new Set([
+            vietjet.link,
+            vietnamAirlines.link
+        ])
+    );
+});
+
+
+test('final publication still repairs retained historical clusters', async () => {
+    const {
+        buildPublicationClusterSnapshot
+    } = await import('../smart-news.js');
+
+    const now = new Date().toISOString();
+
+    const current = {
+        title: 'Current unrelated candidate',
+        link: 'https://example.com/current-membership-test',
+        feedTitle: 'example.com',
+        pubDate: now,
+        smartCategory: 'news_vietnam',
+        feedCategory: 'news_vietnam',
+        content: ''
+    };
+
+    const oldRepresentative = {
+        title: 'Vietjet mở bán 3,1 triệu vé Tết Đinh Mùi 2027',
+        link: 'https://example.com/old-vietjet',
+        feedTitle: 'vnexpress.net',
+        pubDate: now,
+        smartCategory: 'news_vietnam',
+        feedCategory: 'news_vietnam',
+        content: ''
+    };
+
+    const relatedVietjet = {
+        title: 'Vietjet mở bán 3,1 triệu vé tết 2027, thêm lựa chọn cho hành trình đoàn viên',
+        link: 'https://example.com/old-related-vietjet',
+        feedTitle: 'thanhnien.vn',
+        pubDate: now,
+        smartCategory: 'news_vietnam',
+        feedCategory: 'news_vietnam',
+        content: ''
+    };
+
+    const conflictingVietnamAirlines = {
+        title: 'Mùa vé Tết 2027 khởi động: Vietnam Airlines mở bán gần 3,7 triệu chỗ',
+        link: 'https://example.com/old-vietnam-airlines',
+        feedTitle: 'kenh14.vn',
+        pubDate: now,
+        smartCategory: 'news_vietnam',
+        feedCategory: 'news_vietnam',
+        content: ''
+    };
+
+    const oldCluster = {
+        ...oldRepresentative,
+        isCluster: true,
+        clusterId: 'old_airline_cluster',
+        verification: {
+            method: 'test_historical_verified'
+        },
+        clusterCount: 3,
+        sourceCount: 3,
+        sources: [
+            'vnexpress.net',
+            'thanhnien.vn',
+            'kenh14.vn'
+        ],
+        relatedArticles: [
+            relatedVietjet,
+            conflictingVietnamAirlines
+        ]
+    };
+
+    const snapshot = buildPublicationClusterSnapshot({
+        candidates: [current],
+        autoMergedClusters: [
+            {
+                id: 'g_current_membership',
+                articles: [current],
+                verification: {
+                    method: 'test_current'
+                }
+            }
+        ],
+        reviewedClusters: [],
+        reviewGroups: [],
+        clusterVersionChanged: false,
+        existingClusters: [oldCluster],
+        isTargeted: false,
+        targetCategory: null,
+        storyIdRetentionClusters: [oldCluster],
+        storyRelationships: []
+    });
+
+    const retained = snapshot.clusters.find(
+        cluster =>
+            cluster.clusterId ===
+            'old_airline_cluster'
+    );
+
+    assert.ok(retained);
+    assert.deepEqual(
+        retained.relatedArticles.map(
+            article => article.link
+        ),
+        [relatedVietjet.link]
+    );
+    assert.equal(retained.clusterCount, 2);
+});

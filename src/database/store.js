@@ -9,12 +9,12 @@ export function createDatabaseStore() {
 
     const SMART_DB_FILE = './smart-data.json';
     const STATE_FILE = './database-state.json';
-    const STATE_KEYS = new Set(['readStates', 'savedStates', 'hiddenStates', 'boardStates', 'userPreferences', 'cacheMembers', 'cacheIdentityLedger']);
+    const STATE_KEYS = new Set(['readStates', 'savedStates', 'hiddenStates', 'boardStates', 'userPreferences', 'cacheMembers', 'cacheIdentityLedger', 'smartAiProviderHealth']);
     let stateRevision = 0;
     let stateOverlay = {};
 
 
-    const SMART_KEYS = new Set(['smartClusters', 'smartRawArticles', 'smartCandidateLinks', 'smartCandidateSignature', 'smartAiConfig', 'smartClusterVersion', 'smartStatus', 'smartEmbeddingIdentity', 'smartVerificationFailures', 'smartClusteringInputs', 'smartClusteringFailedAttempt', 'smartClusteringAlgorithmVersion', 'smartClusterState', 'smartEventVerificationCache', 'smartEditorialAssessmentCache', 'smartClusteringCounters', 'storyBriefings', 'topStoriesPublished']);
+    const SMART_KEYS = new Set(['smartClusters', 'smartRawArticles', 'smartCandidateLinks', 'smartCandidateSignature', 'smartAiConfig', 'smartClusterVersion', 'smartStatus', 'smartEmbeddingIdentity', 'smartVerificationFailures', 'smartClusteringInputs', 'smartClusteringFailedAttempt', 'smartClusteringAlgorithmVersion', 'smartClusterState', 'smartEventVerificationCache', 'smartEditorialAssessmentCache', 'smartClusteringCounters', 'smartDeferredReviewGroups', 'smartProgressivePublication', 'smartProgressiveClusterState', 'storyBriefings', 'topStoriesPublished']);
 
     const NON_PERSISTED_DB_KEYS = new Set(['smartEmbeddings']);
 

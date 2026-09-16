@@ -99,6 +99,495 @@ export function createArticlePresentation({
     }
 
     const briefings = createStoryBriefings({ db: env?.RSS_DATA, generate: generateBriefing, loadSource: getLastKnownCachedArticle });
+
+    // SERVER TOP STORIES ANALYSIS PREWARM
+    //
+    // Runs independently of browser traffic:
+    //   batch 1: ranks  1-10 across all six tabs
+    //   batch 2: ranks 11-20
+    //   ...
+    //   batch 5: ranks 41-50
+    //
+    // Tab priority inside every batch:
+    //   VN News -> VN Finance -> VN Tech
+    //   -> World News -> World Finance -> World Tech
+    //
+    // Only ONE background story is introduced at a time. The normal briefing
+    // queue still has concurrency=2, leaving room for higher-priority user
+    // requests to jump ahead.
+
+    const STORY_PREWARM_BATCH_SIZE = 10;
+
+    // With no readers online, prepare the first 50 stories in every tab.
+    // Once a reader approaches/passes that frontier, keep analysis roughly
+    // 20 stories ahead of their furthest position, rounded to 10-story batches.
+    const STORY_PREWARM_BASELINE_PER_TAB = 50;
+    const STORY_PREWARM_USER_AHEAD = 20;
+    const STORY_PREWARM_POLL_MS = 1500;
+    const STORY_PREWARM_IDLE_MS = 60 * 1000;
+    const STORY_PREWARM_AUDIT_MS = 10 * 60 * 1000;
+    const STORY_PREWARM_JOB_TIMEOUT_MS = 20 * 60 * 1000;
+
+    const STORY_PREWARM_TAB_ORDER = [
+        'vietnam:news',
+        'vietnam:finance',
+        'vietnam:tech',
+        'world:news',
+        'world:finance',
+        'world:tech'
+    ];
+
+    let storyPrewarmRunning = false;
+    let storyPrewarmTimer = null;
+    let storyPrewarmLastCompleteSnapshot = null;
+
+    const storyPrewarmTargets = new Map(
+        STORY_PREWARM_TAB_ORDER.map(
+            key => [key, STORY_PREWARM_BASELINE_PER_TAB]
+        )
+    );
+
+    const storyPrewarmTargetFor = bucket =>
+        Math.max(
+            STORY_PREWARM_BASELINE_PER_TAB,
+            storyPrewarmTargets.get(bucket) ||
+                STORY_PREWARM_BASELINE_PER_TAB
+        );
+
+    const extendStoryPrewarmForUser = articles => {
+        const visible = (articles || [])
+            .filter(article => article?.topStory?.rank);
+
+        if (!visible.length) return;
+
+        const bucket = storyPrewarmBucket(visible[0]);
+
+        if (!bucket || !storyPrewarmTargets.has(bucket)) return;
+
+        const furthestRank = Math.max(
+            ...visible.map(article => Number(article.topStory.rank) || 0)
+        );
+
+        // Start extending before the reader reaches the baseline boundary.
+        // Example: rank 40 -> target 60.
+        const desired = Math.max(
+            STORY_PREWARM_BASELINE_PER_TAB,
+            Math.ceil(
+                (furthestRank + STORY_PREWARM_USER_AHEAD) /
+                    STORY_PREWARM_BATCH_SIZE
+            ) * STORY_PREWARM_BATCH_SIZE
+        );
+
+        const previous = storyPrewarmTargetFor(bucket);
+
+        if (desired <= previous) return;
+
+        storyPrewarmTargets.set(bucket, desired);
+
+        console.log(
+            '[STORY PREWARM] User frontier extended',
+            JSON.stringify({
+                bucket,
+                furthestRank,
+                previous,
+                target: desired
+            })
+        );
+
+        // If the idle pass already finished, wake it immediately rather than
+        // waiting for the periodic audit.
+        if (!storyPrewarmRunning) {
+            if (storyPrewarmTimer) {
+                clearTimeout(storyPrewarmTimer);
+                storyPrewarmTimer = null;
+            }
+
+            const timer = setTimeout(
+                () => void runStoryBriefingPrewarm(),
+                25
+            );
+
+            timer.unref?.();
+        }
+    };
+
+    const storyPrewarmSleep = ms =>
+        new Promise(resolve => {
+            const timer = setTimeout(resolve, ms);
+            timer.unref?.();
+        });
+
+    const storyPrewarmSnapshotKey = snapshot =>
+        String(
+            snapshot?.signature ||
+            snapshot?.createdAt ||
+            snapshot?.progressiveRevision ||
+            ''
+        );
+
+    const storyPrewarmBucket = article => {
+        const top = article?.topStory || {};
+
+        const context = [
+            top.feed,
+            top.region,
+            article?.region,
+            article?.smartRegion
+        ]
+            .filter(Boolean)
+            .join(' ')
+            .toLowerCase();
+
+        if (!context) return null;
+
+        const vietnam =
+            /vietnam|viet[\s_-]*nam|việt[\s_-]*nam|(?:^|[^a-z])vn(?:[^a-z]|$)/i
+                .test(context);
+
+        let section = null;
+
+        // Check specific verticals before generic "news".
+        if (/finance|financial|business/.test(context)) {
+            section = 'finance';
+        }
+        else if (/tech|technology/.test(context)) {
+            section = 'tech';
+        }
+        else if (/news/.test(context)) {
+            section = 'news';
+        }
+
+        if (!section) return null;
+
+        return `${vietnam ? 'vietnam' : 'world'}:${section}`;
+    };
+
+    const storyPrewarmOne = async article => {
+        const tab = article?.topStory?.feed;
+
+        if (!tab) {
+            return {
+                outcome: 'skipped',
+                state: null
+            };
+        }
+
+        let state = await briefings.get(
+            article,
+            tab,
+            {
+                priority: 0
+            }
+        );
+
+        if (
+            state?.status === 'ready' ||
+            state?.generationState === 'cache-hit'
+        ) {
+            return {
+                outcome: 'cached',
+                state
+            };
+        }
+
+        if (state?.status === 'source-only') {
+            return {
+                outcome: 'source-only',
+                state
+            };
+        }
+
+        if (
+            state?.status === 'unavailable' ||
+            state?.generationState === 'failed'
+        ) {
+            return {
+                outcome: 'failed',
+                state
+            };
+        }
+
+        const deadline =
+            Date.now() + STORY_PREWARM_JOB_TIMEOUT_MS;
+
+        // Do not enqueue the next background story until this one settles.
+        // briefings.get() deduplicates this same key while we poll.
+        while (Date.now() < deadline) {
+            await storyPrewarmSleep(STORY_PREWARM_POLL_MS);
+
+            state = await briefings.get(
+                article,
+                tab,
+                {
+                    priority: 0
+                }
+            );
+
+            if (
+                state?.status === 'ready' ||
+                state?.generationState === 'cache-hit'
+            ) {
+                return {
+                    outcome: 'generated',
+                    state
+                };
+            }
+
+            if (state?.status === 'source-only') {
+                return {
+                    outcome: 'source-only',
+                    state
+                };
+            }
+
+            if (
+                state?.status === 'unavailable' ||
+                state?.generationState === 'failed'
+            ) {
+                return {
+                    outcome: 'failed',
+                    state
+                };
+            }
+        }
+
+        return {
+            outcome: 'timeout',
+            state
+        };
+    };
+
+    const runStoryBriefingPrewarm = async () => {
+        if (storyPrewarmRunning) return;
+
+        const db = env?.RSS_DATA;
+
+        if (!db?.get) return;
+
+        storyPrewarmRunning = true;
+
+        let nextDelay = STORY_PREWARM_IDLE_MS;
+
+        try {
+            const snapshot = await db.get(
+                'topStoriesPublished',
+                {
+                    type: 'json',
+                    shared: true
+                }
+            );
+
+            if (!Array.isArray(snapshot?.articles) || !snapshot.articles.length) {
+                return;
+            }
+
+            const snapshotKey = storyPrewarmSnapshotKey(snapshot);
+
+            const groups = new Map(
+                STORY_PREWARM_TAB_ORDER.map(key => [key, []])
+            );
+
+            const unclassifiedFeeds = new Set();
+
+            for (const article of snapshot.articles) {
+                const bucket = storyPrewarmBucket(article);
+
+                if (!bucket || !groups.has(bucket)) {
+                    if (article?.topStory?.feed) {
+                        unclassifiedFeeds.add(article.topStory.feed);
+                    }
+                    continue;
+                }
+
+                groups.get(bucket).push(article);
+            }
+
+            for (const stories of groups.values()) {
+                stories.sort(
+                    (a, b) =>
+                        (Number(a?.topStory?.rank) || Number.MAX_SAFE_INTEGER) -
+                        (Number(b?.topStory?.rank) || Number.MAX_SAFE_INTEGER)
+                );
+
+            }
+
+            if (unclassifiedFeeds.size) {
+                console.warn(
+                    '[STORY PREWARM] Unclassified feeds:',
+                    [...unclassifiedFeeds].join(', ')
+                );
+            }
+
+            console.log(
+                '[STORY PREWARM] Start',
+                JSON.stringify({
+                    snapshot: snapshotKey,
+                    order: STORY_PREWARM_TAB_ORDER,
+                    batchSize: STORY_PREWARM_BATCH_SIZE,
+                    baselinePerTab: STORY_PREWARM_BASELINE_PER_TAB,
+                    targets: Object.fromEntries(storyPrewarmTargets),
+                    counts: Object.fromEntries(
+                        [...groups.entries()].map(
+                            ([key, stories]) => [key, stories.length]
+                        )
+                    )
+                })
+            );
+
+            for (
+                let offset = 0;
+                offset < Math.max(
+                    ...STORY_PREWARM_TAB_ORDER.map(
+                        storyPrewarmTargetFor
+                    )
+                );
+                offset += STORY_PREWARM_BATCH_SIZE
+            ) {
+                for (const bucket of STORY_PREWARM_TAB_ORDER) {
+                    const target = storyPrewarmTargetFor(bucket);
+
+                    if (offset >= target) continue;
+                    // Before each tab batch, ensure we are still preparing the
+                    // current published Top Stories snapshot.
+                    const latest = await db.get(
+                        'topStoriesPublished',
+                        {
+                            type: 'json',
+                            shared: true
+                        }
+                    );
+
+                    if (
+                        storyPrewarmSnapshotKey(latest) !== snapshotKey
+                    ) {
+                        console.log(
+                            '[STORY PREWARM] Snapshot changed; restarting with newest snapshot'
+                        );
+
+                        return;
+                    }
+
+                    const stories =
+                        groups
+                            .get(bucket)
+                            .slice(
+                                offset,
+                                Math.min(
+                                    offset + STORY_PREWARM_BATCH_SIZE,
+                                    target
+                                )
+                            );
+
+                    if (!stories.length) continue;
+
+                    const stats = {
+                        cached: 0,
+                        generated: 0,
+                        sourceOnly: 0,
+                        skipped: 0,
+                        failed: 0
+                    };
+
+                    console.log(
+                        `[STORY PREWARM] ${bucket} ranks ${offset + 1}-${offset + stories.length}`
+                    );
+
+                    for (const article of stories) {
+                        const result =
+                            await storyPrewarmOne(article);
+
+                        if (result.outcome === 'cached') {
+                            stats.cached++;
+                        }
+                        else if (result.outcome === 'generated') {
+                            stats.generated++;
+                        }
+                        else if (result.outcome === 'source-only') {
+                            stats.sourceOnly++;
+                        }
+                        else if (result.outcome === 'skipped') {
+                            stats.skipped++;
+                        }
+                        else {
+                            stats.failed++;
+
+                            console.warn(
+                                '[STORY PREWARM] Deferred failed story',
+                                JSON.stringify({
+                                    bucket,
+                                    rank: article?.topStory?.rank,
+                                    clusterId: article?.clusterId,
+                                    outcome: result.outcome,
+                                    error:
+                                        result.state?.generationError ||
+                                        null
+                                })
+                            );
+
+                            // Do not let one malformed/provider-failed story
+                            // block every later story and every later tab.
+                            // story-briefing.js already records its retry time;
+                            // a later audit will reconsider it.
+                            continue;
+                        }
+                    }
+
+                    console.log(
+                        '[STORY PREWARM] Batch complete',
+                        JSON.stringify({
+                            bucket,
+                            from: offset + 1,
+                            to: offset + stories.length,
+                            ...stats
+                        })
+                    );
+                }
+            }
+
+            storyPrewarmLastCompleteSnapshot = snapshotKey;
+            nextDelay = STORY_PREWARM_AUDIT_MS;
+
+            console.log(
+                '[STORY PREWARM] First 50 complete for all available tabs',
+                snapshotKey
+            );
+        }
+        catch (error) {
+            console.warn(
+                '[STORY PREWARM] Error:',
+                error?.message || error
+            );
+        }
+        finally {
+            storyPrewarmRunning = false;
+
+            // Even after a completed pass, periodically audit the first 50.
+            // Valid cached analyses return immediately and consume no AI.
+            storyPrewarmTimer = setTimeout(
+                () => {
+                    storyPrewarmTimer = null;
+                    void runStoryBriefingPrewarm();
+                },
+                nextDelay
+            );
+
+            storyPrewarmTimer.unref?.();
+        }
+    };
+
+    // Start shortly after the server initializes. This does not depend on an
+    // HTTP request, so analyses continue preparing with zero users online.
+    if (env?.RSS_DATA?.get) {
+        storyPrewarmTimer = setTimeout(
+            () => {
+                storyPrewarmTimer = null;
+                void runStoryBriefingPrewarm();
+            },
+            5000
+        );
+
+        storyPrewarmTimer.unref?.();
+    }
     const topIndex = createTopStoriesIndex({ db: env?.RSS_DATA, config: topStoriesConfig });
     const smartApiViewCache = new Map();
     const storyViews = new Map();
@@ -106,6 +595,7 @@ export function createArticlePresentation({
     let storyViewSequence = 0;
 
     let latestSmartApiVersion = '';
+    let latestTopSnapshotSignature = '';
     const freshViewCache = new Map();
     const topSnapshots = createTopStoriesSnapshots({ db: env?.RSS_DATA, config: topIndex.settings });
 
@@ -302,11 +792,40 @@ export function createArticlePresentation({
                 ? req.query.smartMode
                 : (storedSmartMode === 'classic' ? 'classic' : 'top');
         const isTop = smartTabMode === 'top' && Boolean(filterValue);
+
+        // Expired pinned views otherwise remain in memory indefinitely until
+        // enough new view tokens happen to evict them.
+        const viewNow = Date.now();
+        for (const [key, view] of storyViews) {
+            if (
+                !view?.createdAt ||
+                viewNow - view.createdAt >= 30 * 60000
+            ) {
+                storyViews.delete(key);
+            }
+        }
+
         let smartClusterVersion = '', filteredArticles, publishedArticles, cacheHit = false;
         if (isTop) {
             const snapshot = await topSnapshots.get();
             mark('persisted-read');
             cacheHit = Boolean(snapshot);
+
+            // Never let filtered Top views pin a previous full published
+            // snapshot after Top Stories has produced a replacement.
+            const topSnapshotSignature = String(
+                snapshot?.signature ||
+                snapshot?.clusterVersion ||
+                ''
+            );
+            if (
+                topSnapshotSignature &&
+                topSnapshotSignature !== latestTopSnapshotSignature
+            ) {
+                filteredTopViews.clear();
+                latestTopSnapshotSignature = topSnapshotSignature;
+            }
+
             publishedArticles = snapshot?.articles;
             smartClusterVersion = snapshot?.clusterVersion || '';
             const destination =
@@ -381,6 +900,12 @@ export function createArticlePresentation({
 
             if (!requestedVersion && smartClusterVersion !== latestSmartApiVersion) {
                 smartApiViewCache.clear();
+
+                // Each fresh view stores references to the complete raw article
+                // and cluster graphs. Keeping entries from prior Smart versions
+                // can therefore pin multiple huge object graphs.
+                freshViewCache.clear();
+
                 latestSmartApiVersion = smartClusterVersion;
             }
 
@@ -451,7 +976,12 @@ export function createArticlePresentation({
             unavailableSourceUrls
         ]);
         const cachedFiltered = isTop && filteredTopViews.get(filterSignature);
-        if (cachedFiltered && cachedFiltered.input === publishedArticles) filteredArticles = cachedFiltered.articles;
+        if (
+            cachedFiltered &&
+            cachedFiltered.snapshotSignature === latestTopSnapshotSignature
+        ) {
+            filteredArticles = cachedFiltered.articles;
+        }
         else {
             const needsMemberFiltering = !isTop || hiddenSet.size > 0 || blockedKeywordEntries.length > 0 || unavailableSet.size > 0;
             filteredArticles = filteredArticles
@@ -476,12 +1006,28 @@ export function createArticlePresentation({
                     ));
                 });
 
-            filteredArticles = filteredArticles.map(article => ({ ...article,
-                relatedArticles: (article.relatedArticles || []).filter(a => !hiddenSet.has(a.link) && !articleContentFilterMatches(a, blockedKeywordEntries))
-            }));
+            // In the normal Top path there is nothing to mutate. Avoid
+            // shallow-copying thousands of full article/cluster objects merely
+            // to recreate an identical relatedArticles array.
+            if (needsMemberFiltering) {
+                filteredArticles = filteredArticles.map(article => ({
+                    ...article,
+                    relatedArticles: (article.relatedArticles || []).filter(
+                        a =>
+                            !hiddenSet.has(a.link) &&
+                            !articleContentFilterMatches(a, blockedKeywordEntries)
+                    )
+                }));
+            }
+
             if (isTop) {
-                filteredTopViews.set(filterSignature, {input:publishedArticles,articles:filteredArticles});
-                while (filteredTopViews.size > 12) filteredTopViews.delete(filteredTopViews.keys().next().value);
+                filteredTopViews.set(filterSignature, {
+                    snapshotSignature: latestTopSnapshotSignature,
+                    articles: filteredArticles
+                });
+                while (filteredTopViews.size > 12) {
+                    filteredTopViews.delete(filteredTopViews.keys().next().value);
+                }
             }
         }
         // Classic retains its existing ranking. Top Stories is fully scored above.
@@ -517,6 +1063,13 @@ export function createArticlePresentation({
         const currentById = new Map(ranked.map(a => [a.clusterId, a]));
         const currentStory = article => isTop ? currentById.get(article.clusterId) || article : article;
         const pageArticles = filteredArticles.slice(startIndex, endIndex);
+
+        // User scrolling can extend server prewarming beyond the idle
+        // first-50 baseline. This is intentionally recorded before response
+        // completion so background preparation starts while they are reading.
+        if (isTop && pageArticles.length) {
+            extendStoryPrewarmForUser(pageArticles);
+        }
 
         // Briefing generation has a separate notion of the ACTIVE page.
         // Ranking order remains pinned by smartViewToken; this key identifies

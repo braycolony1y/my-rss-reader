@@ -422,11 +422,11 @@
 
                     if (
                         /battery|pin\b|mah\b/.test(text)
-                    ) return '🔋';
+                    ) return '▰';
 
                     if (
                         /camera|photo|ảnh|mp\b/.test(text)
-                    ) return '📷';
+                    ) return '◉';
 
                     if (
                         /chip|processor|cpu|gpu|soc\b/.test(text)
@@ -438,11 +438,43 @@
 
                     if (
                         /power|electric|outage|điện/.test(text)
-                    ) return '⚡';
+                    ) return 'ϟ';
 
                     if (
                         /defen|security|intercept|phòng không|an ninh/.test(text)
                     ) return '◆';
+
+                    if (
+                        /cvss|critical|vulnerab|exploit|lỗ hổng|nghiêm trọng/.test(text)
+                    ) return '▲';
+
+                    if (
+                        /rain|rainfall|mưa/.test(text)
+                    ) return '☂︎';
+
+                    if (
+                        /wind|km\/h|mph|gió/.test(text)
+                    ) return '≋';
+
+                    if (
+                        /hurricane|typhoon|cyclone|storm|category|bão/.test(text)
+                    ) return '◉';
+
+                    if (
+                        /revenue|profit|earnings|guidance|sales|doanh thu|lợi nhuận/.test(text)
+                    ) return '↗';
+
+                    if (
+                        /export|import|xuất khẩu|nhập khẩu/.test(text)
+                    ) return '▰';
+
+                    if (
+                        /stock|shares|ticker|aapl|msft|nvda|cổ phiếu/.test(text)
+                    ) return '▥';
+
+                    if (
+                        /growth|yoy|qoq|tăng trưởng/.test(text)
+                    ) return '▥';
 
                     if (
                         /people|person|region|city|người|khu vực|thành phố/.test(text)
@@ -456,14 +488,52 @@
                         this.briefingFor(article).keyFacts ||
                         []
                     )
+                    .slice(0, 4)
                     .map((fact, index) => {
-                        const text =
+                        const structured =
+                            fact &&
+                            typeof fact === 'object';
+
+                        const explicitValue =
+                            structured
+                                ? this.stripHtml(
+                                    fact.value || ''
+                                )
+                                    .replace(/\s+/g, ' ')
+                                    .trim()
+                                : '';
+
+                        const explicitLabel =
+                            structured
+                                ? this.stripHtml(
+                                    fact.label || ''
+                                )
+                                    .replace(/\s+/g, ' ')
+                                    .trim()
+                                : '';
+
+                        const legacyText =
                             typeof fact === 'string'
                                 ? fact
                                 : fact?.text || '';
 
+                        const text =
+                            (
+                                explicitValue ||
+                                explicitLabel
+                            )
+                                ? `${explicitValue} ${explicitLabel}`.trim()
+                                : legacyText;
+
                         const parts =
-                            this.storyKeyFactParts(text);
+                            explicitValue
+                                ? {
+                                    value: explicitValue,
+                                    label: explicitLabel
+                                }
+                                : this.storyKeyFactParts(
+                                    legacyText
+                                );
 
                         return {
                             id:
@@ -474,10 +544,57 @@
                             label:
                                 parts.label,
                             icon:
-                                this.storyKeyFactIcon(text)
+                                (
+                                    typeof fact === 'object' &&
+                                    fact?.icon
+                                )
+                                    ? fact.icon
+                                    : '✦'
                         };
                     })
-                    .filter(fact => fact.text);
+                    .filter(
+                        fact =>
+                            fact.value ||
+                            fact.label
+                    );
+                },
+
+                storyAnalysisDisplayLabel(article, label) {
+                    const vietnamese =
+                        article?.topStory?.feed
+                            ?.endsWith('_vietnam');
+
+                    if (!vietnamese) return label;
+
+                    const labels = {
+                        'What happened': 'Chuyện gì xảy ra',
+                        'Timeline': 'Diễn biến',
+                        'Why it matters': 'Vì sao quan trọng',
+                        'What changed': 'Có gì thay đổi',
+                        'Market impact': 'Tác động thị trường',
+                        'Crypto impact': 'Tác động crypto',
+                        'Industry implication': 'Tác động ngành',
+                        'Implication for Vietnam': 'Tác động với Việt Nam',
+                        'Strategic implication': 'Hàm ý chiến lược',
+                        'Who is affected': 'Ai bị ảnh hưởng',
+                        'What to do': 'Nên làm gì',
+                        'What to watch': 'Cần theo dõi',
+                        'Background / Context': 'Bối cảnh',
+                        'Context / implications': 'Bối cảnh / hàm ý',
+                        'Takeaway': 'Điểm chính'
+                    };
+
+                    return labels[label] || label;
+                },
+
+                storyMoreAnalysisLabel(article, count) {
+                    const vietnamese =
+                        article?.topStory?.feed
+                            ?.endsWith('_vietnam');
+
+                    return vietnamese
+                        ? `Phân tích thêm (${count})`
+                        : `More analysis (${count})`;
                 },
 
                 storyAnalysisNotice(article) {
@@ -3597,6 +3714,69 @@
                             nextUrl = data.pagination?.nextUrl;
                         } catch { return; }
                     }
+                },
+
+                compactVozPaginationPages() {
+                    const pages = Array.isArray(this.overlayPagination?.pages)
+                        ? this.overlayPagination.pages
+                        : [];
+
+                    if (!pages.length) return [];
+
+                    const normalized = pages
+                        .map(p => ({
+                            ...p,
+                            page: Number(p.page),
+                            type: 'page',
+                            key: `page-${p.page}`
+                        }))
+                        .filter(p => Number.isFinite(p.page))
+                        .sort((a, b) => a.page - b.page);
+
+                    if (normalized.length <= 9) return normalized;
+
+                    const current =
+                        Number(this.overlayPagination?.currentPage) ||
+                        normalized.find(p => p.isCurrent)?.page ||
+                        normalized[0].page;
+
+                    const first = normalized[0].page;
+                    const last = normalized[normalized.length - 1].page;
+
+                    // Desktop: current ±2
+                    // Mobile: current ±1
+                    const radius = window.innerWidth <= 640 ? 1 : 2;
+
+                    const wanted = new Set([first, last]);
+
+                    for (let page = current - radius; page <= current + radius; page++) {
+                        if (page >= first && page <= last) wanted.add(page);
+                    }
+
+                    const byPage = new Map(
+                        normalized.map(p => [p.page, p])
+                    );
+
+                    const selected = [...wanted]
+                        .sort((a, b) => a - b)
+                        .filter(page => byPage.has(page));
+
+                    const result = [];
+                    let previous = null;
+
+                    for (const page of selected) {
+                        if (previous !== null && page - previous > 1) {
+                            result.push({
+                                type: 'ellipsis',
+                                key: `ellipsis-${previous}-${page}`
+                            });
+                        }
+
+                        result.push(byPage.get(page));
+                        previous = page;
+                    }
+
+                    return result;
                 },
 
                 async navigateToThreadPage(targetUrl, isResume = false) {

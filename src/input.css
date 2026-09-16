@@ -136,7 +136,7 @@
     .has-story-briefing .article-card-heading p { clear:both; padding-top:8px; font-size:14px; }
 }
 .story-key-facts { display:flex; gap:8px; overflow-x:auto; flex-wrap:nowrap; }
-.story-key-facts span { flex-shrink:0; font-size:12px; padding:6px 10px; border-radius:9px; background:#e0eee9; color:#285c4e; margin-bottom:10px; }
+.story-key-facts > span { flex-shrink:0; font-size:12px; padding:6px 10px; border-radius:9px; background:#e0eee9; color:#285c4e; margin-bottom:10px; }
 
 .story-publisher { flex:0 0 auto; max-width:280px; font-size:12px; color:#395f61; }
 .story-publisher summary { cursor:pointer; white-space:nowrap; border:1px solid #c9dedb; border-radius:999px; padding:7px 12px; background:#ffffff91; }
@@ -2041,7 +2041,7 @@
         object-fit: cover !important;
         object-position: center center !important;
 
-        transform: translateX(10%) !important;
+        transform: translateX(20%) !important;
         transform-origin: center center !important;
     }
 
@@ -4666,7 +4666,7 @@
     .article-card-image {
         -webkit-mask-image:
             radial-gradient(
-                ellipse 66% 150% at 0% 100%,
+                ellipse 58% 150% at 0% 100%,
 
                 transparent 0%,
                 transparent 70%,
@@ -4691,7 +4691,7 @@
 
         mask-image:
             radial-gradient(
-                ellipse 66% 150% at 0% 100%,
+                ellipse 58% 150% at 0% 100%,
 
                 transparent 0%,
                 transparent 70%,
@@ -4726,7 +4726,7 @@
     .article-card.has-story-briefing::before {
         -webkit-mask-image:
             radial-gradient(
-                ellipse 66% 150% at 0% 100%,
+                ellipse 58% 150% at 0% 100%,
 
                 #000 0%,
                 #000 70%,
@@ -4751,7 +4751,7 @@
 
         mask-image:
             radial-gradient(
-                ellipse 66% 150% at 0% 100%,
+                ellipse 58% 150% at 0% 100%,
 
                 #000 0%,
                 #000 70%,
@@ -4776,3 +4776,706 @@
     }
 }
 
+
+/* ============================================================
+   Desktop Top Stories — shift hero photo right
+   Keep mobile positioning unchanged.
+   ============================================================ */
+@media (min-width: 641px) {
+    .article-card.has-story-briefing .article-card-image img {
+        object-fit: cover !important;
+        object-position: 0% center !important;
+        transform: translateX(40px) !important;
+    }
+}
+
+/* ============================================================
+   Desktop Top Stories — final card overlay feather
+   Keep image/face clear while preserving text-side blend.
+   ============================================================ */
+@media (min-width: 641px) {
+    .article-card.has-story-briefing::before {
+        background: linear-gradient(
+            90deg,
+            rgba(247,252,253,.80) 0%,
+            rgba(247,252,253,.72) 20%,
+            rgba(247,252,253,.50) 38%,
+            rgba(247,252,253,.28) 50%,
+            rgba(247,252,253,.12) 58%,
+            rgba(247,252,253,.04) 64%,
+            transparent 70%
+        ) !important;
+
+        -webkit-mask-image: linear-gradient(
+            90deg,
+            #000 0%,
+            #000 45%,
+            rgba(0,0,0,.70) 55%,
+            rgba(0,0,0,.30) 62%,
+            rgba(0,0,0,.05) 67%,
+            transparent 71%
+        ) !important;
+
+        mask-image: linear-gradient(
+            90deg,
+            #000 0%,
+            #000 45%,
+            rgba(0,0,0,.70) 55%,
+            rgba(0,0,0,.30) 62%,
+            rgba(0,0,0,.05) 67%,
+            transparent 71%
+        ) !important;
+    }
+}
+
+/* ============================================================
+   Mobile article cards — center image for ALL modes
+   Smart Top Stories + Smart Classic + non-Smart.
+   Desktop positioning remains unchanged.
+   ============================================================ */
+@media (max-width: 640px) {
+    #scroll-container .article-card .article-card-image img,
+    #scroll-container .article-card img.thumbnail-img {
+        object-fit: cover !important;
+        object-position: 50% 50% !important;
+        transform: none !important;
+    }
+}
+
+/* Mobile — bias article image slightly right so subjects stay centered */
+@media (max-width: 640px) {
+    #scroll-container .article-card .article-card-image img,
+    #scroll-container .article-card img.thumbnail-img {
+        object-fit: cover !important;
+        object-position: 62% 50% !important;
+        transform: none !important;
+    }
+}
+
+/* Mobile — move photo content right */
+@media (max-width: 640px) {
+    #scroll-container .article-card .article-card-image img,
+    #scroll-container .article-card img.thumbnail-img {
+        object-fit: cover !important;
+        object-position: 0% 50% !important;
+        transform: translateX(45px) !important;
+    }
+}
+
+/* ============================================================
+   Mobile article cards — keep image away from text
+   Applies to Smart Top Stories, Smart Classic, and standard cards.
+   ============================================================ */
+@media (max-width: 640px) {
+    #scroll-container .article-card.has-story-briefing .article-card-image {
+        -webkit-mask-image: linear-gradient(
+            90deg,
+            transparent 0%,
+            transparent 43%,
+            rgba(0,0,0,.10) 48%,
+            rgba(0,0,0,.35) 53%,
+            rgba(0,0,0,.70) 58%,
+            rgba(0,0,0,.94) 63%,
+            #000 67%,
+            #000 100%
+        ) !important;
+
+        mask-image: linear-gradient(
+            90deg,
+            transparent 0%,
+            transparent 43%,
+            rgba(0,0,0,.10) 48%,
+            rgba(0,0,0,.35) 53%,
+            rgba(0,0,0,.70) 58%,
+            rgba(0,0,0,.94) 63%,
+            #000 67%,
+            #000 100%
+        ) !important;
+    }
+}
+
+/* ============================================================
+   Mobile article cards — protect text from image underlay
+   Keep photo position unchanged; move the visual transition
+   farther toward the image side.
+   ============================================================ */
+@media (max-width: 640px) {
+    #scroll-container .article-card.has-story-briefing::before {
+        background: linear-gradient(
+            90deg,
+            rgba(247,252,253,.98) 0%,
+            rgba(247,252,253,.98) 48%,
+            rgba(247,252,253,.94) 56%,
+            rgba(247,252,253,.82) 62%,
+            rgba(247,252,253,.58) 68%,
+            rgba(247,252,253,.28) 73%,
+            rgba(247,252,253,.08) 77%,
+            transparent 81%
+        ) !important;
+
+        -webkit-mask-image: none !important;
+        mask-image: none !important;
+    }
+
+    #scroll-container .article-card.has-story-briefing .article-card-image {
+        -webkit-mask-image: linear-gradient(
+            90deg,
+            transparent 0%,
+            transparent 52%,
+            rgba(0,0,0,.08) 58%,
+            rgba(0,0,0,.25) 63%,
+            rgba(0,0,0,.55) 68%,
+            rgba(0,0,0,.82) 72%,
+            rgba(0,0,0,.96) 75%,
+            #000 78%,
+            #000 100%
+        ) !important;
+
+        mask-image: linear-gradient(
+            90deg,
+            transparent 0%,
+            transparent 52%,
+            rgba(0,0,0,.08) 58%,
+            rgba(0,0,0,.25) 63%,
+            rgba(0,0,0,.55) 68%,
+            rgba(0,0,0,.82) 72%,
+            rgba(0,0,0,.96) 75%,
+            #000 78%,
+            #000 100%
+        ) !important;
+    }
+}
+
+/* ============================================================
+   Mobile cards — balanced text protection + visible image
+   Keep current image position unchanged.
+   ============================================================ */
+@media (max-width: 640px) {
+    #scroll-container .article-card.has-story-briefing::before {
+        background: linear-gradient(
+            90deg,
+            rgba(247,252,253,.96) 0%,
+            rgba(247,252,253,.96) 44%,
+            rgba(247,252,253,.84) 52%,
+            rgba(247,252,253,.58) 58%,
+            rgba(247,252,253,.28) 64%,
+            rgba(247,252,253,.08) 69%,
+            transparent 73%
+        ) !important;
+
+        -webkit-mask-image: none !important;
+        mask-image: none !important;
+    }
+
+    #scroll-container .article-card.has-story-briefing .article-card-image {
+        -webkit-mask-image: linear-gradient(
+            90deg,
+            transparent 0%,
+            transparent 38%,
+            rgba(0,0,0,.12) 44%,
+            rgba(0,0,0,.35) 50%,
+            rgba(0,0,0,.65) 56%,
+            rgba(0,0,0,.90) 61%,
+            #000 65%,
+            #000 100%
+        ) !important;
+
+        mask-image: linear-gradient(
+            90deg,
+            transparent 0%,
+            transparent 38%,
+            rgba(0,0,0,.12) 44%,
+            rgba(0,0,0,.35) 50%,
+            rgba(0,0,0,.65) 56%,
+            rgba(0,0,0,.90) 61%,
+            #000 65%,
+            #000 100%
+        ) !important;
+    }
+}
+
+
+/* ============================================================
+   FINAL — Mobile article image feather
+   Smart Top Stories + Smart Classic + standard cards.
+   Keep photo sharp and move transition well to the right.
+   ============================================================ */
+@media (max-width: 640px) {
+    #scroll-container .article-card.has-story-briefing .article-card-image {
+        -webkit-mask-image: none !important;
+        mask-image: none !important;
+        opacity: 1 !important;
+    }
+
+    #scroll-container .article-card.has-story-briefing::before {
+        display: block !important;
+
+        background: linear-gradient(
+            90deg,
+            rgba(247,252,253,.98) 0%,
+            rgba(247,252,253,.98) 54%,
+            rgba(247,252,253,.92) 61%,
+            rgba(247,252,253,.72) 67%,
+            rgba(247,252,253,.45) 73%,
+            rgba(247,252,253,.20) 78%,
+            rgba(247,252,253,.06) 82%,
+            transparent 86%
+        ) !important;
+
+        -webkit-mask-image: none !important;
+        mask-image: none !important;
+
+        -webkit-backdrop-filter: none !important;
+        backdrop-filter: none !important;
+        filter: none !important;
+
+        opacity: 1 !important;
+        pointer-events: none !important;
+    }
+}
+
+
+/* ============================================================
+   Rich key-fact cards — remove legacy "text chip" appearance
+   ============================================================ */
+.article-card.has-story-briefing .story-key-fact {
+    background: rgba(250,253,253,.62) !important;
+}
+
+.article-card.has-story-briefing .story-key-fact-icon {
+    padding: 0 !important;
+    margin: 0 !important;
+    background: rgba(255,255,255,.70) !important;
+}
+
+.article-card.has-story-briefing .story-key-fact-copy,
+.article-card.has-story-briefing .story-key-fact-copy strong,
+.article-card.has-story-briefing .story-key-fact-copy > span {
+    padding: 0 !important;
+    margin-bottom: 0 !important;
+    background: transparent !important;
+    border-radius: 0 !important;
+}
+
+/* ============================================================
+   FINAL — screenshot-style key fact cards
+   Compact glass tile + icon + value/label.
+   Never clip text.
+   ============================================================ */
+.article-card.has-story-briefing .story-key-facts {
+    display: flex !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+    margin: 6px 0 14px !important;
+    padding: 1px 1px 4px !important;
+
+    overflow-x: auto !important;
+    overflow-y: visible !important;
+    flex-wrap: nowrap !important;
+
+    scrollbar-width: none;
+}
+
+.article-card.has-story-briefing .story-key-facts::-webkit-scrollbar {
+    display: none;
+}
+
+.article-card.has-story-briefing .story-key-fact {
+    display: grid !important;
+    grid-template-columns: 38px minmax(0, 1fr) !important;
+    align-items: center !important;
+    gap: 10px !important;
+
+    flex: 0 0 auto !important;
+
+    min-width: 210px !important;
+    max-width: 310px !important;
+    min-height: 62px !important;
+    height: auto !important;
+
+    padding: 9px 13px 9px 9px !important;
+
+    border:
+        1px solid rgba(176, 200, 208, .48) !important;
+
+    border-radius: 14px !important;
+
+    background:
+        linear-gradient(
+            145deg,
+            rgba(255,255,255,.78),
+            rgba(247,251,252,.62)
+        ) !important;
+
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.9),
+        0 3px 12px rgba(33,82,95,.045) !important;
+
+    -webkit-backdrop-filter: blur(10px) saturate(1.25);
+    backdrop-filter: blur(10px) saturate(1.25);
+
+    overflow: visible !important;
+}
+
+.article-card.has-story-briefing .story-key-fact-icon {
+    display: grid !important;
+    place-items: center !important;
+
+    width: 38px !important;
+    height: 38px !important;
+
+    padding: 0 !important;
+    margin: 0 !important;
+
+    border:
+        1px solid rgba(176,200,208,.32) !important;
+
+    border-radius: 11px !important;
+
+    background:
+        rgba(255,255,255,.82) !important;
+
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.96),
+        0 1px 4px rgba(34,75,88,.04) !important;
+
+    color: #4267cb !important;
+
+    font-size: 18px !important;
+    font-weight: 800 !important;
+    line-height: 1 !important;
+
+    overflow: visible !important;
+}
+
+.article-card.has-story-briefing .story-key-fact-copy {
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+
+    min-width: 0 !important;
+
+    padding: 0 !important;
+    margin: 0 !important;
+
+    background: transparent !important;
+
+    overflow: visible !important;
+}
+
+.article-card.has-story-briefing .story-key-fact-copy strong {
+    display: block !important;
+
+    padding: 0 !important;
+    margin: 0 !important;
+
+    background: transparent !important;
+
+    color: #193542 !important;
+
+    font-size: 15px !important;
+    font-weight: 800 !important;
+    line-height: 1.16 !important;
+
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    overflow-wrap: anywhere !important;
+}
+
+.article-card.has-story-briefing .story-key-fact-copy > span {
+    display: block !important;
+
+    margin: 4px 0 0 !important;
+    padding: 0 !important;
+
+    background: transparent !important;
+
+    color: #6d7e85 !important;
+
+    font-size: 11.5px !important;
+    font-weight: 500 !important;
+    line-height: 1.22 !important;
+
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    overflow-wrap: anywhere !important;
+
+    -webkit-line-clamp: unset !important;
+    -webkit-box-orient: initial !important;
+}
+
+/* Rich fact cards — stronger readability */
+.article-card.has-story-briefing .story-key-fact-copy strong {
+    color: #17333f !important;
+}
+
+.article-card.has-story-briefing .story-key-fact-copy > span {
+    color: #425b65 !important;
+    font-weight: 550 !important;
+}
+
+/* Analysis tabs — stronger contrast over image */
+.article-card.has-story-briefing .story-analysis-tabs button {
+    color: #344f5a !important;
+}
+
+.article-card.has-story-briefing .story-analysis-tabs button[aria-selected="true"],
+.article-card.has-story-briefing .story-analysis-tabs button.active {
+    color: #235fb8 !important;
+}
+
+/* ============================================================
+   Desktop — stronger readable glass for facts + analysis
+   Mobile unchanged.
+   ============================================================ */
+@media (min-width: 641px) {
+
+    /* ---------- Key fact cards ---------- */
+
+    .article-card.has-story-briefing .story-key-fact {
+        background:
+            linear-gradient(
+                145deg,
+                rgba(255,255,255,.90),
+                rgba(247,251,252,.78)
+            ) !important;
+
+        border:
+            1px solid rgba(176,200,208,.62) !important;
+
+        box-shadow:
+            inset 0 1px 0 rgba(255,255,255,.96),
+            0 4px 18px rgba(25,63,75,.07) !important;
+
+        -webkit-backdrop-filter:
+            blur(18px) saturate(1.18) !important;
+
+        backdrop-filter:
+            blur(18px) saturate(1.18) !important;
+    }
+
+    .article-card.has-story-briefing .story-key-fact-icon {
+        background:
+            rgba(255,255,255,.88) !important;
+
+        border:
+            1px solid rgba(160,190,200,.42) !important;
+
+        -webkit-backdrop-filter:
+            blur(10px) !important;
+
+        backdrop-filter:
+            blur(10px) !important;
+    }
+
+    .article-card.has-story-briefing .story-key-fact-copy strong {
+        color: #142f3a !important;
+    }
+
+    .article-card.has-story-briefing .story-key-fact-copy > span {
+        color: #3f5963 !important;
+    }
+
+
+    /* ---------- Analysis glass ---------- */
+
+    .article-card.has-story-briefing .story-analysis-shell {
+        background:
+            linear-gradient(
+                145deg,
+                rgba(255,255,255,.90),
+                rgba(246,250,251,.80)
+            ) !important;
+
+        border:
+            1px solid rgba(164,193,203,.62) !important;
+
+        box-shadow:
+            inset 0 1px 0 rgba(255,255,255,.96),
+            0 8px 30px rgba(26,66,78,.08) !important;
+
+        -webkit-backdrop-filter:
+            blur(22px) saturate(1.18) !important;
+
+        backdrop-filter:
+            blur(22px) saturate(1.18) !important;
+    }
+
+    .article-card.has-story-briefing .story-analysis-tabs {
+        background:
+            rgba(255,255,255,.28) !important;
+
+        -webkit-backdrop-filter:
+            blur(12px) !important;
+
+        backdrop-filter:
+            blur(12px) !important;
+    }
+
+    .article-card.has-story-briefing .story-analysis-text,
+    .article-card.has-story-briefing .story-analysis-text p {
+        color: #243f49 !important;
+    }
+
+    .article-card.has-story-briefing .story-analysis-section-label {
+        color: #173541 !important;
+    }
+}
+
+/* Desktop — final readability bump */
+@media (min-width: 641px) {
+    .article-card.has-story-briefing .story-key-fact {
+        background:
+            linear-gradient(
+                145deg,
+                rgba(255,255,255,.94),
+                rgba(247,251,252,.86)
+            ) !important;
+
+        -webkit-backdrop-filter:
+            blur(22px) saturate(1.15) !important;
+
+        backdrop-filter:
+            blur(22px) saturate(1.15) !important;
+    }
+
+    .article-card.has-story-briefing .story-analysis-shell {
+        background:
+            linear-gradient(
+                145deg,
+                rgba(255,255,255,.94),
+                rgba(246,250,251,.87)
+            ) !important;
+
+        -webkit-backdrop-filter:
+            blur(26px) saturate(1.15) !important;
+
+        backdrop-filter:
+            blur(26px) saturate(1.15) !important;
+    }
+
+    .article-card.has-story-briefing .story-analysis-tabs {
+        background: rgba(255,255,255,.38) !important;
+
+        -webkit-backdrop-filter:
+            blur(16px) !important;
+
+        backdrop-filter:
+            blur(16px) !important;
+    }
+}
+
+/* Desktop — clean fact cards, remove visible shadow seams */
+@media (min-width: 641px) {
+    .article-card.has-story-briefing .story-key-fact {
+        border:
+            1px solid rgba(176,200,208,.34) !important;
+
+        box-shadow:
+            inset 0 1px 0 rgba(255,255,255,.92) !important;
+    }
+
+    .article-card.has-story-briefing .story-key-fact-icon {
+        border:
+            1px solid rgba(176,200,208,.26) !important;
+
+        box-shadow:
+            inset 0 1px 0 rgba(255,255,255,.90) !important;
+    }
+}
+
+/* ============================================================
+   Desktop header/filter glass — remove shadow seams
+   ============================================================ */
+@media (min-width: 641px) {
+    header button,
+    header [class~="rounded-full"] {
+        box-shadow:
+            inset 0 1px 0 rgba(255,255,255,.90) !important;
+
+        border-color:
+            rgba(176,200,208,.30) !important;
+    }
+
+    /* Keep the larger grouped controls clean too */
+    header .flex.items-center[class~="rounded-full"] {
+        box-shadow:
+            inset 0 1px 0 rgba(255,255,255,.90) !important;
+
+        border-color:
+            rgba(176,200,208,.28) !important;
+    }
+}
+
+/* Desktop — remove outer shadow seams from category/filter pills */
+@media (min-width: 641px) {
+    button.flex-shrink-0.rounded-full {
+        box-shadow:
+            inset 0 1px 0 rgba(255,255,255,.82) !important;
+
+        border-color:
+            rgba(176,200,208,.24) !important;
+
+        filter: none !important;
+    }
+}
+
+/* ============================================================
+   Article toolbar ↔ analysis glass
+   Desktop and mobile intentionally use different recipes.
+   ============================================================ */
+
+/* ---------- Desktop ---------- */
+@media (min-width: 641px) {
+    .article-card.has-story-briefing .story-analysis-shell,
+    .article-card.has-story-briefing .article-actions-overlay {
+        background:
+            linear-gradient(
+                145deg,
+                rgba(255,255,255,.94),
+                rgba(246,250,251,.87)
+            ) !important;
+
+        border:
+            1px solid rgba(164,193,203,.42) !important;
+
+        box-shadow:
+            inset 0 1px 0 rgba(255,255,255,.94),
+            0 6px 22px rgba(26,66,78,.055) !important;
+
+        -webkit-backdrop-filter:
+            blur(26px) saturate(1.15) !important;
+
+        backdrop-filter:
+            blur(26px) saturate(1.15) !important;
+    }
+}
+
+
+/* ---------- Mobile ---------- */
+@media (max-width: 640px) {
+    .article-card.has-story-briefing .story-analysis-shell,
+    .article-card.has-story-briefing .article-actions-overlay {
+        background:
+            linear-gradient(
+                145deg,
+                rgba(255,255,255,.86),
+                rgba(246,250,251,.72)
+            ) !important;
+
+        border:
+            1px solid rgba(164,193,203,.34) !important;
+
+        box-shadow:
+            inset 0 1px 0 rgba(255,255,255,.88),
+            0 4px 16px rgba(26,66,78,.045) !important;
+
+        -webkit-backdrop-filter:
+            blur(18px) saturate(1.12) !important;
+
+        backdrop-filter:
+            blur(18px) saturate(1.12) !important;
+    }
+}

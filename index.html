@@ -7,7 +7,7 @@
     <title>My RSS Reader</title>
     <link rel="icon"
         href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22%238b5cf6%22/><circle cx=%2230%22 cy=%2270%22 r=%2210%22 fill=%22white%22/><path d=%22M30 40a30 30 0 0 1 30 30M30 20a50 50 0 0 1 50 50%22 fill=%22none%22 stroke=%22white%22 stroke-width=%2210%22 stroke-linecap=%22round%22/></svg>">
-    <link rel="stylesheet" href="/public/styles.css?v=20260915_card_unify_v3212b">
+    <link rel="stylesheet" href="/public/styles.css?v=20260916212431">
     <script>
         // Start the first Smart News request while the browser is still parsing
         // the page. Returning visitors paint saved cards immediately instead.
@@ -33,11 +33,7 @@
                 };
             } catch (_) {
                 // Storage can be disabled in strict privacy modes. The normal
-                // request in script.js remains the fallback.
-            }
-        })();
-    </script>
-    <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/collapse@3.x.x/dist/cdn.min.js"></script>
+                // request in script.js?v=20260916202621"https://cdn.jsdelivr.net/npm/@alpinejs/collapse@3.x.x/dist/cdn.min.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <style>
         .hide-scrollbar::-webkit-scrollbar,
@@ -3514,7 +3510,7 @@
             filter: none !important;
             transition-property: border-color, background-color, box-shadow !important;
         }
-        #scroll-container .article-card img.thumbnail-img {
+        #scroll-container .article-card:not(.has-story-briefing) img.thumbnail-img {
             mask-image: none !important;
             -webkit-mask-image: none !important;
             transform: none !important;
@@ -5872,21 +5868,21 @@
                 <div x-show="selectedFilterType === 'smart' && smartSection === 'news'"
                     class="flex items-center flex-shrink-0 rounded-full bg-[#111827] border border-white/10 p-1 gap-0.5">
                     <button @click="setFilter('smart', 'news_vietnam')"
-                        class="px-3 py-1.5 rounded-full text-xs font-medium transition"
-                        :class="selectedFilterValue === 'news_vietnam' ? 'bg-teal-900/70 text-teal-300' : 'text-gray-500 hover:text-white'">Vietnam</button>
+                        class="px-3 py-1.5 rounded-full text-xs font-semibold transition"
+                        :class="selectedFilterValue === 'news_vietnam' ? 'bg-emerald-500 text-[#08130f]' : 'text-gray-500 hover:text-white'">Vietnam</button>
                     <button @click="setFilter('smart', 'news_world')"
-                        class="px-3 py-1.5 rounded-full text-xs font-medium transition"
-                        :class="selectedFilterValue === 'news_world' ? 'bg-teal-900/70 text-teal-300' : 'text-gray-500 hover:text-white'">World</button>
+                        class="px-3 py-1.5 rounded-full text-xs font-semibold transition"
+                        :class="selectedFilterValue === 'news_world' ? 'bg-emerald-500 text-[#08130f]' : 'text-gray-500 hover:text-white'">World</button>
                 </div>
 
                 <div x-show="selectedFilterType === 'smart' && smartSection === 'finance'"
                     class="flex items-center flex-shrink-0 rounded-full bg-[#111827] border border-white/10 p-1 gap-0.5">
                     <button @click="setFilter('smart', 'finance_vietnam')"
-                        class="px-3 py-1.5 rounded-full text-xs font-medium transition"
-                        :class="selectedFilterValue === 'finance_vietnam' ? 'bg-teal-900/70 text-teal-300' : 'text-gray-500 hover:text-white'">Vietnam</button>
+                        class="px-3 py-1.5 rounded-full text-xs font-semibold transition"
+                        :class="selectedFilterValue === 'finance_vietnam' ? 'bg-emerald-500 text-[#08130f]' : 'text-gray-500 hover:text-white'">Vietnam</button>
                     <button @click="setFilter('smart', 'finance_global')"
-                        class="px-3 py-1.5 rounded-full text-xs font-medium transition"
-                        :class="selectedFilterValue === 'finance_global' ? 'bg-teal-900/70 text-teal-300' : 'text-gray-500 hover:text-white'">Global</button>
+                        class="px-3 py-1.5 rounded-full text-xs font-semibold transition"
+                        :class="selectedFilterValue === 'finance_global' ? 'bg-emerald-500 text-[#08130f]' : 'text-gray-500 hover:text-white'">Global</button>
                 </div>
 
                 <div x-show="selectedFilterType === 'smart' && smartSection === 'tech'"
@@ -5895,15 +5891,15 @@
                     <button
                         type="button"
                         @click="setSmartRegion('vietnam')"
-                        class="px-3 py-1.5 rounded-full text-xs font-medium transition"
-                        :class="smartRegion === 'vietnam' ? 'bg-teal-900/70 text-teal-300' : 'text-gray-500 hover:text-white'">
+                        class="px-3 py-1.5 rounded-full text-xs font-semibold transition"
+                        :class="smartRegion === 'vietnam' ? 'bg-emerald-500 text-[#08130f]' : 'text-gray-500 hover:text-white'">
                         Vietnam
                     </button>
                     <button
                         type="button"
                         @click="setSmartRegion('world')"
-                        class="px-3 py-1.5 rounded-full text-xs font-medium transition"
-                        :class="smartRegion === 'world' ? 'bg-teal-900/70 text-teal-300' : 'text-gray-500 hover:text-white'">
+                        class="px-3 py-1.5 rounded-full text-xs font-semibold transition"
+                        :class="smartRegion === 'world' ? 'bg-emerald-500 text-[#08130f]' : 'text-gray-500 hover:text-white'">
                         Global
                     </button>
                 </div>
@@ -6298,7 +6294,9 @@
                                             <path d="M3 12h18M12 3c2.4 2.5 3.6 5.5 3.6 9S14.4 18.5 12 21M12 3c-2.4 2.5-3.6 5.5-3.6 9S9.6 18.5 12 21"></path>
                                         </svg>
 
-                                        <span>Why it matters</span>
+                                        <span
+        x-text="storyAnalysisDisplayLabel(article, 'Why it matters')">
+    </span>
                                     </button>
 
                                     <button
@@ -6315,7 +6313,9 @@
                                             <path d="M4 7h13M13 3l4 4-4 4M20 17H7M11 13l-4 4 4 4"></path>
                                         </svg>
 
-                                        <span>What changed</span>
+                                        <span
+        x-text="storyAnalysisDisplayLabel(article, 'What changed')">
+    </span>
                                     </button>
 
                                     <button
@@ -6333,7 +6333,9 @@
                                             <circle cx="12" cy="12" r="2.6"></circle>
                                         </svg>
 
-                                        <span>What to watch</span>
+                                        <span
+        x-text="storyAnalysisDisplayLabel(article, 'What to watch')">
+    </span>
                                     </button>
 
                                     <button
@@ -6352,7 +6354,7 @@
                                         </svg>
 
                                         <span
-                                            x-text="'More analysis (' + storyExtraAnalysis(article).length + ')'">
+                                            x-text="storyMoreAnalysisLabel(article, storyExtraAnalysis(article).length)">
                                         </span>
                                     </button>
                                 </div>
@@ -6374,7 +6376,7 @@
                                                     type="button"
                                                     :class="{ 'is-active': activeStoryAnalysisLabel(article) === section.label }"
                                                     @click.stop="toggleStoryAnalysis(article, section.label)"
-                                                    x-text="section.label">
+                                                    x-text="storyAnalysisDisplayLabel(article, section.label)">
                                                 </button>
                                             </template>
                                         </div>
@@ -6385,7 +6387,10 @@
                                                 <div
                                                     class="story-analysis-section-label"
                                                     x-show="storyMoreAnalysisActive(article)"
-                                                    x-text="activeStoryAnalysisSection(article)?.label">
+                                                    x-text="storyAnalysisDisplayLabel(
+        article,
+        activeStoryAnalysisSection(article)?.label || ''
+    )">
                                                 </div>
 
                                                 <p
@@ -7383,12 +7388,20 @@
                                         <span>←</span> Trước
                                     </button>
                                 </template>
-                                <template x-for="p in overlayPagination.pages" :key="p.page">
-                                    <button @click="navigateToThreadPage(p.url)"
-                                        :class="p.isCurrent ? 'voz-pagination-btn voz-pagination-btn--current shadow-sm' : 'voz-pagination-btn voz-pagination-btn--page'"
-                                        class="active:scale-95 tabular-nums text-center">
-                                        <span x-text="p.page"></span>
-                                    </button>
+                                <template x-for="p in compactVozPaginationPages()" :key="p.key">
+                                    <span class="inline-flex items-center">
+                                        <template x-if="p.type === 'ellipsis'">
+                                            <span class="px-1.5 text-gray-400 select-none">…</span>
+                                        </template>
+
+                                        <template x-if="p.type === 'page'">
+                                            <button @click="navigateToThreadPage(p.url)"
+                                                :class="p.isCurrent ? 'voz-pagination-btn voz-pagination-btn--current shadow-sm' : 'voz-pagination-btn voz-pagination-btn--page'"
+                                                class="active:scale-95 tabular-nums text-center">
+                                                <span x-text="p.page"></span>
+                                            </button>
+                                        </template>
+                                    </span>
                                 </template>
                                 <template x-if="overlayPagination.nextUrl">
                                     <button @click="navigateToThreadPage(overlayPagination.nextUrl)"
@@ -7433,12 +7446,20 @@
                                         <span>←</span> Trước
                                     </button>
                                 </template>
-                                <template x-for="p in overlayPagination.pages" :key="p.page">
-                                    <button @click="navigateToThreadPage(p.url)"
-                                        :class="p.isCurrent ? 'voz-pagination-btn voz-pagination-btn--current shadow-sm' : 'voz-pagination-btn voz-pagination-btn--page'"
-                                        class="active:scale-95 tabular-nums text-center">
-                                        <span x-text="p.page"></span>
-                                    </button>
+                                <template x-for="p in compactVozPaginationPages()" :key="p.key">
+                                    <span class="inline-flex items-center">
+                                        <template x-if="p.type === 'ellipsis'">
+                                            <span class="px-1.5 text-gray-400 select-none">…</span>
+                                        </template>
+
+                                        <template x-if="p.type === 'page'">
+                                            <button @click="navigateToThreadPage(p.url)"
+                                                :class="p.isCurrent ? 'voz-pagination-btn voz-pagination-btn--current shadow-sm' : 'voz-pagination-btn voz-pagination-btn--page'"
+                                                class="active:scale-95 tabular-nums text-center">
+                                                <span x-text="p.page"></span>
+                                            </button>
+                                        </template>
+                                    </span>
                                 </template>
                                 <template x-if="overlayPagination.nextUrl">
                                     <button @click="navigateToThreadPage(overlayPagination.nextUrl)"
@@ -7658,7 +7679,7 @@
         </section>
     </div>
 
-    <script src="/script.js?v=20260915_top_briefing_v3210"></script>
+    <script src="/script.js?v=20260916202621"></script>
 </body>
 
 </html>

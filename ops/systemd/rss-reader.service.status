@@ -1,4 +1,4 @@
-ExecStart={ path=/usr/bin/node ; argv[]=/usr/bin/node --max-old-space-size=4096 --expose-gc /home/ubuntu/my-rss-reader/server.js ; ignore_errors=no ; start_time=[Tue 2026-09-15 21:46:04 UTC] ; stop_time=[n/a] ; pid=456372 ; code=(null) ; status=0/0 }
+ExecStart={ path=/usr/bin/node ; argv[]=/usr/bin/node --max-old-space-size=4096 --expose-gc /home/ubuntu/my-rss-reader/server.js ; ignore_errors=no ; start_time=[Wed 2026-09-16 21:53:42 UTC] ; stop_time=[n/a] ; pid=1331712 ; code=(null) ; status=0/0 }
 WorkingDirectory=/home/ubuntu/my-rss-reader
 User=ubuntu
 Group=
@@ -6,4 +6,4 @@ LoadState=loaded
 ActiveState=active
 SubState=running
 FragmentPath=/etc/systemd/system/rss-reader.service
-DropInPaths=/etc/systemd/system/rss-reader.service.d/ai-limits.conf /etc/systemd/system/rss-reader.service.d/gemini-debug.conf /etc/systemd/system/rss-reader.service.d/override.conf
+DropInPaths=/etc/systemd/system/rss-reader.service.d/ai-limits.conf /etc/systemd/system/rss-reader.service.d/ai-review-memory.conf /etc/systemd/system/rss-reader.service.d/gemini-debug.conf /etc/systemd/system/rss-reader.service.d/override.conf /etc/systemd/system/rss-reader.service.d/top-stories-memory.conf

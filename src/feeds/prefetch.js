@@ -230,7 +230,7 @@ export function createArticlePrefetch({
             const blockedKeywordEntries = normalizeBlockedKeywordEntries(blockedKeywords);
             const articleIsBlocked = article => articleContentFilterMatches(article, blockedKeywordEntries);
             const safeDate = dateVal => { try { const d = new Date(dateVal); return isNaN(d.getTime()) ? 0 : d.getTime(); } catch(e) { return 0; } };
-            const smartClustersRaw = await env.RSS_DATA.get('smartClusters', { type: 'json' }) || [];
+            const smartClustersRaw = await env.RSS_DATA.get('smartClusters', { type: 'json', shared: true }) || [];
             const smartClusters = smartClustersRaw.map(c => cleanStoredCluster(c)).filter(a => a && !articleIsBlocked(a));
             const activeArticles = articles.filter(a => a && !articleIsBlocked(a));
 

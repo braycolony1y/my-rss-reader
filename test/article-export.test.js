@@ -10,7 +10,7 @@ const proxyUrl = '/api/proxy-image?url=' + encodeURIComponent(imageUrl);
 
 function createReader() {
     const dom = new JSDOM(`<!doctype html><html><head>
-        <link rel="stylesheet" href="/public/styles.css?v=current">
+        <link rel="stylesheet" href="/public/styles.css?v=20260916164606">
         <style>.voz-post .voz-like-icon { width: 18px; height: 18px; }</style>
     </head><body class="theme-glass-light"><div id="overlay-scroll-container">
         <figure data-article-export-header class="w-full mb-8">
@@ -79,7 +79,7 @@ test('print document shares current reader styles and theme without application 
     const payload = app.buildArticlePrintPayload(app.overlayContent);
     const output = new JSDOM(app.articlePrintDocument(payload)).window.document;
 
-    assert.equal(output.querySelector('link[rel="stylesheet"]').href, 'https://rss.cht.edu.vn/public/styles.css?v=current');
+    assert.equal(output.querySelector('link[rel="stylesheet"]').href, 'https://rss.cht.edu.vn/public/styles.css?v=20260916164606');
     assert.equal(output.querySelector('style').textContent, dom.window.document.querySelector('style').textContent);
     assert.ok(output.body.classList.contains('theme-glass-light'));
     assert.equal(output.documentElement.className, 'dark');

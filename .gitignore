@@ -119,3 +119,7 @@ smart-embeddings-worker.json
 
 # Durable lightweight Board state (local runtime data)
 database-state.json
+
+# Local API keys
+gemini-keys.txt
+qwen-keys.txt

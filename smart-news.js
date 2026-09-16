@@ -29,7 +29,7 @@ const VIETNAM_OFFSET_MS = 7 * HOUR_MS;
 
 const SMART_ITEMS_PER_SOURCE = 10;
 const SMART_CLUSTER_VERSION =
-  'v2.15_component_relationship_review_20260914';
+  'v2.15_component_relationship_review_20260914-generic-recovery-v1';
 
 const EMBEDDING_MODEL = process.env.SMART_EMBEDDING_MODEL || 'Xenova/multilingual-e5-small';
 const EMBEDDING_CACHE_VERSION = 'e5-query-title-content-v2';
@@ -2611,6 +2611,136 @@ export function classifyE5Match(
   };
 }
 
+
+/*
+ * Generic exact-event recovery path.
+ *
+ * The deterministic matcher intentionally prefers false negatives over
+ * false positives. That is correct for AUTO_MERGE, but it can prevent the
+ * exact-event verifier from ever seeing differently-framed reports of the
+ * same occurrence.
+ *
+ * Recovery candidates are AI-REVIEW ONLY. They never auto-merge here.
+ */
+export function isAiRecoveryReviewCandidate(
+  articleA,
+  articleB,
+  similarity
+) {
+  if (
+    !articleA ||
+    !articleB ||
+    !Number.isFinite(similarity)
+  ) {
+    return false;
+  }
+
+  const conflicts =
+    detectEventConflicts(
+      articleA,
+      articleB
+    );
+
+  if (conflicts.hasHardConflict) {
+    return false;
+  }
+
+  /*
+   * Recovery is deliberately limited to a tight publication window.
+   * Distinct later developments should become separate exact events or
+   * RELATED_DEVELOPMENT rather than being pulled back into the first event.
+   */
+  const timestampA =
+    parsePublishedTimestamp(
+      articleA?.pubDate
+    );
+
+  const timestampB =
+    parsePublishedTimestamp(
+      articleB?.pubDate
+    );
+
+  if (
+    Number.isFinite(timestampA) &&
+    Number.isFinite(timestampB) &&
+    Math.abs(timestampA - timestampB) >
+      24 * HOUR_MS
+  ) {
+    return false;
+  }
+
+  const languageA =
+    articleA?.language ||
+    detectArticleLanguage(
+      articleA
+    );
+
+  const languageB =
+    articleB?.language ||
+    detectArticleLanguage(
+      articleB
+    );
+
+  const crossLanguage =
+    languageA !== 'unknown' &&
+    languageB !== 'unknown' &&
+    languageA !== languageB;
+
+  const thresholds =
+    crossLanguage
+      ? SMART_NEWS_CLUSTER_CONFIG
+          .thresholds
+          .crossLanguage
+      : SMART_NEWS_CLUSTER_CONFIG
+          .thresholds
+          .sameLanguage;
+
+  /*
+   * Slightly wider than ordinary REVIEW, but still strongly semantic.
+   * The AI verifier, not this function, makes the final merge decision.
+   */
+  const recoveryFloor =
+    Math.max(
+      0.70,
+      thresholds.review -
+        (
+          crossLanguage
+            ? 0.04
+            : 0.06
+        )
+    );
+
+  if (
+    similarity <
+    recoveryFloor
+  ) {
+    return false;
+  }
+
+  const evidence =
+    getEventEvidence(
+      articleA,
+      articleB
+    );
+
+  /*
+   * One concrete event signal plus strong semantic similarity is enough
+   * to ask the verifier. For unusually strong semantic matches, allow
+   * review even when headline wording supplies little lexical evidence.
+   */
+  if (evidence.score >= 1) {
+    return true;
+  }
+
+  return (
+    similarity >=
+    Math.min(
+      thresholds.autoMerge - 0.01,
+      thresholds.review + 0.04
+    )
+  );
+}
+
 function pairKey(leftIndex, rightIndex) {
   return leftIndex < rightIndex
     ? `${leftIndex}|${rightIndex}`
@@ -3062,6 +3192,31 @@ export async function deterministicGroups(
         classification.decision ===
         MatchDecision.REVIEW
       ) {
+        addReviewCandidate(
+          left,
+          right,
+          similarity
+        );
+
+        addReviewCandidate(
+          right,
+          left,
+          similarity
+        );
+
+        reviewPairCount++;
+      } else if (
+        isAiRecoveryReviewCandidate(
+          nodes[left].article,
+          nodes[right].article,
+          similarity
+        )
+      ) {
+        /*
+         * Conservative deterministic matching rejected this pair, but it is
+         * still plausible enough to deserve exact-event AI verification.
+         * Do not union it here.
+         */
         addReviewCandidate(
           left,
           right,
@@ -4243,14 +4398,26 @@ export function buildCluster(
   articles,
   metadata = null
 ) {
+  const validated =
+    metadata?.validated === true;
+
+  const clusterInput =
+    validated
+      ? (
+        Array.isArray(articles)
+          ? articles
+          : []
+      )
+      : dedupeGoogleNewsWrappers(
+        articles
+      );
+
   const uniqueArticles = [];
   const links = new Set();
 
   for (
     const article
-    of dedupeGoogleNewsWrappers(
-      articles
-    )
+    of clusterInput
   ) {
     if (
       !article?.link ||
@@ -4277,9 +4444,6 @@ export function buildCluster(
     chooseRepresentative(
       uniqueArticles
     );
-
-  const validated =
-    metadata?.validated === true;
 
   let finalArticles;
 
@@ -4706,6 +4870,10 @@ function buildVerificationPrompt(articles) {
     '',
     'Group articles together only when they describe the same specific real-world occurrence.',
     '',
+    'EDITORIAL ANGLE IS NOT AN EVENT STAGE.',
+    'If two articles report the same concrete occurrence, differences in headline framing, historical context, consequences, takeaways, vote details, user impact, or explanatory emphasis do not by themselves make them separate events.',
+    'A distinct follow-up action or reaction remains a separate event when that response itself is the primary news occurrence rather than merely framing of the original event.',
+    '',
     'Do not group articles merely because they share:',
     '- the same broad topic;',
     '- the same person;',
@@ -4842,6 +5010,24 @@ function buildComponentReviewPrompt(units) {
     '',
     'SAME_EVENT is strict. Merge components only when the central action, subjects, object, place, and event stage are compatible.',
     'Different stages such as announcement, investigation, approval, arrest, charge, trial, ruling, appeal, launch, recall, earnings release, policy response, and deal closing are normally separate exact events.',
+    '',
+    'EDITORIAL ANGLE IS NOT AN EVENT STAGE.',
+    'If components describe the same concrete real-world action or status change, keep them in the SAME_EVENT group even when different publishers emphasize different consequences, audiences, operators, devices, historical context, user advice, or reactions.',
+    'A genuinely distinct response, follow-up action, enforcement step, market move, or later consequence is separate when it becomes the primary news occurrence rather than merely another framing of the original event.',
+    '',
+    'For shutdowns, retirements, activations, deadlines, migrations, bans, launches, and other effective-date transitions, strongly prefer SAME_EVENT when these anchors match:',
+    '- the same system, service, policy, product, network, program, or other affected object;',
+    '- the same concrete action or resulting status change;',
+    '- the same geographic or organizational scope;',
+    '- the same effective date or materially identical effective window.',
+    '',
+    'Examples of framing differences that should NOT split an otherwise identical event:',
+    '- "officially shut down", "stopped from today", and "ended at midnight";',
+    '- a carrier-specific or company-specific headline describing its participation in the same nationwide transition;',
+    '- "what users need to do", device compatibility, subscriber impact, or migration advice caused directly by that same transition;',
+    '- historical or nostalgic framing about a product or technology whose retirement is the same current event.',
+    '',
+    'Keep components separate when they actually report a different occurrence, such as an earlier announcement, a postponement or extension, an exception, a later enforcement action, a separate company decision outside the shared transition, or a materially different effective date.',
     '',
     'RELATED_DEVELOPMENT means separate exact events that belong to one concrete evolving story or causal/chronological sequence.',
     'Do not mark components related merely because they share a broad topic, company, person, country, industry, product family, tournament, or recurring issue.',
@@ -5131,9 +5317,22 @@ function pairEligibleForVerifiedCluster(
         similarity
       );
 
-    return (
+    if (
       classification.decision !==
       MatchDecision.REJECT
+    ) {
+      return true;
+    }
+
+    /*
+     * This pair reached a verified cluster through the generic recovery
+     * review path. Hard conflicts were checked above; allow the high-level
+     * exact-event verifier to recover a deterministic false negative.
+     */
+    return isAiRecoveryReviewCandidate(
+      left,
+      right,
+      similarity
     );
   }
 
@@ -7684,7 +7883,7 @@ function componentVerificationCacheKey(group, units) {
       publishedTo: unit.publishedTo,
       headlines: unit.headlines
     })),
-    promptVersion: 'component-relationship-v1',
+    promptVersion: 'component-relationship-v3-generic-recovery',
     schemaVersion: 'component-relationship-v1',
     clusterVersion: SMART_CLUSTER_VERSION
   };
@@ -9348,7 +9547,7 @@ function deferredReviewPartitions(
     }));
 }
 
-function buildPublicationClusterSnapshot({
+export function buildPublicationClusterSnapshot({
   candidates,
   autoMergedClusters,
   reviewedClusters,
@@ -9371,7 +9570,7 @@ function buildPublicationClusterSnapshot({
     rawGroups
   );
 
-  let clusters = rawGroups
+  const newClusters = rawGroups
     .map(group =>
       buildCluster(
         group.articles,
@@ -9390,33 +9589,38 @@ function buildPublicationClusterSnapshot({
 
   const untouchedOldClusters = clusterVersionChanged
     ? []
-    : existingClusters.filter(cluster => {
-      const links = getClusterArticleLinks(cluster);
+    : existingClusters
+      .filter(cluster => {
+        const links = getClusterArticleLinks(cluster);
 
-      // Candidate identity wins before targeted-category preservation.
-      if ([...links].some(link => currentLinks.has(link))) {
-        return false;
-      }
+        // Candidate identity wins before targeted-category preservation.
+        if ([...links].some(link => currentLinks.has(link))) {
+          return false;
+        }
 
-      if (
-        isTargeted &&
-        targetCategory &&
-        cluster.smartCategory !== targetCategory
-      ) {
-        return true;
-      }
+        if (
+          isTargeted &&
+          targetCategory &&
+          cluster.smartCategory !== targetCategory
+        ) {
+          return true;
+        }
 
-      const latestCoverageAt =
-        getLatestClusterCoverageTime(cluster);
-      return (
-        Number.isFinite(latestCoverageAt) &&
-        latestCoverageAt >= sevenDaysAgo
-      );
-    });
+        const latestCoverageAt =
+          getLatestClusterCoverageTime(cluster);
+        return (
+          Number.isFinite(latestCoverageAt) &&
+          latestCoverageAt >= sevenDaysAgo
+        );
+      })
+      // This repair pass is for retained historical clusters. Newly built
+      // groups have already passed the current membership invariant.
+      .map(cleanStoredCluster)
+      .filter(Boolean);
 
-  clusters = [
+  let clusters = [
     ...untouchedOldClusters,
-    ...clusters
+    ...newClusters
   ];
 
   clusters.sort(
@@ -9430,7 +9634,7 @@ function buildPublicationClusterSnapshot({
   );
 
   clusters = retainStoryIds(
-    clusters.map(cleanStoredCluster),
+    clusters,
     storyIdRetentionClusters
   );
 
@@ -11783,16 +11987,53 @@ export function createSmartNewsEngine({
       let progressiveRevision = 0;
       let progressiveVersion = '';
       let progressiveClusterCount = 0;
-      const progressiveResolvedByGroup = new Map();
-      const progressiveBaselineByGroup = new Map(
-        reviewGroups.map(group => [
-          group.id,
-          deferredReviewPartitions(
-            group,
-            'verification_pending'
-          )
-        ])
-      );
+
+      const configuredProgressiveMaxCandidates =
+        Number(
+          process.env
+            .SMART_PROGRESSIVE_MAX_CANDIDATES
+        );
+
+      const progressiveMaxCandidates =
+        Number.isFinite(
+          configuredProgressiveMaxCandidates
+        ) &&
+        configuredProgressiveMaxCandidates > 0
+          ? Math.floor(
+              configuredProgressiveMaxCandidates
+            )
+          : 6000;
+
+      // A progressive publication duplicates almost the complete Smart
+      // cluster graph while the clustering/review graph is still live.
+      // For a large corpus this can consume more than a gigabyte of
+      // additional old-space. Skip that optional intermediate view and
+      // publish the normal final snapshot instead.
+      const progressivePublicationAllowed =
+        candidates.length <=
+        progressiveMaxCandidates;
+
+      let progressivePublicationDisabled =
+        false;
+
+      const progressiveResolvedByGroup =
+        new Map();
+
+      const progressiveBaselineByGroup =
+        progressivePublicationAllowed
+          ? new Map(
+              reviewGroups.map(
+                group => [
+                  group.id,
+                  deferredReviewPartitions(
+                    group,
+                    'verification_pending'
+                  )
+                ]
+              )
+            )
+          : new Map();
+
       const progressiveHeapLimitBytes =
         Number(getHeapStatistics().heap_size_limit) ||
         (4 * 1024 * 1024 * 1024);
@@ -11811,6 +12052,98 @@ export function createSmartNewsEngine({
         resolution = 'deterministic_base'
       } = {}) => {
         if (!reviewGroups.length) return false;
+
+        if (!progressivePublicationAllowed) {
+          if (!progressivePublicationDisabled) {
+            progressivePublicationDisabled =
+              true;
+
+            console.warn(
+              '[SMART PROGRESSIVE] Disabled for large corpus',
+              JSON.stringify({
+                candidates:
+                  candidates.length,
+                maxCandidates:
+                  progressiveMaxCandidates,
+                reviewGroups:
+                  reviewGroups.length
+              })
+            );
+
+            // Retire a potentially huge progressive payload retained by
+            // the in-memory DB from a previous run.
+            await db.put(
+              'smartProgressivePublication',
+              'null'
+            );
+
+            await db.put(
+              'smartProgressiveClusterState',
+              JSON.stringify({
+                active: false,
+                provisional: true,
+                stage:
+                  'disabled-large-corpus',
+                version: '',
+                runId:
+                  progressiveRunId,
+                revision:
+                  progressiveRevision,
+                algorithmVersion:
+                  SMART_CLUSTER_VERSION,
+                candidateCount:
+                  candidates.length,
+                totalReviewGroups:
+                  reviewGroups.length,
+                reason:
+                  'large_corpus_memory_guard',
+                updatedAt:
+                  toVietnamIso(
+                    Date.now()
+                  )
+              })
+            );
+
+            progressiveResolvedByGroup.clear();
+            progressiveBaselineByGroup.clear();
+
+            if (
+              typeof global.gc ===
+              'function'
+            ) {
+              global.gc();
+
+              const memory =
+                process.memoryUsage();
+
+              console.log(
+                '[SMART MEMORY] progressive-disabled-gc',
+                JSON.stringify({
+                  rssMB:
+                    Math.round(
+                      memory.rss /
+                      1024 /
+                      1024
+                    ),
+                  heapUsedMB:
+                    Math.round(
+                      memory.heapUsed /
+                      1024 /
+                      1024
+                    ),
+                  heapTotalMB:
+                    Math.round(
+                      memory.heapTotal /
+                      1024 /
+                      1024
+                    )
+                })
+              );
+            }
+          }
+
+          return false;
+        }
 
         let memory = process.memoryUsage();
         if (
@@ -12099,6 +12432,124 @@ export function createSmartNewsEngine({
       let storyRelationshipsForSnapshot =
         finalSnapshot.storyRelationships;
 
+      // Everything below editorial assessment needs the final cluster graph,
+      // but it does not need the several overlapping input graphs that were
+      // required to build it. Keeping all of them alive through minutes of
+      // AI editorial work caused the main process to approach the V8 heap
+      // limit before Top Stories could run.
+      const candidateCountForCompleted =
+        candidates.length;
+
+      const autoMergedClusterCountForCompleted =
+        autoMergedClusters.length;
+
+      const smartClusteringInputsJson =
+        JSON.stringify(
+          candidates.map(
+            article => ({
+              articleKey:
+                article.articleKey,
+              contentHash:
+                article.contentHash
+            })
+          )
+        );
+
+      const aiProvidersUsed =
+        [
+          ...new Set(
+            reviewResult
+              .clusters
+              .map(
+                group =>
+                  group
+                    .providerId
+              )
+              .filter(Boolean)
+          )
+        ];
+
+      // Progressive reconciliation is finished once the final publication
+      // snapshot has been assembled.
+      progressiveResolvedByGroup.clear();
+      progressiveBaselineByGroup.clear();
+
+      if (
+        Array.isArray(
+          reviewResult?.clusters
+        )
+      ) {
+        reviewResult.clusters.length = 0;
+      }
+
+      if (
+        Array.isArray(
+          autoMergedClusters
+        )
+      ) {
+        autoMergedClusters.length = 0;
+      }
+      autoMergedClusters = null;
+
+      if (
+        Array.isArray(
+          reviewGroups
+        )
+      ) {
+        reviewGroups.length = 0;
+      }
+      reviewGroups = null;
+
+      if (
+        Array.isArray(
+          candidates
+        )
+      ) {
+        candidates.length = 0;
+      }
+      candidates = null;
+
+      storyIdRetentionClusters = null;
+      existingClusters = null;
+
+      // Keep the extracted final graph, links and relationships, but release
+      // the wrapper object itself.
+      finalSnapshot = null;
+
+      if (
+        typeof global.gc ===
+        'function'
+      ) {
+        global.gc();
+
+        const memory =
+          process.memoryUsage();
+
+        console.log(
+          '[SMART MEMORY] pre-editorial-gc',
+          JSON.stringify({
+            rssMB:
+              Math.round(
+                memory.rss /
+                1024 /
+                1024
+              ),
+            heapUsedMB:
+              Math.round(
+                memory.heapUsed /
+                1024 /
+                1024
+              ),
+            heapTotalMB:
+              Math.round(
+                memory.heapTotal /
+                1024 /
+                1024
+              )
+          })
+        );
+      }
+
       const editorialStats =
         await assessSmartEditorialClusters({
           clusters,
@@ -12110,6 +12561,19 @@ export function createSmartNewsEngine({
           notify,
           metrics
         });
+
+      if (typeof global.gc === 'function') {
+        global.gc();
+        const memory = process.memoryUsage();
+        console.log(
+          '[SMART MEMORY] post-editorial-gc',
+          JSON.stringify({
+            rssMB: Math.round(memory.rss / 1024 / 1024),
+            heapUsedMB: Math.round(memory.heapUsed / 1024 / 1024),
+            heapTotalMB: Math.round(memory.heapTotal / 1024 / 1024)
+          })
+        );
+      }
 
       metrics.editorialCacheHits =
         editorialStats.cacheHits;
@@ -12133,20 +12597,6 @@ metrics.editorialAssessmentFailures =
           editorialStats
         )
       );
-
-      const aiProvidersUsed =
-        [
-          ...new Set(
-            reviewResult
-              .clusters
-              .map(
-                group =>
-                  group
-                    .providerId
-              )
-              .filter(Boolean)
-          )
-        ];
 
       const clusterVersion =
         `${toVietnamIso(Date.now())}_${clusters.length}`;
@@ -12173,7 +12623,8 @@ metrics.editorialAssessmentFailures =
               groups: reviewResult.deferredGroups || [],
               relationships: storyRelationshipsForSnapshot
             }),
-          smartClusteringInputs: JSON.stringify(candidates.map(article => ({ articleKey: article.articleKey, contentHash: article.contentHash }))),
+          smartClusteringInputs:
+            smartClusteringInputsJson,
           smartClusters:
             JSON.stringify(
               clusters
@@ -12255,6 +12706,19 @@ metrics.editorialAssessmentFailures =
         }
       );
 
+      if (typeof global.gc === 'function') {
+        global.gc();
+        const memory = process.memoryUsage();
+        console.log(
+          '[SMART MEMORY] post-final-persist-gc',
+          JSON.stringify({
+            rssMB: Math.round(memory.rss / 1024 / 1024),
+            heapUsedMB: Math.round(memory.heapUsed / 1024 / 1024),
+            heapTotalMB: Math.round(memory.heapTotal / 1024 / 1024)
+          })
+        );
+      }
+
       const providerHealth =
         await getProviderHealth(db);
 
@@ -12276,11 +12740,11 @@ metrics.editorialAssessmentFailures =
         sourceErrors,
         hiddenArticleCount,
         candidateCount:
-          candidates.length,
+          candidateCountForCompleted,
         clusterCount:
           clusters.length,
         autoMergedClusterCount:
-          autoMergedClusters.length,
+          autoMergedClusterCountForCompleted,
         ambiguousGroupCount:
           ambiguousGroupCount,
         providerOrder,

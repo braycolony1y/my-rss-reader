@@ -241,7 +241,22 @@ export function createBoardCache({ env, fetchPage, writeJson, directory = './art
             const prefs = await get('userPreferences', {});
             const board = new Set((await get('boardStates', [])).map(identity));
             const members = await get('cacheMembers', {});
-            const ledger = await get('cacheIdentityLedger', { initialized_at: now(), articles: {}, dismissals: {} });
+            const sharedLedger = await db.get(
+                'cacheIdentityLedger',
+                { type: 'json', shared: true }
+            ) || { initialized_at: now(), articles: {}, dismissals: {} };
+
+            let ledger = sharedLedger;
+            let ledgerChanged = false;
+
+            const mutableLedger = () => {
+                if (!ledgerChanged) {
+                    ledger = structuredClone(sharedLedger);
+                    ledgerChanged = true;
+                }
+                return ledger;
+            };
+
             // A stale preference snapshot is not an explicit Cache dismissal.
             // Restore missing mappings for members that are still pinned; explicit
             // moves/removals update membership through setFolder.
@@ -269,13 +284,32 @@ export function createBoardCache({ env, fetchPage, writeJson, directory = './art
                     member.in_cache = false;
                     member.left_cache_at ||= new Date(now()).toISOString();
                     member.active_caching = false;
-                    if (member.auto_added) ledger.dismissals[id] = { last_seen_at: now(), expires_at: now() + retentionMs };
+                    if (member.auto_added) {
+                        mutableLedger().dismissals[id] = {
+                            last_seen_at: now(),
+                            expires_at: now() + retentionMs
+                        };
+                    }
                 }
             }
             const protectedArchives = await protectedIds();
             for (const [id, member] of Object.entries(members)) updateRetention(member, protectedArchives.has(id));
-            for (const [id, dismissal] of Object.entries(ledger.dismissals)) if (dismissal.expires_at <= now()) delete ledger.dismissals[id];
-            await db.putMany({ cacheMembers: JSON.stringify(members), cacheIdentityLedger: JSON.stringify(ledger), userPreferences: JSON.stringify(prefs) });
+            for (const [id, dismissal] of Object.entries(ledger.dismissals || {})) {
+                if (dismissal.expires_at <= now()) {
+                    delete mutableLedger().dismissals[id];
+                }
+            }
+
+            const writes = {
+                cacheMembers: JSON.stringify(members),
+                userPreferences: JSON.stringify(prefs)
+            };
+
+            if (ledgerChanged) {
+                writes.cacheIdentityLedger = JSON.stringify(ledger);
+            }
+
+            await db.putMany(writes);
             return members;
         });
     }
@@ -431,22 +465,63 @@ export function createBoardCache({ env, fetchPage, writeJson, directory = './art
         try { return await run; } finally { inFlight.delete(id); }
     }
     async function tick() {
-        // Coalesce dispatch, not the lifetime of all scans. Each thread retains
-        // its own in-flight guard, so next minute can refresh completed threads
-        // while a longer thread continues. Fetch slots are shared per page.
-        if (!ticking) ticking = (async () => {
-            const ledger = await get('cacheIdentityLedger', null);
-            const pending = Object.values(ledger?.articles || {}).map(entry => entry.pending).filter(Boolean);
+        // A board-cache maintenance cycle is single-flight for its complete
+        // lifetime. A cron tick that arrives while an older cycle is still
+        // scanning simply waits for that same cycle instead of adding another
+        // reconciliation/scan wave behind it.
+        if (ticking) return ticking;
+
+        const run = (async () => {
+            const ledger = await db.get(
+                'cacheIdentityLedger',
+                { type: 'json', shared: true }
+            );
+            const pending = Object.values(ledger?.articles || {})
+                .map(entry => entry.pending)
+                .filter(Boolean);
+
             if (pending.length) await observe(pending);
+
             const members = await reconcileMembership();
-            return Object.keys(members)
-                .filter(id => members[id].in_cache && members[id].active_caching && !inFlight.has(id))
-                .map(id => syncOne(id).catch(e => console.warn('[CACHE SYNC]', e.message)));
+            const ids = Object.keys(members).filter(
+                id =>
+                    members[id].in_cache &&
+                    members[id].active_caching &&
+                    !inFlight.has(id)
+            );
+
+            // fetchQueuedPage already permits only two concurrent page fetches.
+            // Do not create hundreds of parked syncOne jobs just to wait for
+            // those two slots and later flood the board mutation lock.
+            const concurrency = Math.min(2, ids.length);
+            let nextIndex = 0;
+
+            const worker = async () => {
+                while (true) {
+                    const index = nextIndex++;
+                    if (index >= ids.length) return;
+
+                    const id = ids[index];
+                    try {
+                        await syncOne(id);
+                    } catch (e) {
+                        console.warn('[CACHE SYNC]', e.message);
+                    }
+                }
+            };
+
+            await Promise.all(
+                Array.from({ length: concurrency }, () => worker())
+            );
         })();
-        const dispatch = ticking;
-        let scans;
-        try { scans = await dispatch; } finally { if (ticking === dispatch) ticking = null; }
-        await Promise.all(scans);
+
+        ticking = run;
+
+        try {
+            return await run;
+        } finally {
+            if (ticking === run) ticking = null;
+        }
     }
     async function setFolder(article, folder, { compact = false } = {}) {
         const id = canonicalIdentity(article);

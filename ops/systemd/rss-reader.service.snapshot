@@ -42,6 +42,10 @@ CPUWeight=500
 OOMScoreAdjust=-250
 TasksMax=128
 
+# /etc/systemd/system/rss-reader.service.d/ai-review-memory.conf
+[Service]
+Environment="SMART_AI_REVIEW_HEAP_DEFER_MB=1400"
+
 # /etc/systemd/system/rss-reader.service.d/gemini-debug.conf
 [Service]
 Environment=SMART_LOG_GEMINI_RESPONSES=true
@@ -55,3 +59,7 @@ MemoryHigh=5G
 MemoryMax=6G
 
 Environment=TOP_STORIES_RERANK_INTERVAL_MS=900000
+
+# /etc/systemd/system/rss-reader.service.d/top-stories-memory.conf
+[Service]
+Environment="TOP_STORIES_MAIN_HEAP_MAX_MB=2450"
