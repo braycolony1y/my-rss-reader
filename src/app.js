@@ -1,3 +1,4 @@
+import { touchAntigravityBriefingFocus, clearAntigravityBriefingFocus } from './ai/antigravity.js';
 import { createPdfService } from './exports/pdf-service.js';
 import { registerPdfRoutes } from './routes/pdf-routes.js';
 import { isVozThreadUrl } from './voz-thread-state.js';
@@ -163,6 +164,61 @@ export async function createApplication({ isMainModule = false } = {}) {
         }
     });
     registerBoardCacheRoutes({ app: http.app, boardCache });
+
+    /*
+     * Browser visibility lease for the active Smart briefing.
+     * A lease expires automatically if the browser disappears without
+     * sending a close/navigation event.
+     */
+    http.app.post(
+        '/api/ai/briefing-focus',
+        (req, res) => {
+            try {
+                const viewerId =
+                    String(
+                        req.body?.viewerId ||
+                        ''
+                    ).trim();
+
+                if (
+                    !viewerId ||
+                    viewerId.length > 120
+                ) {
+                    return res
+                        .status(400)
+                        .json({
+                            error:
+                                'Invalid viewerId'
+                        });
+                }
+
+                if (
+                    req.body?.active === false
+                ) {
+                    clearAntigravityBriefingFocus(
+                        viewerId
+                    );
+                } else {
+                    touchAntigravityBriefingFocus(
+                        viewerId
+                    );
+                }
+
+                res.json({
+                    success: true,
+                    active:
+                        req.body?.active !==
+                        false
+                });
+            } catch (error) {
+                res.status(500).json({
+                    error:
+                        error.message
+                });
+            }
+        }
+    );
+
 
     const presentation = createArticlePresentation({
         resolveGoogleNewsUrl: googleNews.resolveGoogleNewsUrl,

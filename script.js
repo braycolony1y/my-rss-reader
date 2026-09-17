@@ -188,15 +188,35 @@
                             section.text?.trim()
                         );
 
-                    const timeline = article.topStory?.timeline || [];
-                    const timelineReview =
-                        briefing.analysisReview?.find(
-                            section => section.label === 'Timeline'
+                    const rawTimeline =
+                        article.topStory?.timeline || [];
+
+                    const selectedTimelineIds =
+                        new Set(
+                            Array.isArray(
+                                briefing.timelineEntryIds
+                            )
+                                ? briefing.timelineEntryIds
+                                    .map(id => String(id))
+                                : []
                         );
 
-                    const useTimeline = timelineReview
-                        ? timelineReview.useful
-                        : timeline.length > 1;
+                    const timeline =
+                        rawTimeline.filter(event =>
+                            selectedTimelineIds.has(
+                                String(event?.id ?? '')
+                            )
+                        );
+
+                    const timelineReview =
+                        briefing.analysisReview?.find(
+                            section =>
+                                section.label === 'Timeline'
+                        );
+
+                    const useTimeline =
+                        timelineReview?.useful === true &&
+                        timeline.length > 1;
 
                     const byLabel = new Map(
                         sections.map(section => [
@@ -2050,24 +2070,79 @@
                 },
 
                 async toggleSmartSourceFetchMethod(source, method) {
-                    const current = Array.isArray(source.fetchMethods) ? source.fetchMethods : [];
-                    const fetchMethods = current.includes(method)
-                        ? current.filter(value => value !== method)
-                        : [...current, method];
+                    const previous = Array.isArray(source.fetchMethods)
+                        ? [...source.fetchMethods]
+                        : [];
+
+                    const fetchMethods = previous.includes(method)
+                        ? previous.filter(value => value !== method)
+                        : [...previous, method];
+
+                    // Update checkbox immediately.
+                    source.fetchMethods = [...fetchMethods];
                     this.smartSourceError = '';
+
+                    const version = Number(source.__fetchMethodsVersion || 0) + 1;
+                    source.__fetchMethodsVersion = version;
+
+                    const save = async () => {
+                        try {
+                            const response = await fetch('/api/smart-sources', {
+                                method: 'PATCH',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    url: source.url,
+                                    fetchMethods
+                                })
+                            });
+
+                            const data = await response.json().catch(() => ({}));
+
+                            if (!response.ok) {
+                                throw new Error(
+                                    data.error || 'Could not update fetch methods.'
+                                );
+                            }
+
+                            if (source.__fetchMethodsVersion === version) {
+                                const savedSource = Array.isArray(data.sources)
+                                    ? data.sources.find(item => item?.url === source.url)
+                                    : null;
+
+                                if (savedSource && Array.isArray(savedSource.fetchMethods)) {
+                                    source.fetchMethods = [...savedSource.fetchMethods];
+                                }
+                            }
+
+                            if (Array.isArray(data.feeds)) {
+                                this.feeds = data.feeds;
+                            }
+
+                            if (this.articleContentCache) {
+                                this.articleContentCache.clear();
+                            }
+                        } catch (error) {
+                            if (source.__fetchMethodsVersion === version) {
+                                source.fetchMethods = [...previous];
+                                this.smartSourceError = error.message;
+                            }
+                            throw error;
+                        }
+                    };
+
+                    const previousSave =
+                        this.__smartFetchMethodSaveQueue || Promise.resolve();
+
+                    const currentSave = previousSave
+                        .catch(() => {})
+                        .then(save);
+
+                    this.__smartFetchMethodSaveQueue = currentSave;
+
                     try {
-                        const response = await fetch('/api/smart-sources', {
-                            method: 'PATCH',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ url: source.url, fetchMethods })
-                        });
-                        const data = await response.json();
-                        if (!response.ok) throw new Error(data.error || 'Could not update fetch methods.');
-                        this.smartSources = data.sources || [];
-                        if (Array.isArray(data.feeds)) this.feeds = data.feeds;
-                        if (this.articleContentCache) this.articleContentCache.clear();
-                    } catch (error) {
-                        this.smartSourceError = error.message;
+                        await currentSave;
+                    } catch {
+                        // rollback already handled
                     }
                 },
 
@@ -3251,7 +3326,8 @@
                         vietserver: 'Vietnam reader proxy',
                         allorigins: 'AllOrigins backup proxy',
                         jina: 'Jina Reader',
-                        opencli: 'OpenCLI browser reader'
+                        opencli: 'OpenCLI browser reader',
+                        'opencli-fetch': 'OpenCLI browser fetch'
                     })[strategy] || strategy;
                 },
 
@@ -5686,3 +5762,482 @@ document.addEventListener('click', event => {
     event.stopPropagation();
     target.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }, true);
+
+
+/*
+ * Board cache active-view priority.
+ *
+ * The cache scheduler gives the currently viewed thread first priority in
+ * its HOT lane. Heartbeats are intentionally lightweight and do not trigger
+ * an extra cache scan every 30 seconds.
+ */
+(() => {
+    if (window.__boardCacheViewHeartbeatInstalled) {
+        return;
+    }
+
+    window.__boardCacheViewHeartbeatInstalled = true;
+
+    const ENDPOINT =
+        '/api/board-cache/view';
+
+    const HEARTBEAT_MS =
+        30 * 1000;
+
+    const viewerId = (() => {
+        const key =
+            'board-cache-viewer-id';
+
+        let value =
+            sessionStorage.getItem(key);
+
+        if (!value) {
+            value =
+                typeof crypto?.randomUUID === 'function'
+                    ? crypto.randomUUID()
+                    : `viewer-${Date.now()}-${Math.random()
+                        .toString(36)
+                        .slice(2)}`;
+
+            sessionStorage.setItem(
+                key,
+                value
+            );
+        }
+
+        return value;
+    })();
+
+    let activeArticle = null;
+
+    function boardArticleFromLocation() {
+        const raw =
+            location.hash.startsWith('#')
+                ? location.hash.slice(1)
+                : location.hash;
+
+        const queryIndex =
+            raw.indexOf('?');
+
+        if (queryIndex < 0) {
+            return null;
+        }
+
+        const page =
+            raw.slice(0, queryIndex);
+
+        if (page !== 'board') {
+            return null;
+        }
+
+        const params =
+            new URLSearchParams(
+                raw.slice(queryIndex + 1)
+            );
+
+        const article =
+            params.get('article');
+
+        return article
+            ? article.trim()
+            : null;
+    }
+
+    function send(
+        url,
+        active,
+        {
+            kick = false,
+            beacon = false
+        } = {}
+    ) {
+        if (!url) return;
+
+        const payload = JSON.stringify({
+            url,
+            viewerId,
+            active,
+            kick
+        });
+
+        if (
+            beacon &&
+            navigator.sendBeacon
+        ) {
+            const body =
+                new Blob(
+                    [payload],
+                    {
+                        type:
+                            'application/json'
+                    }
+                );
+
+            navigator.sendBeacon(
+                ENDPOINT,
+                body
+            );
+
+            return;
+        }
+
+        fetch(
+            ENDPOINT,
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type':
+                        'application/json'
+                },
+                body: payload,
+                keepalive: true
+            }
+        ).catch(() => {});
+    }
+
+    function reconcileView() {
+        const next =
+            boardArticleFromLocation();
+
+        if (next === activeArticle) {
+            return;
+        }
+
+        if (activeArticle) {
+            send(
+                activeArticle,
+                false
+            );
+        }
+
+        activeArticle =
+            next;
+
+        if (activeArticle) {
+            /*
+             * kick=true only when opened/switched so it can start a cache
+             * scheduling cycle immediately if one isn't already running.
+             */
+            send(
+                activeArticle,
+                true,
+                { kick: true }
+            );
+        }
+    }
+
+    function heartbeat() {
+        /*
+         * Also reconcile here in case the SPA changed history/hash in a way
+         * that did not produce the expected navigation event.
+         */
+        reconcileView();
+
+        if (activeArticle) {
+            send(
+                activeArticle,
+                true
+            );
+        }
+    }
+
+    function closeActiveView() {
+        if (!activeArticle) {
+            return;
+        }
+
+        send(
+            activeArticle,
+            false,
+            { beacon: true }
+        );
+    }
+
+    window.addEventListener(
+        'hashchange',
+        reconcileView
+    );
+
+    window.addEventListener(
+        'popstate',
+        reconcileView
+    );
+
+    /*
+     * When returning from a suspended/background tab, refresh the lease
+     * immediately.
+     */
+    document.addEventListener(
+        'visibilitychange',
+        () => {
+            reconcileView();
+
+            if (
+                !document.hidden &&
+                activeArticle
+            ) {
+                send(
+                    activeArticle,
+                    true
+                );
+            }
+        }
+    );
+
+    window.addEventListener(
+        'pagehide',
+        closeActiveView
+    );
+
+    setInterval(
+        heartbeat,
+        HEARTBEAT_MS
+    );
+
+    reconcileView();
+})();
+
+
+
+/*
+ * Active Smart-tab AI reservation.
+ *
+ * The server only hard-reserves Antigravity while:
+ *   1. this browser tab is visible, and
+ *   2. a currently-active Smart briefing AI job exists.
+ *
+ * The AI-job side of that condition is evaluated server-side; this browser
+ * lease only tells the scheduler whether the user is still actively here.
+ */
+(() => {
+    if (
+        window
+            .__antigravityBriefingFocusInstalled
+    ) {
+        return;
+    }
+
+    window
+        .__antigravityBriefingFocusInstalled =
+        true;
+
+    const ENDPOINT =
+        '/api/ai/briefing-focus';
+
+    const HEARTBEAT_MS =
+        30 * 1000;
+
+    const viewerId = (() => {
+        const key =
+            'ai-briefing-focus-viewer';
+
+        let id =
+            sessionStorage.getItem(key);
+
+        if (!id) {
+            id =
+                typeof crypto?.randomUUID ===
+                'function'
+                    ? crypto.randomUUID()
+                    : `briefing-${Date.now()}-${Math.random()
+                        .toString(36)
+                        .slice(2)}`;
+
+            sessionStorage.setItem(
+                key,
+                id
+            );
+        }
+
+        return id;
+    })();
+
+    let lastActive = null;
+
+    function sendFocus(
+        active,
+        beacon = false
+    ) {
+        const payload =
+            JSON.stringify({
+                viewerId,
+                active
+            });
+
+        if (
+            beacon &&
+            navigator.sendBeacon
+        ) {
+            navigator.sendBeacon(
+                ENDPOINT,
+                new Blob(
+                    [payload],
+                    {
+                        type:
+                            'application/json'
+                    }
+                )
+            );
+
+            return;
+        }
+
+        fetch(
+            ENDPOINT,
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type':
+                        'application/json'
+                },
+                body: payload,
+                keepalive: true
+            }
+        ).catch(() => {});
+    }
+
+    function hasVisibleSmartSurface() {
+        /*
+         * These elements belong to the Smart briefing presentation.
+         * offsetParent/rect checks prevent a hidden previous view from
+         * retaining the reservation after the user changes sections.
+         */
+        const elements =
+            document.querySelectorAll(
+                '.story-analysis-shell,' +
+                '.article-card.has-story-briefing,' +
+                '.story-key-facts'
+            );
+
+        for (const element of elements) {
+            const rect =
+                element.getBoundingClientRect();
+
+            const style =
+                getComputedStyle(element);
+
+            if (
+                style.display !== 'none' &&
+                style.visibility !== 'hidden' &&
+                rect.width > 0 &&
+                rect.height > 0
+            ) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    function currentActiveState() {
+        return (
+            document.visibilityState ===
+                'visible' &&
+            hasVisibleSmartSurface()
+        );
+    }
+
+    function reconcileFocus(
+        force = false
+    ) {
+        const active =
+            currentActiveState();
+
+        if (
+            force ||
+            active !== lastActive
+        ) {
+            lastActive = active;
+
+            sendFocus(active);
+        }
+    }
+
+    document.addEventListener(
+        'visibilitychange',
+        () => reconcileFocus(true)
+    );
+
+    window.addEventListener(
+        'hashchange',
+        () =>
+            setTimeout(
+                () => reconcileFocus(true),
+                0
+            )
+    );
+
+    window.addEventListener(
+        'popstate',
+        () =>
+            setTimeout(
+                () => reconcileFocus(true),
+                0
+            )
+    );
+
+    window.addEventListener(
+        'pagehide',
+        () => {
+            lastActive = false;
+            sendFocus(
+                false,
+                true
+            );
+        }
+    );
+
+    /*
+     * Smart-tab/card changes are SPA DOM updates, so observe them rather than
+     * depending only on URL navigation.
+     */
+    let reconcileTimer = null;
+
+    const observer =
+        new MutationObserver(() => {
+            clearTimeout(
+                reconcileTimer
+            );
+
+            reconcileTimer =
+                setTimeout(
+                    () =>
+                        reconcileFocus(),
+                    100
+                );
+        });
+
+    observer.observe(
+        document.documentElement,
+        {
+            childList: true,
+            subtree: true,
+            attributes: true,
+            attributeFilter: [
+                'class',
+                'style',
+                'hidden'
+            ]
+        }
+    );
+
+    setInterval(
+        () => {
+            if (
+                currentActiveState()
+            ) {
+                /*
+                 * Refresh the 90-second server lease.
+                 */
+                sendFocus(true);
+                lastActive = true;
+            } else {
+                reconcileFocus();
+            }
+        },
+        HEARTBEAT_MS
+    );
+
+    reconcileFocus(true);
+})();
+

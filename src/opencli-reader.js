@@ -14,6 +14,286 @@ export function isActiveArticleSession(session, url, now = Date.now()) {
     return Boolean(session && session.url === url && now - session.lastSeen < 3000);
 }
 
+
+// ---------------------------------------------------------------------------
+// OpenCLI browser fetch
+//
+// Separate from the existing OpenCLI article reader.
+//
+// First request for an origin:
+//   real Chrome navigation -> wait for usable page -> browser fetch()
+//
+// Later requests:
+//   browser fetch() directly in the persistent Chrome session
+//
+// If Cloudflare starts blocking browser fetch again:
+//   navigate/refresh through Chrome -> wait -> retry browser fetch once
+// ---------------------------------------------------------------------------
+
+const openCliBrowserFetchStates = new Map();
+const openCliBrowserFetchQueues = new Map();
+
+const openCliBrowserFetchSleep = ms =>
+    new Promise(resolve => setTimeout(resolve, ms));
+
+function isOpenCliBrowserFetchChallenge(status, html = '') {
+    return status === 403
+        || status === 429
+        || /Just a moment|cf-chl-|Enable JavaScript and cookies|Checking your browser|Verifying you are human/i
+            .test(String(html));
+}
+
+async function getOpenCliBrowserFetchState(url) {
+    const parsed = new URL(url);
+    const origin = parsed.origin;
+
+    let state = openCliBrowserFetchStates.get(origin);
+    if (state) return state;
+
+    const [
+        { Page },
+        { setDaemonCommandTimeoutSeconds }
+    ] = await Promise.all([
+        import('../node_modules/@jackwener/opencli/dist/src/browser/page.js'),
+        import('../node_modules/@jackwener/opencli/dist/src/browser/daemon-client.js')
+    ]);
+
+    // This method runs in the main RSS process. The existing OpenCLI reader
+    // runs in its own fork, so this does not alter its worker timeout.
+    setDaemonCommandTimeoutSeconds(25);
+
+    const profile =
+        process.env.OPENCLI_BROWSER_PROFILE
+        || process.env.OPENCLI_PROFILE
+        || undefined;
+
+    const session =
+        'rss-browser-fetch-' +
+        parsed.hostname
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-+|-+$/g, '');
+
+    const page = new Page(
+        session,        // session
+        60,             // idle timeout
+        undefined,      // contextId
+        'background',   // windowMode
+        'browser',      // surface
+        'persistent',   // siteSession
+        profile         // preferredContextId / OpenCLI profile alias
+    );
+
+    state = {
+        origin,
+        page,
+        initialized: false,
+        refreshedAt: 0
+    };
+
+    openCliBrowserFetchStates.set(origin, state);
+    return state;
+}
+
+async function waitForOpenCliBrowserUsablePage(page, timeoutMs = 20000) {
+    const deadline = Date.now() + timeoutMs;
+    let last = null;
+
+    while (Date.now() < deadline) {
+        try {
+            last = await page.evaluate(`(() => {
+                const html = document.documentElement?.outerHTML || '';
+
+                return {
+                    url: location.href,
+                    title: document.title || '',
+                    size: html.length,
+                    readyState: document.readyState,
+                    challenge:
+                        /Just a moment|cf-chl-|Enable JavaScript and cookies|Checking your browser|Verifying you are human/i
+                            .test(html)
+                };
+            })()`);
+
+            if (
+                last
+                && !last.challenge
+                && last.readyState !== 'loading'
+                && Number(last.size || 0) > 1000
+            ) {
+                // Give Cloudflare's post-load JS a short moment to finish
+                // establishing browser/session state.
+                await openCliBrowserFetchSleep(750);
+                return last;
+            }
+        } catch {
+            // Challenge pages may navigate/reload while we poll.
+        }
+
+        await openCliBrowserFetchSleep(500);
+    }
+
+    throw new Error(
+        'OpenCLI browser navigation did not become usable'
+        + (last?.title ? `: ${last.title}` : '')
+    );
+}
+
+async function refreshOpenCliBrowserFetchSession(state, url) {
+    console.log(
+        `[OPENCLI FETCH] Refreshing browser session for ${state.origin}`
+    );
+
+    await state.page.goto(url, {
+        settleMs: 2000
+    });
+
+    await waitForOpenCliBrowserUsablePage(state.page);
+
+    state.initialized = true;
+    state.refreshedAt = Date.now();
+}
+
+async function openCliBrowserFetchOnce(state, url) {
+    const result = await state.page.evaluate(
+        async targetUrl => {
+            const controller = new AbortController();
+            const timeout = setTimeout(
+                () => controller.abort(),
+                20000
+            );
+
+            try {
+                const response = await fetch(targetUrl, {
+                    method: 'GET',
+                    credentials: 'include',
+                    cache: 'no-store',
+                    redirect: 'follow',
+                    signal: controller.signal
+                });
+
+                const html = await response.text();
+
+                return {
+                    status: response.status,
+                    finalUrl: response.url,
+                    html
+                };
+            } finally {
+                clearTimeout(timeout);
+            }
+        },
+        url
+    );
+
+    if (!result || typeof result.html !== 'string') {
+        throw new Error('OpenCLI browser fetch returned no HTML');
+    }
+
+    if (result.html.length > 12 * 1024 * 1024) {
+        throw new Error('OpenCLI browser fetch response exceeded 12 MB');
+    }
+
+    return result;
+}
+
+async function runOpenCliBrowserFetchNow(url) {
+    const parsed = new URL(url);
+
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+        throw new Error(
+            'OpenCLI browser fetch only supports HTTP(S) URLs'
+        );
+    }
+
+    const state = await getOpenCliBrowserFetchState(url);
+
+    // First request establishes a working real-browser session.
+    if (!state.initialized) {
+        await refreshOpenCliBrowserFetchSession(state, url);
+    }
+
+    let result;
+
+    try {
+        result = await openCliBrowserFetchOnce(state, url);
+    } catch (error) {
+        // Browser/tab/session may have become stale.
+        console.warn(
+            `[OPENCLI FETCH] Browser fetch failed; refreshing ${state.origin}: ${error.message}`
+        );
+
+        state.initialized = false;
+        await refreshOpenCliBrowserFetchSession(state, url);
+        result = await openCliBrowserFetchOnce(state, url);
+    }
+
+    if (isOpenCliBrowserFetchChallenge(result.status, result.html)) {
+        console.warn(
+            `[OPENCLI FETCH] Verification returned for ${state.origin}; refreshing`
+        );
+
+        state.initialized = false;
+        await refreshOpenCliBrowserFetchSession(state, url);
+
+        result = await openCliBrowserFetchOnce(state, url);
+    }
+
+    if (isOpenCliBrowserFetchChallenge(result.status, result.html)) {
+        throw new Error(
+            `OpenCLI browser fetch remained behind verification (HTTP ${result.status})`
+        );
+    }
+
+    if (result.status === 404 || result.status === 410) {
+        return `<!-- RSS_SOURCE_HTTP_STATUS:${result.status} -->${result.html}`;
+    }
+
+    if (result.status < 200 || result.status >= 400) {
+        throw new Error(
+            `OpenCLI browser fetch returned HTTP ${result.status}`
+        );
+    }
+
+    return result.html;
+}
+
+export function runOpenCliBrowserFetch(url) {
+    let origin;
+
+    try {
+        origin = new URL(url).origin;
+    } catch {
+        return Promise.reject(
+            new Error('Invalid URL for OpenCLI browser fetch')
+        );
+    }
+
+    // Serialize requests per origin because session refresh navigates the
+    // shared Chrome page.
+    const previous =
+        openCliBrowserFetchQueues.get(origin)
+        || Promise.resolve();
+
+    const task = previous.then(
+        () => runOpenCliBrowserFetchNow(url),
+        () => runOpenCliBrowserFetchNow(url)
+    );
+
+    const gate = task.then(
+        () => undefined,
+        () => undefined
+    );
+
+    openCliBrowserFetchQueues.set(origin, gate);
+
+    return task.finally(() => {
+        if (openCliBrowserFetchQueues.get(origin) === gate) {
+            openCliBrowserFetchQueues.delete(origin);
+        }
+    });
+}
+
 export async function readWithHumanVerification(read, page, kwargs, canWait) {
     let prompted = false;
     const guardedPage = new Proxy(page, {

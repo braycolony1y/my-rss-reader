@@ -1,7 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { createAntigravityProvider, parseAntigravityOutput } from '../src/ai/antigravity.js';
+import {
+ createAntigravityProvider,
+ parseAntigravityOutput,
+ withAntigravityRequestContext,
+ touchAntigravityBriefingFocus,
+ clearAntigravityBriefingFocus
+} from '../src/ai/antigravity.js';
 const success=JSON.stringify({status:'SUCCESS',response:'{"ok":true}',usage:{input_tokens:12,output_tokens:4,total_tokens:16}});
 
 test('Antigravity response requires successful nonempty output and valid structured content',()=>{
@@ -34,12 +40,121 @@ test('failed requests enter a bounded cooldown and never expose the prompt in er
  await assert.rejects(generate('sensitive prompt'),/cooling down/);assert.equal(calls,1);
  time=201;await assert.rejects(generate('sensitive prompt'),/request failed/);assert.equal(calls,2);
 });
-test('busy and missing CLI calls promptly yield to the API backup',async()=>{
- const absent=createAntigravityProvider({available:()=>false});await assert.rejects(absent('input'),/not available/);
- let finish;const generate=createAntigravityProvider({available:()=>true,run:(binary,args,options,callback)=>{finish=callback;return{pid:0}}});
- const first=generate('first');
- await assert.rejects(generate('second'),/busy/);
- while(!finish)await new Promise(r=>setImmediate(r));finish(null,success);await first;
+test('active Smart briefing hard-reserves both Antigravity slots after existing calls finish', async () => {
+ const callbacks=[];
+
+ const ok=JSON.stringify({
+  status:'SUCCESS',
+  response:'ok',
+  usage:{
+   input_tokens:1,
+   output_tokens:1,
+   total_tokens:2
+  }
+ });
+
+ const generate=createAntigravityProvider({
+  available:()=>true,
+  maxConcurrent:2,
+  run:(_binary,_args,_options,callback)=>{
+   callbacks.push(callback);
+   return{pid:callbacks.length};
+  }
+ });
+
+ let oldA;
+ let oldB;
+ let briefing;
+ let other;
+
+ try {
+  /*
+   * Two ordinary jobs already occupy both Antigravity slots.
+   */
+  oldA=generate('old-a');
+  oldB=generate('old-b');
+
+  while(callbacks.length<2){
+   await new Promise(resolve=>setImmediate(resolve));
+  }
+
+  assert.equal(callbacks.length,2);
+
+  /*
+   * User is now actively reading a Smart tab.
+   */
+  touchAntigravityBriefingFocus(
+   'test-viewer'
+  );
+
+  briefing=
+   withAntigravityRequestContext(
+    {
+     type:'story-briefing',
+     isInteractive:()=>true
+    },
+    ()=>generate('visible-briefing')
+   );
+
+  /*
+   * Unrelated AI also arrives, but must not be allowed into
+   * either newly-free Antigravity slot.
+   */
+  other=generate('other-ai');
+
+  /*
+   * First existing AI finishes.
+   * The visible briefing must get this newly-free slot.
+   */
+  callbacks[0](null,ok);
+  await oldA;
+
+  while(callbacks.length<3){
+   await new Promise(resolve=>setImmediate(resolve));
+  }
+
+  assert.equal(callbacks.length,3);
+
+  /*
+   * Second existing AI finishes.
+   *
+   * There is now a physically free Antigravity slot, but it must
+   * remain RESERVED/IDLE because visible briefing work is active.
+   */
+  callbacks[1](null,ok);
+  await oldB;
+
+  await new Promise(resolve=>
+   setTimeout(resolve,120)
+  );
+
+  assert.equal(
+   callbacks.length,
+   3,
+   'other AI entered a slot while active briefing reservation was held'
+  );
+
+  /*
+   * Visible briefing finishes.
+   * Reservation should now disappear and ordinary AI may enter.
+   */
+  callbacks[2](null,ok);
+  await briefing;
+
+  while(callbacks.length<4){
+   await new Promise(resolve=>setImmediate(resolve));
+  }
+
+  assert.equal(callbacks.length,4);
+
+  callbacks[3](null,ok);
+  await other;
+
+ } finally {
+  clearAntigravityBriefingFocus(
+   'test-viewer'
+  );
+ }
 });
 test('Antigravity cooldown is scoped to the failing model',async()=>{
  let time=100;const calls=[];

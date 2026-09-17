@@ -7,7 +7,7 @@
     <title>My RSS Reader</title>
     <link rel="icon"
         href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22%238b5cf6%22/><circle cx=%2230%22 cy=%2270%22 r=%2210%22 fill=%22white%22/><path d=%22M30 40a30 30 0 0 1 30 30M30 20a50 50 0 0 1 50 50%22 fill=%22none%22 stroke=%22white%22 stroke-width=%2210%22 stroke-linecap=%22round%22/></svg>">
-    <link rel="stylesheet" href="/public/styles.css?v=20260916212431">
+    <link rel="stylesheet" href="/public/styles.css?v=checkbox-ui-1789670382">
     <script>
         // Start the first Smart News request while the browser is still parsing
         // the page. Returning visitors paint saved cards immediately instead.
@@ -33,7 +33,7 @@
                 };
             } catch (_) {
                 // Storage can be disabled in strict privacy modes. The normal
-                // request in script.js?v=20260916202621"https://cdn.jsdelivr.net/npm/@alpinejs/collapse@3.x.x/dist/cdn.min.js"></script>
+                // request in script.js?v=timeline-select-1789652080"https://cdn.jsdelivr.net/npm/@alpinejs/collapse@3.x.x/dist/cdn.min.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <style>
         .hide-scrollbar::-webkit-scrollbar,
@@ -3513,7 +3513,6 @@
         #scroll-container .article-card:not(.has-story-briefing) img.thumbnail-img {
             mask-image: none !important;
             -webkit-mask-image: none !important;
-            transform: none !important;
             filter: none !important;
             transition: none !important;
         }
@@ -4574,6 +4573,7 @@
                                         { value: 'cloudflare', label: 'Cloudflare Proxy' },
                                         { value: 'vietserver', label: 'Vietserver Proxy' },
                                         { value: 'opencli', label: 'OpenCLI (Reddit/X)' },
+                                        { value: 'opencli-fetch', label: 'OpenCLI Browser Fetch' },
                                         { value: 'direct', label: 'Direct Fetch' }
                                     ]" :key="method.value">
                                         <label class="flex items-center gap-2 px-2.5 py-2 rounded-xl border border-gray-200/70 bg-white/65 text-[11px] font-semibold text-gray-700 cursor-pointer hover:bg-white transition">
@@ -4651,6 +4651,9 @@
                 </label>
                 <label class="edit-source-method-row flex items-center gap-3 px-3 py-2.5 text-sm text-gray-200 cursor-pointer">
                     <input type="checkbox" value="opencli" x-model="editFeedFetchMethods" class="edit-source-checkbox"> <span>OpenCLI (Reddit/X)</span>
+                </label>
+                <label class="edit-source-method-row flex items-center gap-3 px-3 py-2.5 text-sm text-gray-200 cursor-pointer">
+                    <input type="checkbox" value="opencli-fetch" x-model="editFeedFetchMethods" class="edit-source-checkbox"> <span>OpenCLI Browser Fetch</span>
                 </label>
                 <label class="edit-source-method-row flex items-center gap-3 px-3 py-2.5 text-sm text-gray-200 cursor-pointer">
                     <input type="checkbox" value="direct" x-model="editFeedFetchMethods" class="edit-source-checkbox"> <span>Direct Fetch</span>
@@ -7679,7 +7682,7 @@
         </section>
     </div>
 
-    <script src="/script.js?v=20260916202621"></script>
+    <script src="/script.js?v=script-recovered-1789673876"></script>
 </body>
 
 </html>

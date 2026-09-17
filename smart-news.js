@@ -29,7 +29,7 @@ const VIETNAM_OFFSET_MS = 7 * HOUR_MS;
 
 const SMART_ITEMS_PER_SOURCE = 10;
 const SMART_CLUSTER_VERSION =
-  'v2.15_component_relationship_review_20260914-generic-recovery-v1';
+  'v2.15_component_relationship_review_20260914-generic-recovery-v2';
 
 const EMBEDDING_MODEL = process.env.SMART_EMBEDDING_MODEL || 'Xenova/multilingual-e5-small';
 const EMBEDDING_CACHE_VERSION = 'e5-query-title-content-v2';
@@ -1415,7 +1415,7 @@ function inferCategory(
   );
 }
 
-const SMART_SOURCE_FETCH_METHODS = new Set(['jina', 'cloudflare', 'vietserver', 'opencli', 'direct', 'allorigins']);
+const SMART_SOURCE_FETCH_METHODS = new Set(['jina', 'cloudflare', 'vietserver', 'opencli', 'opencli-fetch', 'direct', 'allorigins']);
 
 function normalizeSmartSource(source) {
   const url = canonicalSourceUrl(
@@ -2699,16 +2699,53 @@ export function isAiRecoveryReviewCandidate(
    * Slightly wider than ordinary REVIEW, but still strongly semantic.
    * The AI verifier, not this function, makes the final merge decision.
    */
-  const recoveryFloor =
-    Math.max(
-      0.70,
-      thresholds.review -
-        (
-          crossLanguage
-            ? 0.04
-            : 0.06
-        )
+  const evidence =
+    getEventEvidence(
+      articleA,
+      articleB
     );
+
+  /*
+   * The ordinary matcher remains strict.
+   *
+   * Recovery is only a request for AI review, so concrete event evidence
+   * may compensate for weaker embedding similarity. This is intentionally
+   * generic: it works for launches, rulings, recalls, shutdowns, earnings,
+   * disasters, matches, policy decisions, acquisitions, etc.
+   */
+  let recoveryFloor;
+
+  if (evidence.score >= 4) {
+    recoveryFloor =
+      Math.max(
+        0.58,
+        thresholds.review - 0.14
+      );
+  } else if (evidence.score >= 3) {
+    recoveryFloor =
+      Math.max(
+        0.61,
+        thresholds.review - 0.11
+      );
+  } else if (evidence.score >= 2) {
+    recoveryFloor =
+      Math.max(
+        0.64,
+        thresholds.review - 0.09
+      );
+  } else if (evidence.score >= 1) {
+    recoveryFloor =
+      Math.max(
+        0.68,
+        thresholds.review - 0.07
+      );
+  } else {
+    recoveryFloor =
+      Math.max(
+        0.72,
+        thresholds.review - 0.04
+      );
+  }
 
   if (
     similarity <
@@ -2717,28 +2754,16 @@ export function isAiRecoveryReviewCandidate(
     return false;
   }
 
-  const evidence =
-    getEventEvidence(
-      articleA,
-      articleB
-    );
-
   /*
-   * One concrete event signal plus strong semantic similarity is enough
-   * to ask the verifier. For unusually strong semantic matches, allow
-   * review even when headline wording supplies little lexical evidence.
+   * With concrete event evidence, let the exact-event verifier decide.
+   * Without such evidence, require an unusually strong semantic match.
    */
-  if (evidence.score >= 1) {
-    return true;
-  }
-
   return (
+    evidence.score >= 1 ||
     similarity >=
-    Math.min(
-      thresholds.autoMerge - 0.01,
-      thresholds.review + 0.04
-    )
+      thresholds.review + 0.03
   );
+
 }
 
 function pairKey(leftIndex, rightIndex) {
@@ -3057,8 +3082,14 @@ export async function deterministicGroups(
 
   const compareReviewCandidates =
     (left, right) =>
-      right.similarity -
-      left.similarity ||
+      (
+        right.reviewScore ??
+        right.similarity
+      ) -
+      (
+        left.reviewScore ??
+        left.similarity
+      ) ||
       nodes[left.target]
         .id
         .localeCompare(
@@ -3073,7 +3104,8 @@ export async function deterministicGroups(
     (
       sourceIndex,
       targetIndex,
-      similarity
+      similarity,
+      reviewScore = similarity
     ) => {
       const list =
         reviewCandidatesByNode[
@@ -3082,7 +3114,8 @@ export async function deterministicGroups(
 
       const candidate = {
         target: targetIndex,
-        similarity
+        similarity,
+        reviewScore
       };
 
       if (
@@ -3217,16 +3250,37 @@ export async function deterministicGroups(
          * still plausible enough to deserve exact-event AI verification.
          * Do not union it here.
          */
+        const recoveryEvidence =
+          getEventEvidence(
+            nodes[left].article,
+            nodes[right].article
+          );
+
+        /*
+         * Concrete event anchors help a recovery candidate survive the
+         * bounded top-K queue. The original cosine similarity remains stored
+         * separately and AI still makes the exact-event decision.
+         */
+        const recoveryReviewScore =
+          similarity +
+          Math.min(
+            0.15,
+            recoveryEvidence.score *
+              0.03
+          );
+
         addReviewCandidate(
           left,
           right,
-          similarity
+          similarity,
+          recoveryReviewScore
         );
 
         addReviewCandidate(
           right,
           left,
-          similarity
+          similarity,
+          recoveryReviewScore
         );
 
         reviewPairCount++;
@@ -8278,7 +8332,21 @@ async function verifyComponentReviewWithProviderChain(
   }
 
   const attemptedProviders = [];
+  let allowAntigravityEscalation = false;
+
   for (const provider of eligibleProviders) {
+    if (
+      provider.type === 'antigravity' &&
+      provider.id !== 'antigravity-low' &&
+      !allowAntigravityEscalation
+    ) {
+      /*
+       * Medium/high effort is reserved for explicit model uncertainty.
+       * Ordinary Antigravity failure goes directly to the API backup.
+       */
+      continue;
+    }
+
     if (attemptedProviders.length && group.metrics) {
       group.metrics.fallbackProviderAttempts++;
     }
@@ -8304,6 +8372,21 @@ async function verifyComponentReviewWithProviderChain(
       keyManager,
       db
     );
+
+    if (
+      provider.type === 'antigravity'
+    ) {
+      /*
+       * Only explicit uncertainty is allowed to unlock the next
+       * Antigravity effort level. Any ordinary failure resets escalation,
+       * so the next provider considered is the API backup.
+       */
+      allowAntigravityEscalation =
+        result?.error?.code ===
+        'ANTIGRAVITY_ESCALATION_REQUIRED';
+    }
+
+
 
     if (result.valid && !result.uncertain) {
       if (group.metrics) {
@@ -8721,7 +8804,21 @@ export async function verifyWithProviderChain(
     };
   }
 
+  let allowAntigravityEscalation = false;
+
   for (const provider of previousFailure ? [] : eligibleProviders) {
+    if (
+      provider.type === 'antigravity' &&
+      provider.id !== 'antigravity-low' &&
+      !allowAntigravityEscalation
+    ) {
+      /*
+       * Medium/high effort is reserved for explicit model uncertainty.
+       * Ordinary Antigravity failure goes directly to the API backup.
+       */
+      continue;
+    }
+
     const providerAttempt = attemptedProviders.length + 1;
     if (attemptedProviders.length) {
       if (group.metrics) group.metrics.fallbackProviderAttempts++;
@@ -8747,6 +8844,21 @@ export async function verifyWithProviderChain(
         keyManager,
         db
       );
+
+    if (
+      provider.type === 'antigravity'
+    ) {
+      /*
+       * Only explicit uncertainty is allowed to unlock the next
+       * Antigravity effort level. Any ordinary failure resets escalation,
+       * so the next provider considered is the API backup.
+       */
+      allowAntigravityEscalation =
+        result?.error?.code ===
+        'ANTIGRAVITY_ESCALATION_REQUIRED';
+    }
+
+
 
     if (
       result.valid &&

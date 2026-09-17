@@ -444,7 +444,6 @@ export function registerArticleRoutes({
                 direct: 'publisher website',
                 cloudflare: 'reader proxy',
                 vietserver: 'Vietnam reader proxy',
-                'opencli-fetch': 'OpenCLI browser fetch',
                 allorigins: 'backup reader proxy',
                 jina: 'text reader backup',
                 opencli: isReddit ? 'Reddit API bridge' : 'browser reader backup'

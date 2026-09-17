@@ -120,7 +120,7 @@ export function createArticlePipeline({
         const url = normalizeArticleSourceUrl(value);
         if (!url || normalizedHostname(url) === 'techmeme.com') return null;
         const policy = await getArticleFetchPolicy(url, '');
-        const preferredOrder = ['jina', 'opencli-fetch', 'opencli', 'direct', 'cloudflare', 'vietserver', 'allorigins'];
+        const preferredOrder = ['jina', 'opencli', 'direct', 'cloudflare', 'vietserver', 'allorigins'];
         const strategyOrder = preferredOrder.filter(strategy => policy.strategyOrder.includes(strategy));
         for (const strategy of strategyOrder) {
             try {

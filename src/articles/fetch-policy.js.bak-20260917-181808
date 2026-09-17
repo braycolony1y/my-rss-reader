@@ -13,7 +13,6 @@ export function createArticleFetchPolicy({
         vietserver: 70,
         allorigins: 55,
         jina: 40,
-        'opencli-fetch': 25,
         opencli: 20
     };
 
@@ -241,13 +240,11 @@ export function createArticleFetchPolicy({
                 : feed
         );
 
-        const [synchronizedSmartSources] = await Promise.all([
-            smartNews.setSourceFetchMethodsByIdentity(
-                identity,
-                normalizedFetchMethods
-            ),
-            env.RSS_DATA.put('feeds', JSON.stringify(synchronizedFeeds))
-        ]);
+        const synchronizedSmartSources = await smartNews.setSourceFetchMethodsByIdentity(
+            identity,
+            normalizedFetchMethods
+        );
+        await env.RSS_DATA.put('feeds', JSON.stringify(synchronizedFeeds));
 
         return {
             identity,

@@ -2,7 +2,7 @@ import { fetchRedditViaOpenCli } from '../sources/reddit-fetcher.js';
 import sourceRegistry from '../sources/index.js';
 import { normalizeArticleSourceUrl, deletedSourceKind, deletedSourceTitle } from '../article-source-state.js';
 import { safeHttpUrl } from '../utils/article-utils.js';
-import { runOpenCliReader, runOpenCliBrowserFetch, isActiveArticleSession } from '../opencli-reader.js';
+import { runOpenCliReader, isActiveArticleSession } from '../opencli-reader.js';
 import { parseOpenCliMarkdown, parseJinaReaderText } from './reader-markdown.js';
 import { assertArticleResultAcceptedBySource } from './source-results.js';
 import { discardResponseBody } from '../fetch-response.js';
@@ -80,16 +80,6 @@ export function createArticleReaders({
             throw new Error('OpenCLI returned too little article content');
         }
         return parsed;
-    }
-
-    async function fetchViaOpenCliBrowserFetch(url) {
-        url = normalizeArticleSourceUrl(url);
-
-        if (!safeHttpUrl(url)) {
-            throw new Error('Invalid URL for OpenCLI browser fetch');
-        }
-
-        return runOpenCliBrowserFetch(url);
     }
 
     async function fetchViaJina(url) {
@@ -186,9 +176,6 @@ export function createArticleReaders({
 
     async function fetchArticleHtmlByStrategy(strategy, url) {
         url = normalizeArticleSourceUrl(url);
-        if (strategy === 'opencli-fetch') {
-            return await fetchViaOpenCliBrowserFetch(url);
-        }
         if (strategy === 'direct') {
             if (!pendingDirectFetches.has(url)) {
                 const pending = fetchWithCookies(url).finally(() => pendingDirectFetches.delete(url));
@@ -223,7 +210,6 @@ export function createArticleReaders({
     return {
         fetchWithCookies,
         fetchViaOpenCli,
-        fetchViaOpenCliBrowserFetch,
         fetchViaVietserver,
         fetchViaJina,
         fetchArticleHtmlByStrategy

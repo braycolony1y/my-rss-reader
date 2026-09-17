@@ -1,6 +1,72 @@
 import { meaningfulVersions } from '../board/thread-model.js';
 import { authMiddleware } from '../middleware/auth.js';
 export function registerBoardCacheRoutes({ app, boardCache }) {
+    app.post('/api/board-cache/view', async (req, res) => {
+        try {
+            const url = String(req.body?.url || '').trim();
+            const viewerId = String(req.body?.viewerId || '').trim();
+
+            if (!url) {
+                return res.status(400).json({
+                    error: 'url is required'
+                });
+            }
+
+            if (viewerId.length > 120) {
+                return res.status(400).json({
+                    error: 'viewerId is too long'
+                });
+            }
+
+            const active =
+                req.body?.active !== false;
+
+            let threadId = null;
+
+            if (active) {
+                threadId =
+                    boardCache.touchView(
+                        url,
+                        viewerId
+                    );
+
+                /*
+                 * A newly opened article should not wait for the next cron
+                 * minute when the scheduler is currently idle.
+                 *
+                 * tick() is itself single-flight, so this cannot create a
+                 * second overlapping maintenance cycle.
+                 */
+                if (
+                    req.body?.kick === true
+                ) {
+                    void boardCache.tick()
+                        .catch(error =>
+                            console.warn(
+                                '[CACHE VIEW KICK]',
+                                error.message
+                            )
+                        );
+                }
+            } else {
+                boardCache.clearView(
+                    url,
+                    viewerId
+                );
+            }
+
+            res.json({
+                success: true,
+                active,
+                threadId
+            });
+        } catch (error) {
+            res.status(500).json({
+                error: error.message
+            });
+        }
+    });
+
     app.get('/api/article-content', authMiddleware, async (req, res, next) => {
         if (!req.query.url) return next();
         try {

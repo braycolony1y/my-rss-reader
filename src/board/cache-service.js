@@ -93,6 +93,180 @@ export function createBoardCache({ env, fetchPage, writeJson, directory = './art
     );
 
     const inFlight = new Map();
+
+    /*
+     * Threads currently being read get the fast cache lane.
+     *
+     * The browser should touch the thread periodically. A TTL is used so a
+     * crashed tab, sleeping laptop, lost connection, etc. cannot leave a
+     * thread permanently marked as active.
+     */
+    /*
+     * thread id -> Map(viewer id -> expiry timestamp)
+     *
+     * Different tabs/users can view the same thread simultaneously.
+     * Closing one viewer must not clear another viewer's priority.
+     */
+    const activeViews = new Map();
+
+    /*
+     * Heartbeat is every 30s. Two minutes leaves enough room for ordinary
+     * browser timer throttling while still recovering automatically from a
+     * crashed/closed client.
+     */
+    const ACTIVE_VIEW_TTL_MS = 120 * 1000;
+    const HOT_THREAD_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+    function viewThreadId(value) {
+        if (!value) return null;
+
+        const raw = String(value);
+
+        if (/^[^:]+:thread:/.test(raw)) {
+            return raw;
+        }
+
+        try {
+            return canonicalIdentity(value);
+        } catch {
+            return null;
+        }
+    }
+
+    function normalizeViewerId(value) {
+        const viewerId = String(value || 'default').trim();
+
+        return viewerId
+            ? viewerId.slice(0, 120)
+            : 'default';
+    }
+
+    function touchView(value, viewerId = 'default') {
+        const id = viewThreadId(value);
+        if (!id) return null;
+
+        const viewer =
+            normalizeViewerId(viewerId);
+
+        let viewers =
+            activeViews.get(id);
+
+        if (!viewers) {
+            viewers = new Map();
+            activeViews.set(id, viewers);
+        }
+
+        viewers.set(
+            viewer,
+            now() + ACTIVE_VIEW_TTL_MS
+        );
+
+        return id;
+    }
+
+    function clearView(value, viewerId = 'default') {
+        const id = viewThreadId(value);
+        if (!id) return false;
+
+        const viewers =
+            activeViews.get(id);
+
+        if (!viewers) return false;
+
+        viewers.delete(
+            normalizeViewerId(viewerId)
+        );
+
+        if (!viewers.size) {
+            activeViews.delete(id);
+        }
+
+        return true;
+    }
+
+    function pruneActiveViews() {
+        const currentTime = now();
+
+        for (const [id, viewers] of activeViews) {
+            for (const [viewerId, expiresAt] of viewers) {
+                if (expiresAt <= currentTime) {
+                    viewers.delete(viewerId);
+                }
+            }
+
+            if (!viewers.size) {
+                activeViews.delete(id);
+            }
+        }
+    }
+
+    function isActivelyViewed(id) {
+        const viewers =
+            activeViews.get(id);
+
+        if (!viewers) {
+            return false;
+        }
+
+        const currentTime = now();
+
+        for (const [viewerId, expiresAt] of viewers) {
+            if (expiresAt <= currentTime) {
+                viewers.delete(viewerId);
+            }
+        }
+
+        if (!viewers.size) {
+            activeViews.delete(id);
+            return false;
+        }
+
+        return true;
+    }
+
+    function memberSourceCreatedAt(member) {
+        const candidates = [
+            member?.source_created_at,
+            member?.article?.pubDate
+        ];
+
+        for (const value of candidates) {
+            const timestamp = Date.parse(value || '');
+
+            if (Number.isFinite(timestamp)) {
+                return timestamp;
+            }
+        }
+
+        return null;
+    }
+
+    function isHotCacheMember(member) {
+        const createdAt =
+            memberSourceCreatedAt(member);
+
+        if (!Number.isFinite(createdAt)) {
+            return false;
+        }
+
+        const age = now() - createdAt;
+
+        return (
+            age >= 0 &&
+            age <= HOT_THREAD_MAX_AGE_MS
+        );
+    }
+
+    function lastSuccessfulSyncTime(member) {
+        const timestamp = Date.parse(
+            member?.last_successful_sync_at || ''
+        );
+
+        return Number.isFinite(timestamp)
+            ? timestamp
+            : 0;
+    }
+
     let ticking = null;
     let activeSyncs = 0;
     const slotWaiters = [];
@@ -465,10 +639,24 @@ export function createBoardCache({ env, fetchPage, writeJson, directory = './art
         try { return await run; } finally { inFlight.delete(id); }
     }
     async function tick() {
-        // A board-cache maintenance cycle is single-flight for its complete
-        // lifetime. A cron tick that arrives while an older cycle is still
-        // scanning simply waits for that same cycle instead of adding another
-        // reconciliation/scan wave behind it.
+        /*
+         * One maintenance cycle at a time.
+         *
+         * Unlike the old implementation, a cycle no longer walks every cached
+         * thread. It schedules at most two thread scans:
+         *
+         *   HOT lane:
+         *     1. currently viewed threads
+         *     2. threads whose first post/source creation is <= 24h old
+         *     3. background fallback
+         *
+         *   BACKGROUND lane:
+         *     1. older cached threads
+         *     2. hot/viewed fallback when no background work exists
+         *
+         * Within each class, the least recently successfully synced thread
+         * goes first.
+         */
         if (ticking) return ticking;
 
         const run = (async () => {
@@ -476,43 +664,155 @@ export function createBoardCache({ env, fetchPage, writeJson, directory = './art
                 'cacheIdentityLedger',
                 { type: 'json', shared: true }
             );
-            const pending = Object.values(ledger?.articles || {})
+
+            const pending = Object.values(
+                ledger?.articles || {}
+            )
                 .map(entry => entry.pending)
                 .filter(Boolean);
 
-            if (pending.length) await observe(pending);
+            if (pending.length) {
+                await observe(pending);
+            }
 
-            const members = await reconcileMembership();
-            const ids = Object.keys(members).filter(
-                id =>
-                    members[id].in_cache &&
-                    members[id].active_caching &&
-                    !inFlight.has(id)
+            const members =
+                await reconcileMembership();
+
+            pruneActiveViews();
+
+            const compareOldestFirst =
+                (left, right) =>
+                    lastSuccessfulSyncTime(
+                        members[left]
+                    ) -
+                    lastSuccessfulSyncTime(
+                        members[right]
+                    ) ||
+                    left.localeCompare(right);
+
+            const eligible =
+                Object.keys(members)
+                    .filter(id =>
+                        members[id]?.in_cache &&
+                        members[id]?.active_caching &&
+                        !inFlight.has(id)
+                    );
+
+            const viewed = eligible
+                .filter(id =>
+                    isActivelyViewed(id)
+                )
+                .sort(compareOldestFirst);
+
+            const viewedSet =
+                new Set(viewed);
+
+            const hot = eligible
+                .filter(id =>
+                    !viewedSet.has(id) &&
+                    isHotCacheMember(
+                        members[id]
+                    )
+                )
+                .sort(compareOldestFirst);
+
+            const hotSet =
+                new Set([
+                    ...viewed,
+                    ...hot
+                ]);
+
+            const background = eligible
+                .filter(id =>
+                    !hotSet.has(id)
+                )
+                .sort(compareOldestFirst);
+
+            /*
+             * Lane 1:
+             * actively viewed > recent <=24h > background fallback
+             */
+            const hotLaneId =
+                viewed[0] ||
+                hot[0] ||
+                background[0] ||
+                null;
+
+            /*
+             * Lane 2 normally belongs to old/background cache work.
+             *
+             * If there is no background work, don't leave capacity idle:
+             * help another viewed/hot thread.
+             */
+            let backgroundLaneId =
+                background.find(
+                    id => id !== hotLaneId
+                ) ||
+                viewed.find(
+                    id => id !== hotLaneId
+                ) ||
+                hot.find(
+                    id => id !== hotLaneId
+                ) ||
+                null;
+
+            if (
+                backgroundLaneId ===
+                hotLaneId
+            ) {
+                backgroundLaneId = null;
+            }
+
+            console.info(
+                '[CACHE TICK]',
+                JSON.stringify({
+                    eligible:
+                        eligible.length,
+                    viewed:
+                        viewed.length,
+                    hot:
+                        hot.length,
+                    background:
+                        background.length,
+                    hotLane:
+                        hotLaneId,
+                    backgroundLane:
+                        backgroundLaneId
+                })
             );
 
-            // fetchQueuedPage already permits only two concurrent page fetches.
-            // Do not create hundreds of parked syncOne jobs just to wait for
-            // those two slots and later flood the board mutation lock.
-            const concurrency = Math.min(2, ids.length);
-            let nextIndex = 0;
+            const jobs = [];
 
-            const worker = async () => {
-                while (true) {
-                    const index = nextIndex++;
-                    if (index >= ids.length) return;
+            if (hotLaneId) {
+                jobs.push(
+                    syncOne(hotLaneId)
+                        .catch(error =>
+                            console.warn(
+                                '[CACHE HOT]',
+                                hotLaneId,
+                                error.message
+                            )
+                        )
+                );
+            }
 
-                    const id = ids[index];
-                    try {
-                        await syncOne(id);
-                    } catch (e) {
-                        console.warn('[CACHE SYNC]', e.message);
-                    }
-                }
-            };
+            if (backgroundLaneId) {
+                jobs.push(
+                    syncOne(
+                        backgroundLaneId
+                    ).catch(error =>
+                        console.warn(
+                            '[CACHE BACKGROUND]',
+                            backgroundLaneId,
+                            error.message
+                        )
+                    )
+                );
+            }
 
-            await Promise.all(
-                Array.from({ length: concurrency }, () => worker())
-            );
+            if (jobs.length) {
+                await Promise.all(jobs);
+            }
         })();
 
         ticking = run;
@@ -520,9 +820,12 @@ export function createBoardCache({ env, fetchPage, writeJson, directory = './art
         try {
             return await run;
         } finally {
-            if (ticking === run) ticking = null;
+            if (ticking === run) {
+                ticking = null;
+            }
         }
     }
+
     async function setFolder(article, folder, { compact = false } = {}) {
         const id = canonicalIdentity(article);
         if (folder !== null && (typeof folder !== 'string' || !folder.trim() || folder.length > 120)) throw new Error('Use a folder name of 1–120 characters');
@@ -646,7 +949,7 @@ export function createBoardCache({ env, fetchPage, writeJson, directory = './art
         await locked(() => put('cacheAutoRules', cleaned));
         return cleaned;
     }
-    return { initialize, cleanup, observe, reconcileMembership, tick, syncOne, setActive, setFolder, saveRules, updatePreference,
+    return { initialize, cleanup, observe, reconcileMembership, tick, syncOne, touchView, clearView, setActive, setFolder, saveRules, updatePreference,
         status: async () => ({ rules: await get('cacheAutoRules', []), members: await get('cacheMembers', {}) }),
         articlePage,
         archive: async url => { const id = canonicalIdentity(url); const record = await read(id); if (record) upgradeArchiveTimes(record); return record ? { ...record, active_caching: (await get('cacheMembers', {}))[id]?.active_caching === true } : null; },

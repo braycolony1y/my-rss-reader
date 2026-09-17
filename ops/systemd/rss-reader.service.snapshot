@@ -59,6 +59,7 @@ MemoryHigh=5G
 MemoryMax=6G
 
 Environment=TOP_STORIES_RERANK_INTERVAL_MS=900000
+Environment=STORY_BRIEFING_DUMP_OUTPUT=1
 
 # /etc/systemd/system/rss-reader.service.d/top-stories-memory.conf
 [Service]
