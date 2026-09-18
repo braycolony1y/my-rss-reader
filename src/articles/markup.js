@@ -5,7 +5,7 @@ import { escapeHtml } from '../utils/article-utils.js';
 
 function isUsableArticlePage(html) {
     if (!html) return false;
-    if (html.match(/The requested thread could not be found/i) || html.match(/Chủ đề yêu cầu không tìm thấy/i)) return true;
+    if (html.match(/(?:The requested thread could not be found|Chủ đề yêu cầu không tìm thấy|Không tìm thấy chủ đề được yêu cầu)/i)) return true;
     if (html.length < 800) return false;
     const sample = html.slice(0, 120000);
     const titleMatch = sample.match(/<title[^>]*>([\s\S]*?)<\/title>/i);

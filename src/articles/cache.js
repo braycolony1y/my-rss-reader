@@ -47,7 +47,11 @@ export function createArticleCache({
             await Promise.all(Array.from({ length: 16 }, async () => {
               while (cursor < files.length) {
                 const name = files[cursor++];
-                if (!name.endsWith('.json')) continue;
+                // Hidden JSON files are application state, not article cache.
+                if (
+                    name.startsWith('.') ||
+                    !name.endsWith('.json')
+                ) continue;
                 try {
                     // Regex extraction is much faster than JSON.parse for large HTML blobs
                     const content = await fs.readFile(path.join(ARTICLE_CACHE_DIR, name), 'utf-8');

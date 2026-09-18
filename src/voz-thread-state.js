@@ -1,5 +1,5 @@
-const VOZ_DELETED_THREAD_PATTERN = /(?:The requested thread could not be found|Chủ đề yêu cầu không tìm thấy)/i;
-const VOZ_ERROR_TITLE_PATTERN = /(?:^|\n|<title[^>]*>)\s*(?:Title:\s*)?Oops! We ran into some problems\.(?:\s*\|\s*VOZ)?\s*(?:$|\n|<\/title>)/i;
+const VOZ_DELETED_THREAD_PATTERN = /(?:The requested thread could not be found|Chủ đề yêu cầu không tìm thấy|Không tìm thấy chủ đề được yêu cầu)/i;
+const VOZ_ERROR_TITLE_PATTERN = /(?:^|\n|<title[^>]*>)\s*(?:Title:\s*)?(?:Oops! We ran into some problems\.|Rất tiếc!\s*Đã xảy ra một số vấn đề\.)(?:\s*\|\s*VOZ)?\s*(?:$|\n|<\/title>)/i;
 
 export function isVozThreadUrl(url = '') {
     try {

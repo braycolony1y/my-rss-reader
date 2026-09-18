@@ -1,3 +1,4 @@
+import { globalAiTaskActive, runGlobalAiTask } from './src/ai/global-ai-scheduler.js';
 import {
   SMART_EDITORIAL_POLICY_VERSION,
   SMART_EDITORIAL_RESPONSE_SCHEMA,
@@ -8,6 +9,7 @@ import {
 } from './src/ai/smart-editorial.js';
 import { parseClusteringJson, requestClusteringDecision } from './src/ai/clustering-json.js';
 import { generateWithAntigravity, antigravityAvailable, ANTIGRAVITY_MODEL } from './src/ai/antigravity.js';
+import { generateWithGeminiWeb, geminiWebAvailable } from './src/ai/gemini-web.js';
 import { rankStory, retainStoryIds } from './src/articles/story-ranking.js';
 import {
   SMART_SOURCES as DEFAULT_SMART_SOURCES,
@@ -130,12 +132,20 @@ const SMART_NEWS_AI_CONFIG = {
       thinkingLevel: 'minimal'
     },
     {
+      id: 'gemini-web',
+      type: 'gemini-web',
+      model: '3.8 Flash',
+      priority: 3,
+      timeoutMs: 120_000,
+      maxRetries: 0
+    },
+    {
       id: 'gemini-flash',
       type: 'gemini',
       model:
         process.env.GEMINI_MODEL ||
         'gemini-3.8-flash',
-      priority: 3,
+      priority: 4,
       timeoutMs: 25_000,
       maxRetries: 1,
       maxOutputTokens: 1024,
@@ -150,7 +160,7 @@ const SMART_NEWS_AI_CONFIG = {
       baseUrl:
         process.env.OLLAMA_BASE_URL ||
         'http://127.0.0.1:11434',
-      priority: 4,
+      priority: 5,
       timeoutMs: Math.max(
         15_000,
         Math.min(
@@ -5667,6 +5677,13 @@ function providerEnabled(
 
   if (provider.type === 'antigravity') return !onlyLocal && antigravityAvailable();
 
+  if (provider.type === 'gemini-web') {
+    return (
+      !onlyLocal &&
+      geminiWebAvailable()
+    );
+  }
+
   if (
     provider.type === 'gemini'
   ) {
@@ -5835,7 +5852,67 @@ async function recordProviderSuccess(
       status: 'healthy',
       lastSuccessAt:
         new Date().toISOString(),
-      consecutiveFailures: 0
+      consecutiveFailures: 0,
+      cooldownUntil: null,
+      cooldownCode: null,
+      cooldownReason: null
+    })
+  );
+}
+
+async function recordProviderCooldown(
+  db,
+  provider,
+  error
+) {
+  const rawUntil =
+    error?.retryAt ??
+    error?.cooldownUntil ??
+    null;
+
+  const timestamp =
+    Number(rawUntil) ||
+    (
+      rawUntil
+        ? Date.parse(rawUntil)
+        : 0
+    );
+
+  const cooldownUntil =
+    Number.isFinite(timestamp) &&
+    timestamp > 0
+      ? new Date(timestamp)
+          .toISOString()
+      : null;
+
+  await updateProviderHealth(
+    db,
+    provider,
+    existing => ({
+      ...existing,
+
+      state:
+        'cooldown',
+
+      status:
+        'cooldown',
+
+      lastAttemptAt:
+        new Date().toISOString(),
+
+      cooldownUntil,
+
+      cooldownCode:
+        String(
+          error?.code ||
+          'PROVIDER_COOLDOWN'
+        ),
+
+      cooldownReason:
+        sanitizeProviderErrorMessage(
+          error?.message ||
+          'Provider cooldown is active'
+        )
     })
   );
 }
@@ -6039,11 +6116,28 @@ async function requestGeminiPartition(
     };
 
     return parsed;
-  } finally {
-    clearTimeout(timeout);
+} catch (error) {
+  /*
+   * Bind every request-level failure to the exact Gemini key that
+   * started this HTTP request.
+   *
+   * Covers fetch/network failures, abort timeouts, JSON parsing,
+   * empty responses, and HTTP errors.
+   */
+  if (
+    error &&
+    typeof error === 'object' &&
+    !Number(error.keyIndex)
+  ) {
+    error.keyIndex =
+      Number(keyIndex) || null;
   }
-}
 
+  throw error;
+} finally {
+  clearTimeout(timeout);
+}
+}
 async function assertLocalModelAvailable(
   baseUrl,
   model
@@ -6224,6 +6318,7 @@ function providerReviewArticleLimit(provider) {
 
   if (
     provider?.type === 'antigravity' ||
+    provider?.type === 'gemini-web' ||
     provider?.type === 'gemini'
   ) {
     return SMART_NEWS_CLUSTER_CONFIG
@@ -6244,6 +6339,7 @@ function providerReviewComponentLimit(provider) {
 
   if (
     provider?.type === 'antigravity' ||
+    provider?.type === 'gemini-web' ||
     provider?.type === 'gemini'
   ) {
     return SMART_NEWS_CLUSTER_CONFIG
@@ -6659,6 +6755,31 @@ async function callVerificationProvider(
     };
   }
 
+  if (provider.type === 'gemini-web') {
+    const result =
+      await generateWithGeminiWeb(
+        repairPrompt || prompt,
+        {
+          timeoutMs:
+            provider.timeoutMs,
+          json: true,
+          schema,
+          operation,
+          onRequest
+        }
+      );
+
+    return {
+      text: result.text,
+      rawProviderText:
+        result.text,
+      onlineAiUsage:
+        result.onlineAiUsage ||
+        result.usage ||
+        null
+    };
+  }
+
   if (provider.type === 'gemini') {
     if (keyManager?.waitForRateSlot) {
       await keyManager.waitForRateSlot(1000);
@@ -6669,8 +6790,11 @@ async function callVerificationProvider(
         ? keyManager.getCurrentKeyObj()
         : null;
 
-    if (keyManager?.recordUsage) {
-      keyManager.recordUsage();
+    if (
+      keyObject &&
+      keyManager?.recordUsage
+    ) {
+      keyManager.recordUsage(keyObject);
     }
 
     return requestGeminiPartition(
@@ -7768,8 +7892,11 @@ async function attemptProviderVerification(
       };
     } catch (error) {
       if (
-        provider.type === 'gemini' ||
-        provider.type === 'antigravity'
+        (
+          provider.type === 'gemini' ||
+          provider.type === 'antigravity'
+        ) &&
+        error?.skipProvider !== true
       ) {
         console.log(
           '[ONLINE AI]',
@@ -7788,7 +7915,9 @@ async function attemptProviderVerification(
             model:
               provider.model,
             status:
-              'failed',
+              error?.skipProvider === true
+                ? 'skipped'
+                : 'failed',
             httpStatus:
               Number(
                 error?.status ||
@@ -7848,7 +7977,34 @@ async function attemptProviderVerification(
         );
       }
 
-      if (error?.expectedEscalation) {
+      if (
+        error?.skipProvider === true &&
+        (
+          error?.code ===
+            'ANTIGRAVITY_COOLDOWN' ||
+          error?.code ===
+            'GEMINI_WEB_COOLDOWN' ||
+          error?.code ===
+            'GEMINI_WEB_1095' ||
+          /COOLDOWN/i.test(
+            String(
+              error?.code || ''
+            )
+          )
+        )
+      ) {
+        await recordProviderCooldown(
+          db,
+          provider,
+          error
+        );
+
+        console.info(
+          `[SMART VERIFY SKIP] ${provider.id} ` +
+          `model=${provider.model}: ` +
+          `${error?.message || error}`
+        );
+      } else if (error?.expectedEscalation) {
         console.info(
           `[SMART VERIFY FALLBACK] ${provider.id} ` +
           `model=${provider.model}: ` +
@@ -7889,6 +8045,10 @@ async function attemptProviderVerification(
         !isModelOutputError(
           error
         )
+        &&
+        error?.code !== 'NOT_CONFIGURED'
+        &&
+        Number(error?.keyIndex) > 0
       ) {
         keyManager.reportError(
           error
@@ -8179,7 +8339,13 @@ async function attemptComponentProviderVerification(
         reviewMode: 'components'
       };
     } catch (error) {
-      if (provider.type === 'gemini' || provider.type === 'antigravity') {
+      if (
+        (
+          provider.type === 'gemini' ||
+          provider.type === 'antigravity'
+        ) &&
+        error?.skipProvider !== true
+      ) {
         console.log(
           '[ONLINE AI]',
           JSON.stringify({
@@ -8188,7 +8354,10 @@ async function attemptComponentProviderVerification(
             operation: 'smart-component-review',
             providerId: provider.id,
             model: provider.model,
-            status: 'failed',
+            status:
+  error?.skipProvider === true
+    ? 'skipped'
+    : 'failed',
             errorCode: String(error?.code || error?.name || 'UNKNOWN').slice(0, 80),
             error: String(error?.message || error || 'Unknown component review error').replace(/\s+/g, ' ').slice(0, 800),
             durationMs: Date.now() - attemptStartedAt,
@@ -8202,7 +8371,34 @@ async function attemptComponentProviderVerification(
         );
       }
 
-      if (error?.expectedEscalation) {
+      if (
+        error?.skipProvider === true &&
+        (
+          error?.code ===
+            'ANTIGRAVITY_COOLDOWN' ||
+          error?.code ===
+            'GEMINI_WEB_COOLDOWN' ||
+          error?.code ===
+            'GEMINI_WEB_1095' ||
+          /COOLDOWN/i.test(
+            String(
+              error?.code || ''
+            )
+          )
+        )
+      ) {
+        await recordProviderCooldown(
+          db,
+          provider,
+          error
+        );
+
+        console.info(
+          `[SMART VERIFY SKIP] ${provider.id} ` +
+          `model=${provider.model}: ` +
+          `${error?.message || error}`
+        );
+      } else if (error?.expectedEscalation) {
         console.info(
           `[SMART VERIFY FALLBACK] ${provider.id} model=${provider.model}: ${error?.message || error}`
         );
@@ -8222,6 +8418,10 @@ async function attemptComponentProviderVerification(
         provider.type === 'gemini' &&
         keyManager?.reportError &&
         !isModelOutputError(error)
+        &&
+        error?.code !== 'NOT_CONFIGURED'
+        &&
+        Number(error?.keyIndex) > 0
       ) {
         keyManager.reportError(error);
       }
@@ -8252,6 +8452,22 @@ async function verifyComponentReviewWithProviderChain(
   keyManager,
   db
 ) {
+  // GLOBAL_AI_P3:verifyComponentReviewWithProviderChain
+  if (!globalAiTaskActive()) {
+    const args =
+      Array.from(arguments);
+
+    return runGlobalAiTask(
+      {
+        lane: 'p3',
+        label:
+          'smart-news:verifyComponentReviewWithProviderChain'
+      },
+      () =>
+        verifyComponentReviewWithProviderChain(...args)
+    );
+  }
+
   const cached = await getCachedComponentVerificationDecision(db, group, units);
   if (cached) {
     if (group.metrics) {
@@ -8630,6 +8846,22 @@ export async function verifyWithProviderChain(
   keyManager,
   db
 ) {
+  // GLOBAL_AI_P3:verifyWithProviderChain
+  if (!globalAiTaskActive()) {
+    const args =
+      Array.from(arguments);
+
+    return runGlobalAiTask(
+      {
+        lane: 'p3',
+        label:
+          'smart-news:verifyWithProviderChain'
+      },
+      () =>
+        verifyWithProviderChain(...args)
+    );
+  }
+
   const articleEligibleProviders = providers.filter(provider => {
     const limit = providerReviewArticleLimit(provider);
     return !Number.isFinite(limit) || group.articles.length <= limit;

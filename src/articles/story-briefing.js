@@ -1,4 +1,4 @@
-import { withAntigravityRequestContext } from '../ai/antigravity.js';
+import { runGlobalAiTask, setGlobalAiReadingMode } from '../ai/global-ai-scheduler.js';
 import { detectRoundup } from './story-roundups.js';
 import { cleanArticleMarkup } from './markup.js';
 import { storyMembers, storyText, storyRevision, publisherId } from './story-ranking.js';
@@ -427,19 +427,6 @@ export function createStoryBriefings({ db, generate, loadSource, concurrency = 2
    * The callback is intentionally evaluated dynamically, so switching Smart
    * tabs immediately removes hard-reservation eligibility from the old tab.
    */
-  const generateForBriefingJob =
-    (job, ...args) =>
-      withAntigravityRequestContext(
-        {
-          type: 'story-briefing',
-          isInteractive:
-            () =>
-              effectivePriority(job) >= 4
-        },
-        () => generate(...args)
-      );
-
-
     const jobs = new Map(), retries = new Map(), failures = new Map();
 
     // 6 tabs × 50 server-prewarmed stories can consume roughly 600 keys
@@ -472,6 +459,41 @@ export function createStoryBriefings({ db, generate, loadSource, concurrency = 2
         )
             ? base + 2
             : base;
+    };
+
+
+    /*
+     * Story briefing lanes:
+     *
+     * P0 = currently visible page while user is reading
+     *      (effective priority >= 4)
+     *
+     * P1 = current-view look-ahead / near-visible work
+     *
+     * P4 = stale-visible, ordinary background and prewarm
+     *
+     * P3 is Smart clustering and enters the same shared
+     * global scheduler from smart-news.js.
+     */
+    const briefingLane = job => {
+        if (!activeViewKey) {
+            return 'p4';
+        }
+
+        if (
+            effectivePriority(job) >= 4
+        ) {
+            return 'p0';
+        }
+
+        if (
+            job?.viewKey &&
+            job.viewKey === activeViewKey
+        ) {
+            return 'p1';
+        }
+
+        return 'p4';
     };
 
     const queuedJobs = () =>
@@ -580,7 +602,7 @@ normal form where appropriate.`;
             job.stage = 'generating';
             let feedback = '';
             for (let attempt=0;attempt<2;attempt++) {
-                const output = await generateForBriefingJob(job, prompt + feedback, {operation:'story-briefing'});
+                const output = await generate(prompt + feedback, {operation:'story-briefing'});
 
                 if (
                     process.env.STORY_BRIEFING_DUMP_OUTPUT === '1'
@@ -637,54 +659,150 @@ normal form where appropriate.`;
         }
     }
     function drain() {
-        const capacity = Math.max(1, concurrency);
-
-        while (
-            running < capacity &&
-            Date.now() >= providerRetryAt
+        /*
+         * This queue owns briefing-job lifecycle only.
+         *
+         * P0/P1/P3/P4 concurrency is owned exclusively by
+         * global-ai-scheduler.js.
+         */
+        for (
+            const job of queuedJobs()
         ) {
-            const queue = queuedJobs();
-
-            if (!queue.length) return;
-
-            const interactive =
-                queue.find(job => effectivePriority(job) >= 2);
-
-            let job = interactive || queue[0];
-
-            // Never allow speculative/background work to occupy every
-            // generation slot. With concurrency=2, at most ONE priority 0/1
-            // job may generate at a time, leaving one slot immediately
-            // available for a visible user card.
-            if (!interactive && capacity > 1) {
-                const backgroundRunning =
-                    [...jobs.values()].filter(
-                        candidate =>
-                            candidate.state === 'generating' &&
-                            effectivePriority(candidate) < 2
-                    ).length;
-
-                if (backgroundRunning >= capacity - 1) {
-                    return;
-                }
+            if (
+                job.globalAiScheduled
+            ) {
+                continue;
             }
 
-            job.state = 'generating';
-            running++;
+            job.globalAiScheduled =
+                true;
 
-            run(job).finally(() => {
-                jobs.delete(job.key);
-                running--;
-                drain();
-            });
+            runGlobalAiTask(
+                {
+                    /*
+                     * Dynamic because a queued job can become visible
+                     * while it is waiting.
+                     */
+                    getLane:
+                        () =>
+                            briefingLane(
+                                job
+                            ),
+
+                    /*
+                     * Keep provider/backoff deadlines outside an
+                     * occupied scheduler position.
+                     */
+                    getNotBefore:
+                        () =>
+                            Math.max(
+                                Number(
+                                    retries.get(
+                                        job.key
+                                    )
+                                ) || 0,
+
+                                Number(
+                                    providerRetryAt
+                                ) || 0
+                            ),
+
+                    label:
+                        `story-briefing:${
+                            job.tab ||
+                            'unknown'
+                        }`
+                },
+
+                async () => {
+                    /*
+                     * It may have been replaced while waiting.
+                     */
+                    if (
+                        jobs.get(
+                            job.key
+                        ) !== job
+                    ) {
+                        return;
+                    }
+
+                    job.state =
+                        'generating';
+
+                    running++;
+
+                    try {
+                        await run(job);
+                    }
+                    finally {
+                        running--;
+                    }
+                }
+            )
+                .catch(error => {
+                    failures.set(
+                        job.key,
+                        String(
+                            error?.message ||
+                            error
+                        ).slice(
+                            0,
+                            160
+                        )
+                    );
+
+                    console.warn(
+                        '[STORY BRIEFING] Global scheduler failure:',
+                        String(
+                            error?.message ||
+                            error
+                        ).slice(
+                            0,
+                            160
+                        )
+                    );
+                })
+                .finally(() => {
+                    if (
+                        jobs.get(
+                            job.key
+                        ) === job
+                    ) {
+                        jobs.delete(
+                            job.key
+                        );
+                    }
+
+                    drain();
+                });
         }
     }
     return {
         setActiveView(viewKey) {
-            activeViewKey =
-                typeof viewKey === 'string' && viewKey
+            const nextViewKey =
+                typeof viewKey === 'string' &&
+                viewKey
                     ? viewKey
                     : null;
+
+            const changed =
+                nextViewKey !==
+                activeViewKey;
+
+            activeViewKey =
+                nextViewKey;
+
+            /*
+             * This is the authoritative reading-mode signal for
+             * the shared global AI scheduler.
+             */
+            setGlobalAiReadingMode(
+                Boolean(activeViewKey)
+            );
+
+            if (changed) {
+                drain();
+            }
         },
 
         async peek(cluster,tab) {

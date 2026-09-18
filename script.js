@@ -1277,6 +1277,7 @@
                 onlineAiUsageSearch: '',
                 onlineAiUsageCopiedKey: '',
                 onlineAiUsageCopyTimer: null,
+                onlineAiUsageNow: Date.now(),
                 newGeminiKey: '',
                 newGeminiKeyVisible: false,
                 addingGeminiKey: false,
@@ -1712,6 +1713,7 @@
                     }
                     if (!this.onlineAiUsageTimer) {
                         this.onlineAiUsageTimer = setInterval(() => {
+                            this.onlineAiUsageNow = Date.now();
                             if (this.onlineAiUsageOffset === 0) this.fetchOnlineAiUsage(true);
                         }, 60000);
                     }
@@ -1768,6 +1770,26 @@
                     const events = Array.isArray(this.onlineAiUsage?.events) ? this.onlineAiUsage.events : [];
                     const query = String(this.onlineAiUsageSearch || '').trim().toLowerCase();
                     return events.filter(event => {
+                        // Gemini API cooldown state is already shown in the
+                        // dedicated Gemini Keys panel. Do not duplicate it
+                        // here as activity-feed noise.
+                        const activityDetail = String(
+                            event.error ||
+                            event.message ||
+                            ''
+                        );
+
+                        const isGeminiApiCooldownActivity =
+                            String(event.provider || '').toLowerCase() === 'gemini' &&
+                            (
+                                event.status === 'cooldown' ||
+                                event.errorCode === 'COOLDOWN' ||
+                                /Gemini API cooldown active until/i.test(activityDetail) ||
+                                /all configured keys may be cooling down/i.test(activityDetail)
+                            );
+
+                        if (isGeminiApiCooldownActivity) return false;
+
                         if (this.onlineAiUsageStatus !== 'all' && event.status !== this.onlineAiUsageStatus) return false;
                         if (this.onlineAiUsageProvider !== 'all' && event.provider !== this.onlineAiUsageProvider) return false;
                         if (this.onlineAiUsageOperation !== 'all' && event.operation !== this.onlineAiUsageOperation) return false;

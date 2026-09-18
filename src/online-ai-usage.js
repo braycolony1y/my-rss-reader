@@ -54,10 +54,14 @@ function structuredEvent(parsedLine, payload, sequence) {
         providerId: text(payload.providerId, 100) || null,
         operation: text(payload.operation || 'unknown', 100),
         model: text(payload.model || 'unknown', 120),
-        status: payload.status === 'success' ? 'success' : 'failed',
+        status: ['success', 'failed', 'cooldown', 'blocked'].includes(payload.status)
+            ? payload.status
+            : 'failed',
         httpStatus: number(payload.httpStatus),
         errorCode: text(payload.errorCode, 100) || null,
         error: text(payload.error, MAX_ERROR_LENGTH) || null,
+        message: text(payload.message, MAX_ERROR_LENGTH) || null,
+        cooldownUntil: journalTimestamp(payload.cooldownUntil),
         keyIndex: number(payload.keyIndex),
         attempt: number(payload.attempt),
         durationMs: number(payload.durationMs),

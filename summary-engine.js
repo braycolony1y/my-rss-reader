@@ -1,4 +1,6 @@
+import { globalAiTaskActive, runGlobalAiTask } from './src/ai/global-ai-scheduler.js';
 import { generateWithAntigravity } from './src/ai/antigravity.js';
+import { generateWithGeminiWeb } from './src/ai/gemini-web.js';
 /**
  * summary-engine.js — AI Summary Engine
  * 
@@ -49,6 +51,8 @@ function logOnlineAiUsage(event) {
     }));
 }
 
+let lastGeminiCooldownUsageUntil = '';
+
 // ─── Key Manager ───────────────────────────────────────────────────────
 
 export class GeminiKeyManager {
@@ -64,6 +68,25 @@ export class GeminiKeyManager {
             this._loadCooldownState();
 
         this.loadKeys();
+
+        console.log(
+            '[GEMINI KEYS] startup',
+            JSON.stringify({
+                totalKeys: this.keys.length,
+                activeKeyIndex:
+                    this.keys.length
+                        ? Number(this.activeIdx) + 1
+                        : null,
+                keys: this.keys.map(k => ({
+                    index: Number(k.index) + 1,
+                    status: k.status,
+                    cooldownUntil: k.cooldownUntil
+                        ? new Date(k.cooldownUntil).toISOString()
+                        : null,
+                    lastHttpStatus: k.lastHttpStatus || null
+                }))
+            })
+        );
     }
 
     _keyCooldownId(key) {
@@ -154,46 +177,127 @@ export class GeminiKeyManager {
     }
 
     _applyPersistedCooldowns() {
-        const now = Date.now();
-        let changed = false;
+        const now =
+            Date.now();
+
+        let changed =
+            false;
 
         for (const keyObj of this.keys) {
             const id =
-                this._keyCooldownId(keyObj.key);
+                this._keyCooldownId(
+                    keyObj.key
+                );
 
             const saved =
-                this.cooldownState[id];
+                this.cooldownState[
+                    id
+                ];
+
+            if (!saved) {
+                continue;
+            }
+
+            const savedCooldownUntil =
+                Number(
+                    saved.cooldownUntil
+                ) || 0;
+
+            const savedHttpStatus =
+                Number(
+                    saved.lastHttpStatus
+                ) || null;
+
+            const savedError =
+                String(
+                    saved.lastError ||
+                    ''
+                );
+
+            const normalizedError =
+                savedError.toLowerCase();
+
+            /*
+             * A 403 PERMISSION_DENIED that was persisted by an
+             * older version must NOT return as "Rate Limited".
+             *
+             * Keep the persisted entry until its old expiry so
+             * service restarts do not immediately retry it.
+             */
+            const permissionDenied =
+                savedHttpStatus === 403 &&
+                (
+                    normalizedError.includes(
+                        'permission_denied'
+                    ) ||
+                    normalizedError.includes(
+                        'permission denied'
+                    ) ||
+                    normalizedError.includes(
+                        'denied access'
+                    )
+                );
 
             if (
-                saved &&
-                Number(saved.cooldownUntil) > now
+                permissionDenied &&
+                savedCooldownUntil > now
             ) {
-                keyObj.status = 'Rate Limited';
+                keyObj.status =
+                    'Error';
+
                 keyObj.cooldownUntil =
-                    Number(saved.cooldownUntil);
+                    null;
 
                 keyObj.lastError =
-                    saved.lastError || null;
+                    savedError ||
+                    null;
 
                 keyObj.lastErrorAt =
-                    saved.lastErrorAt || null;
+                    saved.lastErrorAt ||
+                    null;
 
                 keyObj.lastHttpStatus =
-                    Number(saved.lastHttpStatus) || null;
+                    savedHttpStatus;
 
                 continue;
             }
 
-            if (saved) {
-                delete this.cooldownState[id];
-                changed = true;
+            if (
+                savedCooldownUntil > now
+            ) {
+                keyObj.status =
+                    'Rate Limited';
+
+                keyObj.cooldownUntil =
+                    savedCooldownUntil;
+
+                keyObj.lastError =
+                    savedError ||
+                    null;
+
+                keyObj.lastErrorAt =
+                    saved.lastErrorAt ||
+                    null;
+
+                keyObj.lastHttpStatus =
+                    savedHttpStatus;
+
+                continue;
             }
+
+            delete this.cooldownState[
+                id
+            ];
+
+            changed =
+                true;
         }
 
         if (changed) {
             this._saveCooldownState();
         }
     }
+
 
     loadKeys() {
         try {
@@ -241,27 +345,177 @@ export class GeminiKeyManager {
     }
 
     getCurrentKeyObj() {
-        if (this.keys.length === 0) return null;
-        
-        const now = Date.now();
-        this.keys.forEach(k => {
+        if (this.keys.length === 0) {
             if (
-                k.status === 'Rate Limited' &&
-                k.cooldownUntil &&
-                now > k.cooldownUntil
+                !this._zeroKeyWarningLogged
             ) {
-                k.status = 'Standby';
-                k.cooldownUntil = null;
-                this._clearKeyCooldown(k);
+                console.warn(
+                    '[GEMINI KEYS] no configured keys'
+                );
+
+                this._zeroKeyWarningLogged =
+                    true;
+            }
+
+            return null;
+        }
+
+        this._zeroKeyWarningLogged =
+            false;
+
+        const now =
+            Date.now();
+
+        /*
+         * Release only expired temporary quota cooldowns.
+         */
+        this.keys.forEach(keyObj => {
+            if (
+                keyObj.status === 'Rate Limited' &&
+                keyObj.cooldownUntil &&
+                now > keyObj.cooldownUntil
+            ) {
+                keyObj.status =
+                    'Standby';
+
+                keyObj.cooldownUntil =
+                    null;
+
+                this._clearKeyCooldown(
+                    keyObj
+                );
             }
         });
-        
-        if (this.keys[this.activeIdx].status === 'Rate Limited' || this.keys[this.activeIdx].status === 'Error') {
-            if (!this._switchToNextAvailableKey()) return null;
+
+        const current =
+            this.keys[
+                this.activeIdx
+            ];
+
+        if (
+            !current ||
+            current.status === 'Rate Limited' ||
+            current.status === 'Error'
+        ) {
+            if (
+                !this._switchToNextAvailableKey()
+            ) {
+                const compactKeys =
+                    this.keys.map(
+                        keyObj => ({
+                            index:
+                                Number(
+                                    keyObj.index
+                                ) + 1,
+
+                            status:
+                                keyObj.status,
+
+                            httpStatus:
+                                keyObj.lastHttpStatus ||
+                                null,
+
+                            cooldownUntil:
+                                keyObj.cooldownUntil
+                                    ? Number(
+                                        keyObj.cooldownUntil
+                                    )
+                                    : null
+                        })
+                    );
+
+                const futureCooldowns =
+                    compactKeys
+                        .map(
+                            keyObj =>
+                                Number(
+                                    keyObj.cooldownUntil
+                                ) || 0
+                        )
+                        .filter(
+                            until =>
+                                until > now
+                        );
+
+                const earliestRetryAt =
+                    futureCooldowns.length
+                        ? Math.min(
+                            ...futureCooldowns
+                        )
+                        : 0;
+
+                /*
+                 * Log only when key availability state changes.
+                 * Repeated prewarm lookups become silent.
+                 */
+                const fingerprint =
+                    JSON.stringify(
+                        compactKeys
+                    );
+
+                if (
+                    this._lastNoAvailableFingerprint !==
+                    fingerprint
+                ) {
+                    console.warn(
+                        '[GEMINI KEYS] no available key',
+                        JSON.stringify({
+                            totalKeys:
+                                this.keys.length,
+
+                            earliestRetryAt:
+                                earliestRetryAt
+                                    ? new Date(
+                                        earliestRetryAt
+                                    ).toISOString()
+                                    : null,
+
+                            keys:
+                                compactKeys.map(
+                                    keyObj => ({
+                                        index:
+                                            keyObj.index,
+
+                                        status:
+                                            keyObj.status,
+
+                                        httpStatus:
+                                            keyObj.httpStatus,
+
+                                        cooldownUntil:
+                                            keyObj.cooldownUntil
+                                                ? new Date(
+                                                    keyObj.cooldownUntil
+                                                ).toISOString()
+                                                : null
+                                    })
+                                )
+                        })
+                    );
+
+                    this._lastNoAvailableFingerprint =
+                        fingerprint;
+                }
+
+                return null;
+            }
         }
-        
-        return this.keys[this.activeIdx];
+
+        /*
+         * Something became available again.
+         * A future unavailable transition may log once.
+         */
+        this._lastNoAvailableFingerprint =
+            '';
+
+        return (
+            this.keys[
+                this.activeIdx
+            ] ||
+            null
+        );
     }
+
 
     _switchToNextAvailableKey() {
         if (!this.keys.length) return false;
@@ -277,39 +531,288 @@ export class GeminiKeyManager {
         return false;
     }
 
-    reportError(errorObj) {
+    _resolveRequestKey(keyObj = null, errorObj = null) {
+        /*
+         * Prefer the exact key object captured when the HTTP request started.
+         * Never assume activeIdx still refers to that request's key because
+         * concurrent requests may already have rotated the manager.
+         */
+        if (keyObj?.key) {
+            const exact =
+                this.keys.find(
+                    entry =>
+                        entry.key ===
+                        keyObj.key
+                );
+
+            if (exact) return exact;
+        }
+
+        /*
+         * Smart News propagates keyIndex as a one-based public index.
+         * Use it when the key object itself is not available.
+         */
+        const publicKeyIndex =
+            Number(
+                errorObj?.keyIndex
+            );
+
+        if (
+            Number.isInteger(
+                publicKeyIndex
+            ) &&
+            publicKeyIndex >= 1
+        ) {
+            const exact =
+                this.keys.find(
+                    entry =>
+                        Number(
+                            entry.index
+                        ) ===
+                        publicKeyIndex - 1
+                );
+
+            if (exact) return exact;
+        }
+
+        /*
+         * Legacy fallback only. New request paths should supply keyObj
+         * or errorObj.keyIndex.
+         */
+        return (
+            this.keys[
+                this.activeIdx
+            ] ||
+            null
+        );
+    }
+
+    reportError(errorObj, keyObj = null) {
         if (!this.keys.length) return;
-        const current = this.keys[this.activeIdx];
-        current.lastError = errorObj.message || 'Unknown error';
-        current.lastHttpStatus = Number(errorObj.status) || null;
-        current.lastErrorAt = new Date().toISOString();
-        
-        const isQuotaError = errorObj.status === 429 || errorObj.status === 403 || (errorObj.message && errorObj.message.toLowerCase().includes('quota'));
-        
-        if (isQuotaError) {
-            current.status = 'Rate Limited';
+
+        const current =
+            this._resolveRequestKey(
+                keyObj,
+                errorObj
+            );
+
+        if (!current) return;
+
+        const status =
+            Number(
+                errorObj?.status ||
+                errorObj?.httpStatus
+            ) || null;
+
+        const message =
+            String(
+                errorObj?.message ||
+                errorObj ||
+                ''
+            );
+
+        current.lastError =
+            message ||
+            'Unknown error';
+
+        current.lastHttpStatus =
+            status;
+
+        current.lastErrorAt =
+            new Date()
+                .toISOString();
+
+        /*
+         * Keep existing quota semantics for now.
+         *
+         * The important fix here is attribution: only the physical key
+         * that generated this error is changed.
+         */
+        const normalizedMessage =
+        message.toLowerCase();
+
+    const isPermissionDenied =
+        status === 403 &&
+        (
+            normalizedMessage.includes('permission_denied') ||
+            normalizedMessage.includes('permission denied') ||
+            normalizedMessage.includes('denied access')
+        );
+
+    const isQuotaError =
+        status === 429 ||
+        normalizedMessage.includes('resource_exhausted') ||
+        normalizedMessage.includes('quota');
+
+    if (isPermissionDenied) {
+        const failedWasActive =
+            this.keys[
+                this.activeIdx
+            ] === current;
+
+        current.status =
+            'Error';
+
+        current.cooldownUntil =
+            null;
+
+        this._clearKeyCooldown(
+            current
+        );
+
+        this.autoSwitchCount++;
+
+        let switched = false;
+
+        if (failedWasActive) {
+            switched =
+                this._switchToNextAvailableKey();
+        }
+
+        console.log(
+            '[SUMMARY] Gemini key permission denied',
+            JSON.stringify({
+                failedKeyIndex:
+                    Number(
+                        current.index
+                    ) + 1,
+
+                httpStatus:
+                    status,
+
+                failedWasActive,
+
+                activeKeyIndex:
+                    this.keys[
+                        this.activeIdx
+                    ]
+                        ? Number(
+                            this.keys[
+                                this.activeIdx
+                            ].index
+                        ) + 1
+                        : null,
+
+                switched:
+                    failedWasActive
+                        ? switched
+                        : false
+            })
+        );
+    } else if (isQuotaError) {
+
+            const failedWasActive =
+                this.keys[
+                    this.activeIdx
+                ] === current;
+
+            current.status =
+                'Rate Limited';
+
             current.cooldownUntil =
                 Date.now() +
                 GEMINI_QUOTA_COOLDOWN_MS;
 
-            this._persistKeyCooldown(current);
+            this._persistKeyCooldown(
+                current
+            );
 
             this.autoSwitchCount++;
-            const switched = this._switchToNextAvailableKey();
-            console.log(switched
-                ? `[SUMMARY] Gemini API quota hit (${errorObj.status}). Failover to key index ${this.activeIdx}`
-                : `[SUMMARY] Gemini API quota hit (${errorObj.status}). All configured keys are cooling down.`);
+
+            let switched = false;
+
+            /*
+             * Only rotate activeIdx when THIS failed key is still active.
+             *
+             * If another concurrent request already rotated to another key,
+             * do not disturb that newer selection.
+             */
+            if (failedWasActive) {
+                switched =
+                    this._switchToNextAvailableKey();
+            }
+
+            console.log(
+                '[SUMMARY] Gemini key cooldown',
+                JSON.stringify({
+                    failedKeyIndex:
+                        Number(
+                            current.index
+                        ) + 1,
+
+                    httpStatus:
+                        status,
+
+                    cooldownUntil:
+                        new Date(
+                            current.cooldownUntil
+                        ).toISOString(),
+
+                    failedWasActive,
+
+                    activeKeyIndex:
+                        this.keys[
+                            this.activeIdx
+                        ]
+                            ? Number(
+                                this.keys[
+                                    this.activeIdx
+                                ].index
+                            ) + 1
+                            : null,
+
+                    switched:
+                        failedWasActive
+                            ? switched
+                            : false
+                })
+            );
         } else {
-            console.log(`[SUMMARY] Gemini API error (${errorObj.status || 'Network/Timeout'}). Retrying same key.`);
+            console.log(
+                `[SUMMARY] Gemini API error (${
+                    status ||
+                    'Network/Timeout'
+                }) on key ${
+                    Number(
+                        current.index
+                    ) + 1
+                }. Retrying same key.`
+            );
         }
     }
 
-    recordUsage() {
+    recordUsage(keyObj = null) {
         if (!this.keys.length) return;
-        const current = this.keys[this.activeIdx];
-        current.requestsToday++;
-        current.lastUsed = Date.now();
-        current.status = 'Active';
+
+        const current =
+            this._resolveRequestKey(
+                keyObj,
+                null
+            );
+
+        if (!current) return;
+
+        current.requestsToday =
+            Number(
+                current.requestsToday
+            ) + 1;
+
+        current.lastUsed =
+            Date.now();
+
+        /*
+         * Do not accidentally resurrect a key that another concurrent
+         * request has already rate-limited.
+         */
+        if (
+            current.status !==
+                'Rate Limited' &&
+            current.status !==
+                'Error'
+        ) {
+            current.status =
+                'Active';
+        }
     }
 
     addKey(key, { activate = true } = {}) {
@@ -447,19 +950,72 @@ async function geminiGenerate(model, prompt, options = {}) {
     await geminiKeyManager.waitForRateSlot(6000);
     const keyObj = geminiKeyManager.getCurrentKeyObj();
     if (!keyObj) {
-        logOnlineAiUsage({
-            operation: options.operation || 'summary',
-            model,
-            keyIndex: null,
-            status: 'failed',
-            httpStatus: null,
-            durationMs: 0,
-            errorCode: 'NOT_CONFIGURED',
-            error: 'No Gemini API key is currently available; all configured keys may be cooling down.'
-        });
-        throw new Error("No Gemini API key available");
+        const nowMs = Date.now();
+        const futureCooldowns = geminiKeyManager.keys
+            .map(key => Number(key.cooldownUntil) || 0)
+            .filter(until => until > nowMs);
+    
+        const nextCooldownMs = futureCooldowns.length
+            ? Math.min(...futureCooldowns)
+            : 0;
+    
+        const isCooldown =
+            geminiKeyManager.keys.length > 0 &&
+            nextCooldownMs > nowMs;
+    
+        const cooldownUntil = isCooldown
+            ? new Date(nextCooldownMs).toISOString()
+            : null;
+    
+        if (isCooldown) {
+            // One activity card per actual cooldown deadline.
+            // Repeated story jobs must not spam the activity feed.
+            if (lastGeminiCooldownUsageUntil !== cooldownUntil) {
+                logOnlineAiUsage({
+                    operation: options.operation || 'summary',
+                    model,
+                    keyIndex: null,
+                    status: 'cooldown',
+                    httpStatus: null,
+                    durationMs: 0,
+                    errorCode: 'COOLDOWN',
+                    message: 'Gemini API keys are temporarily cooling down.',
+                    cooldownUntil
+                });
+    
+                lastGeminiCooldownUsageUntil = cooldownUntil;
+            }
+        } else {
+            lastGeminiCooldownUsageUntil = '';
+    
+            logOnlineAiUsage({
+                operation: options.operation || 'summary',
+                model,
+                keyIndex: null,
+                status: 'failed',
+                httpStatus: null,
+                durationMs: 0,
+                errorCode: 'NOT_CONFIGURED',
+                error: 'No Gemini API key is currently available.'
+            });
+        }
+    
+        const unavailableError = new Error(
+            isCooldown
+                ? `Gemini API cooldown active until ${cooldownUntil}`
+                : 'No Gemini API key available'
+        );
+    
+        unavailableError.code = isCooldown
+            ? 'GEMINI_COOLDOWN'
+            : 'NOT_CONFIGURED';
+        unavailableError.cooldownUntil = cooldownUntil;
+        unavailableError.skipProvider = isCooldown;
+        unavailableError.nonProviderFault = isCooldown;
+    
+        throw unavailableError;
     }
-    geminiKeyManager.recordUsage();
+    geminiKeyManager.recordUsage(keyObj);
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${keyObj.key}`;
 
     const controller = new AbortController();
@@ -496,7 +1052,7 @@ async function geminiGenerate(model, prompt, options = {}) {
                 error: String(body || `Gemini returned HTTP ${res.status}`).replace(/\s+/g, ' ').slice(0, 800)
             });
             usageLogged = true;
-            geminiKeyManager.reportError(err);
+            geminiKeyManager.reportError(err, keyObj);
             throw err;
         }
         
@@ -538,7 +1094,7 @@ async function geminiGenerate(model, prompt, options = {}) {
                 error: 'Gemini generation request timed out.'
             });
             usageLogged = true;
-            geminiKeyManager.reportError(err);
+            geminiKeyManager.reportError(err, keyObj);
             throw err;
         }
         if (!usageLogged) {
@@ -560,6 +1116,30 @@ async function geminiGenerate(model, prompt, options = {}) {
 }
 
 async function generateWithFallback(geminiModel, prompt, options = {}) {
+    // GLOBAL_AI_P4:generateWithFallback
+    if (!globalAiTaskActive()) {
+        const args =
+            Array.from(arguments);
+
+        return runGlobalAiTask(
+            {
+                lane:
+                    'p4',
+
+                label:
+                    `summary-engine:${
+                        options?.operation ||
+                        'summary'
+                    }`
+            },
+
+            () =>
+                generateWithFallback(
+                    ...args
+                )
+        );
+    }
+
     const { maxTokens = 1500, timeoutMs = 120000 } = options;
     const globalTimeout = Date.now() + timeoutMs;
 
@@ -581,6 +1161,49 @@ async function generateWithFallback(geminiModel, prompt, options = {}) {
         fallbackTrace.push({ provider: 'antigravity', status: 'failed', reason: error.message });
     }
 
+    // Subscription-backed Gemini Web before paid/API fallback.
+    try {
+        const remaining =
+            globalTimeout - Date.now();
+
+        if (remaining > 5000) {
+            const result =
+                await generateWithGeminiWeb(
+                    prompt,
+                    {
+                        ...options,
+                        timeoutMs:
+                            Math.min(
+                                90000,
+                                Math.max(
+                                    5000,
+                                    remaining - 20000
+                                )
+                            ),
+                        json:
+                            options.json,
+                        operation:
+                            options.operation ||
+                            'summary'
+                    }
+                );
+
+            result.fallbackTrace =
+                fallbackTrace;
+
+            return result;
+        }
+    } catch (error) {
+        fallbackTrace.push({
+            provider: 'gemini-web',
+            model: '3.8 Flash',
+            status: 'failed',
+            reason: error.message
+        });
+
+        lastError = error;
+    }
+
     for (const step of sequence) {
         if (Date.now() > globalTimeout) break;
         
@@ -596,7 +1219,14 @@ async function generateWithFallback(geminiModel, prompt, options = {}) {
             res.fallbackTrace = fallbackTrace;
             return res;
         } catch (e) {
-            console.log(`[SUMMARY] Model ${step.displayModel} failed: ${e.message}`);
+            if (
+                e?.code !== 'GEMINI_COOLDOWN' &&
+                e?.code !== 'NOT_CONFIGURED'
+            ) {
+                console.log(
+                    `[SUMMARY] Model ${step.displayModel} failed: ${e.message}`
+                );
+            }
             fallbackTrace.push({ model: step.displayModel, status: 'failed', reason: e.message });
             lastError = e;
         }

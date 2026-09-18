@@ -1,0 +1,537 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
+
+/*
+ * One provider-independent AI scheduler.
+ *
+ * NOT READING
+ *   - 2 total tasks
+ *   - P3/P4 alternate fairly
+ *
+ * READING
+ *   - P0: max 2
+ *   - P1: max 2
+ *   - P3/P4: one shared fair slot
+ *
+ * TRANSITION INTO READING
+ *   Existing two low-priority tasks are allowed to finish.
+ *   P0/P1 capacity is granted immediately, so the temporary
+ *   maximum can be:
+ *
+ *       2 old P3/P4 + 2 P0 + 2 P1 = 6
+ *
+ *   After the old low work drains, steady state becomes 5.
+ *
+ * Providers do NOT own priority policy. They only execute a task
+ * after this scheduler has authorized it.
+ */
+
+const schedulerContext = new AsyncLocalStorage();
+
+const pending = [];
+const active = new Map();
+
+let readingMode = false;
+let lowTurn = 'p3';
+let sequence = 0;
+let dispatching = false;
+let wakeTimer = null;
+
+const VALID_LANES = new Set([
+    'p0',
+    'p1',
+    'p3',
+    'p4'
+]);
+
+function normalizeLane(value) {
+    const lane =
+        String(value || '')
+            .trim()
+            .toLowerCase();
+
+    return VALID_LANES.has(lane)
+        ? lane
+        : 'p4';
+}
+
+function notBeforeFor(task) {
+    try {
+        const value =
+            typeof task.getNotBefore === 'function'
+                ? task.getNotBefore()
+                : task.notBefore;
+
+        return Math.max(
+            0,
+            Number(value) || 0
+        );
+    } catch {
+        return 0;
+    }
+}
+
+function laneFor(task) {
+    let lane;
+
+    try {
+        lane =
+            normalizeLane(
+                typeof task.getLane === 'function'
+                    ? task.getLane()
+                    : task.lane
+            );
+    } catch {
+        lane = 'p4';
+    }
+
+    /*
+     * Once reading ends, queued foreground work loses its
+     * foreground reservation and joins ordinary low-priority work.
+     */
+    if (
+        !readingMode &&
+        (
+            lane === 'p0' ||
+            lane === 'p1'
+        )
+    ) {
+        return 'p4';
+    }
+
+    return lane;
+}
+
+function taskReady(task, now = Date.now()) {
+    return notBeforeFor(task) <= now;
+}
+
+function activeCount(lane) {
+    let count = 0;
+
+    for (const item of active.values()) {
+        if (item.lane === lane) {
+            count++;
+        }
+    }
+
+    return count;
+}
+
+function activeLowCount() {
+    return (
+        activeCount('p3') +
+        activeCount('p4')
+    );
+}
+
+function takeLane(lane) {
+    const now = Date.now();
+
+    for (
+        let index = 0;
+        index < pending.length;
+        index++
+    ) {
+        const task = pending[index];
+
+        if (!taskReady(task, now)) {
+            continue;
+        }
+
+        if (laneFor(task) !== lane) {
+            continue;
+        }
+
+        pending.splice(index, 1);
+        return task;
+    }
+
+    return null;
+}
+
+function takeLow() {
+    const preferred = lowTurn;
+    const other =
+        preferred === 'p3'
+            ? 'p4'
+            : 'p3';
+
+    let task =
+        takeLane(preferred);
+
+    if (!task) {
+        task =
+            takeLane(other);
+    }
+
+    if (!task) {
+        return null;
+    }
+
+    const lane =
+        laneFor(task);
+
+    lowTurn =
+        lane === 'p3'
+            ? 'p4'
+            : 'p3';
+
+    return {
+        task,
+        lane
+    };
+}
+
+function debug(event, extra = {}) {
+    if (
+        process.env.GLOBAL_AI_SCHED_DEBUG !== '1'
+    ) {
+        return;
+    }
+
+    console.log(
+        '[GLOBAL AI SCHED]',
+        JSON.stringify({
+            event,
+            reading: readingMode,
+            active: active.size,
+            pending: pending.length,
+            ...extra
+        })
+    );
+}
+
+function startTask(task, lane) {
+    active.set(
+        task.id,
+        {
+            lane,
+            label:
+                task.label || null
+        }
+    );
+
+    debug(
+        'start',
+        {
+            id: task.id,
+            lane,
+            label:
+                task.label || null
+        }
+    );
+
+    const execution =
+        schedulerContext.run(
+            {
+                authorized: true,
+                lane,
+                label:
+                    task.label || null
+            },
+            () =>
+                Promise.resolve()
+                    .then(task.fn)
+        );
+
+    execution
+        .then(
+            task.resolve,
+            task.reject
+        )
+        .finally(() => {
+            active.delete(task.id);
+
+            debug(
+                'finish',
+                {
+                    id: task.id,
+                    lane,
+                    label:
+                        task.label || null
+                }
+            );
+
+            dispatch();
+        });
+}
+
+function armWakeTimer() {
+    if (wakeTimer) {
+        clearTimeout(wakeTimer);
+        wakeTimer = null;
+    }
+
+    if (!pending.length) {
+        return;
+    }
+
+    const now = Date.now();
+
+    let earliest =
+        Infinity;
+
+    for (const task of pending) {
+        const timestamp =
+            notBeforeFor(task);
+
+        if (
+            timestamp > now &&
+            timestamp < earliest
+        ) {
+            earliest = timestamp;
+        }
+    }
+
+    if (!Number.isFinite(earliest)) {
+        return;
+    }
+
+    wakeTimer =
+        setTimeout(
+            () => {
+                wakeTimer = null;
+                dispatch();
+            },
+            Math.max(
+                1,
+                earliest - now
+            )
+        );
+
+    wakeTimer.unref?.();
+}
+
+function dispatch() {
+    if (dispatching) {
+        return;
+    }
+
+    dispatching = true;
+
+    try {
+        let progressed = true;
+
+        while (progressed) {
+            progressed = false;
+
+            if (readingMode) {
+                /*
+                 * P0 and P1 each own at most two active positions.
+                 */
+                for (
+                    const lane of [
+                        'p0',
+                        'p1'
+                    ]
+                ) {
+                    while (
+                        activeCount(lane) < 2
+                    ) {
+                        const task =
+                            takeLane(lane);
+
+                        if (!task) {
+                            break;
+                        }
+
+                        startTask(
+                            task,
+                            lane
+                        );
+
+                        progressed = true;
+                    }
+                }
+
+                /*
+                 * Low-priority work gets one shared steady-state
+                 * position. Two old low tasks may temporarily remain
+                 * during the transition into reading mode.
+                 */
+                if (
+                    activeLowCount() < 1
+                ) {
+                    const next =
+                        takeLow();
+
+                    if (next) {
+                        startTask(
+                            next.task,
+                            next.lane
+                        );
+
+                        progressed = true;
+                    }
+                }
+            } else {
+                /*
+                 * Outside reading mode there are only two global
+                 * positions. Old P0/P1 work from reading mode drains
+                 * naturally before new low work starts.
+                 */
+                while (
+                    active.size < 2
+                ) {
+                    const next =
+                        takeLow();
+
+                    if (!next) {
+                        break;
+                    }
+
+                    startTask(
+                        next.task,
+                        next.lane
+                    );
+
+                    progressed = true;
+                }
+            }
+        }
+    } finally {
+        dispatching = false;
+        armWakeTimer();
+    }
+}
+
+export function globalAiTaskActive() {
+    return (
+        schedulerContext
+            .getStore()
+            ?.authorized === true
+    );
+}
+
+export function runGlobalAiTask(
+    options = {},
+    fn
+) {
+    if (
+        typeof options === 'string'
+    ) {
+        options = {
+            lane: options
+        };
+    }
+
+    if (
+        typeof fn !== 'function'
+    ) {
+        return Promise.reject(
+            new TypeError(
+                'runGlobalAiTask requires a function'
+            )
+        );
+    }
+
+    /*
+     * A provider router invoked inside an already-authorized job
+     * must not acquire a second scheduler position.
+     */
+    if (globalAiTaskActive()) {
+        return Promise.resolve()
+            .then(fn);
+    }
+
+    return new Promise(
+        (resolve, reject) => {
+            pending.push({
+                id:
+                    ++sequence,
+                lane:
+                    options.lane ||
+                    'p4',
+                getLane:
+                    options.getLane ||
+                    null,
+                notBefore:
+                    options.notBefore ||
+                    0,
+                getNotBefore:
+                    options.getNotBefore ||
+                    null,
+                label:
+                    options.label ||
+                    null,
+                fn,
+                resolve,
+                reject,
+                queuedAt:
+                    Date.now()
+            });
+
+            dispatch();
+        }
+    );
+}
+
+export function setGlobalAiReadingMode(
+    activeReading
+) {
+    const next =
+        Boolean(activeReading);
+
+    if (
+        readingMode === next
+    ) {
+        dispatch();
+        return;
+    }
+
+    readingMode = next;
+
+    console.log(
+        '[GLOBAL AI SCHED]',
+        JSON.stringify({
+            event:
+                'reading-mode',
+            reading:
+                readingMode,
+            active:
+                active.size,
+            pending:
+                pending.length
+        })
+    );
+
+    dispatch();
+}
+
+export function getGlobalAiSchedulerState() {
+    const pendingCounts = {
+        p0: 0,
+        p1: 0,
+        p3: 0,
+        p4: 0
+    };
+
+    for (const task of pending) {
+        pendingCounts[
+            laneFor(task)
+        ]++;
+    }
+
+    return {
+        reading:
+            readingMode,
+
+        active: {
+            total:
+                active.size,
+            p0:
+                activeCount('p0'),
+            p1:
+                activeCount('p1'),
+            p3:
+                activeCount('p3'),
+            p4:
+                activeCount('p4'),
+            low:
+                activeLowCount()
+        },
+
+        pending:
+            pendingCounts
+    };
+}

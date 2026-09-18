@@ -3822,49 +3822,58 @@
                         <div class="flex items-center justify-between gap-3 mb-3">
                             <div>
                                 <div class="ai-status-card-title text-[11px] uppercase tracking-wider font-bold text-gray-500">Smart clustering priority</div>
-                                <div class="ai-status-muted text-xs text-gray-500 mt-1">Antigravity CLI handles AI requests first. Gemini API keys provide backup when the CLI is unavailable or a request fails.</div>
+                                <div class="ai-status-muted text-xs text-gray-500 mt-1">Antigravity CLI runs first. Gemini Web uses your signed-in 3.8 Flash subscription in Temporary Chat with 2 browser slots, followed by Gemini API and local fallback.</div>
                             </div>
                             <span class="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-emerald-300"
                                 x-text="geminiKeyStatus?.lastSmartRun?.providerOrder?.[0]?.startsWith('antigravity') ? 'Antigravity first' : 'Gemini backup'"></span>
                         </div>
                         <div class="space-y-2">
-                            <template x-for="(providerId, idx) in (geminiKeyStatus?.lastSmartRun?.providerOrder || ['antigravity-low', 'antigravity-medium', 'antigravity-high', 'gemini-flash', 'local-qwen'])" :key="providerId">
+                            <template x-for="(providerId, idx) in (geminiKeyStatus?.lastSmartRun?.providerOrder || ['antigravity-low', 'antigravity-medium', 'antigravity-high', 'gemini-web', 'gemini-flash', 'local-qwen'])" :key="providerId">
                                 <div class="ai-status-provider-row flex items-start gap-3 rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-2.5">
                                     <span class="ai-status-provider-rank flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-violet-400/10 text-xs font-black text-violet-300" x-text="idx + 1"></span>
                                     <div class="min-w-0 flex-1 space-y-1">
                                         <div class="flex justify-between items-center">
-                                            <div class="ai-status-value text-sm font-semibold text-white" x-text="providerId.startsWith('antigravity') ? 'Antigravity CLI' : (providerId === 'local-qwen' ? 'Local Qwen' : 'Gemini API')"></div>
+                                            <div class="ai-status-value text-sm font-semibold text-white" x-text="providerId.startsWith('antigravity') ? 'Antigravity CLI' : (providerId === 'gemini-web' ? 'Gemini Web' : (providerId === 'local-qwen' ? 'Local Qwen' : 'Gemini API'))"></div>
                                             <span class="text-[10px] font-bold uppercase tracking-wide" 
                                                   :class="idx === 0 ? 'text-emerald-300' : 'text-gray-500'" 
                                                   x-text="idx === 0 ? 'Primary' : 'Backup'"></span>
                                         </div>
                                         <div class="ai-status-muted truncate text-xs text-gray-500" 
-                                             x-text="providerId.startsWith('antigravity') ? ('gemini-3.8-flash-' + providerId.replace('antigravity-', '') + ' · CLI') : providerId === 'local-qwen' ? (geminiKeyStatus?.lastSmartRun?.localModel || 'qwen3.5:2b') : (providerId === 'gemini-flash-lite' ? 'gemini-3.5-flash-lite · minimal thinking' : 'gemini-3.8-flash')"></div>
+                                             x-text="providerId.startsWith('antigravity') ? ('gemini-3.8-flash-' + providerId.replace('antigravity-', '') + ' · CLI') : providerId === 'gemini-web' ? '3.8 Flash · Temporary Chat · 2 slots' : providerId === 'local-qwen' ? (geminiKeyStatus?.lastSmartRun?.localModel || 'qwen3.5:2b') : (providerId === 'gemini-flash-lite' ? 'gemini-3.5-flash-lite · minimal thinking' : 'gemini-3.8-flash')"></div>
                                         
                                         <!-- Health stats -->
                                         <div class="mt-2 text-[11px] text-gray-400 space-y-0.5"
-                                            x-data="{ healthType: providerId.startsWith('antigravity') ? 'antigravity' : (providerId.startsWith('local') ? 'ollama' : 'gemini') }">
+                                            x-data="{ healthKey: geminiKeyStatus?.providerHealth?.[providerId] ? providerId : (providerId.startsWith('antigravity') ? 'antigravity' : (providerId.startsWith('local') ? 'ollama' : 'gemini')) }">
                                             <div class="flex gap-2">
                                                 <span class="font-medium text-gray-300">Status:</span>
                                                 <span :class="{
-                                                    'text-emerald-400': !geminiKeyStatus?.providerHealth?.[healthType]?.state || geminiKeyStatus?.providerHealth?.[healthType]?.state === 'healthy',
-                                                    'text-amber-400': geminiKeyStatus?.providerHealth?.[healthType]?.state === 'degraded',
-                                                    'text-orange-400': geminiKeyStatus?.providerHealth?.[healthType]?.state === 'failing',
-                                                    'text-red-400': geminiKeyStatus?.providerHealth?.[healthType]?.state === 'dead'
-                                                }" x-text="(geminiKeyStatus?.providerHealth?.[healthType]?.state || 'healthy').toUpperCase()"></span>
+                                                    'text-emerald-400': (geminiKeyStatus?.providerHealth?.[healthKey]?.state || geminiKeyStatus?.providerHealth?.[healthKey]?.status || 'healthy') === 'healthy',
+                                                    'text-amber-300': (geminiKeyStatus?.providerHealth?.[healthKey]?.state || geminiKeyStatus?.providerHealth?.[healthKey]?.status) === 'cooldown',
+                                                    'text-amber-400': (geminiKeyStatus?.providerHealth?.[healthKey]?.state || geminiKeyStatus?.providerHealth?.[healthKey]?.status) === 'degraded',
+                                                    'text-orange-400': (geminiKeyStatus?.providerHealth?.[healthKey]?.state || geminiKeyStatus?.providerHealth?.[healthKey]?.status) === 'failing',
+                                                    'text-red-400': (geminiKeyStatus?.providerHealth?.[healthKey]?.state || geminiKeyStatus?.providerHealth?.[healthKey]?.status) === 'dead'
+                                                }" x-text="(geminiKeyStatus?.providerHealth?.[healthKey]?.state || geminiKeyStatus?.providerHealth?.[healthKey]?.status || 'healthy').toUpperCase()"></span>
                                             </div>
-                                            <div x-show="geminiKeyStatus?.providerHealth?.[healthType]?.lastSuccess">
+                                            <div x-show="geminiKeyStatus?.providerHealth?.[healthKey]?.lastSuccess">
                                                 <span class="font-medium text-gray-300">Last Success:</span> 
-                                                <span x-text="geminiKeyStatus?.providerHealth?.[healthType]?.lastSuccess ? new Date(geminiKeyStatus.providerHealth[healthType].lastSuccess).toLocaleString() : ''"></span>
+                                                <span x-text="geminiKeyStatus?.providerHealth?.[healthKey]?.lastSuccess ? new Date(geminiKeyStatus.providerHealth[healthKey].lastSuccess).toLocaleString() : ''"></span>
                                             </div>
-                                            <div x-show="geminiKeyStatus?.providerHealth?.[healthType]?.lastErrorAt">
+                                            <div
+                                                x-show="geminiKeyStatus?.providerHealth?.[healthKey]?.cooldownUntil && Date.parse(geminiKeyStatus?.providerHealth?.[healthKey]?.cooldownUntil) > Date.now()">
+                                                <span class="font-medium text-gray-300">Available again:</span>
+                                                <span class="text-amber-300"
+                                                    x-text="geminiKeyStatus?.providerHealth?.[healthKey]?.cooldownUntil ? new Date(geminiKeyStatus.providerHealth[healthKey].cooldownUntil).toLocaleString() : ''"></span>
+                                                <div class="mt-0.5 text-amber-400/80"
+                                                    x-text="geminiKeyStatus?.providerHealth?.[healthKey]?.cooldownReason || geminiKeyStatus?.providerHealth?.[healthKey]?.cooldownCode || ''"></div>
+                                            </div>
+                                            <div x-show="geminiKeyStatus?.providerHealth?.[healthKey]?.lastErrorAt">
                                                 <span class="font-medium text-gray-300">Last Error:</span> 
-                                                <span class="text-red-300" x-text="geminiKeyStatus?.providerHealth?.[healthType]?.lastErrorAt ? new Date(geminiKeyStatus.providerHealth[healthType].lastErrorAt).toLocaleString() : ''"></span>
-                                                <div class="text-red-400/80 mt-0.5 truncate" x-text="geminiKeyStatus?.providerHealth?.[healthType]?.lastError || ''"></div>
+                                                <span class="text-red-300" x-text="geminiKeyStatus?.providerHealth?.[healthKey]?.lastErrorAt ? new Date(geminiKeyStatus.providerHealth[healthKey].lastErrorAt).toLocaleString() : ''"></span>
+                                                <div class="text-red-400/80 mt-0.5 truncate" x-text="geminiKeyStatus?.providerHealth?.[healthKey]?.lastError || ''"></div>
                                             </div>
-                                            <div x-show="geminiKeyStatus?.providerHealth?.[healthType]?.consecutiveErrors > 0">
+                                            <div x-show="geminiKeyStatus?.providerHealth?.[healthKey]?.consecutiveErrors > 0">
                                                 <span class="font-medium text-gray-300">Consecutive Errors:</span> 
-                                                <span class="text-red-300" x-text="geminiKeyStatus?.providerHealth?.[healthType]?.consecutiveErrors || 0"></span>
+                                                <span class="text-red-300" x-text="geminiKeyStatus?.providerHealth?.[healthKey]?.consecutiveErrors || 0"></span>
                                             </div>
                                         </div>
                                     </div>
@@ -4165,7 +4174,7 @@
                                     <article class="rounded-xl border border-white/[0.07] bg-[#0B101E]/70 p-3">
                                         <div class="flex items-start gap-3">
                                             <span class="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full"
-                                                :class="event.status === 'success' ? 'bg-emerald-400' : (event.status === 'failed' ? 'bg-red-400' : (event.status === 'blocked' ? 'bg-amber-400' : 'bg-gray-500'))"></span>
+                                                :class="event.status === 'success' ? 'bg-emerald-400' : (event.status === 'failed' ? 'bg-red-400' : ((event.status === 'blocked' || event.status === 'cooldown') ? 'bg-amber-400' : 'bg-gray-500'))"></span>
                                             <div class="min-w-0 flex-1">
                                                 <div class="flex flex-wrap items-start justify-between gap-2">
                                                     <div>
@@ -4193,14 +4202,28 @@
                                                     <span x-show="event.durationMs !== null" class="rounded-md bg-white/[0.04] px-2 py-1" x-text="formatAiUsageDuration(event.durationMs)"></span>
                                                     <span x-show="event.totalTokens" class="rounded-md bg-white/[0.04] px-2 py-1" x-text="formatAiUsageNumber(event.totalTokens) + ' tokens (' + formatAiUsageNumber(event.promptTokens) + ' in / ' + formatAiUsageNumber(event.outputTokens) + ' out)' "></span>
                                                     <span x-show="event.articleCount !== null" class="rounded-md bg-white/[0.04] px-2 py-1" x-text="event.articleCount + ' articles'"></span>
-                                                    <span x-show="event.errorCode" class="rounded-md bg-red-500/[0.07] px-2 py-1 text-red-300/80" x-text="event.errorCode"></span>
+                                                    <span x-show="event.errorCode && event.status !== 'cooldown'" class="rounded-md bg-red-500/[0.07] px-2 py-1 text-red-300/80" x-text="event.errorCode"></span>
+                                                    <span x-show="event.status === 'cooldown' && event.cooldownUntil"
+                                                        class="rounded-md bg-amber-500/[0.08] px-2 py-1 font-bold text-amber-300/90"
+                                                        x-text="(() => {
+                                                            const remaining = Math.max(0, Date.parse(event.cooldownUntil) - onlineAiUsageNow);
+                                                            if (remaining <= 0) return 'Available now';
+                                                            const totalSeconds = Math.ceil(remaining / 1000);
+                                                            const hours = Math.floor(totalSeconds / 3600);
+                                                            const minutes = Math.floor((totalSeconds % 3600) / 60);
+                                                            const seconds = totalSeconds % 60;
+                                                            return 'Available in ' +
+                                                                (hours ? hours + 'h ' : '') +
+                                                                (minutes || hours ? minutes + 'm ' : '') +
+                                                                seconds + 's';
+                                                        })()"></span>
                                                     <span x-show="event.repairAttempted"
                                                         class="rounded-md px-2 py-1"
                                                         :class="event.repairSucceeded === true ? 'bg-emerald-500/[0.08] text-emerald-300/80' : (event.repairSucceeded === false ? 'bg-red-500/[0.07] text-red-300/80' : 'bg-amber-500/[0.08] text-amber-300/80')"
                                                         x-text="event.repairSucceeded === true ? 'JSON repair succeeded' : (event.repairSucceeded === false ? 'JSON repair failed' : 'JSON repair attempted')"></span>
                                                 </div>
 
-                                                <div x-show="event.error || event.message" class="mt-2 whitespace-normal break-words rounded-lg border border-red-400/10 bg-red-500/[0.04] px-3 py-2 text-[11px] leading-relaxed text-red-200/80" x-text="event.error || event.message"></div>
+                                                <div x-show="event.status !== 'cooldown' && (event.error || event.message)" class="mt-2 whitespace-normal break-words rounded-lg border border-red-400/10 bg-red-500/[0.04] px-3 py-2 text-[11px] leading-relaxed text-red-200/80" x-text="event.error || event.message"></div>
 
                                                 <div x-show="event.errorCode === 'INVALID_JSON' && event.source !== 'structured' && !event.rawResponse"
                                                     class="mt-2 rounded-lg border border-amber-400/10 bg-amber-500/[0.04] px-3 py-2 text-[11px] leading-relaxed text-amber-200/80">

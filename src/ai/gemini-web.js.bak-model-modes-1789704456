@@ -1,0 +1,1834 @@
+const sleep = ms =>
+    new Promise(resolve => setTimeout(resolve, ms));
+
+export const GEMINI_WEB_URL =
+    process.env.GEMINI_WEB_URL ||
+    'https://gemini.google.com/u/1/app';
+
+export const GEMINI_WEB_MODEL = '3.8 Flash';
+
+// User requirement: exactly two Gemini Web AI slots.
+export const GEMINI_WEB_CONCURRENCY = 2;
+
+const GEMINI_WEB_PROFILE =
+    process.env.GEMINI_WEB_PROFILE ||
+    process.env.OPENCLI_BROWSER_PROFILE ||
+    process.env.OPENCLI_PROFILE ||
+    undefined;
+
+const GEMINI_WEB_COOLDOWN_MS = Math.max(
+    5000,
+    Number(process.env.GEMINI_WEB_COOLDOWN_MS) || 30000
+);
+
+const GEMINI_WEB_IDLE_CLOSE_MS = Math.max(
+    5000,
+    Number(process.env.GEMINI_WEB_IDLE_CLOSE_MS) ||
+        10 * 60 * 1000
+);
+
+const slots = Array.from(
+    { length: GEMINI_WEB_CONCURRENCY },
+    (_, index) => ({
+        id: index + 1,
+        busy: false,
+        page: null,
+        idleTimer: null,
+        lastUsedAt: 0
+    })
+);
+
+const waiters = [];
+
+let retryAt = 0;
+let browserModulesPromise = null;
+
+export function geminiWebAvailable() {
+    return process.env.GEMINI_WEB_ENABLED !== 'false';
+}
+
+async function browserModules() {
+    if (!browserModulesPromise) {
+        browserModulesPromise = Promise.all([
+            import(
+                '../../node_modules/@jackwener/opencli/dist/src/browser/page.js'
+            ),
+            import(
+                '../../node_modules/@jackwener/opencli/dist/src/browser/daemon-client.js'
+            )
+        ]).then(([
+            { Page },
+            { setDaemonCommandTimeoutSeconds }
+        ]) => {
+            setDaemonCommandTimeoutSeconds(35);
+            return { Page };
+        });
+    }
+
+    return browserModulesPromise;
+}
+
+function clearIdleClose(slot) {
+    if (!slot.idleTimer) return;
+
+    clearTimeout(slot.idleTimer);
+    slot.idleTimer = null;
+}
+
+
+async function closeSlotPage(
+    slot,
+    reason = 'cleanup'
+) {
+    clearIdleClose(slot);
+
+    const page = slot.page;
+    slot.page = null;
+
+    if (!page) return;
+
+    try {
+        await page.closeWindow?.();
+
+        console.log(
+            `[GEMINI WEB] Closed slot ${slot.id} tab (${reason})`
+        );
+    } catch (error) {
+        console.warn(
+            `[GEMINI WEB] Could not close slot ${slot.id} tab:`,
+            error?.message || error
+        );
+    }
+}
+
+
+function scheduleIdleClose(slot) {
+    clearIdleClose(slot);
+
+    if (
+        slot.busy ||
+        !slot.page
+    ) {
+        return;
+    }
+
+    const pageAtSchedule =
+        slot.page;
+
+    slot.idleTimer =
+        setTimeout(
+            async () => {
+                slot.idleTimer = null;
+
+                if (
+                    slot.busy ||
+                    !slot.page ||
+                    slot.page !== pageAtSchedule
+                ) {
+                    return;
+                }
+
+                const idleFor =
+                    Date.now() -
+                    slot.lastUsedAt;
+
+                if (
+                    idleFor <
+                    GEMINI_WEB_IDLE_CLOSE_MS
+                ) {
+                    scheduleIdleClose(slot);
+                    return;
+                }
+
+                await closeSlotPage(
+                    slot,
+                    'idle timeout'
+                );
+            },
+            GEMINI_WEB_IDLE_CLOSE_MS
+        );
+
+    /*
+     * Don't keep standalone Node tests alive just because
+     * this maintenance timer exists.
+     */
+    slot.idleTimer.unref?.();
+}
+
+
+async function acquireSlot() {
+    const free =
+        slots.find(
+            slot => !slot.busy
+        );
+
+    if (free) {
+        clearIdleClose(free);
+        free.busy = true;
+        return free;
+    }
+
+    return new Promise(resolve => {
+        waiters.push(resolve);
+    });
+}
+
+
+function releaseSlot(slot) {
+    slot.lastUsedAt =
+        Date.now();
+
+    const next =
+        waiters.shift();
+
+    if (next) {
+        /*
+         * Give the SAME slot/tab directly to the next queued job.
+         */
+        clearIdleClose(slot);
+        next(slot);
+        return;
+    }
+
+    slot.busy = false;
+    scheduleIdleClose(slot);
+}
+
+
+async function getPage(slot) {
+    if (slot.page) return slot.page;
+
+    const { Page } = await browserModules();
+
+    slot.page = new Page(
+        `rss-gemini-web-${slot.id}`,
+        180,
+        undefined,
+        'background',
+        'browser',
+        'persistent',
+        GEMINI_WEB_PROFILE
+    );
+
+    return slot.page;
+}
+
+async function collectDiagnostics(page) {
+    return page.evaluate(() => {
+        const visible = element => {
+            if (!element) return false;
+            const style = getComputedStyle(element);
+            const rect = element.getBoundingClientRect();
+
+            return (
+                style.display !== 'none' &&
+                style.visibility !== 'hidden' &&
+                rect.width > 0 &&
+                rect.height > 0
+            );
+        };
+
+        const label = element =>
+            [
+                element.innerText,
+                element.getAttribute('aria-label'),
+                element.getAttribute('title'),
+                element.getAttribute('data-tooltip')
+            ]
+                .filter(Boolean)
+                .join(' ')
+                .replace(/\s+/g, ' ')
+                .trim();
+
+        return {
+            url: location.href,
+            title: document.title,
+            buttons: [
+                ...document.querySelectorAll(
+                    'button,[role="button"],[role="menuitem"],[role="option"]'
+                )
+            ]
+                .filter(visible)
+                .map(label)
+                .filter(Boolean)
+                .slice(0, 50),
+
+            inputs: [
+                ...document.querySelectorAll(
+                    'textarea,[contenteditable="true"]'
+                )
+            ]
+                .filter(visible)
+                .map(element => ({
+                    tag: element.tagName,
+                    role: element.getAttribute('role'),
+                    aria: element.getAttribute('aria-label'),
+                    placeholder:
+                        element.getAttribute('placeholder'),
+                    className:
+                        String(element.className || '')
+                            .slice(0, 120)
+                }))
+                .slice(0, 20)
+        };
+    });
+}
+
+async function providerError(
+    page,
+    message,
+    code
+) {
+    const error = new Error(message);
+    error.code = code;
+
+    try {
+        error.ui = await collectDiagnostics(page);
+    } catch {
+        // Diagnostics must never hide the original error.
+    }
+
+    throw error;
+}
+
+async function waitForGeminiPage(
+    page,
+    timeoutMs = 20000
+) {
+    const deadline = Date.now() + timeoutMs;
+
+    while (Date.now() < deadline) {
+        const state = await page.evaluate(() => ({
+            url: location.href,
+            readyState: document.readyState,
+            title: document.title || '',
+            bodyLength:
+                (document.body?.innerText || '').length
+        })).catch(() => null);
+
+        if (state) {
+            if (
+                /accounts\.google\.com/i.test(state.url)
+            ) {
+                return providerError(
+                    page,
+                    'Gemini Web requires the Google account to be signed in',
+                    'GEMINI_WEB_LOGIN_REQUIRED'
+                );
+            }
+
+            if (
+                state.readyState !== 'loading' &&
+                state.bodyLength > 100
+            ) {
+                return state;
+            }
+        }
+
+        await sleep(300);
+    }
+
+    return providerError(
+        page,
+        'Gemini Web did not become ready',
+        'GEMINI_WEB_PAGE_TIMEOUT'
+    );
+}
+
+async function temporaryChatState(page) {
+    return page.evaluate(() => {
+        const visible = element => {
+            if (!element) return false;
+
+            const style = getComputedStyle(element);
+            const rect = element.getBoundingClientRect();
+
+            return (
+                style.display !== 'none' &&
+                style.visibility !== 'hidden' &&
+                rect.width > 0 &&
+                rect.height > 0
+            );
+        };
+
+        const temporaryButton = [
+            ...document.querySelectorAll(
+                'button,[role="button"]'
+            )
+        ]
+            .filter(visible)
+            .find(element => {
+                const label = [
+                    element.getAttribute('aria-label'),
+                    element.innerText,
+                    element.getAttribute('title')
+                ]
+                    .filter(Boolean)
+                    .join(' ')
+                    .replace(/\s+/g, ' ')
+                    .trim();
+
+                return /^temporary chat$/i.test(label);
+            });
+
+        if (!temporaryButton) {
+            return {
+                enabled: false,
+                canEnable: false,
+                iconName: '',
+                helpLink: false
+            };
+        }
+
+        const icon = temporaryButton.querySelector(
+            'mat-icon,[data-mat-icon-name]'
+        );
+
+        const iconName =
+            icon?.getAttribute('data-mat-icon-name') ||
+            icon?.getAttribute('fonticon') ||
+            '';
+
+        const helpLink = [
+            ...document.querySelectorAll('a[aria-label]')
+        ]
+            .filter(visible)
+            .some(element =>
+                /^temporary chats$/i.test(
+                    element.getAttribute('aria-label') || ''
+                )
+            );
+
+        /*
+         * Gemini current DOM:
+         *
+         * OFF:
+         *   aria-label="Temporary chat"
+         *   data-mat-icon-name="gemini_chat_temp"
+         *
+         * ON:
+         *   aria-label="Temporary chat"
+         *   data-mat-icon-name="close"
+         *   + "Temporary chats" support link
+         */
+        const enabled =
+            /^close$/i.test(iconName) ||
+            helpLink;
+
+        return {
+            enabled,
+            canEnable: !enabled,
+            iconName,
+            helpLink
+        };
+    });
+}
+
+async function ensureTemporaryChat(page) {
+    let state = await temporaryChatState(page);
+
+    if (state.enabled) {
+        return;
+    }
+
+    if (!state.canEnable) {
+        return providerError(
+            page,
+            'Temporary Chat control was not found',
+            'GEMINI_WEB_TEMP_CHAT_NOT_FOUND'
+        );
+    }
+
+    const clicked = await page.evaluate(() => {
+        const visible = element => {
+            const style = getComputedStyle(element);
+            const rect = element.getBoundingClientRect();
+
+            return (
+                style.display !== 'none' &&
+                style.visibility !== 'hidden' &&
+                rect.width > 0 &&
+                rect.height > 0
+            );
+        };
+
+        const button = [
+            ...document.querySelectorAll(
+                'button,[role="button"]'
+            )
+        ]
+            .filter(visible)
+            .find(element =>
+                /^temporary chat$/i.test(
+                    (
+                        element.getAttribute('aria-label') ||
+                        element.innerText ||
+                        ''
+                    ).trim()
+                )
+            );
+
+        if (!button) return false;
+
+        button.click();
+        return true;
+    });
+
+    if (!clicked) {
+        return providerError(
+            page,
+            'Temporary Chat could not be enabled',
+            'GEMINI_WEB_TEMP_CHAT_CLICK_FAILED'
+        );
+    }
+
+    const deadline = Date.now() + 8000;
+
+    while (Date.now() < deadline) {
+        await sleep(250);
+
+        state = await temporaryChatState(page);
+
+        if (state.enabled) {
+            return;
+        }
+    }
+
+    return providerError(
+        page,
+        `Temporary Chat could not be confirmed as enabled (icon: ${state.iconName || 'unknown'})`,
+        'GEMINI_WEB_TEMP_CHAT_NOT_CONFIRMED'
+    );
+}
+
+async function clickTemporaryChatToggle(page) {
+    return page.evaluate(() => {
+        const visible = element => {
+            if (!element) return false;
+
+            const style =
+                getComputedStyle(element);
+
+            const rect =
+                element.getBoundingClientRect();
+
+            return (
+                style.display !== 'none' &&
+                style.visibility !== 'hidden' &&
+                rect.width > 0 &&
+                rect.height > 0
+            );
+        };
+
+        const button = [
+            ...document.querySelectorAll(
+                'button,[role="button"]'
+            )
+        ]
+            .filter(visible)
+            .find(element =>
+                /^temporary chat$/i.test(
+                    String(
+                        element.getAttribute(
+                            'aria-label'
+                        ) ||
+                        element.innerText ||
+                        ''
+                    ).trim()
+                )
+            );
+
+        if (!button) return false;
+
+        button.click();
+        return true;
+    });
+}
+
+
+async function waitForTemporaryChatState(
+    page,
+    expectedEnabled,
+    timeoutMs = 8000
+) {
+    const deadline =
+        Date.now() + timeoutMs;
+
+    let state = null;
+
+    while (Date.now() < deadline) {
+        state =
+            await temporaryChatState(page);
+
+        if (
+            state.enabled ===
+            expectedEnabled
+        ) {
+            return state;
+        }
+
+        await sleep(200);
+    }
+
+    return providerError(
+        page,
+        expectedEnabled
+            ? 'Temporary Chat could not be confirmed ON'
+            : 'Temporary Chat could not be confirmed OFF',
+        expectedEnabled
+            ? 'GEMINI_WEB_TEMP_CHAT_NOT_CONFIRMED'
+            : 'GEMINI_WEB_TEMP_CHAT_RESET_FAILED'
+    );
+}
+
+
+async function returnToGeminiChatHome(page) {
+    /*
+     * Gemini's native New Chat shortcut:
+     *
+     *     Ctrl + Shift + O
+     *
+     * Use a real CDP key press rather than element.click().
+     *
+     * This keeps:
+     *   - same browser tab
+     *   - same Google login
+     *   - same OpenCLI slot
+     *
+     * but starts a new Gemini conversation.
+     */
+
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+        /*
+         * Close any open menu/popover first.
+         */
+        try {
+            await page.pressKey(
+                'Escape'
+            );
+        } catch {
+            // Nothing to close.
+        }
+
+        await sleep(150);
+
+        console.log(
+            `[GEMINI WEB] New chat via Ctrl+Shift+O (attempt ${attempt})`
+        );
+
+        await page.pressKey(
+            'Control+Shift+O'
+        );
+
+        /*
+         * A successful New Chat eventually exposes the
+         * Temporary Chat control again.
+         *
+         * Do NOT inspect model-response nodes here:
+         * Gemini may retain stale DOM nodes even though the
+         * actual conversation has been reset.
+         */
+        const deadline =
+            Date.now() + 10000;
+
+        while (Date.now() < deadline) {
+            const state =
+                await temporaryChatState(page);
+
+            if (
+                state.enabled ||
+                state.canEnable
+            ) {
+                return;
+            }
+
+            await sleep(200);
+        }
+    }
+
+    return providerError(
+        page,
+        'Gemini New chat shortcut did not reach a fresh chat',
+        'GEMINI_WEB_NEW_CHAT_SHORTCUT_FAILED'
+    );
+}
+
+
+async function resetFreshTemporaryChat(page) {
+    /*
+     * Temporary Chat control can render later than the prompt
+     * editor/mode picker after New Chat. Wait for it separately.
+     */
+    const controlDeadline =
+        Date.now() + 15000;
+
+    let state = null;
+
+    while (Date.now() < controlDeadline) {
+        state =
+            await temporaryChatState(page);
+
+        if (
+            state.enabled ||
+            state.canEnable
+        ) {
+            break;
+        }
+
+        await sleep(200);
+    }
+
+    if (
+        !state ||
+        (
+            !state.enabled &&
+            !state.canEnable
+        )
+    ) {
+        return providerError(
+            page,
+            'Temporary Chat control did not appear after New chat',
+            'GEMINI_WEB_TEMP_CHAT_NOT_FOUND'
+        );
+    }
+
+    /*
+     * If it is somehow already enabled, switch it off so this
+     * job cannot reuse an existing temporary conversation.
+     */
+    if (state.enabled) {
+        const clickedOff =
+            await clickTemporaryChatToggle(
+                page
+            );
+
+        if (!clickedOff) {
+            return providerError(
+                page,
+                'Could not close the previous Temporary Chat',
+                'GEMINI_WEB_TEMP_CHAT_RESET_FAILED'
+            );
+        }
+
+        await waitForTemporaryChatState(
+            page,
+            false
+        );
+    }
+
+    const clickedOn =
+        await clickTemporaryChatToggle(
+            page
+        );
+
+    if (!clickedOn) {
+        return providerError(
+            page,
+            'Could not start a fresh Temporary Chat',
+            'GEMINI_WEB_TEMP_CHAT_CLICK_FAILED'
+        );
+    }
+
+    await waitForTemporaryChatState(
+        page,
+        true
+    );
+}
+
+
+async function waitForModePicker(
+    page,
+    timeoutMs = 10000
+) {
+    const deadline = Date.now() + timeoutMs;
+
+    while (Date.now() < deadline) {
+        const found = await page.evaluate(() => {
+            const element = document.querySelector(
+                '[data-test-id="bard-mode-menu-button"]'
+            );
+
+            if (!element) return false;
+
+            const style = getComputedStyle(element);
+            const rect = element.getBoundingClientRect();
+
+            return (
+                style.display !== 'none' &&
+                style.visibility !== 'hidden' &&
+                rect.width > 0 &&
+                rect.height > 0
+            );
+        }).catch(() => false);
+
+        if (found) return;
+
+        await sleep(250);
+    }
+
+    return providerError(
+        page,
+        'Gemini Web mode picker did not appear',
+        'GEMINI_WEB_MODE_PICKER_NOT_FOUND'
+    );
+}
+
+
+async function inspectModelMenu(page) {
+    return page.evaluate(() => {
+        const visible = element => {
+            if (!element) return false;
+
+            const style = getComputedStyle(element);
+            const rect = element.getBoundingClientRect();
+
+            return (
+                style.display !== 'none' &&
+                style.visibility !== 'hidden' &&
+                rect.width > 0 &&
+                rect.height > 0
+            );
+        };
+
+        const menu = document.querySelector(
+            '[data-test-id="gem-mode-menu"]'
+        );
+
+        if (!menu || !visible(menu)) {
+            return {
+                open: false,
+                selectedText: '',
+                selectedTestId: '',
+                extendedSelected: false,
+                flash38Present: false
+            };
+        }
+
+        const items = [
+            ...menu.querySelectorAll(
+                '[role="menuitem"]'
+            )
+        ].filter(visible);
+
+        const normalize = element =>
+            String(element.innerText || '')
+                .replace(/\s+/g, ' ')
+                .trim();
+
+        const isSelected = element =>
+            element.classList.contains('selected') ||
+            Boolean(
+                element.querySelector(
+                    'gem-icon[aria-label="Selected"]'
+                )
+            );
+
+        const selected =
+            items.find(isSelected) || null;
+
+        const flash38 =
+            items.find(element =>
+                element.getAttribute('data-test-id') ===
+                    'bard-mode-option-56fdd199312815e2' ||
+                /^3\.8 Flash\b/i.test(
+                    normalize(element)
+                )
+            ) || null;
+
+        const extended =
+            items.find(element =>
+                /^Extended thinking\b/i.test(
+                    normalize(element)
+                )
+            ) || null;
+
+        return {
+            open: true,
+            selectedText:
+                selected
+                    ? normalize(selected)
+                    : '',
+            selectedTestId:
+                selected?.getAttribute(
+                    'data-test-id'
+                ) || '',
+            extendedSelected:
+                Boolean(
+                    extended &&
+                    isSelected(extended)
+                ),
+            flash38Present:
+                Boolean(flash38),
+            flash38Selected:
+                Boolean(
+                    flash38 &&
+                    isSelected(flash38)
+                )
+        };
+    });
+}
+
+
+async function openModelMenu(page) {
+    await waitForModePicker(page);
+
+    const opened = await page.evaluate(() => {
+        const button = document.querySelector(
+            '[data-test-id="bard-mode-menu-button"]'
+        );
+
+        if (!button) return false;
+
+        if (
+            button.getAttribute('aria-expanded') ===
+            'true'
+        ) {
+            return true;
+        }
+
+        button.click();
+        return true;
+    });
+
+    if (!opened) {
+        return providerError(
+            page,
+            'Gemini Web mode picker could not be opened',
+            'GEMINI_WEB_MODE_PICKER_OPEN_FAILED'
+        );
+    }
+
+    const deadline = Date.now() + 5000;
+
+    while (Date.now() < deadline) {
+        const state =
+            await inspectModelMenu(page);
+
+        if (state.open) {
+            return state;
+        }
+
+        await sleep(150);
+    }
+
+    return providerError(
+        page,
+        'Gemini Web model menu did not open',
+        'GEMINI_WEB_MODEL_MENU_TIMEOUT'
+    );
+}
+
+
+async function closeModelMenu(page) {
+    await page.evaluate(() => {
+        const button = document.querySelector(
+            '[data-test-id="bard-mode-menu-button"]'
+        );
+
+        if (
+            button &&
+            button.getAttribute('aria-expanded') ===
+                'true'
+        ) {
+            button.click();
+        }
+    }).catch(() => {});
+
+    await sleep(150);
+}
+
+
+async function modelState(page) {
+    const state =
+        await openModelMenu(page);
+
+    /*
+     * Strict validation:
+     *
+     * Gemini labels the collapsed picker simply "Flash",
+     * which is ambiguous between Flash-Lite and 3.8 Flash.
+     * Therefore we always inspect the open menu's selected
+     * option rather than trusting the collapsed button text.
+     */
+    const ok =
+        state.flash38Selected === true &&
+        state.extendedSelected !== true &&
+        (
+            state.selectedTestId ===
+                'bard-mode-option-56fdd199312815e2' ||
+            /^3\.8 Flash\b/i.test(
+                state.selectedText
+            )
+        );
+
+    return {
+        ...state,
+        ok
+    };
+}
+
+
+async function ensureModel(page) {
+    await waitForModePicker(
+        page,
+        20000
+    );
+
+    let state =
+        await modelState(page);
+
+    if (state.extendedSelected) {
+        await closeModelMenu(page);
+
+        return providerError(
+            page,
+            'Extended thinking is selected; refusing to use it',
+            'GEMINI_WEB_EXTENDED_THINKING_SELECTED'
+        );
+    }
+
+    if (state.ok) {
+        await closeModelMenu(page);
+        return;
+    }
+
+    if (!state.flash38Present) {
+        await closeModelMenu(page);
+
+        return providerError(
+            page,
+            'Gemini Web 3.8 Flash option is not available',
+            'GEMINI_WEB_MODEL_NOT_FOUND'
+        );
+    }
+
+    /*
+     * Select only 3.8 Flash.
+     *
+     * Never click by generic "Flash" text because Gemini also
+     * exposes 3.5 Flash-Lite.
+     */
+    const selected = await page.evaluate(() => {
+        const menu = document.querySelector(
+            '[data-test-id="gem-mode-menu"]'
+        );
+
+        if (!menu) return false;
+
+        const items = [
+            ...menu.querySelectorAll(
+                '[role="menuitem"]'
+            )
+        ];
+
+        const target =
+            items.find(element =>
+                element.getAttribute(
+                    'data-test-id'
+                ) ===
+                    'bard-mode-option-56fdd199312815e2'
+            ) ||
+            items.find(element =>
+                /^3\.8 Flash\b/i.test(
+                    String(
+                        element.innerText ||
+                        ''
+                    )
+                        .replace(/\s+/g, ' ')
+                        .trim()
+                )
+            );
+
+        if (!target) return false;
+
+        target.click();
+        return true;
+    });
+
+    if (!selected) {
+        return providerError(
+            page,
+            'Gemini Web could not select 3.8 Flash',
+            'GEMINI_WEB_MODEL_SELECT_FAILED'
+        );
+    }
+
+    /*
+     * Clicking an option normally closes the menu.
+     * Give Angular a moment to update, then reopen and
+     * positively verify the selected option.
+     */
+    await sleep(500);
+
+    state =
+        await modelState(page);
+
+    if (state.extendedSelected) {
+        await closeModelMenu(page);
+
+        return providerError(
+            page,
+            'Extended thinking became selected unexpectedly',
+            'GEMINI_WEB_EXTENDED_THINKING_SELECTED'
+        );
+    }
+
+    if (!state.ok) {
+        await closeModelMenu(page);
+
+        return providerError(
+            page,
+            `Gemini Web could not confirm 3.8 Flash; selected: ${
+                state.selectedText ||
+                state.selectedTestId ||
+                'unknown'
+            }`,
+            'GEMINI_WEB_MODEL_NOT_CONFIRMED'
+        );
+    }
+
+    await closeModelMenu(page);
+}
+
+async function setPrompt(page, text) {
+    const result = await page.evaluate(promptText => {
+        const visible = element => {
+            const style = getComputedStyle(element);
+            const rect = element.getBoundingClientRect();
+
+            return (
+                style.display !== 'none' &&
+                style.visibility !== 'hidden' &&
+                rect.width > 0 &&
+                rect.height > 0
+            );
+        };
+
+        const candidates = [
+            ...document.querySelectorAll(
+                'textarea,[contenteditable="true"]'
+            )
+        ].filter(element =>
+            visible(element) &&
+            !element.disabled
+        );
+
+        const score = element => {
+            const description = [
+                element.getAttribute('aria-label'),
+                element.getAttribute('placeholder'),
+                element.getAttribute('role'),
+                element.className
+            ]
+                .filter(Boolean)
+                .join(' ');
+
+            let value = 0;
+
+            if (/prompt|message|ask gemini/i.test(description)) {
+                value += 20;
+            }
+
+            if (element.getAttribute('role') === 'textbox') {
+                value += 10;
+            }
+
+            if (/ql-editor/i.test(String(element.className))) {
+                value += 8;
+            }
+
+            if (element.isContentEditable) {
+                value += 4;
+            }
+
+            return value;
+        };
+
+        candidates.sort(
+            (a, b) =>
+                score(b) - score(a)
+        );
+
+        const editor = candidates[0];
+
+        if (!editor) {
+            return {
+                ok: false
+            };
+        }
+
+        editor.focus();
+
+        if (
+            editor instanceof HTMLTextAreaElement ||
+            editor instanceof HTMLInputElement
+        ) {
+            const prototype =
+                editor instanceof HTMLTextAreaElement
+                    ? HTMLTextAreaElement.prototype
+                    : HTMLInputElement.prototype;
+
+            const setter =
+                Object.getOwnPropertyDescriptor(
+                    prototype,
+                    'value'
+                )?.set;
+
+            if (setter) {
+                setter.call(
+                    editor,
+                    promptText
+                );
+            } else {
+                editor.value =
+                    promptText;
+            }
+
+            editor.dispatchEvent(
+                new Event(
+                    'input',
+                    {
+                        bubbles: true
+                    }
+                )
+            );
+        } else {
+            try {
+                document.execCommand(
+                    'selectAll',
+                    false,
+                    null
+                );
+
+                document.execCommand(
+                    'insertText',
+                    false,
+                    promptText
+                );
+            } catch {
+                // Fall through to direct content update.
+            }
+
+            if (
+                !String(editor.innerText || '')
+                    .trim()
+            ) {
+                editor.textContent =
+                    promptText;
+
+                editor.dispatchEvent(
+                    new InputEvent(
+                        'input',
+                        {
+                            bubbles: true,
+                            inputType:
+                                'insertText',
+                            data:
+                                promptText
+                        }
+                    )
+                );
+            }
+        }
+
+        return {
+            ok: true
+        };
+    }, text);
+
+    if (!result?.ok) {
+        return providerError(
+            page,
+            'Gemini Web prompt editor was not found',
+            'GEMINI_WEB_PROMPT_NOT_FOUND'
+        );
+    }
+}
+
+async function submitPrompt(page) {
+    const deadline = Date.now() + 6000;
+
+    while (Date.now() < deadline) {
+        const submitted = await page.evaluate(() => {
+            const visible = element => {
+                const style = getComputedStyle(element);
+                const rect = element.getBoundingClientRect();
+
+                return (
+                    style.display !== 'none' &&
+                    style.visibility !== 'hidden' &&
+                    rect.width > 0 &&
+                    rect.height > 0
+                );
+            };
+
+            const label = element =>
+                [
+                    element.innerText,
+                    element.getAttribute('aria-label'),
+                    element.getAttribute('title'),
+                    element.getAttribute('data-tooltip')
+                ]
+                    .filter(Boolean)
+                    .join(' ')
+                    .replace(/\s+/g, ' ')
+                    .trim();
+
+            const buttons = [
+                ...document.querySelectorAll('button')
+            ].filter(element =>
+                visible(element) &&
+                !element.disabled
+            );
+
+            const send = buttons.find(element =>
+                /send message|^send$/i.test(
+                    label(element)
+                )
+            );
+
+            if (send) {
+                send.click();
+                return true;
+            }
+
+            return false;
+        });
+
+        if (submitted) return;
+
+        await sleep(150);
+    }
+
+    return providerError(
+        page,
+        'Gemini Web send button was not available',
+        'GEMINI_WEB_SEND_NOT_FOUND'
+    );
+}
+
+async function responseState(page) {
+    return page.evaluate(() => {
+        const visible = element => {
+            const style = getComputedStyle(element);
+            const rect = element.getBoundingClientRect();
+
+            return (
+                style.display !== 'none' &&
+                style.visibility !== 'hidden' &&
+                rect.width > 0 &&
+                rect.height > 0
+            );
+        };
+
+        const modelResponses = [
+            ...document.querySelectorAll(
+                'model-response'
+            )
+        ].filter(visible);
+
+        let text = '';
+
+        if (modelResponses.length) {
+            text =
+                modelResponses[
+                    modelResponses.length - 1
+                ].innerText || '';
+        }
+
+        if (!text.trim()) {
+            const alternatives = [
+                ...document.querySelectorAll(
+                    '[data-message-author-role="model"],.model-response-text,.response-container-content'
+                )
+            ].filter(visible);
+
+            if (alternatives.length) {
+                text =
+                    alternatives[
+                        alternatives.length - 1
+                    ].innerText || '';
+            }
+        }
+
+        const controls = [
+            ...document.querySelectorAll(
+                'button,[role="button"]'
+            )
+        ].filter(visible);
+
+        const generating =
+            controls.some(element => {
+                const label = [
+                    element.innerText,
+                    element.getAttribute('aria-label'),
+                    element.getAttribute('title')
+                ]
+                    .filter(Boolean)
+                    .join(' ');
+
+                return /stop response|stop generating|cancel response/i
+                    .test(label);
+            });
+
+        const alerts = [
+            ...document.querySelectorAll(
+                '[role="alert"],[aria-live="assertive"],.error-message'
+            )
+        ]
+            .filter(visible)
+            .map(element =>
+                String(element.innerText || '')
+                    .replace(/\s+/g, ' ')
+                    .trim()
+            )
+            .filter(Boolean)
+            .join(' ');
+
+        return {
+            text: text.trim(),
+            generating,
+            alerts: alerts.slice(0, 1000)
+        };
+    });
+}
+
+async function waitForResponse(
+    page,
+    baseline,
+    timeoutMs
+) {
+    const deadline =
+        Date.now() + timeoutMs;
+
+    let lastText = '';
+    let stableCount = 0;
+    let started = false;
+
+    while (Date.now() < deadline) {
+        const state =
+            await responseState(page);
+
+        if (
+            state.text &&
+            state.text !== baseline
+        ) {
+            started = true;
+
+            if (state.text === lastText) {
+                stableCount++;
+            } else {
+                stableCount = 0;
+                lastText = state.text;
+            }
+
+            if (
+                !state.generating &&
+                stableCount >= 3
+            ) {
+                return state.text;
+            }
+        }
+
+        if (
+            !started &&
+            /reached your limit|too many requests|try again later|couldn.t generate|something went wrong/i
+                .test(state.alerts)
+        ) {
+            const error =
+                new Error(
+                    'Gemini Web reported a generation/rate-limit error'
+                );
+
+            error.code =
+                'GEMINI_WEB_GENERATION_ERROR';
+
+            throw error;
+        }
+
+        await sleep(500);
+    }
+
+    const error =
+        new Error(
+            'Gemini Web response timed out'
+        );
+
+    error.code =
+        'GEMINI_WEB_TIMEOUT';
+
+    throw error;
+}
+
+function cleanResponse(text) {
+    return String(text || '')
+        .trim()
+        .replace(
+            /^Gemini said\s*/i,
+            ''
+        )
+        .trim()
+        .replace(
+            /^```(?:json)?\s*/i,
+            ''
+        )
+        .replace(
+            /\s*```$/,
+            ''
+        )
+        .trim();
+}
+
+function buildInput(prompt, options) {
+    let input =
+        'Use only the information supplied in this prompt. ' +
+        'Do not browse the web or use external tools.\n\n' +
+        String(prompt || '');
+
+    if (options?.schema) {
+        input +=
+            '\n\nReturn output that conforms exactly to this JSON Schema:\n' +
+            JSON.stringify(options.schema);
+    }
+
+    if (options?.json) {
+        input +=
+            '\n\nReturn valid JSON only. Do not wrap it in Markdown fences.';
+    }
+
+    return input;
+}
+
+async function resetGeminiJobPage(page) {
+    /*
+     * Keep this slot's existing browser tab.
+     *
+     * Do NOT create a new tab.
+     * Do NOT use about:blank.
+     *
+     * Reset only the Gemini conversation.
+     */
+    const current =
+        await page.evaluate(() => ({
+            url: location.href
+        })).catch(() => ({
+            url: ''
+        }));
+
+    if (
+        !/^https:\/\/gemini\.google\.com\//i.test(
+            current.url || ''
+        )
+    ) {
+        await page.goto(
+            GEMINI_WEB_URL,
+            {
+                settleMs: 1800
+            }
+        );
+
+        await waitForGeminiPage(
+            page,
+            20000
+        );
+    }
+
+    /*
+     * Every job gets a brand-new Gemini conversation.
+     */
+    await returnToGeminiChatHome(
+        page
+    );
+
+    /*
+     * Turn on Temporary Chat for that new conversation.
+     */
+    await resetFreshTemporaryChat(
+        page
+    );
+
+    /*
+     * Let the input area/mode picker settle.
+     */
+    await sleep(500);
+}
+
+
+async function runOnSlot(
+    slot,
+    prompt,
+    options
+) {
+    const page =
+        await getPage(slot);
+
+    try {
+        /*
+         * Reuse this slot's existing browser tab, but start
+         * every job from a completely fresh Gemini page.
+         */
+        await resetGeminiJobPage(page);
+
+        /*
+         * Strict requirements:
+         * 1. Temporary Chat must be ON.
+         * 2. Model must be 3.8 Flash.
+         * 3. Extended thinking must NOT be selected.
+         *
+         * Gemini occasionally renders the prompt box before
+         * the mode picker. If that happens once, hard-reset
+         * this SAME tab and retry.
+         */
+        try {
+            await ensureModel(page);
+        } catch (error) {
+            if (
+                error?.code !==
+                'GEMINI_WEB_MODE_PICKER_NOT_FOUND'
+            ) {
+                throw error;
+            }
+
+            console.warn(
+                `[GEMINI WEB] Slot ${slot.id}: mode picker missing; reloading same tab once`
+            );
+
+            await resetGeminiJobPage(page);
+            await ensureModel(page);
+        }
+
+        const before =
+            await responseState(page);
+
+        const input =
+            buildInput(
+                prompt,
+                options
+            );
+
+        await setPrompt(
+            page,
+            input
+        );
+
+        options.onRequest?.();
+
+        await submitPrompt(page);
+
+        return await waitForResponse(
+            page,
+            before.text || '',
+            Math.max(
+                5000,
+                Math.min(
+                    180000,
+                    Number(options.timeoutMs) ||
+                    120000
+                )
+            )
+        );
+    } catch (error) {
+        // Discard a bad tab/session. The slot itself remains reusable.
+        try {
+            await slot.page
+                ?.closeWindow?.();
+        } catch {
+            // Ignore cleanup errors.
+        }
+
+        slot.page = null;
+
+        throw error;
+    }
+}
+
+export async function closeGeminiWebSlots() {
+    await Promise.all(
+        slots.map(
+            slot =>
+                closeSlotPage(
+                    slot,
+                    'manual cleanup'
+                )
+        )
+    );
+}
+
+
+export async function generateWithGeminiWeb(
+    prompt,
+    options = {}
+) {
+    if (!geminiWebAvailable()) {
+        throw new Error(
+            'Gemini Web provider is disabled'
+        );
+    }
+
+    if (Date.now() < retryAt) {
+        throw new Error(
+            'Gemini Web is cooling down; use the next provider'
+        );
+    }
+
+    const inputBytes =
+        Buffer.byteLength(
+            String(prompt || ''),
+            'utf8'
+        );
+
+    if (inputBytes > 180000) {
+        throw new Error(
+            'Gemini Web prompt is too large'
+        );
+    }
+
+    const slot =
+        await acquireSlot();
+
+    const startedAt =
+        Date.now();
+
+    try {
+        const rawText =
+            await runOnSlot(
+                slot,
+                prompt,
+                options
+            );
+
+        const text =
+            cleanResponse(rawText);
+
+        if (!text) {
+            const error =
+                new Error(
+                    'Gemini Web returned an empty response'
+                );
+
+            error.code =
+                'GEMINI_WEB_EMPTY';
+
+            throw error;
+        }
+
+        if (options.json) {
+            try {
+                JSON.parse(text);
+            } catch {
+                const error =
+                    new Error(
+                        'Gemini Web returned invalid JSON'
+                    );
+
+                error.code =
+                    'GEMINI_WEB_INVALID_JSON';
+
+                throw error;
+            }
+        }
+
+        retryAt = 0;
+
+        const usage = {
+            promptTokens: 0,
+            outputTokens: 0,
+            totalTokens: 0
+        };
+
+        console.log(
+            '[ONLINE AI]',
+            JSON.stringify({
+                at:
+                    new Date()
+                        .toISOString(),
+                provider:
+                    'gemini-web',
+                operation:
+                    options.operation ||
+                    'summary',
+                model:
+                    GEMINI_WEB_MODEL,
+                slot:
+                    slot.id,
+                status:
+                    'success',
+                durationMs:
+                    Date.now() -
+                    startedAt,
+                ...usage
+            })
+        );
+
+        return {
+            text,
+            provider:
+                'gemini-web',
+            modelUsed:
+                GEMINI_WEB_MODEL,
+            totalDuration:
+                (
+                    Date.now() -
+                    startedAt
+                ) * 1e6,
+            usage,
+            onlineAiUsage:
+                usage,
+            slot:
+                slot.id
+        };
+    } catch (error) {
+        retryAt =
+            Date.now() +
+            GEMINI_WEB_COOLDOWN_MS;
+
+        console.log(
+            '[ONLINE AI]',
+            JSON.stringify({
+                at:
+                    new Date()
+                        .toISOString(),
+                provider:
+                    'gemini-web',
+                operation:
+                    options.operation ||
+                    'summary',
+                model:
+                    GEMINI_WEB_MODEL,
+                slot:
+                    slot.id,
+                status:
+                    'failed',
+                durationMs:
+                    Date.now() -
+                    startedAt,
+                errorCode:
+                    String(
+                        error.code ||
+                        error.name ||
+                        'GEMINI_WEB_FAILED'
+                    ).slice(0, 80),
+                error:
+                    String(
+                        error.message ||
+                        error
+                    )
+                        .replace(
+                            /\s+/g,
+                            ' '
+                        )
+                        .slice(
+                            0,
+                            500
+                        ),
+                ui:
+                    error.ui ||
+                    undefined
+            })
+        );
+
+        throw error;
+    } finally {
+        releaseSlot(slot);
+    }
+}
