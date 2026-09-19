@@ -795,6 +795,13 @@
                 },
                 topStoryError: '',
                 briefingRefreshTimer: null,
+
+                // APP_EVENT_STREAM_CLIENT_V1
+                serverEvents: null,
+                serverEventsConnected: false,
+                serverEventsFallbackTimer: null,
+                serverEventUserStateTimer: null,
+
                 smartViewToken: '',
                 rankingPending: false,
                 get usesTopStories() { return this.selectedFilterType === 'smart' && this.smartTabMode === 'top'; },
@@ -802,13 +809,26 @@
                     return article.briefing || { status: 'queued', headline: this.stripHtml(article.title), sections: [], sources: [] };
                 },
                 uniqueCitations(citations) { return [...new Map((citations || []).map(c => [c.link, c])).values()]; },
-                scheduleBriefingRefresh(attempt = 0, delay = 15000) {
+                scheduleBriefingRefresh(attempt = 0, delay = 300000) {
                     if (this.briefingRefreshTimer) clearTimeout(this.briefingRefreshTimer);
                     if (!this.usesTopStories) return;
                     const tab = this.selectedFilterValue;
                     const token = this.smartViewToken;
                     this.briefingRefreshTimer = setTimeout(async () => {
                         if (!this.usesTopStories || this.selectedFilterValue !== tab || this.smartViewToken !== token) return;
+
+                        /*
+                         * Do not download/parse a full Smart payload while
+                         * the browser tab is hidden.
+                         */
+                        if (document.hidden) {
+                            this.scheduleBriefingRefresh(
+                                attempt,
+                                60000
+                            );
+                            return;
+                        }
+
                         try {
                             const page = (attempt % Math.max(1,this.currentPage)) + 1;
                             const response = await fetch('/api/data?' + new URLSearchParams({ filterType: 'smart', filterValue: tab, smartMode: 'top', smartRegion: this.smartRegion, smartView: token, page, limit: this.isMobile ? 15 : 40, hideRead: this.hideRead, searchQuery: this.searchQuery || '' }));
@@ -1498,11 +1518,38 @@
                         }
                     }, 600);
                     
-                    setInterval(() => { if (!document.hidden) this.syncUserStatesInBackground(); }, 15000);
+                    this.startServerEvents();
+
+                    /*
+                     * Emergency reconciliation only.
+                     * Normal updates arrive through /api/events.
+                     */
+                    this.serverEventsFallbackTimer =
+                        setInterval(
+                            () => {
+                                if (
+                                    !document.hidden &&
+                                    !this.serverEventsConnected
+                                ) {
+                                    this.syncUserStatesInBackground();
+                                }
+                            },
+                            5 * 60 * 1000
+                        );
 
                     // Background poll for debug stats (quota warning)
                     this.fetchGeminiDebugStats();
-                    setInterval(() => this.fetchGeminiDebugStats(), 30000);
+                    setInterval(
+                        () => {
+                            if (
+                                !document.hidden &&
+                                !this.geminiStatusOpen
+                            ) {
+                                this.fetchGeminiDebugStats();
+                            }
+                        },
+                        5 * 60 * 1000
+                    );
 
                     document.addEventListener('visibilitychange', () => { 
                         if (document.hidden) {
@@ -1563,6 +1610,337 @@
                     }, 30000);
                 },
 
+                startServerEvents() {
+                    if (
+                        !this.isLoggedIn ||
+                        this.serverEvents ||
+                        typeof EventSource ===
+                            'undefined'
+                    ) {
+                        return;
+                    }
+
+                    const source =
+                        new EventSource(
+                            '/api/events'
+                        );
+
+                    this.serverEvents =
+                        source;
+
+                    const connected =
+                        () => {
+                            this.serverEventsConnected =
+                                true;
+                        };
+
+                    source.onopen =
+                        connected;
+
+                    source.addEventListener(
+                        'ready',
+                        connected
+                    );
+
+                    source.addEventListener(
+                        'user-state-changed',
+                        event => {
+                            /*
+                             * SSE_STATE_DELTA_V1
+                             *
+                             * Apply the small server delta directly.
+                             * Do NOT call syncUserStatesInBackground()
+                             * here: that routine flushes pending writes,
+                             * which can publish another SSE event and
+                             * create a write -> event -> sync loop.
+                             *
+                             * A hidden tab intentionally defers updates;
+                             * the existing visibilitychange reconciliation
+                             * performs a full state refresh on return.
+                             */
+                            if (
+                                document.hidden
+                            ) {
+                                return;
+                            }
+
+                            let data;
+
+                            try {
+                                data =
+                                    JSON.parse(
+                                        event.data ||
+                                            '{}'
+                                    );
+                            } catch {
+                                return;
+                            }
+
+                            if (
+                                data.kind ===
+                                    'preference' &&
+                                data.key
+                            ) {
+                                if (
+                                    !Object.prototype.hasOwnProperty.call(
+                                        this.pendingPreferences,
+                                        data.key
+                                    )
+                                ) {
+                                    this.userPreferences = {
+                                        ...this.userPreferences,
+                                        [data.key]:
+                                            data.value
+                                    };
+
+                                    if (
+                                        data.key ===
+                                            'clusteringModel'
+                                    ) {
+                                        this.clusteringModel =
+                                            data.value;
+                                    }
+                                }
+
+                                return;
+                            }
+
+                            if (
+                                ![
+                                    'toggle',
+                                    'toggle-batch'
+                                ].includes(
+                                    data.kind
+                                ) ||
+                                !Array.isArray(
+                                    data.changes
+                                )
+                            ) {
+                                return;
+                            }
+
+                            const changes =
+                                data.changes.filter(
+                                    change =>
+                                        change &&
+                                        typeof change.link ===
+                                            'string'
+                                );
+
+                            if (
+                                !changes.length
+                            ) {
+                                return;
+                            }
+
+                            if (
+                                data.list ===
+                                    'readStates'
+                            ) {
+                                const next =
+                                    new Set(
+                                        this.readStates
+                                    );
+
+                                for (
+                                    const change
+                                    of changes
+                                ) {
+                                    if (
+                                        change.present
+                                    ) {
+                                        next.add(
+                                            change.link
+                                        );
+                                    } else {
+                                        next.delete(
+                                            change.link
+                                        );
+                                    }
+                                }
+
+                                this.readStates =
+                                    next;
+
+                                return;
+                            }
+
+                            const applyArrayDelta =
+                                current => {
+                                    let next =
+                                        Array.isArray(
+                                            current
+                                        )
+                                            ? [
+                                                  ...current
+                                              ]
+                                            : [];
+
+                                    for (
+                                        const change
+                                        of changes
+                                    ) {
+                                        next =
+                                            next.filter(
+                                                link =>
+                                                    link !==
+                                                    change.link
+                                            );
+
+                                        if (
+                                            change.present
+                                        ) {
+                                            next.push(
+                                                change.link
+                                            );
+                                        }
+                                    }
+
+                                    return this.dedupeStateLinks(
+                                        next
+                                    );
+                                };
+
+                            if (
+                                data.list ===
+                                    'savedStates'
+                            ) {
+                                this.savedStates =
+                                    applyArrayDelta(
+                                        this.savedStates
+                                    );
+                            } else if (
+                                data.list ===
+                                    'boardStates'
+                            ) {
+                                this.boardStates =
+                                    applyArrayDelta(
+                                        this.boardStates
+                                    );
+                            } else if (
+                                data.list ===
+                                    'hiddenStates'
+                            ) {
+                                this.hiddenStates =
+                                    applyArrayDelta(
+                                        this.hiddenStates
+                                    );
+                            }
+                        }
+                    );
+
+                    /*
+                     * SMART_BRIEFING_SSE_V1
+                     *
+                     * Story briefing completions are pushed by the server.
+                     * Use the existing timer as a debounce so a burst of
+                     * completions produces one targeted /api/data refresh.
+                     *
+                     * The normal timer is now only a 5-minute reconciliation
+                     * fallback rather than a 30-second poll.
+                     */
+                    source.addEventListener(
+                        'smart-briefing-changed',
+                        event => {
+                            if (
+                                document.hidden ||
+                                !this.usesTopStories
+                            ) {
+                                return;
+                            }
+
+                            let data = {};
+
+                            try {
+                                data =
+                                    JSON.parse(
+                                        event.data ||
+                                        '{}'
+                                    );
+                            } catch {
+                                data = {};
+                            }
+
+                            let targetAttempt = 0;
+
+                            if (
+                                data.clusterId
+                            ) {
+                                const index =
+                                    this.articles.findIndex(
+                                        article =>
+                                            (
+                                                article.clusterId ||
+                                                article.link
+                                            ) ===
+                                            data.clusterId
+                                    );
+
+                                /*
+                                 * Ignore look-ahead/background briefing jobs
+                                 * that are not currently rendered.
+                                 */
+                                if (index < 0) {
+                                    return;
+                                }
+
+                                const pageSize =
+                                    this.isMobile
+                                        ? 15
+                                        : 40;
+
+                                const targetPage =
+                                    Math.floor(
+                                        index /
+                                        pageSize
+                                    ) + 1;
+
+                                targetAttempt =
+                                    Math.max(
+                                        0,
+                                        targetPage - 1
+                                    );
+                            }
+
+                            this.scheduleBriefingRefresh(
+                                targetAttempt,
+                                500
+                            );
+                        }
+                    );
+
+                    source.onerror =
+                        () => {
+                            this.serverEventsConnected =
+                                false;
+
+                            /*
+                             * EventSource reconnects automatically.
+                             */
+                        };
+                },
+
+                stopServerEvents() {
+                    clearTimeout(
+                        this.serverEventUserStateTimer
+                    );
+
+                    this.serverEventUserStateTimer =
+                        null;
+
+                    if (
+                        this.serverEvents
+                    ) {
+                        this.serverEvents.close();
+                    }
+
+                    this.serverEvents =
+                        null;
+
+                    this.serverEventsConnected =
+                        false;
+                },
+
                 async login() {
                     const res = await fetch('/api/login', {
                         method: 'POST',
@@ -1572,6 +1950,7 @@
                     if (res.ok) {
                         this.isLoggedIn = true;
                         document.cookie = "auth=true; path=/; max-age=31536000";
+                        this.startServerEvents();
                         await this.fetchContentFilterSettings();
                         await this.fetchSmartSources();
                         await this.fetchData();
@@ -6076,10 +6455,34 @@ document.addEventListener('click', event => {
 
     let lastActive = null;
 
+    let lastSentActive = null;
+    let lastSentAt = 0;
+
     function sendFocus(
         active,
         beacon = false
     ) {
+        /*
+         * DOM/hash/navigation transitions can all request the same state
+         * within milliseconds. Do not POST duplicate identical leases.
+         */
+        const now =
+            Date.now();
+
+        if (
+            !beacon &&
+            active === lastSentActive &&
+            now - lastSentAt < 5000
+        ) {
+            return;
+        }
+
+        lastSentActive =
+            active;
+
+        lastSentAt =
+            now;
+
         const payload =
             JSON.stringify({
                 viewerId,

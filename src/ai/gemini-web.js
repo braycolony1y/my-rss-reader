@@ -54,11 +54,45 @@ const isGeminiWeb1095Error = error => {
 };
 
 
-const GEMINI_WEB_IDLE_CLOSE_MS = Math.max(
-    5000,
-    Number(process.env.GEMINI_WEB_IDLE_CLOSE_MS) ||
-        10 * 60 * 1000
-);
+/*
+ * GEMINI_WEB_PERSISTENT_REUSE_V1
+ *
+ * Keep Gemini Web tabs alive for reuse by default.
+ *
+ * The global AI scheduler owns concurrency. Browser slots remain elastic:
+ * reuse any idle healthy slot first; if every slot is busy, acquireSlot()
+ * may create another physical tab for globally-authorized work.
+ *
+ * Set GEMINI_WEB_IDLE_CLOSE_MS to a positive value only when an explicit
+ * idle-tab cleanup policy is desired. 0/unset means persistent reuse.
+ */
+const GEMINI_WEB_IDLE_CLOSE_MS = (() => {
+    const raw =
+        process.env.GEMINI_WEB_IDLE_CLOSE_MS;
+
+    if (
+        raw === undefined ||
+        raw === null ||
+        String(raw).trim() === ''
+    ) {
+        return 0;
+    }
+
+    const parsed =
+        Number(raw);
+
+    if (
+        !Number.isFinite(parsed) ||
+        parsed <= 0
+    ) {
+        return 0;
+    }
+
+    return Math.max(
+        5000,
+        parsed
+    );
+})();
 
 const slots = [];
 let nextSlotId = 1;
@@ -166,6 +200,16 @@ async function closeSlotPage(
 function scheduleIdleClose(slot) {
     clearIdleClose(slot);
 
+    /*
+     * Persistent reuse is the default. releaseSlot() therefore only marks
+     * the slot idle; it does not close the physical Gemini tab.
+     */
+    if (
+        GEMINI_WEB_IDLE_CLOSE_MS <= 0
+    ) {
+        return;
+    }
+
     if (
         slot.busy ||
         !slot.page
@@ -225,7 +269,9 @@ function scheduleIdleClose(slot) {
 // They contain NO priority/read-mode/concurrency policy.
 // The global scheduler authorizes work before provider routing.
 // Slots grow elastically to match globally authorized work and
-// are reused after release; idle browser pages still close normally.
+// are reused after release. Idle browser pages remain open by default so
+// the same physical tabs can serve later jobs; optional timed cleanup is
+// available only when GEMINI_WEB_IDLE_CLOSE_MS is explicitly positive.
 // ============================================================
 
 function acquireSlot() {

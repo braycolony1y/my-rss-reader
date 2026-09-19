@@ -11,7 +11,7 @@ export function registerPageRoutes({
         try {
             const js = await fs.readFile('./script.js', 'utf8');
             res.setHeader('Content-Type', 'application/javascript');
-            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+            res.setHeader('Cache-Control', 'no-cache, must-revalidate');
             res.send(js);
         } catch (e) {
             res.status(500).send('Error loading script');

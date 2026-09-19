@@ -1,3 +1,4 @@
+import { publishAppEvent } from '../events.js';
 import { runGlobalAiTask, setGlobalAiReadingMode } from '../ai/global-ai-scheduler.js';
 import { detectRoundup } from './story-roundups.js';
 import { cleanArticleMarkup } from './markup.js';
@@ -640,6 +641,29 @@ export function createStoryBriefings({ db, generate, loadSource, concurrency = 2
             await db.put('storyBriefings', JSON.stringify(next));
             for (const key of Object.keys(entries)) delete entries[key];
             Object.assign(entries,next);
+
+            /*
+             * SMART_BRIEFING_SSE_V1
+             * Notify browsers only after the completed briefing state has
+             * been committed to storyBriefings.
+             */
+            publishAppEvent(
+                'smart-briefing-changed',
+                {
+                    clusterId:
+                        job.cluster?.clusterId ||
+                        '',
+                    tab:
+                        job.tab ||
+                        '',
+                    briefingVersion:
+                        result?.briefing_version ??
+                        null,
+                    status:
+                        result?.status ||
+                        null
+                }
+            );
         });
         return persistence;
     };

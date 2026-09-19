@@ -113,7 +113,7 @@ export function createArticlePipeline({
     function hasOnlyOpenCliFetchMethod(methods) {
         if (!Array.isArray(methods)) return false;
         const normalized = [...new Set(methods.map(method => String(method || '').trim().toLowerCase()).filter(Boolean))];
-        return normalized.length === 1 && normalized[0] === 'opencli';
+        return normalized.length === 1 && normalized[0] === 'opencli-fetch';
     }
 
     async function fetchPrimaryArticleForAggregate(value) {

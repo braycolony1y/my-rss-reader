@@ -1,6 +1,7 @@
 import { authMiddleware } from '../middleware/auth.js';
 import { setClusteringModel } from '../../smart-news.js';
 import { normalizeStateUrl } from '../utils/article-utils.js';
+import { publishAppEvent } from '../events.js';
 
 export function registerSettingsRoutes({
     app,
@@ -62,6 +63,15 @@ export function registerSettingsRoutes({
                 void boardCache?.tick().catch(error => console.warn('[CACHE MEMBERSHIP]', error.message));
             }
 
+            publishAppEvent(
+                'user-state-changed',
+                {
+                    kind: 'preference',
+                    key,
+                    value
+                }
+            );
+
             res.json({ success: true });
         } catch (error) {
             res.status(500).json({ success: false, error: error.message });
@@ -102,6 +112,24 @@ export function registerSettingsRoutes({
         }
 
         if (list === 'boardStates' || list === 'savedStates') await boardCache?.reconcileMembership();
+        publishAppEvent(
+            'user-state-changed',
+            {
+                kind: 'toggle',
+                list,
+                changes: [
+                    {
+                        link: normLink,
+                        present: stateArray.some(
+                            item =>
+                                normalizeStateUrl(item) ===
+                                normLink
+                        )
+                    }
+                ]
+            }
+        );
+
         res.status(200).send('Toggled');
     }));
 
@@ -138,6 +166,28 @@ export function registerSettingsRoutes({
         }
 
         if (list === 'boardStates' || list === 'savedStates') await boardCache?.reconcileMembership();
+        publishAppEvent(
+            'user-state-changed',
+            {
+                kind: 'toggle-batch',
+                list,
+                changes: links.map(
+                    link => {
+                        const normalized =
+                            normalizeStateUrl(link);
+
+                        return {
+                            link: normalized,
+                            present:
+                                stateSet.has(
+                                    normalized
+                                )
+                        };
+                    }
+                )
+            }
+        );
+
         res.status(200).send('Toggled Batch');
     }));
 

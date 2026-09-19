@@ -33,7 +33,7 @@
                 };
             } catch (_) {
                 // Storage can be disabled in strict privacy modes. The normal
-                // request in script.js?v=timeline-select-1789652080"https://cdn.jsdelivr.net/npm/@alpinejs/collapse@3.x.x/dist/cdn.min.js"></script>
+                // request in script.js?v=sse-1789844318"https://cdn.jsdelivr.net/npm/@alpinejs/collapse@3.x.x/dist/cdn.min.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <style>
         .hide-scrollbar::-webkit-scrollbar,
@@ -4206,7 +4206,7 @@
                                                     <span x-show="event.status === 'cooldown' && event.cooldownUntil"
                                                         class="rounded-md bg-amber-500/[0.08] px-2 py-1 font-bold text-amber-300/90"
                                                         x-text="(() => {
-                                                            const remaining = Math.max(0, Date.parse(event.cooldownUntil) - onlineAiUsageNow);
+                                                            const remaining = Math.max(0, Date.parse(event.cooldownUntil) - Date.now());
                                                             if (remaining <= 0) return 'Available now';
                                                             const totalSeconds = Math.ceil(remaining / 1000);
                                                             const hours = Math.floor(totalSeconds / 3600);
@@ -7705,7 +7705,7 @@
         </section>
     </div>
 
-    <script src="/script.js?v=script-recovered-1789673876"></script>
+    <script src="/script.js?v=smart-sse-1789845364"></script>
 </body>
 
 </html>

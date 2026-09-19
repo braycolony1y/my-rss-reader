@@ -94,6 +94,73 @@ export function cleanReutersReaderMarkdown(markdown = '') {
 }
 
 export default class ReutersSource {
+    /*
+     * REUTERS_OPENCLI_FETCH_IMAGE_V1
+     *
+     * OpenCLI Browser Fetch receives Reuters' complete server-rendered HTML.
+     * The primary Reuters gallery sits outside the prose container selected by
+     * the shared reader, so move the canonical article image + Reuters caption
+     * into that container before shared extraction. No full browser render is
+     * needed.
+     */
+    preProcessHtml(html) {
+        const source = String(html || '');
+        if (!source) return source;
+
+        const $ = load(source);
+        const image = safeHttpUrl(
+            $('meta[property="og:image"]').first().attr('content') ||
+            $('meta[name="twitter:image"]').first().attr('content') ||
+            ''
+        );
+        if (!image) return source;
+
+        const caption = cleanText(
+            $('meta[property="og:image:alt"]').first().attr('content') ||
+            $('meta[name="twitter:image:alt"]').first().attr('content') ||
+            ''
+        );
+
+        const bodyOpen =
+            /<div\b[^>]*class=["'][^"']*article-body-module__content[^"']*["'][^>]*>/i;
+        const bodyMatch = bodyOpen.exec(source);
+        if (!bodyMatch) return source;
+
+        let mediaKey = '';
+        try {
+            const pathname = new URL(image).pathname;
+            mediaKey =
+                pathname.match(/\/resizer\/v2\/([^/?]+)/i)?.[1] ||
+                pathname.split('/').filter(Boolean).at(-1) ||
+                '';
+        } catch (error) { }
+
+        const bodyWindow = source.slice(
+            bodyMatch.index,
+            Math.min(source.length, bodyMatch.index + 200000)
+        );
+        if (mediaKey && bodyWindow.includes(mediaKey)) return source;
+
+        const escape = value => String(value || '').replace(/[&<>"']/g, character => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;'
+        })[character]);
+
+        const figure =
+            `<figure class="article-media-figure reuters-primary-image">` +
+            `<img src="${escape(image)}" alt="${escape(caption)}">` +
+            `${caption ? `<figcaption>${escape(caption)}</figcaption>` : ''}` +
+            `</figure>`;
+
+        return source.replace(
+            bodyOpen,
+            match => match + figure
+        );
+    }
+
     match(hostname) {
         return hostname === 'reuters.com' || hostname.endsWith('.reuters.com');
     }

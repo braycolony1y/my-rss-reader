@@ -40,6 +40,7 @@ import { registerSettingsRoutes } from './routes/settings-routes.js';
 import { registerSummaryRoutes } from './routes/summary-routes.js';
 import { registerMediaRoutes } from './routes/media-routes.js';
 import { registerPageRoutes } from './routes/page-routes.js';
+import { registerEventRoutes } from './events.js';
 
 // Construct one owner per subsystem. Deferred callbacks below connect the
 // Smart engine and feed ingestion without module cycles or duplicate state.
@@ -170,6 +171,10 @@ export async function createApplication({ isMainModule = false } = {}) {
      * A lease expires automatically if the browser disappears without
      * sending a close/navigation event.
      */
+    registerEventRoutes({
+        app: http.app
+    });
+
     http.app.post(
         '/api/ai/briefing-focus',
         (req, res) => {

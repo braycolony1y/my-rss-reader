@@ -205,7 +205,7 @@ export function createArticleParser({
                     if (schema.articleBody) result.articleBody = schema.articleBody;
                     if (schemaTypes.includes('VideoObject')) {
                         const rawVideoUrl = Array.isArray(schema.contentUrl) ? schema.contentUrl[0] : schema.contentUrl;
-                        const videoUrl = safeHttpUrl(rawVideoUrl || schema.encoding?.contentUrl || '');
+                        const videoUrl = safeHttpUrl(rawVideoUrl || schema.embedUrl || schema.encoding?.contentUrl || '');
                         if (videoUrl && /\.(?:m3u8|mp4|webm|ogg)(?:$|[?#])/i.test(videoUrl)) {
                             const thumbnail = Array.isArray(schema.thumbnailUrl) ? schema.thumbnailUrl[0] : schema.thumbnailUrl;
                             const video = {
