@@ -20,6 +20,144 @@ const LANES =
     ]);
 
 
+
+// GLOBAL_AI_BACKGROUND_FRESHNESS_V1
+//
+// The existing lane policy remains authoritative:
+// - reading: P0=2, P1=2, P3/P4=1 shared;
+// - not reading: two total jobs with P3/P4 fair alternation.
+//
+// Freshness is ONLY an ordering rule inside the lane that has already won.
+// Foreground/user work ignores age. Background work is ordered by rolling
+// 24-hour windows (W0..W6, then older/unknown).
+const BACKGROUND_WINDOW_MS =
+    24 * 60 * 60 * 1000;
+
+function dynamicTaskValue(task, getter, field, fallback = null) {
+    try {
+        if (typeof task?.[getter] === 'function') {
+            return task[getter]();
+        }
+        if (Object.prototype.hasOwnProperty.call(task || {}, field)) {
+            return task[field];
+        }
+    }
+    catch {
+        // Dynamic priority metadata is advisory; lane correctness wins.
+    }
+    return fallback;
+}
+
+function backgroundFor(task) {
+    return Boolean(
+        dynamicTaskValue(
+            task,
+            'getBackground',
+            'background',
+            false
+        )
+    );
+}
+
+function freshnessAtFor(task) {
+    const value =
+        dynamicTaskValue(
+            task,
+            'getFreshnessAt',
+            'freshnessAt',
+            0
+        );
+
+    if (value instanceof Date) {
+        return value.getTime();
+    }
+
+    if (typeof value === 'string') {
+        const parsed = Date.parse(value);
+        return Number.isFinite(parsed) ? parsed : 0;
+    }
+
+    return Math.max(0, Number(value) || 0);
+}
+
+function backgroundRankFor(task) {
+    return Number(
+        dynamicTaskValue(
+            task,
+            'getBackgroundRank',
+            'backgroundRank',
+            0
+        )
+    ) || 0;
+}
+
+function freshnessBucketFor(task) {
+    if (!backgroundFor(task)) {
+        return -1;
+    }
+
+    const at = freshnessAtFor(task);
+    if (!at) {
+        return 7;
+    }
+
+    const age =
+        Math.max(
+            0,
+            Date.now() - at
+        );
+
+    return Math.min(
+        7,
+        Math.floor(
+            age / BACKGROUND_WINDOW_MS
+        )
+    );
+}
+
+function taskBefore(left, right) {
+    const leftBackground =
+        backgroundFor(left);
+    const rightBackground =
+        backgroundFor(right);
+
+    if (leftBackground !== rightBackground) {
+        return !leftBackground;
+    }
+
+    if (leftBackground) {
+        const leftBucket =
+            freshnessBucketFor(left);
+        const rightBucket =
+            freshnessBucketFor(right);
+
+        if (leftBucket !== rightBucket) {
+            return leftBucket < rightBucket;
+        }
+
+        const leftRank =
+            backgroundRankFor(left);
+        const rightRank =
+            backgroundRankFor(right);
+
+        if (leftRank !== rightRank) {
+            return leftRank > rightRank;
+        }
+
+        const leftAt =
+            freshnessAtFor(left);
+        const rightAt =
+            freshnessAtFor(right);
+
+        if (leftAt !== rightAt) {
+            return leftAt > rightAt;
+        }
+    }
+
+    return Number(left?.id || 0) < Number(right?.id || 0);
+}
+
+
 function normalizeLane(value) {
     const lane =
         String(value || '')
@@ -112,6 +250,9 @@ function activeLowCount() {
 
 
 function takeLane(lane) {
+    let bestIndex = -1;
+    let bestTask = null;
+
     for (
         let index = 0;
         index < pending.length;
@@ -127,15 +268,28 @@ function takeLane(lane) {
             continue;
         }
 
-        pending.splice(
-            index,
-            1
-        );
-
-        return task;
+        if (
+            bestTask === null ||
+            taskBefore(
+                task,
+                bestTask
+            )
+        ) {
+            bestTask = task;
+            bestIndex = index;
+        }
     }
 
-    return null;
+    if (bestIndex < 0) {
+        return null;
+    }
+
+    pending.splice(
+        bestIndex,
+        1
+    );
+
+    return bestTask;
 }
 
 
@@ -208,18 +362,83 @@ function startTask(task, lane) {
                     .then(task.fn)
         );
 
-    execution
-        .then(
-            task.resolve,
-            task.reject
-        )
-        .finally(() => {
+    execution.then(
+        value => {
             active.delete(
                 task.id
             );
 
+            task.resolve(
+                value
+            );
+
             dispatch();
-        });
+        },
+        error => {
+            active.delete(
+                task.id
+            );
+
+            const retryAt =
+                Number(
+                    error?.retryAt
+                ) || 0;
+
+            // GLOBAL_AI_DEFER_REQUEUE_V1
+            // A known short provider cooldown is not a failed user/background
+            // job. Release the occupied scheduler position and put the same
+            // task back into pending until its exact retry time.
+            if (
+                error?.code ===
+                    'AI_PROVIDER_DEFERRED' &&
+                retryAt >
+                    Date.now()
+            ) {
+                task.notBefore =
+                    Math.max(
+                        Number(
+                            task.notBefore
+                        ) || 0,
+                        retryAt
+                    );
+
+                task.deferredUntil =
+                    retryAt;
+
+                pending.push(
+                    task
+                );
+
+                if (
+                    process.env.GLOBAL_AI_SCHED_DEBUG === '1'
+                ) {
+                    console.log(
+                        '[GLOBAL AI SCHED]',
+                        JSON.stringify({
+                            event:
+                                'provider-deferred',
+                            lane,
+                            label:
+                                task.label || null,
+                            retryAt:
+                                new Date(
+                                    retryAt
+                                ).toISOString()
+                        })
+                    );
+                }
+
+                dispatch();
+                return;
+            }
+
+            task.reject(
+                error
+            );
+
+            dispatch();
+        }
+    );
 }
 
 
@@ -435,6 +654,31 @@ export function runGlobalAiTask(
                     options.getNotBefore ||
                     null,
 
+                // Background/freshness metadata never changes lane assignment.
+                background:
+                    options.background ??
+                    false,
+
+                getBackground:
+                    options.getBackground ||
+                    null,
+
+                freshnessAt:
+                    options.freshnessAt ||
+                    0,
+
+                getFreshnessAt:
+                    options.getFreshnessAt ||
+                    null,
+
+                backgroundRank:
+                    options.backgroundRank ||
+                    0,
+
+                getBackgroundRank:
+                    options.getBackgroundRank ||
+                    null,
+
                 label:
                     options.label ||
                     null,
@@ -481,6 +725,16 @@ export function setGlobalAiReadingMode(activeReading) {
     );
 
     dispatch();
+}
+
+
+export function getGlobalAiTaskLane() {
+    return (
+        context
+            .getStore()
+            ?.lane ||
+        null
+    );
 }
 
 

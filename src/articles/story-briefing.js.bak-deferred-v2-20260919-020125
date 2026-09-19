@@ -496,137 +496,13 @@ export function createStoryBriefings({ db, generate, loadSource, concurrency = 2
         return 'p4';
     };
 
-    // User/current-view work is age-neutral. Only unattended background
-    // briefing work participates in W0..W6 freshness ordering.
-    const briefingFreshnessAt =
-        job => {
-            const times =
-                storyMembers(
-                    job?.cluster
-                )
-                    .map(article =>
-                        Date.parse(
-                            article?.pubDate ||
-                            article?.date ||
-                            article?.publishedAt ||
-                            ''
-                        )
-                    )
-                    .filter(
-                        Number.isFinite
-                    );
-
-            return times.length
-                ? Math.max(...times)
-                : 0;
-        };
-
-    const briefingIsBackground =
-        job =>
-            (
-                briefingLane(job) ===
-                    'p4' &&
-                !job?.viewKey &&
-                Number(
-                    job?.priority
-                ) < 2
-            );
-
     const queuedJobs = () =>
         [...jobs.values()]
-            .filter(
-                job =>
-                    job.state ===
-                    'queued'
-            )
-            .sort((a, b) => {
-                const priority =
-                    effectivePriority(b) -
-                    effectivePriority(a);
-
-                if (priority) {
-                    return priority;
-                }
-
-                const aBackground =
-                    briefingIsBackground(a);
-                const bBackground =
-                    briefingIsBackground(b);
-
-                if (
-                    aBackground !==
-                    bBackground
-                ) {
-                    return aBackground
-                        ? 1
-                        : -1;
-                }
-
-                if (
-                    aBackground &&
-                    bBackground
-                ) {
-                    const aAt =
-                        briefingFreshnessAt(a);
-                    const bAt =
-                        briefingFreshnessAt(b);
-
-                    const aBucket =
-                        aAt
-                            ? Math.min(
-                                7,
-                                Math.floor(
-                                    Math.max(
-                                        0,
-                                        Date.now() -
-                                            aAt
-                                    ) /
-                                    (24 *
-                                        60 *
-                                        60 *
-                                        1000)
-                                )
-                            )
-                            : 7;
-
-                    const bBucket =
-                        bAt
-                            ? Math.min(
-                                7,
-                                Math.floor(
-                                    Math.max(
-                                        0,
-                                        Date.now() -
-                                            bAt
-                                    ) /
-                                    (24 *
-                                        60 *
-                                        60 *
-                                        1000)
-                                )
-                            )
-                            : 7;
-
-                    if (
-                        aBucket !==
-                        bBucket
-                    ) {
-                        return (
-                            aBucket -
-                            bBucket
-                        );
-                    }
-
-                    if (aAt !== bAt) {
-                        return bAt - aAt;
-                    }
-                }
-
-                return (
-                    a.queuedAt -
-                    b.queuedAt
-                );
-            });
+            .filter(job => job.state === 'queued')
+            .sort((a, b) =>
+                effectivePriority(b) - effectivePriority(a) ||
+                a.queuedAt - b.queuedAt
+            );
     const cache = () => cachePromise ||= db.get('storyBriefings', {type:'json'}).then(value=>value || {});
     const persist = (entries, job, result) => {
         // Merge inside the publication queue so concurrent completions cannot
@@ -776,39 +652,6 @@ normal form where appropriate.`;
             }
             throw new Error('Analysis evaluation or selected sections incomplete');
         } catch (error) {
-            if (
-                error?.code ===
-                    'AI_PROVIDER_DEFERRED' &&
-                Number(
-                    error?.retryAt
-                ) >
-                    Date.now()
-            ) {
-                failures.delete(
-                    job.key
-                );
-
-                retries.delete(
-                    job.key
-                );
-
-                providerRetryAt =
-                    Math.max(
-                        providerRetryAt,
-                        Number(
-                            error.retryAt
-                        )
-                    );
-
-                job.state =
-                    'queued';
-
-                job.stage =
-                    'provider-cooldown';
-
-                throw error;
-            }
-
             retries.set(job.key,Date.now()+15*60000);
             failures.set(job.key,error.message.slice(0,160));
             if (/HTTP (?:429|503|403)|No Gemini API key|All providers failed/.test(error.message)) providerRetryAt=Date.now()+2*60000;
@@ -862,25 +705,6 @@ normal form where appropriate.`;
                                 Number(
                                     providerRetryAt
                                 ) || 0
-                            ),
-
-                    // P0/P1/current-view work remains age-neutral.
-                    getBackground:
-                        () =>
-                            briefingIsBackground(
-                                job
-                            ),
-
-                    getFreshnessAt:
-                        () =>
-                            briefingFreshnessAt(
-                                job
-                            ),
-
-                    getBackgroundRank:
-                        () =>
-                            effectivePriority(
-                                job
                             ),
 
                     label:
@@ -1050,71 +874,17 @@ normal form where appropriate.`;
                 drain();
             }
             const job=jobs.get(key);
-            const now=Date.now();
-const storyRetryAt=Number(retries.get(key))||0;
-const providerDeferredUntil=Number(providerRetryAt)||0;
-
-/*
- * A per-story retry means that this story itself failed.
- *
- * providerRetryAt is shared provider backoff. It must not
- * turn stories that were never attempted into failed stories.
- */
-const failed=now<storyRetryAt;
-const providerDeferred=
-options.generate!==false &&
-!failed &&
-now<providerDeferredUntil;
-            const generationState=
-job?.state==='generating'
-? 'generating'
-: failed
-? 'failed'
-: providerDeferred
-? 'deferred'
-: job
-? 'queued'
-: options.generate===false
-? 'not-requested'
-: 'queued';
-            const analysisStatus=
-failed
-? 'unavailable'
-: providerDeferred
-? 'deferred'
-: options.generate===false
-? 'not-evaluated'
-: 'pending';
+            const failed=Date.now()<Math.max(retries.get(key)||0,providerRetryAt);
+            const generationState=job?.state==='generating' ? 'generating' : failed ? 'failed' : job ? 'queued' : options.generate===false ? 'not-requested' : 'queued';
+            const analysisStatus=failed ? 'unavailable' : options.generate===false ? 'not-evaluated' : 'pending';
             const queue = queuedJobs();
             const queueAhead =
                 job?.state === 'queued'
                     ? queue.indexOf(job) + running
                     : undefined;
-            const diagnostic={
-generationState,
-analysisStatus,
-generationStage:job?.stage,
-...(queueAhead !== undefined ? {queueAhead} : {}),
-...(providerDeferred ? {
-generationDeferredReason:'provider-cooldown',
-generationDeferredUntil:providerDeferredUntil
-} : {}),
-generationError:failures.get(key)||null
-};
+            const diagnostic={generationState,analysisStatus,generationStage:job?.stage, ...(queueAhead !== undefined ? {queueAhead} : {}),generationError:failures.get(key)||null};
             if (previous) return {...previous,...diagnostic,...(cluster.topStory ? {analysisStatus:'evaluated',stale:true} : {}),keyFacts:cluster.topStory ? previous.keyFacts || [] : cached ? cached.keyFacts : [],status:'stale'};
-            return {
-...diagnostic,
-status:
-failed
-? 'unavailable'
-: providerDeferred
-? 'deferred'
-: job
-? 'pending'
-: 'queued',
-sections:[],
-sources:[]
-};
+            return {...diagnostic,status:failed ? 'unavailable' : job ? 'pending' : 'queued',sections:[],sources:[]};
         }
     };
 }

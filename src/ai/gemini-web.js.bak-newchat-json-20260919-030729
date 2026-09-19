@@ -67,44 +67,10 @@ let nextSlotId = 1;
 let retryAt = 0;
 let browserModulesPromise = null;
 
-// GEMINI_WEB_SHORT_COOLDOWN_V1
-export function geminiWebConfigured() {
-    return (
-        process.env.GEMINI_WEB_ENABLED !==
-        'false'
-    );
-}
-
-export function getGeminiWebCooldownState() {
-    const until =
-        Math.max(
-            0,
-            Number(
-                retryAt
-            ) || 0
-        );
-
-    return {
-        enabled:
-            geminiWebConfigured(),
-        retryAt:
-            until,
-        remainingMs:
-            Math.max(
-                0,
-                until -
-                    Date.now()
-            )
-    };
-}
-
 export function geminiWebAvailable() {
-    const state =
-        getGeminiWebCooldownState();
-
     return (
-        state.enabled &&
-        state.remainingMs <= 0
+        process.env.GEMINI_WEB_ENABLED !== 'false' &&
+        Date.now() >= retryAt
     );
 }
 
@@ -766,12 +732,10 @@ async function clickGeminiNewChatControl(
         Date.now() + timeoutMs;
 
     while (Date.now() < deadline) {
-        const result =
+        const clicked =
             await page.evaluate(() => {
                 const visible = element => {
-                    if (!element) {
-                        return false;
-                    }
+                    if (!element) return false;
 
                     const style =
                         getComputedStyle(
@@ -792,14 +756,14 @@ async function clickGeminiNewChatControl(
                     );
                 };
 
-                const controls = [
+                const control = [
                     ...document
                         .querySelectorAll(
                             'a[aria-label],button[aria-label],[role="button"][aria-label]'
                         )
                 ]
                     .filter(visible)
-                    .filter(element =>
+                    .find(element =>
                         /^new chat$/i.test(
                             String(
                                 element
@@ -816,82 +780,18 @@ async function clickGeminiNewChatControl(
                         )
                     );
 
-                /*
-                 * Gemini currently exposes more than one visible
-                 * "New chat" element.
-                 *
-                 * Prefer the /app control. The other observed control
-                 * points at "/" and is the sparkle/home control.
-                 */
-                const preferred =
-                    controls.find(
-                        element => {
-                            const href =
-                                String(
-                                    element.getAttribute(
-                                        'href'
-                                    ) ||
-                                    ''
-                                );
-
-                            if (!href) {
-                                return false;
-                            }
-
-                            try {
-                                const pathname =
-                                    new URL(
-                                        href,
-                                        location.href
-                                    ).pathname;
-
-                                return /\/app\/?$/.test(
-                                    pathname
-                                );
-                            }
-                            catch {
-                                return false;
-                            }
-                        }
-                    );
-
-                const control =
-                    preferred ||
-                    controls[0];
-
                 if (!control) {
-                    return null;
+                    return false;
                 }
-
-                const href =
-                    String(
-                        control.getAttribute(
-                            'href'
-                        ) ||
-                        ''
-                    );
 
                 control.click();
 
-                return {
-                    clicked: true,
-                    href,
-                    preferred:
-                        control === preferred
-                };
+                return true;
             }).catch(
-                () => null
+                () => false
             );
 
-        if (result?.clicked) {
-            console.log(
-                `[GEMINI WEB] New chat control selected href=${result.href || '(none)'}${
-                    result.preferred
-                        ? ' (preferred /app New chat control)'
-                        : ''
-                }`
-            );
-
+        if (clicked) {
             return true;
         }
 
@@ -2058,234 +1958,10 @@ async function responseState(page) {
             .filter(Boolean)
             .join(' ');
 
-        /*
-         * GEMINI_WEB_RESPONSE_DOM_DEBUG
-         *
-         * Diagnostic only. Do not use these fields for completion
-         * decisions. They let us prove whether responseState() is
-         * following the same DOM node that Gemini is actually updating.
-         */
-        const debugCandidates = [
-            ...document.querySelectorAll(
-                'model-response,[data-message-author-role="model"],.model-response-text,.response-container-content'
-            )
-        ]
-            .filter(visible)
-            .map((element, index) => {
-                const value =
-                    String(
-                        element.innerText ||
-                        ''
-                    ).trim();
-
-                return {
-                    index,
-                    tag:
-                        String(
-                            element.tagName ||
-                            ''
-                        ).toLowerCase(),
-                    className:
-                        String(
-                            element.className ||
-                            ''
-                        ).slice(0, 120),
-                    role:
-                        element.getAttribute(
-                            'data-message-author-role'
-                        ) || null,
-                    length:
-                        value.length,
-                    tail:
-                        value.slice(-120)
-                };
-            })
-            .slice(-8);
-
-        const debugControls =
-            controls
-                .map(element => {
-                    const label = [
-                        element.innerText,
-                        element.getAttribute(
-                            'aria-label'
-                        ),
-                        element.getAttribute(
-                            'title'
-                        )
-                    ]
-                        .filter(Boolean)
-                        .join(' ')
-                        .replace(/\s+/g, ' ')
-                        .trim();
-
-                    return {
-                        label:
-                            label.slice(
-                                0,
-                                160
-                            ),
-                        disabled:
-                            Boolean(
-                                element.disabled
-                            ),
-                        ariaBusy:
-                            element.getAttribute(
-                                'aria-busy'
-                            )
-                    };
-                })
-                .filter(item =>
-                    /stop|cancel|generat|response/i
-                        .test(
-                            item.label
-                        )
-                )
-                .slice(0, 12);
-
-        /*
-         * GEMINI_WEB_RESPONSE_ACTION_COMPLETION_V1
-         *
-         * Live OpenCLI testing shows Gemini's completed-response
-         * action controls appear only after response rendering has
-         * finished:
-         *
-         *   Redo
-         *   Copy
-         *   Show more options
-         *
-         * Stop/microphone state is intentionally NOT used as a
-         * completion signal.
-         */
-        const latestModelResponse =
-            modelResponses[
-                modelResponses.length - 1
-            ] || null;
-
-        let responseCompletionControls = {
-            redo: false,
-            copy: false,
-            more: false,
-            count: 0,
-            ready: false
-        };
-
-        if (latestModelResponse) {
-            const responseControls = [
-                ...latestModelResponse.querySelectorAll(
-                    'gem-icon-button,button,[role="button"]'
-                )
-            ].filter(visible);
-
-            let redo = false;
-            let copy = false;
-            let more = false;
-
-            for (const element of responseControls) {
-                const testId =
-                    String(
-                        element.getAttribute(
-                            'data-test-id'
-                        ) || ''
-                    );
-
-                const label = [
-                    element.getAttribute(
-                        'aria-label'
-                    ),
-                    element.getAttribute(
-                        'arialabel'
-                    ),
-                    element.getAttribute(
-                        'title'
-                    ),
-                    element.getAttribute(
-                        'gemtooltip'
-                    ),
-                    element.innerText
-                ]
-                    .filter(Boolean)
-                    .join(' ')
-                    .replace(/\s+/g, ' ')
-                    .trim();
-
-                if (
-                    testId ===
-                        'regenerate-button' ||
-                    /^redo$/i.test(label)
-                ) {
-                    redo = true;
-                }
-
-                if (
-                    /^copy(?: response)?$/i.test(
-                        label
-                    )
-                ) {
-                    copy = true;
-                }
-
-                if (
-                    testId ===
-                        'more-menu-button' ||
-                    /^show more options$/i.test(
-                        label
-                    ) ||
-                    /^more$/i.test(label)
-                ) {
-                    more = true;
-                }
-            }
-
-            const count =
-                Number(redo) +
-                Number(copy) +
-                Number(more);
-
-            responseCompletionControls = {
-                redo,
-                copy,
-                more,
-                count,
-
-                /*
-                 * Copy is our primary completed-response control.
-                 * Require either Redo or More as independent
-                 * corroboration so one stray button cannot cause
-                 * a false completion.
-                 */
-                ready:
-                    copy &&
-                    (
-                        redo ||
-                        more
-                    )
-            };
-        }
-
         return {
             text: text.trim(),
-
-            /*
-             * Kept for diagnostics only.
-             * waitForResponse() no longer uses this as completion.
-             */
             generating,
-
-            responseFinished:
-                responseCompletionControls.ready,
-
-            responseCompletionControls,
-
-            alerts: alerts.slice(0, 1000),
-            debug: {
-                candidateCount:
-                    debugCandidates.length,
-                candidates:
-                    debugCandidates,
-                controls:
-                    debugControls
-            }
+            alerts: alerts.slice(0, 1000)
         };
     });
 }
@@ -2470,7 +2146,7 @@ async function waitForResponse(
     timeoutMs,
     expectJson = false
 ) {
-    let deadline =
+    const deadline =
         Date.now() + timeoutMs;
 
     let lastText = '';
@@ -2480,106 +2156,12 @@ async function waitForResponse(
     let incompleteSince = 0;
     let incompleteLogged = false;
 
-    // GEMINI_WEB_RESPONSE_PROGRESS_DEBUG
-    // Diagnostic only; has no effect on completion logic.
-    const responseDebugStartedAt =
-        Date.now();
-
-    let responseDebugLastLogAt = 0;
-    let responseDebugLastGenerating = null;
-    let responseDebugLastCandidateSignature = '';
-
     const JSON_COMPLETION_GRACE_MS =
         12000;
 
     while (Date.now() < deadline) {
         const state =
             await responseState(page);
-
-        if (
-            expectJson &&
-            state?.text &&
-            state.text !== baseline
-        ) {
-            const now =
-                Date.now();
-
-            const candidateSignature =
-                JSON.stringify(
-                    (
-                        state.debug
-                            ?.candidates ||
-                        []
-                    ).map(
-                        item => [
-                            item.tag,
-                            item.role,
-                            item.length
-                        ]
-                    )
-                );
-
-            const importantChange =
-                responseDebugLastGenerating !==
-                    state.generating ||
-                responseDebugLastCandidateSignature !==
-                    candidateSignature;
-
-            if (
-                importantChange ||
-                now -
-                    responseDebugLastLogAt >=
-                    2000
-            ) {
-                console.log(
-                    '[GEMINI WEB RESPONSE DEBUG]',
-                    JSON.stringify({
-                        elapsedMs:
-                            now -
-                            responseDebugStartedAt,
-                        selectedTextLength:
-                            state.text.length,
-                        selectedTextTail:
-                            state.text.slice(
-                                -160
-                            ),
-                        generatingDiagnosticOnly:
-                            state.generating,
-                        responseFinished:
-                            state.responseFinished,
-                        responseCompletionControls:
-                            state.responseCompletionControls,
-                        stableCount,
-                        incompleteForMs:
-                            incompleteSince
-                                ? now -
-                                    incompleteSince
-                                : 0,
-                        candidateCount:
-                            state.debug
-                                ?.candidateCount ||
-                            0,
-                        candidates:
-                            state.debug
-                                ?.candidates ||
-                            [],
-                        controls:
-                            state.debug
-                                ?.controls ||
-                            []
-                    })
-                );
-
-                responseDebugLastLogAt =
-                    now;
-
-                responseDebugLastGenerating =
-                    state.generating;
-
-                responseDebugLastCandidateSignature =
-                    candidateSignature;
-            }
-        }
 
         /*
          * Gemini can show:
@@ -2696,7 +2278,7 @@ async function waitForResponse(
             }
 
             if (
-                state.responseFinished &&
+                !state.generating &&
                 stableCount >= 3
             ) {
                 if (!expectJson) {
@@ -2727,20 +2309,6 @@ async function waitForResponse(
                 if (!incompleteSince) {
                     incompleteSince =
                         Date.now();
-
-                    /*
-                     * JSON grace owns its full settling window.
-                     *
-                     * Do not let the original request deadline expire
-                     * halfway through the promised 12-second wait.
-                     */
-                    deadline =
-                        Math.max(
-                            deadline,
-                            incompleteSince +
-                                JSON_COMPLETION_GRACE_MS +
-                                1000
-                        );
                 }
 
                 if (!incompleteLogged) {
@@ -2791,31 +2359,6 @@ async function waitForResponse(
 
                     error.parserReason =
                         'Response stopped before the JSON document was structurally complete';
-
-                    error.responseDomDebug =
-                        state.debug ||
-                        null;
-
-                    console.warn(
-                        '[GEMINI WEB INCOMPLETE FINAL DEBUG]',
-                        JSON.stringify({
-                            selectedTextLength:
-                                state.text.length,
-                            generatingDiagnosticOnly:
-                                state.generating,
-                            responseFinished:
-                                state.responseFinished,
-                            responseCompletionControls:
-                                state.responseCompletionControls,
-                            stableCount,
-                            incompleteForMs:
-                                Date.now() -
-                                incompleteSince,
-                            debug:
-                                state.debug ||
-                                null
-                        })
-                    );
 
                     throw error;
                 }
@@ -3199,22 +2742,12 @@ export async function generateWithGeminiWeb(
     prompt,
     options = {}
 ) {
-    if (!geminiWebConfigured()) {
-        const error =
-            new Error(
-                'Gemini Web provider is disabled'
-            );
-
-        error.code =
-            'NOT_CONFIGURED';
-
-        error.skipProvider =
-            true;
-
-        error.nonProviderFault =
-            true;
-
-        throw error;
+    if (
+        process.env.GEMINI_WEB_ENABLED === 'false'
+    ) {
+        throw new Error(
+            'Gemini Web provider is disabled'
+        );
     }
 
     if (Date.now() < retryAt) {

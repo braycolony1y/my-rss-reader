@@ -235,32 +235,9 @@ export function parseOnlineAiUsageLog(rawLog, options = {}) {
             const serialized = parsedLine.message.slice(marker + '[ONLINE AI]'.length).trim();
             try {
                 const event = structuredEvent(parsedLine, JSON.parse(serialized), ++sequence);
-
-                /*
-                 * REDUNDANT_GEMINI_API_COOLDOWN_FILTER
-                 *
-                 * Gemini API key cooldown / quota state is already
-                 * represented by the dedicated Gemini Keys panel.
-                 *
-                 * Preserve the journal record itself, but do not expose
-                 * an additional generic activity card for the same state.
-                 */
-                const redundantGeminiApiCooldown =
-                    event.provider === 'gemini' &&
-                    (
-                        event.status === 'cooldown' ||
-                        event.errorCode === 'COOLDOWN'
-                    );
-
-                if (!redundantGeminiApiCooldown) {
-                    events.push(event);
-
-                    if (event.status === 'failed') {
-                        recentStructuredFailures.set(
-                            `${event.providerId || ''}|${event.model || ''}`,
-                            new Date(event.timestamp).getTime()
-                        );
-                    }
+                events.push(event);
+                if (event.status === 'failed') {
+                    recentStructuredFailures.set(`${event.providerId || ''}|${event.model || ''}`, new Date(event.timestamp).getTime());
                 }
             } catch {
                 // Ignore incomplete journal lines instead of exposing unparsed text.
@@ -298,8 +275,7 @@ export function parseOnlineAiUsageLog(rawLog, options = {}) {
         },
         summary: summarize(events),
         filters: {
-            // ONLINE_AI_LOCAL_PROVIDER_V1
-              providers: [...new Set(['local-qwen', ...events.map(event => event.provider).filter(Boolean)])].sort(),
+            providers: [...new Set(events.map(event => event.provider).filter(Boolean))].sort(),
             models: [...new Set(events.map(event => event.model).filter(Boolean))].sort(),
             operations: [...new Set(events.map(event => event.operation).filter(Boolean))].sort(),
             statuses: [...new Set(events.map(event => event.status).filter(Boolean))].sort()

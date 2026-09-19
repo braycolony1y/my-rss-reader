@@ -298,16 +298,6 @@ export function createArticlePresentation({
         }
 
         if (
-            state?.status === 'deferred' ||
-            state?.generationState === 'deferred'
-        ) {
-            return {
-                outcome: 'deferred',
-                state
-            };
-        }
-
-        if (
             state?.status === 'unavailable' ||
             state?.generationState === 'failed'
         ) {
@@ -346,16 +336,6 @@ export function createArticlePresentation({
             if (state?.status === 'source-only') {
                 return {
                     outcome: 'source-only',
-                    state
-                };
-            }
-
-            if (
-                state?.status === 'deferred' ||
-                state?.generationState === 'deferred'
-            ) {
-                return {
-                    outcome: 'deferred',
                     state
                 };
             }
@@ -505,7 +485,6 @@ export function createArticlePresentation({
                         generated: 0,
                         sourceOnly: 0,
                         skipped: 0,
-                        deferred: 0,
                         failed: 0
                     };
 
@@ -529,25 +508,16 @@ export function createArticlePresentation({
                         else if (result.outcome === 'skipped') {
                             stats.skipped++;
                         }
-                        else if (result.outcome === 'deferred') {
-                            stats.deferred++;
-                        }
                         else {
                             stats.failed++;
 
                             console.warn(
-                                '[STORY PREWARM] Failed story',
+                                '[STORY PREWARM] Deferred failed story',
                                 JSON.stringify({
                                     bucket,
                                     rank: article?.topStory?.rank,
                                     clusterId: article?.clusterId,
                                     outcome: result.outcome,
-                                    generationState:
-                                        result.state?.generationState ||
-                                        null,
-                                    analysisStatus:
-                                        result.state?.analysisStatus ||
-                                        null,
                                     error:
                                         result.state?.generationError ||
                                         null

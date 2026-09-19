@@ -2058,234 +2058,10 @@ async function responseState(page) {
             .filter(Boolean)
             .join(' ');
 
-        /*
-         * GEMINI_WEB_RESPONSE_DOM_DEBUG
-         *
-         * Diagnostic only. Do not use these fields for completion
-         * decisions. They let us prove whether responseState() is
-         * following the same DOM node that Gemini is actually updating.
-         */
-        const debugCandidates = [
-            ...document.querySelectorAll(
-                'model-response,[data-message-author-role="model"],.model-response-text,.response-container-content'
-            )
-        ]
-            .filter(visible)
-            .map((element, index) => {
-                const value =
-                    String(
-                        element.innerText ||
-                        ''
-                    ).trim();
-
-                return {
-                    index,
-                    tag:
-                        String(
-                            element.tagName ||
-                            ''
-                        ).toLowerCase(),
-                    className:
-                        String(
-                            element.className ||
-                            ''
-                        ).slice(0, 120),
-                    role:
-                        element.getAttribute(
-                            'data-message-author-role'
-                        ) || null,
-                    length:
-                        value.length,
-                    tail:
-                        value.slice(-120)
-                };
-            })
-            .slice(-8);
-
-        const debugControls =
-            controls
-                .map(element => {
-                    const label = [
-                        element.innerText,
-                        element.getAttribute(
-                            'aria-label'
-                        ),
-                        element.getAttribute(
-                            'title'
-                        )
-                    ]
-                        .filter(Boolean)
-                        .join(' ')
-                        .replace(/\s+/g, ' ')
-                        .trim();
-
-                    return {
-                        label:
-                            label.slice(
-                                0,
-                                160
-                            ),
-                        disabled:
-                            Boolean(
-                                element.disabled
-                            ),
-                        ariaBusy:
-                            element.getAttribute(
-                                'aria-busy'
-                            )
-                    };
-                })
-                .filter(item =>
-                    /stop|cancel|generat|response/i
-                        .test(
-                            item.label
-                        )
-                )
-                .slice(0, 12);
-
-        /*
-         * GEMINI_WEB_RESPONSE_ACTION_COMPLETION_V1
-         *
-         * Live OpenCLI testing shows Gemini's completed-response
-         * action controls appear only after response rendering has
-         * finished:
-         *
-         *   Redo
-         *   Copy
-         *   Show more options
-         *
-         * Stop/microphone state is intentionally NOT used as a
-         * completion signal.
-         */
-        const latestModelResponse =
-            modelResponses[
-                modelResponses.length - 1
-            ] || null;
-
-        let responseCompletionControls = {
-            redo: false,
-            copy: false,
-            more: false,
-            count: 0,
-            ready: false
-        };
-
-        if (latestModelResponse) {
-            const responseControls = [
-                ...latestModelResponse.querySelectorAll(
-                    'gem-icon-button,button,[role="button"]'
-                )
-            ].filter(visible);
-
-            let redo = false;
-            let copy = false;
-            let more = false;
-
-            for (const element of responseControls) {
-                const testId =
-                    String(
-                        element.getAttribute(
-                            'data-test-id'
-                        ) || ''
-                    );
-
-                const label = [
-                    element.getAttribute(
-                        'aria-label'
-                    ),
-                    element.getAttribute(
-                        'arialabel'
-                    ),
-                    element.getAttribute(
-                        'title'
-                    ),
-                    element.getAttribute(
-                        'gemtooltip'
-                    ),
-                    element.innerText
-                ]
-                    .filter(Boolean)
-                    .join(' ')
-                    .replace(/\s+/g, ' ')
-                    .trim();
-
-                if (
-                    testId ===
-                        'regenerate-button' ||
-                    /^redo$/i.test(label)
-                ) {
-                    redo = true;
-                }
-
-                if (
-                    /^copy(?: response)?$/i.test(
-                        label
-                    )
-                ) {
-                    copy = true;
-                }
-
-                if (
-                    testId ===
-                        'more-menu-button' ||
-                    /^show more options$/i.test(
-                        label
-                    ) ||
-                    /^more$/i.test(label)
-                ) {
-                    more = true;
-                }
-            }
-
-            const count =
-                Number(redo) +
-                Number(copy) +
-                Number(more);
-
-            responseCompletionControls = {
-                redo,
-                copy,
-                more,
-                count,
-
-                /*
-                 * Copy is our primary completed-response control.
-                 * Require either Redo or More as independent
-                 * corroboration so one stray button cannot cause
-                 * a false completion.
-                 */
-                ready:
-                    copy &&
-                    (
-                        redo ||
-                        more
-                    )
-            };
-        }
-
         return {
             text: text.trim(),
-
-            /*
-             * Kept for diagnostics only.
-             * waitForResponse() no longer uses this as completion.
-             */
             generating,
-
-            responseFinished:
-                responseCompletionControls.ready,
-
-            responseCompletionControls,
-
-            alerts: alerts.slice(0, 1000),
-            debug: {
-                candidateCount:
-                    debugCandidates.length,
-                candidates:
-                    debugCandidates,
-                controls:
-                    debugControls
-            }
+            alerts: alerts.slice(0, 1000)
         };
     });
 }
@@ -2480,106 +2256,12 @@ async function waitForResponse(
     let incompleteSince = 0;
     let incompleteLogged = false;
 
-    // GEMINI_WEB_RESPONSE_PROGRESS_DEBUG
-    // Diagnostic only; has no effect on completion logic.
-    const responseDebugStartedAt =
-        Date.now();
-
-    let responseDebugLastLogAt = 0;
-    let responseDebugLastGenerating = null;
-    let responseDebugLastCandidateSignature = '';
-
     const JSON_COMPLETION_GRACE_MS =
         12000;
 
     while (Date.now() < deadline) {
         const state =
             await responseState(page);
-
-        if (
-            expectJson &&
-            state?.text &&
-            state.text !== baseline
-        ) {
-            const now =
-                Date.now();
-
-            const candidateSignature =
-                JSON.stringify(
-                    (
-                        state.debug
-                            ?.candidates ||
-                        []
-                    ).map(
-                        item => [
-                            item.tag,
-                            item.role,
-                            item.length
-                        ]
-                    )
-                );
-
-            const importantChange =
-                responseDebugLastGenerating !==
-                    state.generating ||
-                responseDebugLastCandidateSignature !==
-                    candidateSignature;
-
-            if (
-                importantChange ||
-                now -
-                    responseDebugLastLogAt >=
-                    2000
-            ) {
-                console.log(
-                    '[GEMINI WEB RESPONSE DEBUG]',
-                    JSON.stringify({
-                        elapsedMs:
-                            now -
-                            responseDebugStartedAt,
-                        selectedTextLength:
-                            state.text.length,
-                        selectedTextTail:
-                            state.text.slice(
-                                -160
-                            ),
-                        generatingDiagnosticOnly:
-                            state.generating,
-                        responseFinished:
-                            state.responseFinished,
-                        responseCompletionControls:
-                            state.responseCompletionControls,
-                        stableCount,
-                        incompleteForMs:
-                            incompleteSince
-                                ? now -
-                                    incompleteSince
-                                : 0,
-                        candidateCount:
-                            state.debug
-                                ?.candidateCount ||
-                            0,
-                        candidates:
-                            state.debug
-                                ?.candidates ||
-                            [],
-                        controls:
-                            state.debug
-                                ?.controls ||
-                            []
-                    })
-                );
-
-                responseDebugLastLogAt =
-                    now;
-
-                responseDebugLastGenerating =
-                    state.generating;
-
-                responseDebugLastCandidateSignature =
-                    candidateSignature;
-            }
-        }
 
         /*
          * Gemini can show:
@@ -2696,7 +2378,7 @@ async function waitForResponse(
             }
 
             if (
-                state.responseFinished &&
+                !state.generating &&
                 stableCount >= 3
             ) {
                 if (!expectJson) {
@@ -2791,31 +2473,6 @@ async function waitForResponse(
 
                     error.parserReason =
                         'Response stopped before the JSON document was structurally complete';
-
-                    error.responseDomDebug =
-                        state.debug ||
-                        null;
-
-                    console.warn(
-                        '[GEMINI WEB INCOMPLETE FINAL DEBUG]',
-                        JSON.stringify({
-                            selectedTextLength:
-                                state.text.length,
-                            generatingDiagnosticOnly:
-                                state.generating,
-                            responseFinished:
-                                state.responseFinished,
-                            responseCompletionControls:
-                                state.responseCompletionControls,
-                            stableCount,
-                            incompleteForMs:
-                                Date.now() -
-                                incompleteSince,
-                            debug:
-                                state.debug ||
-                                null
-                        })
-                    );
 
                     throw error;
                 }

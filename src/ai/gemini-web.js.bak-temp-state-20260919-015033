@@ -7,13 +7,8 @@ export const GEMINI_WEB_URL =
 
 export const GEMINI_WEB_MODEL = '3.8 Flash';
 
-/*
- * Gemini Web has no provider-local concurrency limit.
- *
- * The global AI scheduler is the sole owner of concurrency.
- * Browser slots below are created elastically only after work
- * has already been authorized by the global scheduler.
- */
+// User requirement: exactly two Gemini Web AI slots.
+export const GEMINI_WEB_CONCURRENCY = 2;
 
 const GEMINI_WEB_PROFILE =
     process.env.GEMINI_WEB_PROFILE ||
@@ -60,51 +55,25 @@ const GEMINI_WEB_IDLE_CLOSE_MS = Math.max(
         10 * 60 * 1000
 );
 
-const slots = [];
-let nextSlotId = 1;
+const slots = Array.from(
+    { length: GEMINI_WEB_CONCURRENCY },
+    (_, index) => ({
+        id: index + 1,
+        busy: false,
+        page: null,
+        idleTimer: null,
+        lastUsedAt: 0
+    })
+);
 
 
 let retryAt = 0;
 let browserModulesPromise = null;
 
-// GEMINI_WEB_SHORT_COOLDOWN_V1
-export function geminiWebConfigured() {
-    return (
-        process.env.GEMINI_WEB_ENABLED !==
-        'false'
-    );
-}
-
-export function getGeminiWebCooldownState() {
-    const until =
-        Math.max(
-            0,
-            Number(
-                retryAt
-            ) || 0
-        );
-
-    return {
-        enabled:
-            geminiWebConfigured(),
-        retryAt:
-            until,
-        remainingMs:
-            Math.max(
-                0,
-                until -
-                    Date.now()
-            )
-    };
-}
-
 export function geminiWebAvailable() {
-    const state =
-        getGeminiWebCooldownState();
-
     return (
-        state.enabled &&
-        state.remainingMs <= 0
+        process.env.GEMINI_WEB_ENABLED !== 'false' &&
+        Date.now() >= retryAt
     );
 }
 
@@ -222,59 +191,40 @@ function scheduleIdleClose(slot) {
 // GEMINI WEB PROVIDER-LOCAL BROWSER SLOTS
 //
 // These are physical browser resources only.
-// They contain NO priority/read-mode/concurrency policy.
+// They contain NO priority/read-mode policy.
 // The global scheduler authorizes work before provider routing.
-// Slots grow elastically to match globally authorized work and
-// are reused after release; idle browser pages still close normally.
+// If both browser tabs are occupied, the router should use the
+// next usable provider instead of building another queue here.
 // ============================================================
 
 function acquireSlot() {
-    /*
-     * Reuse an existing idle physical browser slot first.
-     *
-     * If every existing slot is busy, create another one.
-     * There is intentionally NO Gemini-Web-local maximum here:
-     * the global AI scheduler already decided that this request
-     * is allowed to run.
-     */
-    let slot =
+    const slot =
         slots.find(
             candidate =>
                 !candidate.busy
         );
 
     if (!slot) {
-        slot = {
-            id:
-                nextSlotId++,
+        const error =
+            new Error(
+                'Gemini Web has no free browser slot; use the next provider'
+            );
 
-            busy:
-                false,
+        error.code =
+            'GEMINI_WEB_BUSY';
 
-            page:
-                null,
+        error.skipProvider =
+            true;
 
-            idleTimer:
-                null,
+        error.nonProviderFault =
+            true;
 
-            lastUsedAt:
-                0
-        };
-
-        slots.push(
-            slot
-        );
-
-        console.log(
-            `[GEMINI WEB] Created elastic browser slot ${slot.id} ` +
-            `(physical slots: ${slots.length})`
-        );
+        throw error;
     }
 
     clearIdleClose(slot);
 
-    slot.busy =
-        true;
+    slot.busy = true;
 
     return slot;
 }
@@ -436,11 +386,8 @@ async function temporaryChatState(page) {
         const visible = element => {
             if (!element) return false;
 
-            const style =
-                getComputedStyle(element);
-
-            const rect =
-                element.getBoundingClientRect();
+            const style = getComputedStyle(element);
+            const rect = element.getBoundingClientRect();
 
             return (
                 style.display !== 'none' &&
@@ -450,149 +397,78 @@ async function temporaryChatState(page) {
             );
         };
 
-        const freshRoute =
-            /\/app\/?$/.test(
-                location.pathname
-            );
-
-        /*
-         * Confirmed by the live Gemini DOM:
-         *
-         * Once a Temporary Chat is active Gemini may remove
-         * the toolbar Temporary Chat button completely.
-         *
-         * The conversation itself then exposes its state.
-         */
-        const activeTemporaryDom =
-            Boolean(
-                document.querySelector(
-                    'chat-window.is-temporary-chat'
-                ) ||
-                document.querySelector(
-                    '.chat-history.temporary-chat'
-                ) ||
-                document.querySelector(
-                    'infinite-scroller.temporary-chat'
-                )
-            );
-
         const temporaryButton = [
             ...document.querySelectorAll(
-                'button[aria-label],[role="button"][aria-label]'
+                'button,[role="button"]'
             )
         ]
             .filter(visible)
-            .find(element =>
-                /^temporary chat$/i.test(
-                    String(
-                        element.getAttribute(
-                            'aria-label'
-                        ) || ''
-                    )
-                        .replace(/\s+/g, ' ')
-                        .trim()
+            .find(element => {
+                const label = [
+                    element.getAttribute('aria-label'),
+                    element.innerText,
+                    element.getAttribute('title')
+                ]
+                    .filter(Boolean)
+                    .join(' ')
+                    .replace(/\s+/g, ' ')
+                    .trim();
+
+                return /^temporary chat$/i.test(label);
+            });
+
+        if (!temporaryButton) {
+            return {
+                enabled: false,
+                canEnable: false,
+                iconName: '',
+                helpLink: false
+            };
+        }
+
+        const icon = temporaryButton.querySelector(
+            'mat-icon,[data-mat-icon-name]'
+        );
+
+        const iconName =
+            icon?.getAttribute('data-mat-icon-name') ||
+            icon?.getAttribute('fonticon') ||
+            '';
+
+        const helpLink = [
+            ...document.querySelectorAll('a[aria-label]')
+        ]
+            .filter(visible)
+            .some(element =>
+                /^temporary chats$/i.test(
+                    element.getAttribute('aria-label') || ''
                 )
             );
 
-        const icon =
-            temporaryButton?.querySelector(
-                'mat-icon[data-mat-icon-name],mat-icon[fonticon]'
-            );
-
-        const iconName =
-            String(
-                icon?.getAttribute(
-                    'data-mat-icon-name'
-                ) ||
-                icon?.getAttribute(
-                    'fonticon'
-                ) ||
-                ''
-            ).trim();
-
-        const toolbarEnabled =
-            iconName === 'close';
-
-        const canEnable =
-            iconName ===
-            'gemini_chat_temp';
-
+        /*
+         * Gemini current DOM:
+         *
+         * OFF:
+         *   aria-label="Temporary chat"
+         *   data-mat-icon-name="gemini_chat_temp"
+         *
+         * ON:
+         *   aria-label="Temporary chat"
+         *   data-mat-icon-name="close"
+         *   + "Temporary chats" support link
+         */
         const enabled =
-            activeTemporaryDom ||
-            toolbarEnabled;
+            /^close$/i.test(iconName) ||
+            helpLink;
 
         return {
-            found:
-                Boolean(
-                    temporaryButton ||
-                    activeTemporaryDom
-                ),
-
-            knownState:
-                enabled ||
-                canEnable,
-
             enabled,
-
-            canEnable:
-                !enabled &&
-                canEnable,
-
-            activeTemporaryDom,
-
-            buttonFound:
-                Boolean(
-                    temporaryButton
-                ),
-
+            canEnable: !enabled,
             iconName,
-
-            ariaLabel:
-                String(
-                    temporaryButton
-                        ?.getAttribute(
-                            'aria-label'
-                        ) ||
-                    ''
-                ),
-
-            freshRoute,
-
-            url:
-                location.href
+            helpLink
         };
     });
 }
-
-
-async function waitForTemporaryChatControl(
-    page,
-    timeoutMs = 15000
-) {
-    const deadline =
-        Date.now() + timeoutMs;
-
-    let lastState = null;
-
-    while (Date.now() < deadline) {
-        lastState =
-            await temporaryChatState(
-                page
-            );
-
-        if (
-            lastState?.found &&
-            lastState?.knownState
-        ) {
-            return lastState;
-        }
-
-        await sleep(200);
-    }
-
-    return null;
-}
-
 
 async function ensureTemporaryChat(page) {
     let state = await temporaryChatState(page);
@@ -692,7 +568,7 @@ async function clickTemporaryChatToggle(page) {
 
         const button = [
             ...document.querySelectorAll(
-                'button[aria-label],[role="button"][aria-label]'
+                'button,[role="button"]'
             )
         ]
             .filter(visible)
@@ -701,19 +577,16 @@ async function clickTemporaryChatToggle(page) {
                     String(
                         element.getAttribute(
                             'aria-label'
-                        ) || ''
-                    )
-                        .replace(/\s+/g, ' ')
-                        .trim()
+                        ) ||
+                        element.innerText ||
+                        ''
+                    ).trim()
                 )
             );
 
-        if (!button) {
-            return false;
-        }
+        if (!button) return false;
 
         button.click();
-
         return true;
     });
 }
@@ -731,14 +604,11 @@ async function waitForTemporaryChatState(
 
     while (Date.now() < deadline) {
         state =
-            await temporaryChatState(
-                page
-            );
+            await temporaryChatState(page);
 
         if (
-            state?.found &&
-            state?.knownState &&
-            state.enabled === expectedEnabled
+            state.enabled ===
+            expectedEnabled
         ) {
             return state;
         }
@@ -758,212 +628,31 @@ async function waitForTemporaryChatState(
 }
 
 
-async function clickGeminiNewChatControl(
-    page,
-    timeoutMs = 5000
-) {
-    const deadline =
-        Date.now() + timeoutMs;
-
-    while (Date.now() < deadline) {
-        const result =
-            await page.evaluate(() => {
-                const visible = element => {
-                    if (!element) {
-                        return false;
-                    }
-
-                    const style =
-                        getComputedStyle(
-                            element
-                        );
-
-                    const rect =
-                        element
-                            .getBoundingClientRect();
-
-                    return (
-                        style.display !==
-                            'none' &&
-                        style.visibility !==
-                            'hidden' &&
-                        rect.width > 0 &&
-                        rect.height > 0
-                    );
-                };
-
-                const controls = [
-                    ...document
-                        .querySelectorAll(
-                            'a[aria-label],button[aria-label],[role="button"][aria-label]'
-                        )
-                ]
-                    .filter(visible)
-                    .filter(element =>
-                        /^new chat$/i.test(
-                            String(
-                                element
-                                    .getAttribute(
-                                        'aria-label'
-                                    ) ||
-                                ''
-                            )
-                                .replace(
-                                    /\s+/g,
-                                    ' '
-                                )
-                                .trim()
-                        )
-                    );
-
-                /*
-                 * Gemini currently exposes more than one visible
-                 * "New chat" element.
-                 *
-                 * Prefer the /app control. The other observed control
-                 * points at "/" and is the sparkle/home control.
-                 */
-                const preferred =
-                    controls.find(
-                        element => {
-                            const href =
-                                String(
-                                    element.getAttribute(
-                                        'href'
-                                    ) ||
-                                    ''
-                                );
-
-                            if (!href) {
-                                return false;
-                            }
-
-                            try {
-                                const pathname =
-                                    new URL(
-                                        href,
-                                        location.href
-                                    ).pathname;
-
-                                return /\/app\/?$/.test(
-                                    pathname
-                                );
-                            }
-                            catch {
-                                return false;
-                            }
-                        }
-                    );
-
-                const control =
-                    preferred ||
-                    controls[0];
-
-                if (!control) {
-                    return null;
-                }
-
-                const href =
-                    String(
-                        control.getAttribute(
-                            'href'
-                        ) ||
-                        ''
-                    );
-
-                control.click();
-
-                return {
-                    clicked: true,
-                    href,
-                    preferred:
-                        control === preferred
-                };
-            }).catch(
-                () => null
-            );
-
-        if (result?.clicked) {
-            console.log(
-                `[GEMINI WEB] New chat control selected href=${result.href || '(none)'}${
-                    result.preferred
-                        ? ' (preferred /app New chat control)'
-                        : ''
-                }`
-            );
-
-            return true;
-        }
-
-        await sleep(200);
-    }
-
-    return false;
-}
-
-
-async function waitForFreshNormalChat(
-    page,
-    timeoutMs = 12000
-) {
-    const deadline =
-        Date.now() + timeoutMs;
-
-    let state = null;
-
-    while (Date.now() < deadline) {
-        state =
-            await temporaryChatState(
-                page
-            );
-
-        /*
-         * Fresh normal Gemini chat:
-         *
-         * - canonical /app route
-         * - NOT currently Temporary Chat
-         * - Temporary Chat button is available with
-         *   gemini_chat_temp icon.
-         */
-        if (
-            state?.freshRoute &&
-            !state?.enabled &&
-            state?.canEnable
-        ) {
-            return state;
-        }
-
-        await sleep(200);
-    }
-
-    return null;
-}
-
-
 async function returnToGeminiChatHome(page) {
     /*
-     * Ctrl+Shift+O is the primary New Chat mechanism.
+     * Gemini's native New Chat shortcut:
      *
-     * Live results showed the visible New Chat control usually
-     * does not produce a state we can confirm as fresh:
+     *     Ctrl + Shift + O
      *
-     *   16 real-control attempts
-     *   15 confirmation failures
+     * Use a real CDP key press rather than element.click().
      *
-     * Keep the visible control only as a final compatibility
-     * fallback.
+     * This keeps:
+     *   - same browser tab
+     *   - same Google login
+     *   - same OpenCLI slot
+     *
+     * but starts a new Gemini conversation.
      */
-    for (
-        let attempt = 1;
-        attempt <= 2;
-        attempt += 1
-    ) {
+
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+        /*
+         * Close any open menu/popover first.
+         */
         try {
             await page.pressKey(
                 'Escape'
             );
-        }
-        catch {
+        } catch {
             // Nothing to close.
         }
 
@@ -977,91 +666,99 @@ async function returnToGeminiChatHome(page) {
             'Control+Shift+O'
         );
 
-        const fresh =
-            await waitForFreshNormalChat(
-                page,
-                10000
-            );
+        /*
+         * A successful New Chat eventually exposes the
+         * Temporary Chat control again.
+         *
+         * Do NOT inspect model-response nodes here:
+         * Gemini may retain stale DOM nodes even though the
+         * actual conversation has been reset.
+         */
+        const deadline =
+            Date.now() + 10000;
 
-        if (fresh) {
-            return fresh;
-        }
+        while (Date.now() < deadline) {
+            const state =
+                await temporaryChatState(page);
 
-        console.warn(
-            `[GEMINI WEB] Ctrl+Shift+O attempt ${attempt} did not reach a confirmed fresh normal chat`
-        );
-    }
+            if (
+                state.enabled ||
+                state.canEnable
+            ) {
+                return;
+            }
 
-    /*
-     * Final compatibility fallback.
-     */
-    console.warn(
-        '[GEMINI WEB] New chat shortcut failed; trying real New chat control once'
-    );
-
-    const clicked =
-        await clickGeminiNewChatControl(
-            page,
-            3000
-        );
-
-    if (clicked) {
-        console.log(
-            '[GEMINI WEB] New chat via real New chat control fallback'
-        );
-
-        const fresh =
-            await waitForFreshNormalChat(
-                page,
-                10000
-            );
-
-        if (fresh) {
-            return fresh;
+            await sleep(200);
         }
     }
 
     return providerError(
         page,
-        'Gemini could not reach a confirmed fresh normal chat',
-        'GEMINI_WEB_NEW_CHAT_FAILED'
+        'Gemini New chat shortcut did not reach a fresh chat',
+        'GEMINI_WEB_NEW_CHAT_SHORTCUT_FAILED'
     );
 }
 
 
 async function resetFreshTemporaryChat(page) {
-    let state =
-        await waitForFreshNormalChat(
-            page,
-            3000
-        );
-
     /*
-     * If we somehow reached this function while still inside
-     * an old Temporary Chat or another conversation, start a
-     * real new conversation first.
+     * Temporary Chat control can render later than the prompt
+     * editor/mode picker after New Chat. Wait for it separately.
      */
-    if (!state) {
-        console.warn(
-            '[GEMINI WEB] Fresh normal chat not confirmed before Temporary Chat; resetting conversation'
-        );
+    const controlDeadline =
+        Date.now() + 15000;
 
-        await returnToGeminiChatHome(
-            page
-        );
+    let state = null;
 
+    while (Date.now() < controlDeadline) {
         state =
-            await waitForFreshNormalChat(
-                page,
-                10000
-            );
+            await temporaryChatState(page);
+
+        if (
+            state.enabled ||
+            state.canEnable
+        ) {
+            break;
+        }
+
+        await sleep(200);
     }
 
-    if (!state) {
+    if (
+        !state ||
+        (
+            !state.enabled &&
+            !state.canEnable
+        )
+    ) {
         return providerError(
             page,
-            'Fresh normal Gemini chat could not be confirmed before enabling Temporary Chat',
-            'GEMINI_WEB_FRESH_CHAT_NOT_CONFIRMED'
+            'Temporary Chat control did not appear after New chat',
+            'GEMINI_WEB_TEMP_CHAT_NOT_FOUND'
+        );
+    }
+
+    /*
+     * If it is somehow already enabled, switch it off so this
+     * job cannot reuse an existing temporary conversation.
+     */
+    if (state.enabled) {
+        const clickedOff =
+            await clickTemporaryChatToggle(
+                page
+            );
+
+        if (!clickedOff) {
+            return providerError(
+                page,
+                'Could not close the previous Temporary Chat',
+                'GEMINI_WEB_TEMP_CHAT_RESET_FAILED'
+            );
+        }
+
+        await waitForTemporaryChatState(
+            page,
+            false
         );
     }
 
@@ -1078,17 +775,9 @@ async function resetFreshTemporaryChat(page) {
         );
     }
 
-    /*
-     * ON can now be confirmed by either:
-     *
-     * - toolbar icon = close
-     * - chat-window.is-temporary-chat
-     * - .chat-history.temporary-chat
-     */
     await waitForTemporaryChatState(
         page,
-        true,
-        10000
+        true
     );
 }
 
@@ -2058,528 +1747,29 @@ async function responseState(page) {
             .filter(Boolean)
             .join(' ');
 
-        /*
-         * GEMINI_WEB_RESPONSE_DOM_DEBUG
-         *
-         * Diagnostic only. Do not use these fields for completion
-         * decisions. They let us prove whether responseState() is
-         * following the same DOM node that Gemini is actually updating.
-         */
-        const debugCandidates = [
-            ...document.querySelectorAll(
-                'model-response,[data-message-author-role="model"],.model-response-text,.response-container-content'
-            )
-        ]
-            .filter(visible)
-            .map((element, index) => {
-                const value =
-                    String(
-                        element.innerText ||
-                        ''
-                    ).trim();
-
-                return {
-                    index,
-                    tag:
-                        String(
-                            element.tagName ||
-                            ''
-                        ).toLowerCase(),
-                    className:
-                        String(
-                            element.className ||
-                            ''
-                        ).slice(0, 120),
-                    role:
-                        element.getAttribute(
-                            'data-message-author-role'
-                        ) || null,
-                    length:
-                        value.length,
-                    tail:
-                        value.slice(-120)
-                };
-            })
-            .slice(-8);
-
-        const debugControls =
-            controls
-                .map(element => {
-                    const label = [
-                        element.innerText,
-                        element.getAttribute(
-                            'aria-label'
-                        ),
-                        element.getAttribute(
-                            'title'
-                        )
-                    ]
-                        .filter(Boolean)
-                        .join(' ')
-                        .replace(/\s+/g, ' ')
-                        .trim();
-
-                    return {
-                        label:
-                            label.slice(
-                                0,
-                                160
-                            ),
-                        disabled:
-                            Boolean(
-                                element.disabled
-                            ),
-                        ariaBusy:
-                            element.getAttribute(
-                                'aria-busy'
-                            )
-                    };
-                })
-                .filter(item =>
-                    /stop|cancel|generat|response/i
-                        .test(
-                            item.label
-                        )
-                )
-                .slice(0, 12);
-
-        /*
-         * GEMINI_WEB_RESPONSE_ACTION_COMPLETION_V1
-         *
-         * Live OpenCLI testing shows Gemini's completed-response
-         * action controls appear only after response rendering has
-         * finished:
-         *
-         *   Redo
-         *   Copy
-         *   Show more options
-         *
-         * Stop/microphone state is intentionally NOT used as a
-         * completion signal.
-         */
-        const latestModelResponse =
-            modelResponses[
-                modelResponses.length - 1
-            ] || null;
-
-        let responseCompletionControls = {
-            redo: false,
-            copy: false,
-            more: false,
-            count: 0,
-            ready: false
-        };
-
-        if (latestModelResponse) {
-            const responseControls = [
-                ...latestModelResponse.querySelectorAll(
-                    'gem-icon-button,button,[role="button"]'
-                )
-            ].filter(visible);
-
-            let redo = false;
-            let copy = false;
-            let more = false;
-
-            for (const element of responseControls) {
-                const testId =
-                    String(
-                        element.getAttribute(
-                            'data-test-id'
-                        ) || ''
-                    );
-
-                const label = [
-                    element.getAttribute(
-                        'aria-label'
-                    ),
-                    element.getAttribute(
-                        'arialabel'
-                    ),
-                    element.getAttribute(
-                        'title'
-                    ),
-                    element.getAttribute(
-                        'gemtooltip'
-                    ),
-                    element.innerText
-                ]
-                    .filter(Boolean)
-                    .join(' ')
-                    .replace(/\s+/g, ' ')
-                    .trim();
-
-                if (
-                    testId ===
-                        'regenerate-button' ||
-                    /^redo$/i.test(label)
-                ) {
-                    redo = true;
-                }
-
-                if (
-                    /^copy(?: response)?$/i.test(
-                        label
-                    )
-                ) {
-                    copy = true;
-                }
-
-                if (
-                    testId ===
-                        'more-menu-button' ||
-                    /^show more options$/i.test(
-                        label
-                    ) ||
-                    /^more$/i.test(label)
-                ) {
-                    more = true;
-                }
-            }
-
-            const count =
-                Number(redo) +
-                Number(copy) +
-                Number(more);
-
-            responseCompletionControls = {
-                redo,
-                copy,
-                more,
-                count,
-
-                /*
-                 * Copy is our primary completed-response control.
-                 * Require either Redo or More as independent
-                 * corroboration so one stray button cannot cause
-                 * a false completion.
-                 */
-                ready:
-                    copy &&
-                    (
-                        redo ||
-                        more
-                    )
-            };
-        }
-
         return {
             text: text.trim(),
-
-            /*
-             * Kept for diagnostics only.
-             * waitForResponse() no longer uses this as completion.
-             */
             generating,
-
-            responseFinished:
-                responseCompletionControls.ready,
-
-            responseCompletionControls,
-
-            alerts: alerts.slice(0, 1000),
-            debug: {
-                candidateCount:
-                    debugCandidates.length,
-                candidates:
-                    debugCandidates,
-                controls:
-                    debugControls
-            }
+            alerts: alerts.slice(0, 1000)
         };
     });
 }
 
-/*
- * GEMINI_WEB_JSON_COMPLETION_RECOVERY
- *
- * Gemini can remove its generating/Stop control before the
- * response DOM has finished settling.
- *
- * For JSON jobs, do not accept text that is obviously cut off.
- */
-function geminiWebJsonCompletionState(value) {
-    const text =
-        cleanResponse(value);
-
-    if (!text) {
-        return {
-            accepted: false,
-            incomplete: true
-        };
-    }
-
-    try {
-        JSON.parse(text);
-
-        return {
-            accepted: true,
-            incomplete: false
-        };
-    }
-    catch {
-        // Existing narrow quote repair gets one chance below.
-    }
-
-    /*
-     * If the existing quote-only repair can produce valid JSON,
-     * the document is complete enough. The normal parse layer
-     * will perform and log that repair later.
-     */
-    const repair =
-        repairGeminiWebJsonQuotes(
-            text
-        );
-
-    if (repair.changed) {
-        try {
-            JSON.parse(
-                repair.text
-            );
-
-            return {
-                accepted: true,
-                incomplete: false
-            };
-        }
-        catch {
-            // Continue with conservative structural checks.
-        }
-    }
-
-    const trimmed =
-        text.trim();
-
-    const finalCharacter =
-        trimmed[
-            trimmed.length - 1
-        ] || '';
-
-    /*
-     * This catches the failures we observed, for example:
-     *
-     * {"analysisReview":[{"label":"What changed",
-     *
-     * A complete top-level JSON object/array cannot end there.
-     */
-    if (
-        finalCharacter !== '}' &&
-        finalCharacter !== ']'
-    ) {
-        return {
-            accepted: false,
-            incomplete: true
-        };
-    }
-
-    /*
-     * Detect an outer object/array that is still open even when
-     * the response happens to end after a complete inner object.
-     *
-     * If quote state itself is malformed, do NOT invent a repair;
-     * hand it back to the existing parser/quote-repair path.
-     */
-    const stack = [];
-
-    let inString = false;
-    let escaped = false;
-    let mismatch = false;
-
-    for (const char of trimmed) {
-        if (inString) {
-            if (escaped) {
-                escaped = false;
-                continue;
-            }
-
-            if (char === '\\') {
-                escaped = true;
-                continue;
-            }
-
-            if (char === '"') {
-                inString = false;
-            }
-
-            continue;
-        }
-
-        if (char === '"') {
-            inString = true;
-            continue;
-        }
-
-        if (
-            char === '{' ||
-            char === '['
-        ) {
-            stack.push(
-                char
-            );
-
-            continue;
-        }
-
-        if (
-            char === '}' ||
-            char === ']'
-        ) {
-            const expected =
-                char === '}'
-                    ? '{'
-                    : '[';
-
-            if (
-                stack[
-                    stack.length - 1
-                ] !== expected
-            ) {
-                mismatch = true;
-                break;
-            }
-
-            stack.pop();
-        }
-    }
-
-    if (
-        !mismatch &&
-        !inString &&
-        stack.length > 0
-    ) {
-        return {
-            accepted: false,
-            incomplete: true
-        };
-    }
-
-    /*
-     * Complete-looking but malformed JSON is NOT treated as
-     * truncation. Let the existing strict parser handle it.
-     */
-    return {
-        accepted: false,
-        incomplete: false
-    };
-}
-
-
 async function waitForResponse(
     page,
     baseline,
-    timeoutMs,
-    expectJson = false
+    timeoutMs
 ) {
-    let deadline =
+    const deadline =
         Date.now() + timeoutMs;
 
     let lastText = '';
     let stableCount = 0;
     let started = false;
 
-    let incompleteSince = 0;
-    let incompleteLogged = false;
-
-    // GEMINI_WEB_RESPONSE_PROGRESS_DEBUG
-    // Diagnostic only; has no effect on completion logic.
-    const responseDebugStartedAt =
-        Date.now();
-
-    let responseDebugLastLogAt = 0;
-    let responseDebugLastGenerating = null;
-    let responseDebugLastCandidateSignature = '';
-
-    const JSON_COMPLETION_GRACE_MS =
-        12000;
-
     while (Date.now() < deadline) {
         const state =
             await responseState(page);
-
-        if (
-            expectJson &&
-            state?.text &&
-            state.text !== baseline
-        ) {
-            const now =
-                Date.now();
-
-            const candidateSignature =
-                JSON.stringify(
-                    (
-                        state.debug
-                            ?.candidates ||
-                        []
-                    ).map(
-                        item => [
-                            item.tag,
-                            item.role,
-                            item.length
-                        ]
-                    )
-                );
-
-            const importantChange =
-                responseDebugLastGenerating !==
-                    state.generating ||
-                responseDebugLastCandidateSignature !==
-                    candidateSignature;
-
-            if (
-                importantChange ||
-                now -
-                    responseDebugLastLogAt >=
-                    2000
-            ) {
-                console.log(
-                    '[GEMINI WEB RESPONSE DEBUG]',
-                    JSON.stringify({
-                        elapsedMs:
-                            now -
-                            responseDebugStartedAt,
-                        selectedTextLength:
-                            state.text.length,
-                        selectedTextTail:
-                            state.text.slice(
-                                -160
-                            ),
-                        generatingDiagnosticOnly:
-                            state.generating,
-                        responseFinished:
-                            state.responseFinished,
-                        responseCompletionControls:
-                            state.responseCompletionControls,
-                        stableCount,
-                        incompleteForMs:
-                            incompleteSince
-                                ? now -
-                                    incompleteSince
-                                : 0,
-                        candidateCount:
-                            state.debug
-                                ?.candidateCount ||
-                            0,
-                        candidates:
-                            state.debug
-                                ?.candidates ||
-                            [],
-                        controls:
-                            state.debug
-                                ?.controls ||
-                            []
-                    })
-                );
-
-                responseDebugLastLogAt =
-                    now;
-
-                responseDebugLastGenerating =
-                    state.generating;
-
-                responseDebugLastCandidateSignature =
-                    candidateSignature;
-            }
-        }
 
         /*
          * Gemini can show:
@@ -2686,139 +1876,13 @@ async function waitForResponse(
             } else {
                 stableCount = 0;
                 lastText = state.text;
-
-                /*
-                 * New response text arrived. Restart any
-                 * incomplete-JSON settling window.
-                 */
-                incompleteSince = 0;
-                incompleteLogged = false;
             }
 
             if (
-                state.responseFinished &&
+                !state.generating &&
                 stableCount >= 3
             ) {
-                if (!expectJson) {
-                    return state.text;
-                }
-
-                const completion =
-                    geminiWebJsonCompletionState(
-                        state.text
-                    );
-
-                /*
-                 * Valid JSON, or complete JSON requiring only
-                 * the existing narrow quote repair.
-                 */
-                if (completion.accepted) {
-                    return state.text;
-                }
-
-                /*
-                 * Complete-looking but malformed JSON belongs to
-                 * the existing parser/repair path.
-                 */
-                if (!completion.incomplete) {
-                    return state.text;
-                }
-
-                if (!incompleteSince) {
-                    incompleteSince =
-                        Date.now();
-
-                    /*
-                     * JSON grace owns its full settling window.
-                     *
-                     * Do not let the original request deadline expire
-                     * halfway through the promised 12-second wait.
-                     */
-                    deadline =
-                        Math.max(
-                            deadline,
-                            incompleteSince +
-                                JSON_COMPLETION_GRACE_MS +
-                                1000
-                        );
-                }
-
-                if (!incompleteLogged) {
-                    incompleteLogged =
-                        true;
-
-                    console.warn(
-                        '[GEMINI WEB] JSON response appears incomplete; waiting up to 12s for additional text'
-                    );
-                }
-
-                if (
-                    Date.now() -
-                        incompleteSince >=
-                    JSON_COMPLETION_GRACE_MS
-                ) {
-                    const rawResponse =
-                        cleanResponse(
-                            state.text
-                        );
-
-                    const error =
-                        new Error(
-                            'Gemini Web JSON response remained incomplete after settling'
-                        );
-
-                    error.code =
-                        'GEMINI_WEB_INCOMPLETE_JSON';
-
-                    error.rawResponse =
-                        rawResponse;
-
-                    error.originalRawResponse =
-                        rawResponse;
-
-                    error.rawResponseLength =
-                        rawResponse.length;
-
-                    error.rawResponseShownLength =
-                        Math.min(
-                            rawResponse.length,
-                            100000
-                        );
-
-                    error.rawResponseTruncated =
-                        rawResponse.length >
-                        100000;
-
-                    error.parserReason =
-                        'Response stopped before the JSON document was structurally complete';
-
-                    error.responseDomDebug =
-                        state.debug ||
-                        null;
-
-                    console.warn(
-                        '[GEMINI WEB INCOMPLETE FINAL DEBUG]',
-                        JSON.stringify({
-                            selectedTextLength:
-                                state.text.length,
-                            generatingDiagnosticOnly:
-                                state.generating,
-                            responseFinished:
-                                state.responseFinished,
-                            responseCompletionControls:
-                                state.responseCompletionControls,
-                            stableCount,
-                            incompleteForMs:
-                                Date.now() -
-                                incompleteSince,
-                            debug:
-                                state.debug ||
-                                null
-                        })
-                    );
-
-                    throw error;
-                }
+                return state.text;
             }
         }
 
@@ -3030,57 +2094,115 @@ function buildInput(prompt, options) {
 
 async function resetGeminiJobPage(page) {
     /*
-     * Reuse this slot's browser tab and Google login.
+     * Keep this slot's existing browser tab and Google login.
      *
-     * If the tab is not on Gemini, navigate there first.
-     * Navigation itself is NOT considered a new conversation.
+     * Every job needs a brand-new Gemini conversation.
+     *
+     * Direct /app navigation is more reliable than Gemini's
+     * Ctrl+Shift+O shortcut in the current UI.
      */
-    const current =
-        await page.evaluate(
-            () => ({
-                url:
-                    location.href
-            })
-        ).catch(
-            () => ({
-                url: ''
-            })
-        );
+    let directFresh =
+        false;
 
-    if (
-        !/^https:\/\/gemini\.google\.com\//i.test(
-            current.url ||
-            ''
-        )
-    ) {
-        console.log(
-            '[GEMINI WEB] Opening Gemini app in existing slot'
-        );
-
+    try {
         await page.goto(
-            GEMINI_WEB_URL
+            GEMINI_WEB_URL,
+            {
+                settleMs:
+                    1800
+            }
         );
 
         await waitForGeminiPage(
             page,
             20000
         );
+
+        const state =
+            await page.evaluate(
+                () => {
+                    const pathname =
+                        String(
+                            location.pathname ||
+                            ''
+                        )
+                            .replace(
+                                /\/+$/,
+                                ''
+                            );
+
+                    return {
+                        url:
+                            location.href,
+
+                        pathname,
+
+                        freshPath:
+                            /^(?:\/u\/\d+)?\/app$/i
+                                .test(
+                                    pathname
+                                )
+                    };
+                }
+            );
+
+        directFresh =
+            Boolean(
+                state?.freshPath
+            );
+
+        if (directFresh) {
+            console.log(
+                '[GEMINI WEB] New chat via direct /app navigation'
+            );
+        }
+        else {
+            console.warn(
+                '[GEMINI WEB] Direct /app navigation did not confirm a fresh path',
+                JSON.stringify({
+                    url:
+                        state?.url ||
+                        null,
+
+                    pathname:
+                        state?.pathname ||
+                        null
+                })
+            );
+        }
+    }
+    catch (error) {
+        console.warn(
+            '[GEMINI WEB] Direct /app navigation failed:',
+            error?.message ||
+            error
+        );
     }
 
     /*
-     * Every AI job must receive a genuinely new conversation.
+     * Compatibility fallback for a Gemini UI that redirects
+     * /app back into an existing conversation.
      */
-    await returnToGeminiChatHome(
-        page
-    );
+    if (!directFresh) {
+        console.log(
+            '[GEMINI WEB] Falling back to Ctrl+Shift+O'
+        );
+
+        await returnToGeminiChatHome(
+            page
+        );
+    }
 
     /*
-     * Then turn Temporary Chat ON for that new conversation.
+     * Turn on a fresh Temporary Chat for this job.
      */
     await resetFreshTemporaryChat(
         page
     );
 
+    /*
+     * Let the editor/mode picker settle.
+     */
     await sleep(500);
 }
 
@@ -3164,8 +2286,7 @@ async function runOnSlot(
                     Number(options.timeoutMs) ||
                     120000
                 )
-            ),
-            Boolean(options?.json)
+            )
         );
     } catch (error) {
         // Discard a bad tab/session. The slot itself remains reusable.
@@ -3199,22 +2320,12 @@ export async function generateWithGeminiWeb(
     prompt,
     options = {}
 ) {
-    if (!geminiWebConfigured()) {
-        const error =
-            new Error(
-                'Gemini Web provider is disabled'
-            );
-
-        error.code =
-            'NOT_CONFIGURED';
-
-        error.skipProvider =
-            true;
-
-        error.nonProviderFault =
-            true;
-
-        throw error;
+    if (
+        process.env.GEMINI_WEB_ENABLED === 'false'
+    ) {
+        throw new Error(
+            'Gemini Web provider is disabled'
+        );
     }
 
     if (Date.now() < retryAt) {
@@ -3262,43 +2373,12 @@ const inputBytes =
         Date.now();
 
     try {
-    let rawText;
-
-    let firstIncompleteRawResponse =
-        null;
-
-    try {
-        rawText =
+        const rawText =
             await runOnSlot(
                 slot,
                 prompt,
                 options
             );
-    }
-    catch (error) {
-        if (
-            !options?.json ||
-            error?.code !==
-                'GEMINI_WEB_INCOMPLETE_JSON'
-        ) {
-            throw error;
-        }
-
-        firstIncompleteRawResponse =
-            error?.rawResponse ||
-            '';
-
-        console.warn(
-            '[GEMINI WEB] Incomplete JSON remained stable; regenerating once'
-        );
-
-        rawText =
-            await runOnSlot(
-                slot,
-                prompt,
-                options
-            );
-    }
 
         let text =
               cleanResponse(rawText);
@@ -3368,13 +2448,6 @@ const inputBytes =
 
                     error.originalRawResponse =
                         originalText;
-
-                    if (
-                        firstIncompleteRawResponse
-                    ) {
-                        error.firstRawResponse =
-                            firstIncompleteRawResponse;
-                    }
 
                     error.rawResponseLength =
                         originalText.length;

@@ -1,6 +1,7 @@
 import { globalAiTaskActive, runGlobalAiTask } from './src/ai/global-ai-scheduler.js';
 import { generateWithAntigravity } from './src/ai/antigravity.js';
-import { generateWithGeminiWeb } from './src/ai/gemini-web.js';
+import { generateWithGeminiWeb, getGeminiWebCooldownState } from './src/ai/gemini-web.js';
+import { generateWithLocalQwen } from './src/ai/local-qwen.js';
 /**
  * summary-engine.js — AI Summary Engine
  * 
@@ -1116,7 +1117,7 @@ async function geminiGenerate(model, prompt, options = {}) {
 }
 
 async function generateWithFallback(geminiModel, prompt, options = {}) {
-    // GLOBAL_AI_P4:generateWithFallback
+    // Existing global lane/slot policy remains authoritative.
     if (!globalAiTaskActive()) {
         const args =
             Array.from(arguments);
@@ -1140,31 +1141,189 @@ async function generateWithFallback(geminiModel, prompt, options = {}) {
         );
     }
 
-    const { maxTokens = 1500, timeoutMs = 120000 } = options;
-    const globalTimeout = Date.now() + timeoutMs;
+    const {
+        maxTokens = 1500,
+        timeoutMs = 120000
+    } = options;
 
-    const primaryModel = geminiModel || GEMINI_PRIMARY_MODEL;
-    // Rotate keys when the model is unavailable or rate limited, but never
-    // silently downgrade requests to an older model.
+    const globalTimeout =
+        Date.now() +
+        timeoutMs;
+
+    const primaryModel =
+        geminiModel ||
+        GEMINI_PRIMARY_MODEL;
+
     const sequence = [
-        { displayModel: primaryModel, apiModel: primaryModel, timeout: 40000 }
+        {
+            displayModel:
+                primaryModel,
+            apiModel:
+                primaryModel,
+            timeout:
+                40000
+        }
     ];
-    
-    let fallbackTrace = [];
+
+    const operation =
+        options.operation ||
+        'summary';
+
+    const fallbackTrace = [];
     let lastError = null;
+    let shortWebRetryAt = 0;
+
+    const noteWebTransient =
+        error => {
+            const code =
+                String(
+                    error?.code ||
+                    ''
+                );
+
+            if (
+                code !== 'GEMINI_WEB_COOLDOWN' &&
+                code !== 'GEMINI_WEB_TIMEOUT' &&
+                code !== 'GEMINI_WEB_1095' &&
+                code !== 'GEMINI_WEB_BUSY'
+            ) {
+                return false;
+            }
+
+            const state =
+                getGeminiWebCooldownState();
+
+            const retryAt =
+                Number(
+                    error?.retryAt ||
+                    error?.cooldownUntil ||
+                    state.retryAt ||
+                    (
+                        code === 'GEMINI_WEB_BUSY'
+                            ? Date.now() + 2000
+                            : 0
+                    )
+                ) || 0;
+
+            const remaining =
+                retryAt -
+                Date.now();
+
+            if (
+                remaining > 0 &&
+                remaining <= 5 * 60 * 1000
+            ) {
+                shortWebRetryAt =
+                    Math.max(
+                        shortWebRetryAt,
+                        retryAt
+                    );
+            }
+
+            return true;
+        };
+
+    const deferredError =
+        retryAt => {
+            const error =
+                new Error(
+                    `Gemini Web transient retry; retry at ${
+                        new Date(
+                            retryAt
+                        ).toISOString()
+                    } before local Qwen`
+                );
+
+            error.code =
+                'AI_PROVIDER_DEFERRED';
+
+            error.retryAt =
+                retryAt;
+
+            error.cooldownUntil =
+                retryAt;
+
+            error.nonProviderFault =
+                true;
+
+            return error;
+        };
+
+    // Antigravity first. Its own router preserves the existing uncertainty
+    // behavior; ordinary failure falls through.
     try {
-        // Reserve time for the direct Gemini API if the CLI is unavailable.
-        const result = await generateWithAntigravity(prompt, { ...options, timeoutMs: Math.min(30000, Math.max(1000, timeoutMs - 20000)) });
+        const result =
+            await generateWithAntigravity(
+                prompt,
+                {
+                    ...options,
+                    timeoutMs:
+                        Math.min(
+                            30000,
+                            Math.max(
+                                1000,
+                                timeoutMs -
+                                    20000
+                            )
+                        )
+                }
+            );
+
         result.fallbackTrace = [];
         return result;
-    } catch (error) {
-        fallbackTrace.push({ provider: 'antigravity', status: 'failed', reason: error.message });
+    }
+    catch (error) {
+        fallbackTrace.push({
+            provider:
+                'antigravity',
+            status:
+                error?.skipProvider
+                    ? 'skipped'
+                    : 'failed',
+            reason:
+                error.message
+        });
+
+        lastError =
+            error;
     }
 
-    // Subscription-backed Gemini Web before paid/API fallback.
+    // Subscription-backed Gemini Web.
     try {
+        const state =
+            getGeminiWebCooldownState();
+
+        if (
+            state.enabled &&
+            state.remainingMs > 0
+        ) {
+            const error =
+                new Error(
+                    `Gemini Web is cooling down until ${
+                        new Date(
+                            state.retryAt
+                        ).toISOString()
+                    }`
+                );
+
+            error.code =
+                'GEMINI_WEB_COOLDOWN';
+
+            error.retryAt =
+                state.retryAt;
+
+            error.cooldownUntil =
+                state.retryAt;
+
+            error.skipProvider =
+                true;
+
+            throw error;
+        }
+
         const remaining =
-            globalTimeout - Date.now();
+            globalTimeout -
+            Date.now();
 
         if (remaining > 5000) {
             const result =
@@ -1177,14 +1336,13 @@ async function generateWithFallback(geminiModel, prompt, options = {}) {
                                 90000,
                                 Math.max(
                                     5000,
-                                    remaining - 20000
+                                    remaining -
+                                        20000
                                 )
                             ),
                         json:
                             options.json,
-                        operation:
-                            options.operation ||
-                            'summary'
+                        operation
                     }
                 );
 
@@ -1193,46 +1351,261 @@ async function generateWithFallback(geminiModel, prompt, options = {}) {
 
             return result;
         }
-    } catch (error) {
+    }
+    catch (error) {
+        const webTransient =
+            noteWebTransient(
+                error
+            );
+
         fallbackTrace.push({
-            provider: 'gemini-web',
-            model: '3.8 Flash',
-            status: 'failed',
-            reason: error.message
+            provider:
+                'gemini-web',
+            model:
+                '3.8 Flash',
+            status:
+                (
+                    error?.code === 'GEMINI_WEB_COOLDOWN' ||
+                    error?.code === 'GEMINI_WEB_1095'
+                )
+                    ? 'cooldown'
+                    : error?.code === 'GEMINI_WEB_TIMEOUT'
+                        ? 'timeout'
+                        : error?.code === 'GEMINI_WEB_BUSY'
+                            ? 'busy'
+                            : error?.skipProvider
+                                ? 'skipped'
+                                : 'failed',
+            reason:
+                error.message
         });
 
-        lastError = error;
+        lastError =
+            error;
     }
 
+    // Gemini API remains after Web.  A short Web cooldown only blocks the
+    // transition to LOCAL Qwen, not another usable online provider.
     for (const step of sequence) {
-        if (Date.now() > globalTimeout) break;
-        
+        if (
+            Date.now() >
+            globalTimeout
+        ) {
+            break;
+        }
+
         try {
-            const res = await geminiGenerate(step.apiModel, prompt, {
-                maxTokens,
-                timeoutMs: Math.max(1000, Math.min(step.timeout, globalTimeout - Date.now())),
-                operation: options.operation || 'summary',
-                json: options.json
-            });
-            res.provider = 'gemini';
-            res.modelUsed = step.displayModel;
-            res.fallbackTrace = fallbackTrace;
-            return res;
-        } catch (e) {
-            if (
-                e?.code !== 'GEMINI_COOLDOWN' &&
-                e?.code !== 'NOT_CONFIGURED'
-            ) {
-                console.log(
-                    `[SUMMARY] Model ${step.displayModel} failed: ${e.message}`
+            const res =
+                await geminiGenerate(
+                    step.apiModel,
+                    prompt,
+                    {
+                        maxTokens,
+                        timeoutMs:
+                            Math.max(
+                                1000,
+                                Math.min(
+                                    step.timeout,
+                                    globalTimeout -
+                                        Date.now()
+                                )
+                            ),
+                        operation,
+                        json:
+                            options.json
+                    }
                 );
-            }
-            fallbackTrace.push({ model: step.displayModel, status: 'failed', reason: e.message });
-            lastError = e;
+
+            res.provider =
+                'gemini';
+
+            res.modelUsed =
+                step.displayModel;
+
+            res.fallbackTrace =
+                fallbackTrace;
+
+            return res;
+        }
+        catch (error) {
+            console.log(
+                `[SUMMARY] Model ${
+                    step.displayModel
+                } failed: ${
+                    error.message
+                }`
+            );
+
+            fallbackTrace.push({
+                provider:
+                    'gemini',
+                model:
+                    step.displayModel,
+                status:
+                    error?.skipProvider
+                        ? 'skipped'
+                        : 'failed',
+                reason:
+                    error.message
+            });
+
+            lastError =
+                error;
         }
     }
-    
-    throw new Error(`All providers failed sequentially. Trace: ${JSON.stringify(fallbackTrace)}`);
+
+    // If Web was the last viable online path and its KNOWN cooldown is at
+    // most one minute, release the global scheduler position instead of
+    // immediately spending ~65-75s on Qwen.
+    if (
+        shortWebRetryAt >
+        Date.now()
+    ) {
+        throw deferredError(
+            shortWebRetryAt
+        );
+    }
+
+    // If the short cooldown expired while the API was being tried, give Web
+    // one immediate retry before local inference.
+    if (shortWebRetryAt) {
+        try {
+            const result =
+                await generateWithGeminiWeb(
+                    prompt,
+                    {
+                        ...options,
+                        timeoutMs:
+                            Math.min(
+                                90000,
+                                Math.max(
+                                    5000,
+                                    timeoutMs
+                                )
+                            ),
+                        json:
+                            options.json,
+                        operation
+                    }
+                );
+
+            result.fallbackTrace =
+                fallbackTrace;
+
+            return result;
+        }
+        catch (error) {
+            const webTransient =
+                noteWebTransient(
+                    error
+                );
+
+            fallbackTrace.push({
+                provider:
+                    'gemini-web',
+                model:
+                    '3.8 Flash',
+                status:
+                    (
+                        error?.code === 'GEMINI_WEB_COOLDOWN' ||
+                        error?.code === 'GEMINI_WEB_1095'
+                    )
+                        ? 'cooldown'
+                        : error?.code === 'GEMINI_WEB_TIMEOUT'
+                            ? 'timeout'
+                            : error?.code === 'GEMINI_WEB_BUSY'
+                                ? 'busy'
+                                : error?.skipProvider
+                                    ? 'skipped'
+                                    : 'failed',
+                reason:
+                    error.message
+            });
+
+            lastError =
+                error;
+
+            /*
+             * Timeout/cooldown/busy is NOT an online-provider
+             * failure. Requeue the job instead of starting Qwen.
+             */
+            if (
+                webTransient &&
+                shortWebRetryAt >
+                    Date.now()
+            ) {
+                throw deferredError(
+                    shortWebRetryAt
+                );
+            }
+        }
+    }
+
+    // Qwen is the mandatory final fallback ONLY after the
+    // whole online chain is exhausted. Gemini Web transient
+    // states never count as a failure.
+    // Give local inference its own timeout rather
+    // than inheriting an exhausted online-provider wall clock.
+    try {
+        const result =
+            await generateWithLocalQwen(
+                prompt,
+                {
+                    operation,
+                    json:
+                        options.json ||
+                        operation ===
+                            'story-briefing',
+                    schema:
+                        options.schema,
+                    maxTokens,
+                    timeoutMs:
+                        Math.max(
+                            180_000,
+                            Math.min(
+                                300_000,
+                                Number(
+                                    process.env
+                                        .SMART_LOCAL_AI_TIMEOUT_MS
+                                ) ||
+                                180_000
+                            )
+                        )
+                }
+            );
+
+        result.fallbackTrace =
+            fallbackTrace;
+
+        return result;
+    }
+    catch (error) {
+        fallbackTrace.push({
+            provider:
+                'local-qwen',
+            status:
+                'failed',
+            reason:
+                error.message
+        });
+
+        lastError =
+            error;
+    }
+
+    const error =
+        new Error(
+            `All providers failed sequentially. Trace: ${
+                JSON.stringify(
+                    fallbackTrace
+                )
+            }`
+        );
+
+    error.cause =
+        lastError;
+
+    throw error;
 }
 
 // ─── Prompts ───────────────────────────────────────────────────────────

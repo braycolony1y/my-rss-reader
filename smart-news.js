@@ -1,4 +1,5 @@
 import { globalAiTaskActive, runGlobalAiTask } from './src/ai/global-ai-scheduler.js';
+import { withLocalCompute } from './src/ai/local-compute.js';
 import {
   SMART_EDITORIAL_POLICY_VERSION,
   SMART_EDITORIAL_RESPONSE_SCHEMA,
@@ -9,7 +10,7 @@ import {
 } from './src/ai/smart-editorial.js';
 import { parseClusteringJson, requestClusteringDecision } from './src/ai/clustering-json.js';
 import { generateWithAntigravity, antigravityAvailable, ANTIGRAVITY_MODEL } from './src/ai/antigravity.js';
-import { generateWithGeminiWeb, geminiWebAvailable } from './src/ai/gemini-web.js';
+import { generateWithGeminiWeb, geminiWebConfigured, getGeminiWebCooldownState } from './src/ai/gemini-web.js';
 import { rankStory, retainStoryIds } from './src/articles/story-ranking.js';
 import {
   SMART_SOURCES as DEFAULT_SMART_SOURCES,
@@ -78,9 +79,9 @@ const SMART_NEWS_CLUSTER_CONFIG = {
   heavyAI: {
     enabled: true,
     maxArticlesPerOnlineReview: 20,
-    maxArticlesPerLocalReview: 12,
+    maxArticlesPerLocalReview: 20,
     maxComponentsPerOnlineReview: 20,
-    maxComponentsPerLocalReview: 12,
+    maxComponentsPerLocalReview: 20,
     keepSeparateOnFailure: true
   }
 };
@@ -156,19 +157,19 @@ const SMART_NEWS_AI_CONFIG = {
       type: 'ollama',
       model:
         process.env.OLLAMA_SMART_MODEL ||
-        'qwen3.5:2b',
+        'qwen2.5:3b',
       baseUrl:
         process.env.OLLAMA_BASE_URL ||
         'http://127.0.0.1:11434',
       priority: 5,
       timeoutMs: Math.max(
-        15_000,
-        Math.min(
-          120_000,
-          Number(process.env.SMART_LOCAL_AI_TIMEOUT_MS) ||
-          60_000
-        )
-      ),
+          60_000,
+          Math.min(
+            300_000,
+            Number(process.env.SMART_LOCAL_AI_TIMEOUT_MS) ||
+            180_000
+          )
+        ),
       maxRetries: 0
     }
   ],
@@ -429,6 +430,61 @@ let verificationCacheWriteChain = Promise.resolve();
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+
+// SMART_EDITORIAL_ROUTER_V1
+function freshestPublishedAt(articles = []) {
+  const times =
+    (Array.isArray(articles) ? articles : [])
+      .map(article =>
+        parsePublishedTimestamp(
+          article?.pubDate ||
+          article?.date ||
+          article?.publishedAt
+        )
+      )
+      .filter(Number.isFinite);
+
+  return times.length
+    ? Math.max(...times)
+    : 0;
+}
+
+function providerDeferredError(retryAt, reason = 'provider_cooldown') {
+  const error =
+    new Error(
+      `${reason}; retry at ${
+        new Date(retryAt).toISOString()
+      }`
+    );
+
+  error.code =
+    'AI_PROVIDER_DEFERRED';
+
+  error.retryAt =
+    retryAt;
+
+  error.cooldownUntil =
+    retryAt;
+
+  error.nonProviderFault =
+    true;
+
+  return error;
+}
+
+function shortGeminiWebRetryAt() {
+  const state =
+    getGeminiWebCooldownState();
+
+  return (
+    state.enabled &&
+    state.remainingMs > 0 &&
+    state.remainingMs <= 60_000
+  )
+    ? state.retryAt
+    : 0;
 }
 
 function stripHtml(value = '') {
@@ -1789,6 +1845,9 @@ function getEmbeddingWorker() {
 }
 
 async function getEmbeddingVector(texts) {
+  return withLocalCompute(
+    'xenova-embedding',
+    async () => {
   if (!texts || (Array.isArray(texts) && texts.length === 0)) return null;
 
   const worker = getEmbeddingWorker();
@@ -1814,6 +1873,9 @@ async function getEmbeddingVector(texts) {
 
     worker.postMessage({ type: 'embed', id, texts });
   });
+
+    }
+  );
 }
 
 import { monitorEventLoopDelay } from 'node:perf_hooks';
@@ -5680,7 +5742,7 @@ function providerEnabled(
   if (provider.type === 'gemini-web') {
     return (
       !onlyLocal &&
-      geminiWebAvailable()
+      geminiWebConfigured()
     );
   }
 
@@ -6206,6 +6268,9 @@ async function requestLocalPartition(
   onRequest = null,
   generationOptions = {}
 ) {
+  return withLocalCompute(
+    `qwen:${model}`,
+    async () => {
   const controller =
     new AbortController();
 
@@ -6307,6 +6372,9 @@ async function requestLocalPartition(
   } finally {
     clearTimeout(timeout);
   }
+
+    }
+  );
 }
 
 function providerReviewArticleLimit(provider) {
@@ -6837,19 +6905,83 @@ async function callVerificationProvider(
       throw error;
     }
 
-    return requestLocalPartition(
-      group.articles,
-      provider.baseUrl,
-      provider.model,
-      provider.timeoutMs,
-      repairPrompt,
-      true,
-      onRequest,
-      {
-        prompt,
-        schema
-      }
-    );
+    const localStartedAt =
+      Date.now();
+
+    try {
+      const text =
+        await requestLocalPartition(
+          group.articles,
+          provider.baseUrl,
+          provider.model,
+          provider.timeoutMs,
+          repairPrompt,
+          true,
+          onRequest,
+          {
+            prompt,
+            schema,
+            operation,
+            maxOutputTokens:
+              reviewSpec?.maxOutputTokens
+          }
+        );
+
+      console.log(
+        '[ONLINE AI]',
+        JSON.stringify({
+          at:
+            new Date().toISOString(),
+          provider:
+            'local-qwen',
+          providerId:
+            provider.id,
+          operation,
+          model:
+            provider.model,
+          status:
+            'success',
+          durationMs:
+            Date.now() -
+            localStartedAt
+        })
+      );
+
+      return text;
+    } catch (error) {
+      console.log(
+        '[ONLINE AI]',
+        JSON.stringify({
+          at:
+            new Date().toISOString(),
+          provider:
+            'local-qwen',
+          providerId:
+            provider.id,
+          operation,
+          model:
+            provider.model,
+          status:
+            'failed',
+          durationMs:
+            Date.now() -
+            localStartedAt,
+          errorCode:
+            String(
+              error?.code ||
+              error?.name ||
+              'LOCAL_QWEN_ERROR'
+            ).slice(0, 80),
+          error:
+            String(
+              error?.message ||
+              error
+            ).replace(/\s+/g, ' ').slice(0, 800)
+        })
+      );
+
+      throw error;
+    }
   }
 
   throw new Error(
@@ -6867,18 +6999,18 @@ async function assessSmartEditorialClusters({
   notify,
   metrics
 }) {
-  let cache;
+  let cache =
+    {};
 
   try {
     cache =
-      (
-        await db.get(
-          'smartEditorialAssessmentCache',
-          {
-            type: 'json'
-          }
-        )
-      ) || {};
+      JSON.parse(
+        (
+          await db.get(
+            'smartEditorialAssessmentCache'
+          )
+        ) || '{}'
+      );
   } catch {
     cache = {};
   }
@@ -6895,7 +7027,7 @@ async function assessSmartEditorialClusters({
       )
     );
 
-  const batchSize =
+  const onlineBatchSize =
     Math.max(
       1,
       Math.min(
@@ -6907,6 +7039,18 @@ async function assessSmartEditorialClusters({
       )
     );
 
+  const localBatchSize =
+    Math.max(
+      1,
+      Math.min(
+        4,
+        Number(
+          process.env
+            .SMART_EDITORIAL_LOCAL_BATCH_SIZE
+        ) || 4
+      )
+    );
+
   const plan =
     prepareSmartEditorialPlan({
       clusters,
@@ -6915,65 +7059,140 @@ async function assessSmartEditorialClusters({
       perDestination
     });
 
+  // Background freshness changes PROCESSING ORDER only. It does not change
+  // editorial eligibility, significance, ranking, clustering, or the 7-day
+  // corpus. A mixed-age cluster stays intact and uses its freshest member.
+  const selected =
+    [...plan.selected]
+      .sort(
+        (left, right) =>
+          freshestPublishedAt([
+            right.cluster,
+            ...(right.cluster?.relatedArticles || [])
+          ]) -
+          freshestPublishedAt([
+            left.cluster,
+            ...(left.cluster?.relatedArticles || [])
+          ])
+      );
+
   const stats = {
     cacheHits:
       plan.cacheHits,
     selected:
-      plan.selected.length,
+      selected.length,
     assessed: 0,
     failed: 0,
-    
     aiCalls: 0,
-pending:
+    pending:
       plan.pendingCount,
     providerIds: []
   };
 
   if (
-    !plan.selected.length ||
+    !selected.length ||
     !providers.length
   ) {
     return stats;
   }
 
-  let cacheChanged =
-    false;
-
+  let cacheChanged = false;
   const providerIds =
     new Set();
 
+  const callEditorialProvider =
+    async (
+      provider,
+      providerBatch,
+      group
+    ) => {
+      const prompt =
+        buildSmartEditorialPrompt(
+          providerBatch
+        );
+
+      const freshnessAt =
+        freshestPublishedAt(
+          providerBatch.flatMap(
+            item => [
+              item.cluster,
+              ...(item.cluster?.relatedArticles || [])
+            ]
+          )
+        );
+
+      const raw =
+        await runGlobalAiTask(
+          {
+            lane: 'p3',
+            background: true,
+            freshnessAt,
+            label:
+              `smart-news:editorial:${
+                provider.id
+              }`
+          },
+          () =>
+            callVerificationProvider(
+              provider,
+              group,
+              keyManager,
+              null,
+              {
+                prompt,
+                schema:
+                  SMART_EDITORIAL_RESPONSE_SCHEMA,
+                operation:
+                  'smart-editorial-assessment',
+                editorialReview:
+                  true,
+                onRequest: () => {
+                  stats.aiCalls++;
+                },
+                maxOutputTokens:
+                  2048
+              }
+            )
+        );
+
+      return parseSmartEditorialResponse(
+        raw,
+        providerBatch
+      );
+    };
+
   for (
     let offset = 0;
-    offset <
-      plan.selected.length;
-    offset += batchSize
+    offset < selected.length;
+    offset += onlineBatchSize
   ) {
     const batch =
-      plan.selected.slice(
+      selected.slice(
         offset,
         offset +
-          batchSize
+          onlineBatchSize
       );
 
     notify?.(
       'smart-editorial',
-      `AI editorial assessment ${Math.min(offset + batch.length, plan.selected.length)}/${plan.selected.length}…`,
+      `AI editorial assessment ${
+        Math.min(
+          offset +
+            batch.length,
+          selected.length
+        )
+      }/${selected.length}…`,
       {
         current:
           Math.min(
             offset +
               batch.length,
-            plan.selected.length
+            selected.length
           ),
         total:
-          plan.selected.length
+          selected.length
       }
     );
-
-    const prompt =
-      buildSmartEditorialPrompt(
-        batch
-      );
 
     const group = {
       id:
@@ -6983,28 +7202,189 @@ pending:
           item =>
             item.cluster
         ),
-      // Editorial AI must not mutate clustering metrics.
-      metrics: null,
+      metrics:
+        null,
       isFallback:
         false
     };
 
-    let accepted =
-      null;
-    let lastError =
-      null;
+    let accepted = null;
+    let lastError = null;
+    let allowAntigravityEscalation =
+      false;
+    let shortWebRetryAt = 0;
+    let retriedShortWeb = false;
 
     for (
       let providerIndex = 0;
       providerIndex <
         providers.length &&
-      !accepted;
+        !accepted;
       providerIndex++
     ) {
       const provider =
         providers[
           providerIndex
         ];
+
+      if (
+        provider.type ===
+          'antigravity' &&
+        provider.id !==
+          'antigravity-low' &&
+        !allowAntigravityEscalation
+      ) {
+        continue;
+      }
+
+      if (
+        provider.type ===
+          'gemini-web'
+      ) {
+        const state =
+          getGeminiWebCooldownState();
+
+        if (
+          state.enabled &&
+          state.remainingMs > 0
+        ) {
+          if (
+            state.remainingMs <=
+              60_000
+          ) {
+            shortWebRetryAt =
+              Math.max(
+                shortWebRetryAt,
+                state.retryAt
+              );
+          }
+
+          continue;
+        }
+      }
+
+      // Do not move to Qwen while Web is the last short-cooling online path.
+      // This wait is OUTSIDE a global AI scheduler position.
+      if (
+        provider.type ===
+          'ollama' &&
+        shortWebRetryAt >
+          Date.now() &&
+        !retriedShortWeb
+      ) {
+        await sleep(
+          Math.max(
+            1,
+            shortWebRetryAt -
+              Date.now()
+          )
+        );
+
+        const webProvider =
+          providers.find(
+            candidate =>
+              candidate.type ===
+              'gemini-web'
+          );
+
+        if (webProvider) {
+          retriedShortWeb =
+            true;
+
+          try {
+            await recordProviderAttempt(
+              db,
+              webProvider
+            );
+
+            const rows =
+              await callEditorialProvider(
+                webProvider,
+                batch,
+                group
+              );
+
+            await recordProviderSuccess(
+              db,
+              webProvider
+            );
+
+            accepted = {
+              rows,
+              provider:
+                webProvider
+            };
+
+            providerIds.add(
+              webProvider.id
+            );
+
+            break;
+          } catch (error) {
+            lastError =
+              error;
+
+            const transientWeb =
+              error?.code === 'GEMINI_WEB_COOLDOWN' ||
+              error?.code === 'GEMINI_WEB_TIMEOUT' ||
+              error?.code === 'GEMINI_WEB_1095' ||
+              error?.code === 'GEMINI_WEB_BUSY';
+
+            if (transientWeb) {
+              const webState =
+                getGeminiWebCooldownState();
+
+              shortWebRetryAt =
+                Math.max(
+                  shortWebRetryAt,
+                  Number(
+                    error.retryAt ||
+                    error.cooldownUntil ||
+                    webState.retryAt ||
+                    (
+                      error.code === 'GEMINI_WEB_BUSY'
+                        ? Date.now() + 2000
+                        : 0
+                    )
+                  ) || 0
+                );
+
+              await recordProviderCooldown(
+                db,
+                webProvider,
+                error
+              ).catch(() => {});
+            } else {
+              await recordProviderError(
+                db,
+                webProvider,
+                error
+              );
+            }
+
+            console.warn(
+              `[SMART EDITORIAL] ${
+                webProvider.id
+              } transient retry: ${
+                error?.message ||
+                error
+              }`
+            );
+
+            /*
+             * Repeated timeout/cooldown is still transient.
+             * Do not start Qwen for this batch.
+             */
+            if (transientWeb) {
+              break;
+            }
+          }
+        }
+      }
+
+      if (accepted) {
+        break;
+      }
 
       group.isFallback =
         providerIndex > 0;
@@ -7020,43 +7400,76 @@ pending:
 
       for (
         let attempt = 1;
-        attempt <=
-          attempts;
+        attempt <= attempts;
         attempt++
       ) {
-        await recordProviderAttempt(
-          db,
-          provider
-        );
-
         try {
-          const raw =
-            await callVerificationProvider(
-              provider,
-              group,
-              keyManager,
-              null,
-              {
-                prompt,
-                schema:
-                  SMART_EDITORIAL_RESPONSE_SCHEMA,
-                operation:
-                  'smart-editorial-assessment',
-                editorialReview:
-                  true,
-            onRequest: () => {
-              stats.aiCalls++;
-            },
-                maxOutputTokens:
-                  2048
-              }
-            );
+          await recordProviderAttempt(
+            db,
+            provider
+          );
 
-          const rows =
-            parseSmartEditorialResponse(
-              raw,
-              batch
-            );
+          let rows;
+
+          if (
+            provider.type ===
+              'ollama' &&
+            batch.length >
+              localBatchSize
+          ) {
+            rows =
+              new Map();
+
+            for (
+              let localOffset = 0;
+              localOffset <
+                batch.length;
+              localOffset +=
+                localBatchSize
+            ) {
+              const localBatch =
+                batch.slice(
+                  localOffset,
+                  localOffset +
+                    localBatchSize
+                );
+
+              const localRows =
+                await callEditorialProvider(
+                  provider,
+                  localBatch,
+                  {
+                    ...group,
+                    id:
+                      `${group.id}_local_${
+                        localOffset
+                      }`,
+                    articles:
+                      localBatch.map(
+                        item =>
+                          item.cluster
+                      )
+                  }
+                );
+
+              for (
+                const [id, row]
+                of localRows
+              ) {
+                rows.set(
+                  id,
+                  row
+                );
+              }
+            }
+          } else {
+            rows =
+              await callEditorialProvider(
+                provider,
+                batch,
+                group
+              );
+          }
 
           await recordProviderSuccess(
             db,
@@ -7077,114 +7490,214 @@ pending:
           lastError =
             error;
 
-          await recordProviderError(
-            db,
-            provider,
-            error
-          );
+          if (
+            provider.type ===
+              'gemini-web' &&
+            (
+              error?.code === 'GEMINI_WEB_COOLDOWN' ||
+              error?.code === 'GEMINI_WEB_TIMEOUT' ||
+              error?.code === 'GEMINI_WEB_1095' ||
+              error?.code === 'GEMINI_WEB_BUSY'
+            )
+          ) {
+            const webState =
+              getGeminiWebCooldownState();
+
+            const retryAt =
+              Number(
+                error.retryAt ||
+                error.cooldownUntil ||
+                webState.retryAt ||
+                (
+                  error.code === 'GEMINI_WEB_BUSY'
+                    ? Date.now() + 2000
+                    : 0
+                )
+              ) || 0;
+
+            const remaining =
+              retryAt -
+              Date.now();
+
+            if (
+              remaining > 0 &&
+              remaining <= 5 * 60 * 1000
+            ) {
+              shortWebRetryAt =
+                Math.max(
+                  shortWebRetryAt,
+                  retryAt
+                );
+            }
+          }
+
+          if (
+            error?.skipProvider ===
+              true ||
+            error?.nonProviderFault ===
+              true
+          ) {
+            await recordProviderCooldown(
+              db,
+              provider,
+              error
+            ).catch(() => {});
+          } else if (
+            error?.expectedEscalation
+          ) {
+            await recordProviderSuccess(
+              db,
+              provider
+            );
+          } else {
+            await recordProviderError(
+              db,
+              provider,
+              error
+            );
+          }
 
           console.warn(
-            `[SMART EDITORIAL] ${provider.id} model=${provider.model} attempt=${attempt}/${attempts}: ${error?.message || error}`
+            `[SMART EDITORIAL] ${
+              provider.id
+            } model=${
+              provider.model
+            } attempt=${
+              attempt
+            }/${
+              attempts
+            }: ${
+              error?.message ||
+              error
+            }`
           );
 
           if (
             provider.type ===
               'gemini' &&
-            keyManager
-              ?.reportError &&
+            keyManager?.reportError &&
             !isModelOutputError(
               error
-            )
+            ) &&
+            error?.code !==
+              'NOT_CONFIGURED' &&
+            Number(
+              error?.keyIndex
+            ) > 0
           ) {
             keyManager.reportError(
               error
             );
           }
+
+          if (
+            provider.type ===
+              'antigravity'
+          ) {
+            allowAntigravityEscalation =
+              error?.code ===
+                'ANTIGRAVITY_ESCALATION_REQUIRED';
+          }
+
+          if (
+            error?.skipProvider ===
+              true ||
+            error?.nonProviderFault ===
+              true ||
+            error?.repairAttempted ||
+            attempt >= attempts ||
+            !isTransientProviderError(
+              error
+            )
+          ) {
+            break;
+          }
+
+          await sleep(
+            1000 *
+              attempt
+          );
         }
+      }
+
+      if (
+        provider.type ===
+          'antigravity' &&
+        accepted
+      ) {
+        allowAntigravityEscalation =
+          false;
       }
     }
 
     if (!accepted) {
-      stats.failed +=
-        batch.length;
+      const webStillPending =
+        shortWebRetryAt > 0;
 
-      for (
-        const item
-        of batch
-      ) {
-        cache[item.key] = {
-          policyVersion:
-            SMART_EDITORIAL_POLICY_VERSION,
-          failedAt:
-            new Date()
-              .toISOString(),
-          error:
-            String(
-              lastError?.message ||
-              'all_providers_failed'
-            ).slice(
-              0,
-              300
-            )
-        };
+      if (webStillPending) {
+        stats.pending +=
+          batch.length;
+      } else {
+        stats.failed +=
+          batch.length;
       }
 
-      cacheChanged =
-        true;
+      // Failure is transient/deferred state, NOT a completed assessment.
+      // Remove old failure-only cache records so fresh stories are reconsidered.
+      for (const item of batch) {
+        if (
+          cache[item.key] &&
+          !cache[item.key]
+            ?.assessment
+        ) {
+          delete cache[
+            item.key
+          ];
+
+          cacheChanged =
+            true;
+        }
+      }
 
       continue;
     }
 
-    for (
-      const item
-      of batch
-    ) {
+    for (const item of batch) {
       const row =
         accepted.rows.get(
           item.id
         );
 
+      if (!row) {
+        stats.failed++;
+        continue;
+      }
+
       const assessment = {
         policyVersion:
           SMART_EDITORIAL_POLICY_VERSION,
-
         revision:
           item.key,
-
         eligibleDestinations:
           item.eligibleDestinations,
-
         destination:
           row.destination,
-
         relevance:
           row.relevance,
-
         impact:
           row.impact,
-
         novelty:
           row.novelty,
-
         confidence:
           row.confidence,
-
         exclude:
           row.exclude,
-
         reason:
           row.reason,
-
         providerId:
-          accepted
-            .provider
-            .id,
-
+          accepted.provider.id,
         model:
-          accepted
-            .provider
-            .model,
-
+          accepted.provider.model,
         assessedAt:
           new Date()
             .toISOString()
@@ -7207,10 +7720,9 @@ pending:
     }
   }
 
-  stats.providerIds =
-    [
-      ...providerIds
-    ];
+  stats.providerIds = [
+    ...providerIds
+  ];
 
   if (cacheChanged) {
     await db.put(
@@ -8460,6 +8972,14 @@ async function verifyComponentReviewWithProviderChain(
     return runGlobalAiTask(
       {
         lane: 'p3',
+        background: true,
+        getFreshnessAt:
+          () =>
+            freshestPublishedAt(
+              group?.reviewUniverse ||
+              group?.articles ||
+              []
+            ),
         label:
           'smart-news:verifyComponentReviewWithProviderChain'
       },
@@ -8549,6 +9069,60 @@ async function verifyComponentReviewWithProviderChain(
 
   const attemptedProviders = [];
   let allowAntigravityEscalation = false;
+  /*
+   * Earliest known ONLINE recovery deadline.
+   *
+   * No polling:
+   * provider cooldown timestamps are authoritative.
+   *
+   * <= 5 minutes:
+   *   release scheduler slot and retry online at retryAt.
+   *
+   * > 5 minutes:
+   *   local Qwen may work while waiting.
+   */
+  let earliestOnlineRetryAt = 0;
+
+  const noteOnlineRetryAt = value => {
+    const numeric =
+      Number(value);
+
+    const parsed =
+      numeric ||
+      (
+        value
+          ? Date.parse(value)
+          : 0
+      ) ||
+      0;
+
+    if (
+      parsed <= Date.now()
+    ) {
+      return;
+    }
+
+    if (
+      !earliestOnlineRetryAt ||
+      parsed < earliestOnlineRetryAt
+    ) {
+      earliestOnlineRetryAt =
+        parsed;
+    }
+  };
+
+  const initialWebState =
+    getGeminiWebCooldownState();
+
+  if (
+    initialWebState?.retryAt >
+      Date.now()
+  ) {
+    noteOnlineRetryAt(
+      initialWebState.retryAt
+    );
+  }
+
 
   for (const provider of eligibleProviders) {
     if (
@@ -8561,6 +9135,66 @@ async function verifyComponentReviewWithProviderChain(
        * Ordinary Antigravity failure goes directly to the API backup.
        */
       continue;
+    }
+
+    /*
+     * Gemini Web cooldown state is already known.
+     * Do not probe it repeatedly.
+     */
+    if (
+      provider.type === 'gemini-web'
+    ) {
+      const webState =
+        getGeminiWebCooldownState();
+
+      if (
+        webState?.retryAt >
+          Date.now()
+      ) {
+        noteOnlineRetryAt(
+          webState.retryAt
+        );
+
+        continue;
+      }
+    }
+
+    /*
+     * Qwen is considered only after the online chain.
+     */
+    if (
+      provider.type === 'ollama'
+    ) {
+      const remaining =
+        earliestOnlineRetryAt -
+        Date.now();
+
+      /*
+       * Online recovery within five minutes:
+       * don't waste CPU starting Qwen.
+       */
+      if (
+        remaining > 0 &&
+        remaining <=
+          5 * 60 * 1000
+      ) {
+        throw providerDeferredError(
+          earliestOnlineRetryAt,
+          'online AI retry within 5 minutes'
+        );
+      }
+
+      /*
+       * For a long recorded cooldown Qwen may run.
+       * The deadline is carried with the task so the
+       * local request can later be aborted exactly when
+       * online AI becomes eligible again.
+       */
+      group.onlineRetryAt =
+        remaining >
+          5 * 60 * 1000
+          ? earliestOnlineRetryAt
+          : 0;
     }
 
     if (attemptedProviders.length && group.metrics) {
@@ -8588,6 +9222,51 @@ async function verifyComponentReviewWithProviderChain(
       keyManager,
       db
     );
+
+    /*
+     * Temporary online states are NOT permanent failures.
+     * Record their already-known recovery timestamp.
+     */
+    if (
+      provider.type !== 'ollama' &&
+      result?.error
+    ) {
+      noteOnlineRetryAt(
+        result.error.retryAt ||
+        result.error.cooldownUntil
+      );
+
+      if (
+        provider.type ===
+          'gemini-web'
+      ) {
+        const webState =
+          getGeminiWebCooldownState();
+
+        noteOnlineRetryAt(
+          webState?.retryAt
+        );
+
+        /*
+         * Browser contention is temporary too.
+         * No polling: just schedule one short retry point
+         * when Web has not supplied another retryAt.
+         */
+        if (
+          result.error.code ===
+            'GEMINI_WEB_BUSY' &&
+          !(
+            webState?.retryAt >
+              Date.now()
+          )
+        ) {
+          noteOnlineRetryAt(
+            Date.now() + 2000
+          );
+        }
+      }
+    }
+
 
     if (
       provider.type === 'antigravity'
@@ -8631,6 +9310,27 @@ async function verifyComponentReviewWithProviderChain(
         reviewMode: 'components',
         reviewUnitCount: units.length
       };
+    }
+  }
+
+  /*
+   * A known temporary online recovery must not be
+   * converted into an all-provider failure.
+   */
+  {
+    const remaining =
+      earliestOnlineRetryAt -
+      Date.now();
+
+    if (
+      remaining > 0 &&
+      remaining <=
+        5 * 60 * 1000
+    ) {
+      throw providerDeferredError(
+        earliestOnlineRetryAt,
+        'online AI retry within 5 minutes'
+      );
     }
   }
 
@@ -8854,6 +9554,14 @@ export async function verifyWithProviderChain(
     return runGlobalAiTask(
       {
         lane: 'p3',
+        background: true,
+        getFreshnessAt:
+          () =>
+            freshestPublishedAt(
+              group?.reviewUniverse ||
+              group?.articles ||
+              []
+            ),
         label:
           'smart-news:verifyWithProviderChain'
       },
@@ -9037,6 +9745,60 @@ export async function verifyWithProviderChain(
   }
 
   let allowAntigravityEscalation = false;
+  /*
+   * Earliest known ONLINE recovery deadline.
+   *
+   * No polling:
+   * provider cooldown timestamps are authoritative.
+   *
+   * <= 5 minutes:
+   *   release scheduler slot and retry online at retryAt.
+   *
+   * > 5 minutes:
+   *   local Qwen may work while waiting.
+   */
+  let earliestOnlineRetryAt = 0;
+
+  const noteOnlineRetryAt = value => {
+    const numeric =
+      Number(value);
+
+    const parsed =
+      numeric ||
+      (
+        value
+          ? Date.parse(value)
+          : 0
+      ) ||
+      0;
+
+    if (
+      parsed <= Date.now()
+    ) {
+      return;
+    }
+
+    if (
+      !earliestOnlineRetryAt ||
+      parsed < earliestOnlineRetryAt
+    ) {
+      earliestOnlineRetryAt =
+        parsed;
+    }
+  };
+
+  const initialWebState =
+    getGeminiWebCooldownState();
+
+  if (
+    initialWebState?.retryAt >
+      Date.now()
+  ) {
+    noteOnlineRetryAt(
+      initialWebState.retryAt
+    );
+  }
+
 
   for (const provider of previousFailure ? [] : eligibleProviders) {
     if (
@@ -9049,6 +9811,66 @@ export async function verifyWithProviderChain(
        * Ordinary Antigravity failure goes directly to the API backup.
        */
       continue;
+    }
+
+    /*
+     * Gemini Web cooldown state is already known.
+     * Do not probe it repeatedly.
+     */
+    if (
+      provider.type === 'gemini-web'
+    ) {
+      const webState =
+        getGeminiWebCooldownState();
+
+      if (
+        webState?.retryAt >
+          Date.now()
+      ) {
+        noteOnlineRetryAt(
+          webState.retryAt
+        );
+
+        continue;
+      }
+    }
+
+    /*
+     * Qwen is considered only after the online chain.
+     */
+    if (
+      provider.type === 'ollama'
+    ) {
+      const remaining =
+        earliestOnlineRetryAt -
+        Date.now();
+
+      /*
+       * Online recovery within five minutes:
+       * don't waste CPU starting Qwen.
+       */
+      if (
+        remaining > 0 &&
+        remaining <=
+          5 * 60 * 1000
+      ) {
+        throw providerDeferredError(
+          earliestOnlineRetryAt,
+          'online AI retry within 5 minutes'
+        );
+      }
+
+      /*
+       * For a long recorded cooldown Qwen may run.
+       * The deadline is carried with the task so the
+       * local request can later be aborted exactly when
+       * online AI becomes eligible again.
+       */
+      group.onlineRetryAt =
+        remaining >
+          5 * 60 * 1000
+          ? earliestOnlineRetryAt
+          : 0;
     }
 
     const providerAttempt = attemptedProviders.length + 1;
@@ -9076,6 +9898,51 @@ export async function verifyWithProviderChain(
         keyManager,
         db
       );
+
+    /*
+     * Temporary online states are NOT permanent failures.
+     * Record their already-known recovery timestamp.
+     */
+    if (
+      provider.type !== 'ollama' &&
+      result?.error
+    ) {
+      noteOnlineRetryAt(
+        result.error.retryAt ||
+        result.error.cooldownUntil
+      );
+
+      if (
+        provider.type ===
+          'gemini-web'
+      ) {
+        const webState =
+          getGeminiWebCooldownState();
+
+        noteOnlineRetryAt(
+          webState?.retryAt
+        );
+
+        /*
+         * Browser contention is temporary too.
+         * No polling: just schedule one short retry point
+         * when Web has not supplied another retryAt.
+         */
+        if (
+          result.error.code ===
+            'GEMINI_WEB_BUSY' &&
+          !(
+            webState?.retryAt >
+              Date.now()
+          )
+        ) {
+          noteOnlineRetryAt(
+            Date.now() + 2000
+          );
+        }
+      }
+    }
+
 
     if (
       provider.type === 'antigravity'
@@ -9127,6 +9994,27 @@ export async function verifyWithProviderChain(
   }
 
   if (!previousFailure) { failures[failureKey] = { at: new Date().toISOString(), reason: 'all_providers_failed_or_uncertain' }; await db.put('smartVerificationFailures', JSON.stringify(failures)); }
+  /*
+   * A known temporary online recovery must not be
+   * converted into an all-provider failure.
+   */
+  {
+    const remaining =
+      earliestOnlineRetryAt -
+      Date.now();
+
+    if (
+      remaining > 0 &&
+      remaining <=
+        5 * 60 * 1000
+    ) {
+      throw providerDeferredError(
+        earliestOnlineRetryAt,
+        'online AI retry within 5 minutes'
+      );
+    }
+  }
+
   if (group.metrics) group.metrics.allProviderFailures++;
   return {
     valid: true,
@@ -10680,7 +11568,7 @@ export function createSmartNewsEngine({
           provider.id ===
           'local-qwen'
       )?.model ||
-    'qwen3.5:2b';
+    'qwen2.5:3b';
 
   let running = false;
   let timer = null;
@@ -12124,7 +13012,9 @@ export function createSmartNewsEngine({
       // safely be unloaded and then loaded by a replacement Worker.
       const worker = clusterWorkerFactory();
 
-      let clusteringResult = await new Promise((resolve, reject) => {
+      let clusteringResult = await withLocalCompute(
+        'xenova-clustering',
+        () => new Promise((resolve, reject) => {
         let hasResult = false;
 
         const cleanup = () => {
@@ -12195,7 +13085,8 @@ export function createSmartNewsEngine({
           cachePath:
             EMBEDDING_CACHE_FILE
         });
-      });
+        })
+      );
 
       let autoMergedClusters;
       let ambiguousGroups;

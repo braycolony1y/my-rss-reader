@@ -2143,140 +2143,9 @@ async function responseState(page) {
                 )
                 .slice(0, 12);
 
-        /*
-         * GEMINI_WEB_RESPONSE_ACTION_COMPLETION_V1
-         *
-         * Live OpenCLI testing shows Gemini's completed-response
-         * action controls appear only after response rendering has
-         * finished:
-         *
-         *   Redo
-         *   Copy
-         *   Show more options
-         *
-         * Stop/microphone state is intentionally NOT used as a
-         * completion signal.
-         */
-        const latestModelResponse =
-            modelResponses[
-                modelResponses.length - 1
-            ] || null;
-
-        let responseCompletionControls = {
-            redo: false,
-            copy: false,
-            more: false,
-            count: 0,
-            ready: false
-        };
-
-        if (latestModelResponse) {
-            const responseControls = [
-                ...latestModelResponse.querySelectorAll(
-                    'gem-icon-button,button,[role="button"]'
-                )
-            ].filter(visible);
-
-            let redo = false;
-            let copy = false;
-            let more = false;
-
-            for (const element of responseControls) {
-                const testId =
-                    String(
-                        element.getAttribute(
-                            'data-test-id'
-                        ) || ''
-                    );
-
-                const label = [
-                    element.getAttribute(
-                        'aria-label'
-                    ),
-                    element.getAttribute(
-                        'arialabel'
-                    ),
-                    element.getAttribute(
-                        'title'
-                    ),
-                    element.getAttribute(
-                        'gemtooltip'
-                    ),
-                    element.innerText
-                ]
-                    .filter(Boolean)
-                    .join(' ')
-                    .replace(/\s+/g, ' ')
-                    .trim();
-
-                if (
-                    testId ===
-                        'regenerate-button' ||
-                    /^redo$/i.test(label)
-                ) {
-                    redo = true;
-                }
-
-                if (
-                    /^copy(?: response)?$/i.test(
-                        label
-                    )
-                ) {
-                    copy = true;
-                }
-
-                if (
-                    testId ===
-                        'more-menu-button' ||
-                    /^show more options$/i.test(
-                        label
-                    ) ||
-                    /^more$/i.test(label)
-                ) {
-                    more = true;
-                }
-            }
-
-            const count =
-                Number(redo) +
-                Number(copy) +
-                Number(more);
-
-            responseCompletionControls = {
-                redo,
-                copy,
-                more,
-                count,
-
-                /*
-                 * Copy is our primary completed-response control.
-                 * Require either Redo or More as independent
-                 * corroboration so one stray button cannot cause
-                 * a false completion.
-                 */
-                ready:
-                    copy &&
-                    (
-                        redo ||
-                        more
-                    )
-            };
-        }
-
         return {
             text: text.trim(),
-
-            /*
-             * Kept for diagnostics only.
-             * waitForResponse() no longer uses this as completion.
-             */
             generating,
-
-            responseFinished:
-                responseCompletionControls.ready,
-
-            responseCompletionControls,
-
             alerts: alerts.slice(0, 1000),
             debug: {
                 candidateCount:
@@ -2543,12 +2412,8 @@ async function waitForResponse(
                             state.text.slice(
                                 -160
                             ),
-                        generatingDiagnosticOnly:
+                        generating:
                             state.generating,
-                        responseFinished:
-                            state.responseFinished,
-                        responseCompletionControls:
-                            state.responseCompletionControls,
                         stableCount,
                         incompleteForMs:
                             incompleteSince
@@ -2696,7 +2561,7 @@ async function waitForResponse(
             }
 
             if (
-                state.responseFinished &&
+                !state.generating &&
                 stableCount >= 3
             ) {
                 if (!expectJson) {
@@ -2801,12 +2666,8 @@ async function waitForResponse(
                         JSON.stringify({
                             selectedTextLength:
                                 state.text.length,
-                            generatingDiagnosticOnly:
+                            generating:
                                 state.generating,
-                            responseFinished:
-                                state.responseFinished,
-                            responseCompletionControls:
-                                state.responseCompletionControls,
                             stableCount,
                             incompleteForMs:
                                 Date.now() -
