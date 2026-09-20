@@ -1,4 +1,5 @@
 import { fetchRedditViaOpenCli } from '../sources/reddit-fetcher.js';
+import { runArticleFetchTask } from './fetch-lanes.js';
 import sourceRegistry from '../sources/index.js';
 import { normalizeArticleSourceUrl, deletedSourceKind, deletedSourceTitle } from '../article-source-state.js';
 import { safeHttpUrl } from '../utils/article-utils.js';
@@ -220,12 +221,19 @@ export function createArticleReaders({
         }
     }
 
+    // ARTICLE_FETCH_PRIORITY_LANES_V1
+    // Scheduling is deliberately outside strategy selection: whichever method
+    // policy selected is the exact method that runs in the current lane.
+    const scheduleUrlFirst = fn => (url, ...args) =>
+        runArticleFetchTask(url, () => fn(url, ...args));
+
     return {
-        fetchWithCookies,
-        fetchViaOpenCli,
-        fetchViaOpenCliBrowserFetch,
-        fetchViaVietserver,
-        fetchViaJina,
-        fetchArticleHtmlByStrategy
+        fetchWithCookies: scheduleUrlFirst(fetchWithCookies),
+        fetchViaOpenCli: scheduleUrlFirst(fetchViaOpenCli),
+        fetchViaOpenCliBrowserFetch: scheduleUrlFirst(fetchViaOpenCliBrowserFetch),
+        fetchViaVietserver: scheduleUrlFirst(fetchViaVietserver),
+        fetchViaJina: scheduleUrlFirst(fetchViaJina),
+        fetchArticleHtmlByStrategy: (strategy, url, ...args) =>
+            runArticleFetchTask(url, () => fetchArticleHtmlByStrategy(strategy, url, ...args))
     };
 }

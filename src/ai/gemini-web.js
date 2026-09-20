@@ -337,19 +337,113 @@ function releaseSlot(slot) {
 }
 
 
+function isGeminiStalePageIdentityError(error) {
+    const message =
+        error instanceof Error
+            ? error.message
+            : String(error || '');
+
+    return (
+        /stale page identity/i.test(message) ||
+        /^Page not found:\s*\S+(?:\s+[—-].*)?$/i.test(message.trim())
+    );
+}
+
+
+function installGeminiStalePageRecovery(slot, page) {
+    // GEMINI_WEB_STALE_PAGE_LEASE_REBIND_V1
+    //
+    // OpenCLI Page.goto() already drops a stale cached targetId and resolves
+    // through the persistent session lease. Page.evaluate() does not.
+    //
+    // Gemini Web heavily reuses evaluate() on persistent slot tabs, so recover
+    // only the stale-target case transparently:
+    //   stale targetId -> clear cached targetId -> retry SAME evaluate once
+    // through the SAME slot/session lease.
+    //
+    // No reload, no new tab, no new chat. If lease rebinding also fails, the
+    // existing runOnSlot() error path still closes/discards the genuinely bad
+    // slot as before.
+    if (!page || page.__geminiStalePageRecoveryInstalled) {
+        return page;
+    }
+
+    const originalEvaluate =
+        page.evaluate.bind(page);
+
+    page.evaluate =
+        async (...args) => {
+            try {
+                return await originalEvaluate(...args);
+            } catch (error) {
+                if (!isGeminiStalePageIdentityError(error)) {
+                    throw error;
+                }
+
+                const stalePage =
+                    page.getActivePage?.();
+
+                console.warn(
+                    `[GEMINI WEB] Slot ${slot.id}: stale page identity`
+                    + `${stalePage ? ` (${stalePage})` : ''}; `
+                    + `rebinding existing slot lease without reload/new tab`
+                );
+
+                page.setActivePage?.(undefined);
+
+                try {
+                    const result =
+                        await originalEvaluate(...args);
+
+                    console.log(
+                        `[GEMINI WEB] Slot ${slot.id}: rebound existing Gemini tab `
+                        + `through persistent session lease; evaluate retry succeeded`
+                    );
+
+                    return result;
+                } catch (retryError) {
+                    console.warn(
+                        `[GEMINI WEB] Slot ${slot.id}: stale-page lease rebind failed: `
+                        + `${retryError?.message || retryError}; `
+                        + `falling back to existing slot cleanup`
+                    );
+
+                    throw retryError;
+                }
+            }
+        };
+
+    Object.defineProperty(
+        page,
+        '__geminiStalePageRecoveryInstalled',
+        {
+            value: true,
+            enumerable: false,
+            configurable: false,
+            writable: false
+        }
+    );
+
+    return page;
+}
+
+
 async function getPage(slot) {
     if (slot.page) return slot.page;
 
     const { Page } = await browserModules();
 
-    slot.page = new Page(
-        `rss-gemini-web-${slot.id}`,
-        180,
-        undefined,
-        'background',
-        'browser',
-        'persistent',
-        GEMINI_WEB_PROFILE
+    slot.page = installGeminiStalePageRecovery(
+        slot,
+        new Page(
+            `rss-gemini-web-${slot.id}`,
+            180,
+            undefined,
+            'background',
+            'browser',
+            'persistent',
+            GEMINI_WEB_PROFILE
+        )
     );
 
     return slot.page;
@@ -3023,6 +3117,22 @@ export function repairGeminiWebJsonQuotes(value) {
                     afterCommaIndex
                 ];
 
+            // GEMINI_WEB_JSON_QUOTE_TOKEN_BOUNDARY_V2
+            // Do not treat an arbitrary prose word beginning with t/f/n
+            // (for example Vietnamese "người") as true/false/null.
+            // Only accept a scalar after the comma when a complete JSON
+            // literal/number token is present and followed by a delimiter.
+            const afterCommaText =
+                input.slice(
+                    afterCommaIndex
+                );
+
+            const scalarToken =
+                /^(?:true|false|null|-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?)(?=\s*[,}\]])/
+                    .test(
+                        afterCommaText
+                    );
+
             structuralClose =
                 afterCommaIndex >=
                     input.length ||
@@ -3031,10 +3141,7 @@ export function repairGeminiWebJsonQuotes(value) {
                 afterComma === ']' ||
                 afterComma === '{' ||
                 afterComma === '[' ||
-                afterComma === '-' ||
-                /[0-9tfn]/.test(
-                    afterComma || ''
-                );
+                scalarToken;
         }
 
         if (structuralClose) {

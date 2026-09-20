@@ -3834,10 +3834,38 @@
                     this.overlayArticle.sourceDeleted = data.sourceDeleted === true;
                     this.overlayArticle.sourceDeletedHasCache = data.sourceDeletedHasCache !== false && Boolean(data.content);
                     this.overlayArticle.sourceDeletedKind = data.sourceDeletedKind || (this.isVozArticle(this.overlayArticle) ? 'thread' : 'article');
+                    // VOZ_TARGET_PAGE_FIRST_PAINT_V2
+                    //
+                    // Capture the request that owns this render. VOZ target-page
+                    // fetching is latency-critical: page read-ahead must not
+                    // compete until the requested/resume page has actually painted.
+                    const applyRequestId = this.overlayRequestId;
+
                     this.overlayPagination = data.pagination || null;
-                    if (!this.overlayArticle.sourceDeleted && this.overlayPagination?.nextUrl) {
-                        this.prefetchThreadPages(this.overlayPagination, this.overlayArticle.feedUrl || '');
+
+                    // VOZ_TARGET_PAGE_FIRST_LAST_PAGE_FIX_V1
+                    //
+                    // Every VOZ render gets the first-paint gate, including the
+                    // final page where pagination.nextUrl does not exist.
+                    //
+                    // nextUrl controls only whether thread read-ahead exists;
+                    // it must not control release of deferred article prefetch.
+                    const deferVozWorkUntilPaint =
+                        this.isVozArticle(this.overlayArticle)
+                        && !this.overlayArticle.sourceDeleted;
+
+                    // Preserve the old behavior for non-VOZ paginated sources.
+                    if (
+                        !this.overlayArticle.sourceDeleted
+                        && this.overlayPagination?.nextUrl
+                        && !deferVozWorkUntilPaint
+                    ) {
+                        this.prefetchThreadPages(
+                            this.overlayPagination,
+                            this.overlayArticle.feedUrl || ''
+                        );
                     }
+
                     this.overlayContent = this.formatSourceTimeMarkup(data.content);
                     this.overlayHasNativeAudio = /<audio\b/i.test(this.overlayContent || '');
                     if (!this.overlayHasNativeAudio) this.prepareArticleSpeech();
@@ -3905,9 +3933,61 @@
                                 }
                             });
                         }
-                        const articleScroll = document.getElementById('overlay-scroll-container');
-                        if (articleScroll) articleScroll.scrollTop = 0;
+                        const articleScroll =
+                            document.getElementById(
+                                'overlay-scroll-container'
+                            );
+
+                        if (articleScroll) {
+                            articleScroll.scrollTop = 0;
+                        }
+
+                        // Find/scroll the remembered post before releasing any
+                        // speculative VOZ work.
                         this.checkVozThreadPosition();
+
+                        if (
+                            deferVozWorkUntilPaint
+                            && this.articleOverlayOpen
+                            && this.overlayRequestId === applyRequestId
+                        ) {
+                            // First RAF commits DOM/layout.
+                            // Second RAF lets the target page actually paint.
+                            requestAnimationFrame(() => {
+                                requestAnimationFrame(() => {
+                                    if (
+                                        !this.articleOverlayOpen
+                                        || this.overlayRequestId !== applyRequestId
+                                    ) {
+                                        return;
+                                    }
+
+                                    if (
+                                        !this.overlayArticle?.sourceDeleted
+                                        && this.overlayPagination?.nextUrl
+                                    ) {
+                                        this.prefetchThreadPages(
+                                            this.overlayPagination,
+                                            this.overlayArticle?.feedUrl || ''
+                                        );
+                                    }
+
+                                    const deferred =
+                                        this.vozDeferredArticlePrefetch;
+
+                                    if (
+                                        deferred
+                                        && deferred.requestId === applyRequestId
+                                    ) {
+                                        this.vozDeferredArticlePrefetch = null;
+
+                                        this.prefetchNextAfter(
+                                            deferred.article
+                                        );
+                                    }
+                                });
+                            });
+                        }
                     });
                 },
 
@@ -5595,7 +5675,20 @@
                         }
                     }
 
-                    this.prefetchNextAfter(article);
+                    if (isVoz) {
+                        // Do not let unrelated article prefetch compete with
+                        // the exact VOZ page the user is opening/resuming.
+                        //
+                        // applyOverlayArticleData() releases this only after
+                        // the requested page is rendered, resume positioning
+                        // has run, and the browser has painted it.
+                        this.vozDeferredArticlePrefetch = {
+                            requestId,
+                            article
+                        };
+                    } else {
+                        this.prefetchNextAfter(article);
+                    }
 
                     const resumePostId = targetUrl.match(/\/post-(\d+)\/?$/)?.[1];
                     if (resumePostId && Number.isSafeInteger(resumePage) && resumePage > 0) {

@@ -4,6 +4,7 @@ import sourceRegistry from '../sources/index.js';
 import { enhanceArticleResultForSource } from '../articles/source-results.js';
 import { normalizeBlockedKeywordEntries, articleContentFilterMatches } from '../filters/content-filter.js';
 import { cleanStoredCluster } from '../../smart-news.js';
+import { withArticleFetchLane } from '../articles/fetch-lanes.js';
 
 export function createArticlePrefetch({
     getBestImage,
@@ -61,8 +62,8 @@ export function createArticlePrefetch({
                 const policy = await getArticleFetchPolicy(url, feedUrl);
                 if (!policy.hasStrictConfiguredMethods || !hasOnlyOpenCliFetchMethod(policy.strategyOrder)) return false;
 
-                const result = await fetchParsedArticleByStrategy(
-                    'opencli',
+                const result = await fetchParsedP3(
+                    'opencli-fetch',
                     url,
                     policy,
                     feedUrl,
@@ -74,7 +75,7 @@ export function createArticlePrefetch({
                     ...result,
                     url,
                     feedUrl: feedUrl || result.feedUrl || '',
-                    fetchStrategy: 'opencli'
+                    fetchStrategy: 'opencli-fetch'
                 });
                 if (!didCache) throw new Error('OpenCLI article content could not be cached');
                 console.log(`[OPENCLI INGEST] Cached new article before display: ${url}`);
@@ -172,7 +173,7 @@ export function createArticlePrefetch({
                         let prefetched = false;
                         for (const strategy of policy.strategyOrder) {
                             try {
-                                const parsedPayload = await fetchParsedArticleByStrategy(
+                                const parsedPayload = await fetchParsedP2(
                                     strategy,
                                     targetUrl,
                                     policy,
@@ -324,7 +325,7 @@ export function createArticlePrefetch({
                     let prefetched = false;
                     for (const strategy of policy.strategyOrder) {
                         try {
-                            const parsedPayload = await fetchParsedArticleByStrategy(
+                            const parsedPayload = await fetchParsedP4(
                                 strategy,
                                 url,
                                 policy,

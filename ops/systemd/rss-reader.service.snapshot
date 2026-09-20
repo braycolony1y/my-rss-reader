@@ -50,6 +50,11 @@ Environment="SMART_AI_REVIEW_HEAP_DEFER_MB=1400"
 [Service]
 Environment=SMART_LOG_GEMINI_RESPONSES=true
 
+# /etc/systemd/system/rss-reader.service.d/opencli-shutdown.conf
+[Service]
+ExecStop=/usr/bin/node /home/ubuntu/my-rss-reader/scripts/rss-graceful-stop.mjs $MAINPID
+TimeoutStopSec=20s
+
 # /etc/systemd/system/rss-reader.service.d/override.conf
 [Service]
 ExecStart=

@@ -23,15 +23,24 @@ export function isActiveArticleSession(session, url, now = Date.now()) {
 //
 // No publisher tab is opened on a successful normal fetch.
 //
-// If the direct request is stale/blocked:
-//   temporary real Chrome navigation -> refresh browser session/cookies/headers
-//   -> close/release that tab -> retry direct Node HTTP once.
+// If direct HTTP is stale/blocked:
+//   real Chrome open once -> refresh cookies/request template -> retry direct
+//   -> if still blocked, fetch() in the same one-tab-per-origin queue.
+// The tab closes only when that origin queue becomes empty.
 //
 // Fetch transport is generic. Source-specific parsing belongs in source handlers.
 // ---------------------------------------------------------------------------
 
 const openCliBrowserFetchStates = new Map();
 const openCliBrowserFetchQueues = new Map();
+
+// OPENCLI_FETCH_SHARED_ORIGIN_CONTEXT_V3
+// Priority lanes schedule work above this transport. opencli-fetch owns
+// one shared background browser page/context per origin regardless of P lane.
+const OPENCLI_BROWSER_FETCH_IDLE_CLOSE_MS = Math.max(
+    0,
+    Number(process.env.OPENCLI_BROWSER_FETCH_IDLE_CLOSE_MS || 60000)
+);
 
 const openCliBrowserFetchSleep = ms =>
     new Promise(resolve => setTimeout(resolve, ms));
@@ -104,7 +113,7 @@ function sameOpenCliBrowserFetchUrl(left, right) {
 function createOpenCliBrowserPage(Page, session, profile) {
     return new Page(
         session,        // session
-        60,             // idle timeout; only relevant while a refresh tab exists
+        3600,           // queue owns lifecycle; close explicitly when origin queue becomes empty
         undefined,      // contextId
         'background',   // windowMode
         'browser',      // surface
@@ -155,7 +164,13 @@ async function getOpenCliBrowserFetchState(url) {
         createPage,
         requestHeaders: {},
         initialized: false,
-        refreshedAt: 0
+        browserReady: false,
+        browserLeaseOpen: false,
+        refreshedAt: 0,
+        directDisabled: false,
+        directDisabledAt: 0,
+        directDisabledReason: '',
+        refreshPromise: null
     };
 
     openCliBrowserFetchStates.set(origin, state);
@@ -204,11 +219,16 @@ async function waitForOpenCliBrowserUsablePage(page, timeoutMs = 20000) {
 }
 
 async function refreshOpenCliBrowserFetchSession(state, url) {
+    // OPENCLI_FETCH_CURL_REFRESH_SHARED_BROWSER_V3
+    // A real navigation is only for refreshing stale publisher state.
+    // The same tab is retained for browser-fetch fallback until this origin's
+    // queue becomes empty.
     console.log(
-        `[OPENCLI FETCH] Direct profile fetch needs browser refresh for ${state.origin}`
+        `[OPENCLI FETCH] Opening/refreshing shared background browser page for ${state.origin}`
     );
 
     const page = state.page;
+    state.browserLeaseOpen = true;
     let captureStarted = false;
 
     try {
@@ -218,7 +238,12 @@ async function refreshOpenCliBrowserFetchSession(state, url) {
         } catch {
         }
 
-        await page.goto(url, {
+        // OPENCLI_FETCH_ROOT_BOOTSTRAP_FINAL_V1
+        // Bootstrap/refresh is origin-scoped. Exact article/thread URLs
+        // are retrieved later with browser-side fetch(url) in this same
+        // shared origin context; never navigate to the article URL here.
+        const bootstrapUrl = new URL('/', state.origin).href;
+        await page.goto(bootstrapUrl, {
             settleMs: 2000
         });
 
@@ -243,10 +268,10 @@ async function refreshOpenCliBrowserFetchSession(state, url) {
 
                 const exact =
                     [...successful].reverse().find(entry =>
-                        sameOpenCliBrowserFetchUrl(entry.url, url)
+                        sameOpenCliBrowserFetchUrl(entry.url, bootstrapUrl)
                     )
                     || [...sameOriginEntries].reverse().find(entry =>
-                        sameOpenCliBrowserFetchUrl(entry.url, url)
+                        sameOpenCliBrowserFetchUrl(entry.url, bootstrapUrl)
                     );
 
                 const chosen =
@@ -262,12 +287,13 @@ async function refreshOpenCliBrowserFetchSession(state, url) {
             }
         }
 
-        if (!Object.keys(state.requestHeaders).some(
+        if (!Object.keys(state.requestHeaders || {}).some(
             name => name.toLowerCase() === 'user-agent'
         )) {
             try {
                 const userAgent = await page.evaluate('navigator.userAgent');
                 if (userAgent) {
+                    state.requestHeaders ||= {};
                     state.requestHeaders['User-Agent'] = String(userAgent);
                 }
             } catch {
@@ -275,10 +301,11 @@ async function refreshOpenCliBrowserFetchSession(state, url) {
         }
 
         state.initialized = true;
+        state.browserReady = true;
         state.refreshedAt = Date.now();
-    } finally {
-        await page.closeWindow?.().catch(() => {});
-        state.page = state.createPage();
+    } catch (error) {
+        state.browserReady = false;
+        throw error;
     }
 }
 
@@ -323,50 +350,119 @@ async function openCliProfileFetchOnce(state, url) {
     }
 }
 
-async function runOpenCliBrowserFetchNow(url) {
-    const parsed = new URL(url);
 
-    if (!['http:', 'https:'].includes(parsed.protocol)) {
-        throw new Error(
-            'OpenCLI browser fetch only supports HTTP(S) URLs'
-        );
-    }
+function isOpenCliStalePageIdentityError(error) {
+    const message = error instanceof Error
+        ? error.message
+        : String(error || '');
 
-    const state = await getOpenCliBrowserFetchState(url);
+    return message.includes('stale page identity')
+        || /^Page not found:\s*\S+(?:\s+—.*)?$/i.test(message);
+}
 
-    let result;
-    let directError = null;
-
+async function evaluateOpenCliSharedBrowserPage(state, input, ...args) {
+    // OPENCLI_FETCH_STALE_LEASE_REBIND_V5
+    // OpenCLI's Page caches a targetId after goto(). The extension can evict
+    // that cached identity while the session lease + physical tab are still
+    // alive. evaluate() does not auto-recover this case, so clear only the
+    // cached targetId and retry through the existing session lease. No goto(),
+    // no new tab, and no publisher navigation is performed here.
     try {
-        result = await openCliProfileFetchOnce(state, url);
+        return await state.page.evaluate(input, ...args);
     } catch (error) {
-        directError = error;
-    }
+        if (
+            !state.browserLeaseOpen
+            || !isOpenCliStalePageIdentityError(error)
+        ) {
+            throw error;
+        }
 
-    const needsBrowserRefresh =
-        directError
-        || isOpenCliBrowserFetchChallenge(result?.status, result?.html);
-
-    if (needsBrowserRefresh) {
-        const reason = directError
-            ? directError.message
-            : `HTTP ${result?.status || 0} / verification response`;
+        const staleTarget =
+            state.page.getActivePage?.()
+            || 'unknown';
 
         console.warn(
-            `[OPENCLI FETCH] Direct profile fetch failed for ${state.origin}: ${reason}`
+            `[OPENCLI FETCH] Shared browser page identity stale for ${state.origin}: `
+            + `target=${staleTarget}; rebinding through existing session lease `
+            + `without navigation`
         );
 
-        await refreshOpenCliBrowserFetchSession(state, url);
+        state.page.setActivePage?.(undefined);
 
         try {
-            result = await openCliProfileFetchOnce(state, url);
-        } catch (error) {
-            throw new Error(
-                `OpenCLI browser fetch direct retry failed after browser refresh: ${error.message}`
+            const result = await state.page.evaluate(input, ...args);
+
+            console.log(
+                `[OPENCLI FETCH] Rebound existing shared browser tab for ${state.origin} `
+                + `without navigation or opening another tab`
             );
+
+            return result;
+        } catch (retryError) {
+            console.warn(
+                `[OPENCLI FETCH] Existing shared browser lease rebind failed for ${state.origin}: `
+                + `${retryError instanceof Error ? retryError.message : String(retryError)}`
+            );
+            throw retryError;
         }
     }
+}
 
+async function openCliBrowserFetchOnce(state, url) {
+    if (!state.browserReady) {
+        throw new Error('OpenCLI shared browser tab is not ready');
+    }
+
+    const result = await evaluateOpenCliSharedBrowserPage(state,
+        async targetUrl => {
+            const controller = new AbortController();
+            const timeout = setTimeout(
+                () => controller.abort(),
+                20000
+            );
+
+            try {
+                const response = await fetch(targetUrl, {
+                    method: 'GET',
+                    credentials: 'include',
+                    cache: 'no-store',
+                    redirect: 'follow',
+                    signal: controller.signal
+                });
+
+                const html = await response.text();
+
+                return {
+                    status: response.status,
+                    finalUrl: response.url,
+                    html
+                };
+            } finally {
+                clearTimeout(timeout);
+            }
+        },
+        url
+    );
+
+    if (!result || typeof result.html !== 'string') {
+        throw new Error('OpenCLI browser fetch returned no HTML');
+    }
+
+    if (result.html.length > 12 * 1024 * 1024) {
+        throw new Error('OpenCLI browser fetch response exceeded 12 MB');
+    }
+
+    return result;
+}
+
+function openCliBrowserFetchResultIsUsable(result) {
+    if (!result || typeof result.html !== 'string') return false;
+    if (isOpenCliBrowserFetchChallenge(result.status, result.html)) return false;
+    if (result.status === 404 || result.status === 410) return true;
+    return result.status >= 200 && result.status < 400;
+}
+
+function finishOpenCliBrowserFetchResult(result) {
     if (!result || typeof result.html !== 'string') {
         throw new Error('OpenCLI browser fetch returned no HTML');
     }
@@ -390,6 +486,286 @@ async function runOpenCliBrowserFetchNow(url) {
     return result.html;
 }
 
+async function closeOpenCliBrowserFetchQueueTab(state) {
+    if (!state?.browserLeaseOpen) return;
+
+    console.log(
+        `[OPENCLI FETCH] Origin request set idle; closing shared browser page for ${state.origin}`
+    );
+
+    const page = state.page;
+    state.browserReady = false;
+    state.browserLeaseOpen = false;
+
+    await page.closeWindow?.().catch(() => {});
+
+    state.page = state.createPage();
+}
+
+// OPENCLI_FETCH_DIRECT_DISABLE_PARALLEL_V4
+//
+// Per-origin transport policy:
+//   1. Try direct Node HTTP first unless this origin was proven incompatible.
+//   2. On direct failure, navigate/refresh ONE shared OpenCLI tab.
+//   3. After that real-browser refresh, start a fresh direct retry and
+//      browser-context fetch in parallel in the SAME shared tab.
+//   4. If the fresh direct retry still fails, disable direct HTTP for this
+//      origin for the rest of this process and immediately use the already
+//      running browser result.
+//   5. While direct is disabled, every later job skips curl/direct entirely
+//      and reuses the shared browser tab. The existing per-origin queue closes
+//      that tab only when the origin queue becomes empty.
+//   6. A service/process restart intentionally clears directDisabled so an
+//      origin can be tested again in the future.
+
+function describeOpenCliFetchAttempt(result, error = null) {
+    const html = typeof result?.html === 'string' ? result.html : '';
+    const status = Number(result?.status || 0);
+    const challenge = Boolean(
+        result && isOpenCliBrowserFetchChallenge(status, html)
+    );
+
+    return {
+        error: error?.message || '',
+        status,
+        length: html.length,
+        challenge,
+        usable: Boolean(
+            !error && openCliBrowserFetchResultIsUsable(result)
+        )
+    };
+}
+
+function formatOpenCliFetchAttempt(details) {
+    if (details?.error) return `error=${JSON.stringify(details.error)}`;
+    return [
+        `status=${details?.status || 0}`,
+        `length=${details?.length || 0}`,
+        `challenge=${Boolean(details?.challenge)}`,
+        `usable=${Boolean(details?.usable)}`
+    ].join(' ');
+}
+
+function disableOpenCliDirectFetch(state, {
+    initialAttempt,
+    freshAttempt
+} = {}) {
+    if (state.directDisabled) return;
+
+    const disabledAt = new Date().toISOString();
+    const reason =
+        'fresh direct retry remained blocked after a successful real-browser refresh';
+
+    state.directDisabled = true;
+    state.directDisabledAt = disabledAt;
+    state.directDisabledReason = reason;
+    state.directDisabledDetails = {
+        initialAttempt,
+        freshAttempt
+    };
+
+    console.warn(
+        `[OPENCLI FETCH] DIRECT DISABLED for ${state.origin}: `
+        + `${reason}; futureRequests=browser-fetch-only until service restart; `
+        + `disabledAt=${disabledAt}; `
+        + `initial={${formatOpenCliFetchAttempt(initialAttempt)}}; `
+        + `fresh={${formatOpenCliFetchAttempt(freshAttempt)}}`
+    );
+}
+
+function logOpenCliDirectDisabledSkip(state) {
+    console.warn(
+        `[OPENCLI FETCH] Skipping direct fetch for ${state.origin}: `
+        + `directDisabled=true; `
+        + `disabledAt=${state.directDisabledAt || 'unknown'}; `
+        + `reason=${JSON.stringify(state.directDisabledReason || 'unknown')}; `
+        + `futureRequests=browser-fetch-only until service restart`
+    );
+}
+
+async function attemptOpenCliDirectFetch(state, url) {
+    let result = null;
+    let error = null;
+
+    try {
+        result = await openCliProfileFetchOnce(state, url);
+    } catch (caught) {
+        error = caught;
+    }
+
+    return {
+        result,
+        error,
+        details: describeOpenCliFetchAttempt(result, error)
+    };
+}
+
+async function attemptOpenCliBrowserFetch(state, url) {
+    let result = null;
+    let error = null;
+
+    try {
+        result = await openCliBrowserFetchOnce(state, url);
+    } catch (caught) {
+        error = caught;
+    }
+
+    return {
+        result,
+        error,
+        details: describeOpenCliFetchAttempt(result, error)
+    };
+}
+
+async function ensureOpenCliSharedBrowserReady(state, url, {
+    forceRefresh = false
+} = {}) {
+    if (state.browserReady && !forceRefresh) {
+        console.log(
+            `[OPENCLI FETCH] Reusing shared browser page for ${state.origin}`
+        );
+        return;
+    }
+
+    // Only real navigation/session refresh is serialized. Normal same-origin
+    // article/thread retrieval uses fetch(url) inside this one shared page.
+    if (state.refreshPromise) {
+        console.log(
+            `[OPENCLI FETCH] Waiting for in-progress shared browser refresh for ${state.origin}`
+        );
+        await state.refreshPromise;
+        return;
+    }
+
+    const refreshTask = (async () => {
+        if (state.browserReady && !forceRefresh) return;
+        await refreshOpenCliBrowserFetchSession(state, url);
+    })();
+
+    state.refreshPromise = refreshTask;
+
+    try {
+        await refreshTask;
+    } finally {
+        if (state.refreshPromise === refreshTask) {
+            state.refreshPromise = null;
+        }
+    }
+}
+
+async function runOpenCliBrowserOnly(state, url, {
+    existingAttempt = null
+} = {}) {
+    await ensureOpenCliSharedBrowserReady(state, url);
+
+    let browserAttempt =
+        existingAttempt
+        || await attemptOpenCliBrowserFetch(state, url);
+
+    if (browserAttempt.details.usable) {
+        console.log(
+            `[OPENCLI FETCH] Shared browser fetch succeeded for ${state.origin}: `
+            + formatOpenCliFetchAttempt(browserAttempt.details)
+        );
+        return finishOpenCliBrowserFetchResult(browserAttempt.result);
+    }
+
+    console.warn(
+        `[OPENCLI FETCH] Shared browser fetch stale/blocked for ${state.origin}: `
+        + `${formatOpenCliFetchAttempt(browserAttempt.details)}; `
+        + `refreshing the SAME shared tab once`
+    );
+
+    state.browserReady = false;
+    await ensureOpenCliSharedBrowserReady(state, url, {
+        forceRefresh: true
+    });
+
+    browserAttempt = await attemptOpenCliBrowserFetch(state, url);
+
+    if (!browserAttempt.details.usable) {
+        console.warn(
+            `[OPENCLI FETCH] Shared browser retry failed for ${state.origin}: `
+            + formatOpenCliFetchAttempt(browserAttempt.details)
+        );
+    }
+
+    return finishOpenCliBrowserFetchResult(browserAttempt.result);
+}
+
+async function runOpenCliBrowserFetchNow(url) {
+    const parsed = new URL(url);
+
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+        throw new Error(
+            'OpenCLI browser fetch only supports HTTP(S) URLs'
+        );
+    }
+
+    const state = await getOpenCliBrowserFetchState(url);
+
+    if (state.directDisabled) {
+        logOpenCliDirectDisabledSkip(state);
+        return runOpenCliBrowserOnly(state, url);
+    }
+
+    const initialDirect = await attemptOpenCliDirectFetch(state, url);
+
+    if (initialDirect.details.usable) {
+        return finishOpenCliBrowserFetchResult(initialDirect.result);
+    }
+
+    console.warn(
+        `[OPENCLI FETCH] Direct profile fetch failed for ${state.origin}: `
+        + formatOpenCliFetchAttempt(initialDirect.details)
+    );
+
+    await ensureOpenCliSharedBrowserReady(state, url, {
+        forceRefresh: true
+    });
+
+    console.log(
+        `[OPENCLI FETCH] Starting fresh direct retry + shared browser fetch `
+        + `in parallel for ${state.origin}`
+    );
+
+    const [freshDirect, parallelBrowser] = await Promise.all([
+        attemptOpenCliDirectFetch(state, url),
+        attemptOpenCliBrowserFetch(state, url)
+    ]);
+
+    if (freshDirect.details.usable) {
+        console.log(
+            `[OPENCLI FETCH] Fresh direct retry succeeded for ${state.origin}: `
+            + formatOpenCliFetchAttempt(freshDirect.details)
+        );
+        return finishOpenCliBrowserFetchResult(freshDirect.result);
+    }
+
+    disableOpenCliDirectFetch(state, {
+        initialAttempt: initialDirect.details,
+        freshAttempt: freshDirect.details
+    });
+
+    if (parallelBrowser.details.usable) {
+        console.log(
+            `[OPENCLI FETCH] Parallel shared browser fetch succeeded for ${state.origin}: `
+            + formatOpenCliFetchAttempt(parallelBrowser.details)
+        );
+        return finishOpenCliBrowserFetchResult(parallelBrowser.result);
+    }
+
+    console.warn(
+        `[OPENCLI FETCH] Parallel shared browser fetch also failed for ${state.origin}: `
+        + `${formatOpenCliFetchAttempt(parallelBrowser.details)}; `
+        + `direct remains disabled and the SAME shared tab will be refreshed once`
+    );
+
+    return runOpenCliBrowserOnly(state, url, {
+        existingAttempt: parallelBrowser
+    });
+}
+
 export function runOpenCliBrowserFetch(url) {
     let origin;
 
@@ -401,57 +777,110 @@ export function runOpenCliBrowserFetch(url) {
         );
     }
 
-    const previous =
-        openCliBrowserFetchQueues.get(origin)
-        || Promise.resolve();
+    let tracker = openCliBrowserFetchQueues.get(origin);
 
-    const task = previous.then(
-        () => runOpenCliBrowserFetchNow(url),
-        () => runOpenCliBrowserFetchNow(url)
-    );
+    if (!tracker || typeof tracker !== 'object' || !('pending' in tracker)) {
+        tracker = {
+            pending: 0,
+            closeTimer: null,
+            closePromise: null
+        };
+        openCliBrowserFetchQueues.set(origin, tracker);
+    }
 
-    const gate = task.then(
-        () => undefined,
-        () => undefined
-    );
+    if (tracker.closeTimer) {
+        clearTimeout(tracker.closeTimer);
+        tracker.closeTimer = null;
+    }
 
-    openCliBrowserFetchQueues.set(origin, gate);
+    tracker.pending += 1;
+
+    // P lanes are scheduled above this layer. Do not create a per-lane page
+    // and do not serialize browser-side fetch(url) calls here.
+    const task = (async () => {
+        // If an actual close already began, finish it before using the
+        // recreated shared page. An idle-close timer itself never blocks work.
+        if (tracker.closePromise) {
+            await tracker.closePromise;
+        }
+
+        return runOpenCliBrowserFetchNow(url);
+    })();
 
     return task.finally(() => {
-        if (openCliBrowserFetchQueues.get(origin) === gate) {
-            openCliBrowserFetchQueues.delete(origin);
+        tracker.pending = Math.max(0, tracker.pending - 1);
+
+        // Keep this origin's one shared page/context while ANY request remains.
+        if (tracker.pending !== 0) return;
+
+        if (tracker.closeTimer) {
+            clearTimeout(tracker.closeTimer);
         }
+
+        // OPENCLI_FETCH_ROLLING_IDLE_REUSE_V1
+        // Keep this origin's shared browser context warm for a rolling idle
+        // window. Any new opencli-fetch request cancels this timer above and
+        // reuses the same context. This covers delayed article/thread prefetch,
+        // cache ticks and follow-up page requests without creating another tab.
+        // The context closes only after the origin has genuinely been idle.
+        tracker.closeTimer = setTimeout(() => {
+            tracker.closeTimer = null;
+            if (tracker.pending !== 0) return;
+
+            const closeTask = (async () => {
+                const state = openCliBrowserFetchStates.get(origin);
+                await closeOpenCliBrowserFetchQueueTab(state);
+            })();
+
+            tracker.closePromise = closeTask;
+
+            closeTask.finally(() => {
+                if (tracker.closePromise === closeTask) {
+                    tracker.closePromise = null;
+                }
+
+                if (
+                    tracker.pending === 0
+                    && !tracker.closeTimer
+                    && openCliBrowserFetchQueues.get(origin) === tracker
+                ) {
+                    openCliBrowserFetchQueues.delete(origin);
+                }
+            }).catch(() => {});
+        }, OPENCLI_BROWSER_FETCH_IDLE_CLOSE_MS);
     });
 }
 
 export async function readWithHumanVerification(read, page, kwargs, canWait) {
-    let prompted = false;
     const guardedPage = new Proxy(page, {
         get(target, key) {
             if (key !== 'evaluate') {
                 const value = target[key];
                 return typeof value === 'function' ? value.bind(target) : value;
             }
+
             return async (...args) => {
                 let data = await target.evaluate(...args);
+
                 while (isVerificationPage(data)) {
-                    if (!await canWait()) throw new Error('Publisher verification blocked this fetch.');
-                    if (!prompted) {
-                        prompted = true;
-                        await target.cdp?.('Page.bringToFront').catch(() => {});
+                    if (!await canWait()) {
+                        throw new Error('Publisher verification blocked this fetch.');
                     }
+
+                    // Never activate/focus/switch Chromium. `opencli` stays in
+                    // the background exactly like `opencli-fetch`.
                     await target.wait(1);
                     data = await target.evaluate(...args);
                 }
+
                 return data;
             };
         }
     });
+
     try {
         return await read(guardedPage, kwargs, false);
     } finally {
-        // Only the currently viewed article can wait above. All other paths
-        // release their own tab, including navigation away during a CAPTCHA.
         await page.closeWindow?.().catch(() => {});
     }
 }
