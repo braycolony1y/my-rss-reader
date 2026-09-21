@@ -107,31 +107,85 @@ export function extractThreadSnapshot(html, url) {
     });
     return { thread_id, currentPage: page, pageCount, posts, complete };
 }
-export function reconcilePosts(record, posts, complete, timestamp = new Date().toISOString()) {
+export function reconcilePosts(record, posts, complete, timestamp = new Date().toISOString(), options = {}) {
     record.posts ||= {};
     const seen = new Set();
+    const freezeBefore = Number(options.freezeBefore);
+    const markMissingRemoved = options.markMissingRemoved ?? complete;
+    const successful = options.successful ?? complete;
+
     for (const incoming of posts) {
         const id = String(incoming.post_id);
         if (!/^\d+$/.test(id) && id !== 'article') continue;
         seen.add(id);
         const old = record.posts[id];
         const source_created_at = iso(incoming.source_created_at) || iso(incoming.created_at) || iso(old?.source_created_at) || iso(old?.created_at);
+        const sourceTime = Date.parse(source_created_at || '');
+        const frozen = Boolean(old && Number.isFinite(freezeBefore) && Number.isFinite(sourceTime) && sourceTime <= freezeBefore);
+        const history = [...(old?.presence_history || [])];
+        if (old?.is_removed) history.push({ state: 'restored', captured_at: timestamp });
+
+        if (frozen) {
+            // Cache-board posts become immutable one hour after their ORIGINAL
+            // post time. We still accept live placement/permalink information so
+            // deleted-post pagination shifts can be projected correctly, but an
+            // edit made later does not rewrite the stored historical body.
+            record.posts[id] = {
+                ...old,
+                thread_id: record.thread_id,
+                current_page: incoming.current_page ?? old.current_page,
+                current_position: incoming.current_position ?? old.current_position,
+                current_visible_number: incoming.current_visible_number ?? old.current_visible_number,
+                permalink: incoming.permalink || old.permalink,
+                source_created_at,
+                created_at: source_created_at,
+                last_seen_at: timestamp,
+                last_live_placement_at: timestamp,
+                removed_at: null,
+                is_removed: false,
+                presence_history: history
+            };
+            continue;
+        }
+
         const source_edited_at = iso(incoming.source_edited_at) || iso(incoming.edited_at) || iso(old?.source_edited_at) || iso(old?.edited_at);
         const hash = contentHash(incoming.current_content, record.url || incoming.permalink);
-        const versions = old?.versions || [];
-        if (!old || contentHash(old.current_content, record.url || incoming.permalink) !== hash) versions.push({ content: incoming.current_content, captured_at: timestamp, edited_at: incoming.edited_at || null, hash, version: versions.length + 1 });
-        const history = old?.presence_history || [];
-        if (old?.is_removed) history.push({ state: 'restored', captured_at: timestamp });
-        record.posts[id] = { ...old, ...incoming, thread_id: record.thread_id, display_content: incoming.display_content || incoming.current_content, source_created_at, source_edited_at, created_at: source_created_at, edited_at: source_edited_at, cached_at: old?.cached_at || old?.first_seen_at || timestamp, hash, presence_history: history, first_seen_at: old?.first_seen_at || timestamp, last_seen_at: timestamp,
-            removed_at: null, is_removed: false, versions };
-    }
-    if (complete) {
-        for (const post of Object.values(record.posts)) {
-            if (!seen.has(post.post_id) && !post.is_removed) { post.is_removed = true; post.removed_at = timestamp; (post.presence_history ||= []).push({ state: 'removed', captured_at: timestamp }); }
+        const versions = [...(old?.versions || [])];
+        if (!old || contentHash(old.current_content, record.url || incoming.permalink) !== hash) {
+            versions.push({ content: incoming.current_content, captured_at: timestamp, edited_at: incoming.edited_at || null, hash, version: versions.length + 1 });
         }
-        record.last_successful_sync_at = timestamp;
+        record.posts[id] = {
+            ...old,
+            ...incoming,
+            thread_id: record.thread_id,
+            display_content: incoming.display_content || incoming.current_content,
+            source_created_at,
+            source_edited_at,
+            created_at: source_created_at,
+            edited_at: source_edited_at,
+            cached_at: old?.cached_at || old?.first_seen_at || timestamp,
+            hash,
+            presence_history: history,
+            first_seen_at: old?.first_seen_at || timestamp,
+            last_seen_at: timestamp,
+            last_live_placement_at: timestamp,
+            removed_at: null,
+            is_removed: false,
+            versions
+        };
     }
-    record.sync_status = complete ? 'complete' : 'incomplete';
+
+    if (markMissingRemoved) {
+        for (const post of Object.values(record.posts)) {
+            if (!seen.has(String(post.post_id)) && !post.is_removed) {
+                post.is_removed = true;
+                post.removed_at = timestamp;
+                (post.presence_history ||= []).push({ state: 'removed', captured_at: timestamp });
+            }
+        }
+    }
+    if (successful) record.last_successful_sync_at = timestamp;
+    record.sync_status = successful ? 'complete' : 'incomplete';
     return record;
 }
 

@@ -498,6 +498,9 @@ export function createArticleParser({
                 } catch (e) { }
 
                 articleHtml = articleHtml.replace(/<iframe\b[^>]*>[\s\S]{0,10000}?<\/iframe>/gi, (iframeMatch) => {
+                    if (result.readerType === 'macstories-article'
+                        && /data-macstories-widget="1"/.test(iframeMatch)
+                        && /\ssandbox(?:=(["'])\1)?(?=\s|>)/i.test(iframeMatch)) return iframeMatch;
                     const srcMatch = iframeMatch.match(/\bsrc=(["'])([\s\S]*?)\1/i);
                     const src = srcMatch ? srcMatch[2].toLowerCase() : '';
                     if (!src || /(doubleclick|googlesyndication|adnxs|tracking|analytics|banner|widget\/like|fbevents)/i.test(src)) {

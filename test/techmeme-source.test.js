@@ -1,6 +1,51 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import TechmemeSource, { canonicalPrimaryArticleUrl, extractTechmemeStory } from '../src/sources/TechmemeSource.js';
+import { parseJinaReaderText, parseOpenCliMarkdown } from '../src/articles/reader-markdown.js';
+
+test('Techmeme extracts the requested native item without adjoining stories', () => {
+    const source = new TechmemeSource();
+    const html = `<div class="item"><table><span pml="260921p38"></span></table><div class="ii"><strong><a href="https://other.example/story">Other story</a></strong></div></div>
+        <div class="item"><table class="shrtbl"><tr><td><cite>Writer / Publisher:</cite></td><td><span pml="260921p39"></span></td></tr></table>
+        <div class="ii"><strong><a href="https://publisher.example/review">Requested review</a></strong></div>
+        <div><div class="drhed">More:</div><div class="di"><cite>Related:</cite><a href="https://related.example/story">Related coverage</a></div></div></div>`;
+    const result = {};
+    const content = source.parseArticleHtmlContent(html, 'https://www.techmeme.com/260921/p39', result);
+    assert.equal(result.title, 'Requested review');
+    assert.equal(result.author, 'Writer');
+    assert.match(content, /Related coverage/);
+    assert.doesNotMatch(content, /Other story/);
+    assert.equal(source.parseArticleHtmlContent(html, 'https://www.techmeme.com/260921/p40', {}), false);
+});
+
+test('Techmeme text readers identify markerless stories by exact page title', () => {
+    const markdown = `Other Writer / Other Publisher:
+
+**[Other story](https://other.example/story)**
+
+Writer / Publisher:
+
+**[Requested review](https://publisher.example/review)**
+
+More:
+
+Related / Publisher: [Related coverage](https://related.example/story)
+
+Next Writer / Next Publisher:
+
+**[Next story](https://next.example/story)**`;
+    const url = 'https://www.techmeme.com/260921/p39';
+    for (const result of [
+        parseJinaReaderText(`Title: Requested review\n\nMarkdown Content:\n${markdown}`, url),
+        parseOpenCliMarkdown(`# Requested review\n\n${markdown}`, url)
+    ]) {
+        assert.match(result.content, /data-techmeme-story-id="260921p39"/);
+        assert.match(result.content, /data-techmeme-main-url="https:\/\/publisher.example\/review"/);
+        assert.match(result.content, /Related coverage/);
+        assert.doesNotMatch(result.content, /Other story|Next story/);
+    }
+    assert.doesNotMatch(parseJinaReaderText(`Title: Missing review\n\nMarkdown Content:\n${markdown}`, url).content, /data-techmeme-story-id/);
+});
 
 const pageUrl = 'https://www.techmeme.com/260830/p11#a260830p11';
 const renderedDailyPage = `

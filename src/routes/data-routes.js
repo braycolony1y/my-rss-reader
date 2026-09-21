@@ -15,6 +15,104 @@ export function registerDataRoutes({
     let visibleSnapshot;
     let visibleKeywordSignature;
     let visibleSnapshotArticles;
+
+    // SMART_VIEWPORT_ROUTE_V1
+    app.post(
+        '/api/ai/briefing-viewport',
+        authMiddleware,
+        async (req, res) => {
+            try {
+                const smartViewToken =
+                    String(
+                        req.body?.smartViewToken ||
+                        ''
+                    ).trim();
+
+                const filterValue =
+                    String(
+                        req.body?.filterValue ||
+                        ''
+                    ).trim();
+
+                const smartRegion =
+                    req.body?.smartRegion ===
+                        'vietnam'
+                        ? 'vietnam'
+                        : (
+                            req.body?.smartRegion ===
+                                'world'
+                                ? 'world'
+                                : ''
+                        );
+
+                const page =
+                    Math.max(
+                        1,
+                        Number(
+                            req.body?.page
+                        ) || 1
+                    );
+
+                const generation =
+                    Math.max(
+                        0,
+                        Number(
+                            req.body?.generation
+                        ) || 0
+                    );
+
+                const visibleClusterIds =
+                    Array.isArray(
+                        req.body?.visibleClusterIds
+                    )
+                        ? req.body.visibleClusterIds
+                            .map(value =>
+                                String(value || '')
+                                    .trim()
+                            )
+                            .filter(Boolean)
+                            .slice(0, 12)
+                        : [];
+
+                if (
+                    !smartViewToken ||
+                    smartViewToken.length > 160 ||
+                    filterValue.length > 80 ||
+                    visibleClusterIds.some(
+                        id =>
+                            id.length > 600
+                    )
+                ) {
+                    return res
+                        .status(400)
+                        .json({
+                            error:
+                                'Invalid Smart viewport payload'
+                        });
+                }
+
+                const result =
+                    await presentation
+                        .prioritizeVisibleBriefings({
+                            smartViewToken,
+                            filterValue,
+                            smartRegion,
+                            page,
+                            visibleClusterIds,
+                            generation
+                        });
+
+                res.json(result);
+            }
+            catch (error) {
+                res.status(500).json({
+                    error:
+                        error.message
+                });
+            }
+        }
+    );
+
     app.get('/api/data', authMiddleware, async (req, res) => {
         progress.activeForegroundRequests++;
         try {
@@ -22,19 +120,30 @@ export function registerDataRoutes({
         const filterType = req.query.filterType || 'today';
         if (filterType === 'smart') return await serveSmartData(req, res);
 
-        let feeds = await env.RSS_DATA.get('feeds', { type: 'json' }) || [];
+        // BACKEND_STREAMING_SIMPLE_VIEW_V1
+        //
+        // These snapshots are treated as immutable for the lifetime of this
+        // request. Reuse the parsed global values rather than structuredClone()
+        // every array/object on every tab click.
+        let feeds = await env.RSS_DATA.get('feeds', { type: 'json', shared: true }) || [];
+
         // This route treats the article snapshot as immutable and derives new
         // filtered arrays from it, so avoid cloning the full multi-megabyte list
         // on every tab click.
         let allArticles = await env.RSS_DATA.get('articles', { type: 'json', shared: true }) || [];
-        const readStates = await env.RSS_DATA.get('readStates', { type: 'json' }) || [];
-        const savedStates = await env.RSS_DATA.get('savedStates', { type: 'json' }) || [];
-        const boardStates = await env.RSS_DATA.get('boardStates', { type: 'json' }) || [];
-        const hiddenStates = await env.RSS_DATA.get('hiddenStates', { type: 'json' }) || [];
-        const categoryOrder = await env.RSS_DATA.get('categoryOrder', { type: 'json' }) || [];
-        const userPreferences = await env.RSS_DATA.get('userPreferences', { type: 'json' }) || {};
 
-        const blockedKeywords = await env.RSS_DATA.get('blockedArticleKeywords', { type: 'json' }) || [];
+        const readStates = await env.RSS_DATA.get('readStates', { type: 'json', shared: true }) || [];
+        const savedStates = await env.RSS_DATA.get('savedStates', { type: 'json', shared: true }) || [];
+        const boardStates = await env.RSS_DATA.get('boardStates', { type: 'json', shared: true }) || [];
+        const hiddenStates = await env.RSS_DATA.get('hiddenStates', { type: 'json', shared: true }) || [];
+        const recentReadAt = await env.RSS_DATA.get('recentReadAt', { type: 'json', shared: true }) || {};
+        const categoryOrder = await env.RSS_DATA.get('categoryOrder', { type: 'json', shared: true }) || [];
+        const userPreferences = await env.RSS_DATA.get('userPreferences', { type: 'json', shared: true }) || {};
+
+        const blockedKeywords = await env.RSS_DATA.get(
+            'blockedArticleKeywords',
+            { type: 'json', shared: true }
+        ) || [];
         const loadedAt = performance.now();
         const blockedKeywordEntries = normalizeBlockedKeywordEntries(blockedKeywords);
         const articleIsBlocked = article => articleContentFilterMatches(article, blockedKeywordEntries);
@@ -53,10 +162,40 @@ export function registerDataRoutes({
         const boardSet = new NormalizedSet(boardStates);
         const hiddenSet = new NormalizedSet(hiddenStates);
 
-        const readIndex = new NormalizedMap(readStates.map((link, i) => [link, i]));
-        const savedIndex = new NormalizedMap(savedStates.map((link, i) => [link, i]));
-        const boardIndex = new NormalizedMap(boardStates.map((link, i) => [link, i]));
-        const hiddenIndex = new NormalizedMap(hiddenStates.map((link, i) => [link, i]));
+        // Build ordering indexes only for the views that actually use them.
+        // category/feed requests do not need these O(n) Maps.
+        const readIndex =
+            filterType === 'recent'
+                ? new NormalizedMap(
+                    readStates.map((link, i) => [link, i])
+                )
+                : null;
+
+        const recentReadIndex =
+            filterType === 'recent'
+                ? new NormalizedMap(Object.entries(recentReadAt))
+                : null;
+
+        const savedIndex =
+            filterType === 'saved'
+                ? new NormalizedMap(
+                    savedStates.map((link, i) => [link, i])
+                )
+                : null;
+
+        const boardIndex =
+            filterType === 'board'
+                ? new NormalizedMap(
+                    boardStates.map((link, i) => [link, i])
+                )
+                : null;
+
+        const hiddenIndex =
+            filterType === 'hidden'
+                ? new NormalizedMap(
+                    hiddenStates.map((link, i) => [link, i])
+                )
+                : null;
 
         const unreadCounts = { feeds: {}, categories: {}, total: 0 };
         visibleArticles.forEach(a => {
@@ -71,6 +210,14 @@ export function registerDataRoutes({
         const filterValue = req.query.filterValue || '';
         const hideRead = req.query.hideRead === 'true';
         const searchQuery = req.query.searchQuery ? req.query.searchQuery.toLowerCase() : '';
+
+        // category/feed preserve the ordering already present in visibleArticles.
+        // They therefore do not need a complete filtered array before slicing
+        // one page. We can stream through the in-memory snapshot and stop as
+        // soon as page + 1 qualifying article has been found.
+        const simpleStreamingView =
+            filterType === 'category'
+            || filterType === 'feed';
 
         let filteredArticles = visibleArticles;
 
@@ -173,7 +320,11 @@ export function registerDataRoutes({
         } else {
             if (['recent', 'saved', 'board'].includes(filterType)) {
                 const smartClustersRaw = await env.RSS_DATA.get('smartClusters', { type: 'json', shared: true }) || [];
-                const wanted = filterType === 'board' ? boardSet : filterType === 'saved' ? savedSet : readSet;
+                const wanted = filterType === 'board'
+                    ? boardSet
+                    : filterType === 'saved'
+                        ? savedSet
+                        : readSet;
                 const smartArticles = smartClustersRaw.filter(a => wanted.has(a.link)).map(c => cleanStoredCluster(c)).filter(a => a && !articleIsBlocked(a));
 
                 const linkMap = new Map();
@@ -198,9 +349,25 @@ export function registerDataRoutes({
             filteredArticles = filteredArticles.filter(a => !hiddenSet.has(a.link));
             if (filterType === 'recent') {
                 const oneWeekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+                const hasRecentTimeline = Object.keys(recentReadAt).length > 0;
                 filteredArticles = filteredArticles
-                    .filter(a => readSet.has(a.link) && (new Date(a.pubDate || 0).getTime() > oneWeekAgo))
-                    .sort((a, b) => readIndex.get(b.link) - readIndex.get(a.link));
+                    .filter(a => {
+                        if (!readSet.has(a.link)) return false;
+                        const explicitReadAt = Number(recentReadIndex?.get(a.link) || 0);
+                        if (explicitReadAt) return explicitReadAt > oneWeekAgo;
+                        // Migration fallback: keep the old seven-day Recently Read
+                        // population until each article naturally receives an explicit
+                        // lastReadAt. Explicit timestamps always rank above this tier.
+                        return new Date(a.pubDate || 0).getTime() > oneWeekAgo;
+                    })
+                    .sort((a, b) => {
+                        if (hasRecentTimeline) {
+                            const aAt = Number(recentReadIndex.get(a.link) || 0);
+                            const bAt = Number(recentReadIndex.get(b.link) || 0);
+                            if (aAt || bAt) return (bAt > 0) - (aAt > 0) || bAt - aAt;
+                        }
+                        return Number(readIndex.get(b.link) || 0) - Number(readIndex.get(a.link) || 0);
+                    });
             } else if (filterType === 'saved') {
                 filteredArticles = filteredArticles.filter(a => savedSet.has(a.link));
                 if (hideRead) filteredArticles = filteredArticles.filter(a => !readSet.has(a.link));
@@ -215,9 +382,26 @@ export function registerDataRoutes({
                 if (hideRead) filteredArticles = filteredArticles.filter(a => !readSet.has(a.link));
                 filteredArticles.sort((a, b) => boardIndex.get(b.link) - boardIndex.get(a.link));
             } else if (filterType === 'category') {
-                filteredArticles = filteredArticles.filter(a => a.feedCategory === filterValue || (filterValue === 'Others' && !a.feedCategory));
+                // Fast path below performs this predicate while streaming
+                // directly into the requested page.
+                if (!simpleStreamingView) {
+                    filteredArticles = filteredArticles.filter(
+                        a =>
+                            a.feedCategory === filterValue
+                            || (
+                                filterValue === 'Others'
+                                && !a.feedCategory
+                            )
+                    );
+                }
             } else if (filterType === 'feed') {
-                filteredArticles = filteredArticles.filter(a => a.feedUrl === filterValue);
+                // Fast path below performs this predicate while streaming
+                // directly into the requested page.
+                if (!simpleStreamingView) {
+                    filteredArticles = filteredArticles.filter(
+                        a => a.feedUrl === filterValue
+                    );
+                }
             } else if (filterType === 'hot_today' || filterType === 'hot_week' || filterType === 'views_today' || filterType === 'views_week') {
                 // Use Vietnam timezone (UTC+7) for date comparison since Voz is a Vietnamese forum
                 const VN_OFFSET = 7 * 60 * 60 * 1000;
@@ -279,12 +463,20 @@ export function registerDataRoutes({
                 filteredArticles.sort(sortFn);
             }
 
-            if (hideRead && filterType !== 'recent' && !filterType.startsWith('hot_') && !filterType.startsWith('views_')) {
-                filteredArticles = filteredArticles.filter(a => !readSet.has(a.link));
+            if (
+                !simpleStreamingView
+                && hideRead
+                && filterType !== 'recent'
+                && !filterType.startsWith('hot_')
+                && !filterType.startsWith('views_')
+            ) {
+                filteredArticles = filteredArticles.filter(
+                    a => !readSet.has(a.link)
+                );
             }
         }
 
-        if (searchQuery) {
+        if (!simpleStreamingView && searchQuery) {
             const matchesSearch = value => String(value || '').toLowerCase().includes(searchQuery);
             filteredArticles = filteredArticles.filter(a =>
                 matchesSearch(a.title) ||
@@ -296,16 +488,109 @@ export function registerDataRoutes({
             );
         }
 
-        const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 40;
+        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const limit = Math.max(1, parseInt(req.query.limit) || 40);
         const startIndex = (page - 1) * limit;
         const endIndex = page * limit;
 
-        const hasMore = endIndex < filteredArticles.length;
-        const filteredAt = performance.now();
-        const paginatedArticles = await mapWithConcurrency(filteredArticles.slice(startIndex, endIndex), 6, prepareArticleForClient);
+        let pageSourceArticles;
+        let hasMore = false;
 
-        res.setHeader?.('Server-Timing', `data;dur=${(loadedAt - startedAt).toFixed(1)}, filter;dur=${(filteredAt - loadedAt).toFixed(1)}, cards;dur=${(performance.now() - filteredAt).toFixed(1)}`);
+        if (simpleStreamingView) {
+            pageSourceArticles = [];
+
+            const matchesSearch = searchQuery
+                ? value =>
+                    String(value || '')
+                        .toLowerCase()
+                        .includes(searchQuery)
+                : null;
+
+            let qualifyingCount = 0;
+
+            for (const article of visibleArticles) {
+                if (hiddenSet.has(article.link)) {
+                    continue;
+                }
+
+                if (
+                    hideRead
+                    && readSet.has(article.link)
+                ) {
+                    continue;
+                }
+
+                if (filterType === 'category') {
+                    const categoryMatches =
+                        article.feedCategory === filterValue
+                        || (
+                            filterValue === 'Others'
+                            && !article.feedCategory
+                        );
+
+                    if (!categoryMatches) {
+                        continue;
+                    }
+                } else if (
+                    filterType === 'feed'
+                    && article.feedUrl !== filterValue
+                ) {
+                    continue;
+                }
+
+                if (
+                    matchesSearch
+                    && !(
+                        matchesSearch(article.title)
+                        || matchesSearch(article.feedTitle)
+                        || matchesSearch(article.content)
+                    )
+                ) {
+                    continue;
+                }
+
+                if (
+                    qualifyingCount >= startIndex
+                    && pageSourceArticles.length < limit
+                ) {
+                    pageSourceArticles.push(article);
+                }
+
+                qualifyingCount++;
+
+                // One extra qualifying item is enough to prove that another
+                // page exists. Stop immediately instead of scanning/building
+                // the entire filtered result set.
+                if (qualifyingCount > endIndex) {
+                    hasMore = true;
+                    break;
+                }
+            }
+        } else {
+            hasMore = endIndex < filteredArticles.length;
+
+            pageSourceArticles =
+                filteredArticles.slice(
+                    startIndex,
+                    endIndex
+                );
+        }
+
+        const filteredAt = performance.now();
+
+        const paginatedArticles =
+            await mapWithConcurrency(
+                pageSourceArticles,
+                6,
+                prepareArticleForClient
+            );
+
+        res.setHeader?.(
+            'Server-Timing',
+            `data;dur=${(loadedAt - startedAt).toFixed(1)}, `
+            + `filter;dur=${(filteredAt - loadedAt).toFixed(1)}, `
+            + `cards;dur=${(performance.now() - filteredAt).toFixed(1)}`
+        );
         res.json({
             feeds,
             articles: paginatedArticles,
@@ -313,6 +598,7 @@ export function registerDataRoutes({
             savedStates,
             boardStates,
             hiddenStates,
+            recentReadAt,
             categoryOrder,
             userPreferences,
             hasMore,

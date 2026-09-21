@@ -17,6 +17,10 @@ import {
   SMART_SOURCE_DISCOVERY_POOL
 } from './smart-sources.js';
 import { decodeHTMLEntities } from './feed-parsers.js';
+import {
+  normalizeBlockedKeywordEntries,
+  articleContentFilterMatches
+} from './src/filters/content-filter.js';
 import { normalizeArticleSourceUrl } from './src/article-source-state.js';
 import { discardResponseBody } from './src/fetch-response.js';
 import { createHash } from 'node:crypto';
@@ -12741,7 +12745,89 @@ export function createSmartNewsEngine({
           [...articleMap.values()]
         );
 
+      // CONTENT_FILTER_HEAVY_GATE_V2
+      //
+      // Content Filter matches remain in the raw article stores so the user
+      // can inspect them from Content Filters. They must not enter the costly
+      // Smart pipeline: content hashing, embeddings, clustering, verification,
+      // editorial AI, ranking and later Smart enrichment.
+      //
+      // Use the exact same canonical matcher as the normal Feed/UI filters.
+
+      const blockedArticleKeywordsForSmart =
+        (
+          await db.get(
+            'blockedArticleKeywords',
+            { type: 'json', shared: true }
+          )
+        ) || [];
+
+      const blockedKeywordEntriesForSmart =
+        normalizeBlockedKeywordEntries(
+          blockedArticleKeywordsForSmart
+        );
+
+      const articleIsContentFilteredForSmart =
+        article =>
+          articleContentFilterMatches(
+            article,
+            blockedKeywordEntriesForSmart
+          );
+
+      const rawCandidateCountBeforeContentFilter =
+        rawCandidates.length;
+
+      if (blockedKeywordEntriesForSmart.length) {
+        rawCandidates =
+          rawCandidates.filter(
+            article =>
+              !articleIsContentFilteredForSmart(
+                article
+              )
+          );
+      }
+
+      const contentFilteredSmartCandidateCount =
+        rawCandidateCountBeforeContentFilter -
+        rawCandidates.length;
+
       let previousRawArticles = (await db.get('smartClusteringInputs', { type: 'json', shared: true })) || (await db.get('smartRawArticles', { type: 'json', shared: true })) || [];
+
+      const previousRawArticleCountBeforeContentFilter =
+        previousRawArticles.length;
+
+      if (blockedKeywordEntriesForSmart.length) {
+        previousRawArticles =
+          previousRawArticles.filter(
+            article =>
+              !articleIsContentFilteredForSmart(
+                article
+              )
+          );
+      }
+
+      const contentFilteredPreviousSmartCount =
+        previousRawArticleCountBeforeContentFilter -
+        previousRawArticles.length;
+
+      if (
+        contentFilteredSmartCandidateCount > 0 ||
+        contentFilteredPreviousSmartCount > 0
+      ) {
+        console.log(
+          '[CONTENT FILTER] Smart heavy-work gate',
+          JSON.stringify({
+            keywordCount:
+              blockedKeywordEntriesForSmart.length,
+            currentSkipped:
+              contentFilteredSmartCandidateCount,
+            previousSkipped:
+              contentFilteredPreviousSmartCount,
+            heavyCandidatesRemaining:
+              rawCandidates.length
+          })
+        );
+      }
       let previousArticleMap = new Map();
       for (const article of previousRawArticles) {
         if (article.articleKey) {
@@ -13816,7 +13902,7 @@ export function createSmartNewsEngine({
       metrics.editorialAssessed =
         editorialStats.assessed;
 
-      
+
 
       metrics.editorialAiCalls =
         editorialStats.aiCalls;

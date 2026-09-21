@@ -116,6 +116,8 @@ export function createBoardCache({ env, fetchPage, writeJson, directory = './art
      */
     const ACTIVE_VIEW_TTL_MS = 120 * 1000;
     const HOT_THREAD_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+    const POST_LIVE_REFRESH_MAX_AGE_MS = 60 * 60 * 1000;
+    const THREAD_IDLE_STOP_MS = 24 * 60 * 60 * 1000;
 
     function viewThreadId(value) {
         if (!value) return null;
@@ -226,6 +228,7 @@ export function createBoardCache({ env, fetchPage, writeJson, directory = './art
 
     function memberSourceCreatedAt(member) {
         const candidates = [
+            member?.last_verified_post_at,
             member?.source_created_at,
             member?.article?.pubDate
         ];
@@ -571,53 +574,161 @@ export function createBoardCache({ env, fetchPage, writeJson, directory = './art
             if (!member?.in_cache || !member.active_caching) return;
             let record = await ensureArchive(member);
             if (!record) return;
-            let complete = true;
+
+            let successful = true;
             let removed = false;
+            let verifiedIdle = false;
+            let latestVerifiedPost = null;
+            let verifiedPageCount = null;
             const posts = new Map();
+            const fetchedPages = new Set();
+            const syncTimestamp = new Date(now()).toISOString();
+            const freezeBefore = now() - POST_LIVE_REFRESH_MAX_AGE_MS;
+
             try {
                 const sourceUrl = canonicalUrl(member.url);
                 const first = initialPage || await fetchQueuedPage(sourceUrl, member.article.feedUrl || '');
-                if (first.isDeletedSource || first.isDeletedThread || first.sourceDeleted) { removed = true; throw new Error('Thread removed from source'); }
+                if (first.isDeletedSource || first.isDeletedThread || first.sourceDeleted) {
+                    removed = true;
+                    throw new Error('Thread removed from source');
+                }
                 record.title = first.title || member.article.title;
                 record.url = member.url;
+
                 if (id.includes(':thread:') || first.threadSnapshot) {
-                    const snapshot = first.threadSnapshot;
-                    if (!snapshot?.complete || snapshot.currentPage !== 1 || !snapshot.posts.length) throw new Error('Page 1 lacks complete permanent post IDs');
-                    const count = snapshot.pageCount;
-                    for (const post of snapshot.posts) posts.set(post.post_id, post);
-                    for (let page = 2; page <= count; page++) {
+                    const firstSnapshot = first.threadSnapshot;
+                    if (!firstSnapshot?.complete || firstSnapshot.currentPage !== 1 || !firstSnapshot.posts.length) {
+                        throw new Error('Page 1 lacks complete permanent post IDs');
+                    }
+
+                    const pageCount = Math.max(1, Number(firstSnapshot.pageCount) || 1);
+                    verifiedPageCount = pageCount;
+                    fetchedPages.add(1);
+                    for (const post of firstSnapshot.posts) posts.set(String(post.post_id), post);
+
+                    const existing = Object.values(record.posts || {}).filter(post => /^\d+$/.test(String(post.post_id)));
+                    const cachedMaxPage = existing.reduce((max, post) => Math.max(max, Number(post.current_page) || 1), 1);
+                    const recentPages = existing
+                        .filter(post => {
+                            const created = Date.parse(post.source_created_at || post.created_at || '');
+                            return Number.isFinite(created) && created > freezeBefore;
+                        })
+                        .map(post => Number(post.current_page) || 1);
+
+                    // Do not rescan immutable historical pages. Keep one overlap
+                    // page before the live frontier so deletions/pagination shifts
+                    // can move surviving permanent post IDs without losing context.
+                    let startPage;
+                    if (!existing.length) startPage = 1;
+                    else if (recentPages.length) startPage = Math.max(1, Math.min(...recentPages) - 1);
+                    else startPage = Math.max(1, cachedMaxPage - 1);
+                    startPage = Math.min(startPage, pageCount);
+
+                    const fetchFrom = Math.max(2, startPage);
+                    let lastSnapshot = pageCount === 1 ? firstSnapshot : null;
+                    for (let page = fetchFrom; page <= pageCount; page++) {
                         const current = (await get('cacheMembers', {}))[id];
                         if (!current?.active_caching || !current.in_cache) throw new Error('Caching paused');
                         try {
                             const result = await fetchQueuedPage(`${sourceUrl.replace(/\/$/, '')}/page-${page}`, member.article.feedUrl || '');
-                            const s = result.threadSnapshot;
-                            if (!s?.complete || s.currentPage !== page || s.pageCount !== count || !s.posts.length) throw new Error(`Page ${page} is incomplete or pagination changed`);
-                            for (const post of s.posts) {
-                                if (posts.has(post.post_id)) {
-                                    if (post.current_visible_number !== 1) { complete = false; record.sync_error = 'Posts shifted between pages during the scan'; }
-                                } else posts.set(post.post_id, post);
+                            const snapshot = result.threadSnapshot;
+                            if (!snapshot?.complete || snapshot.currentPage !== page || !snapshot.posts.length) {
+                                throw new Error(`Page ${page} is incomplete`);
                             }
-                        } catch (e) { complete = false; record.sync_error = e.message; }
+                            if (Number(snapshot.pageCount) !== pageCount) {
+                                successful = false;
+                                record.sync_error = 'Pagination changed during the live-tail scan';
+                            }
+                            fetchedPages.add(page);
+                            for (const post of snapshot.posts) posts.set(String(post.post_id), post);
+                            if (page === pageCount) lastSnapshot = snapshot;
+                        } catch (error) {
+                            successful = false;
+                            record.sync_error = error.message;
+                        }
                     }
-                    // Check pagination again: a shifting thread must never imply deletion.
-                    const beforeVerify = (await get('cacheMembers', {}))[id];
-                    if (!beforeVerify?.active_caching || !beforeVerify.in_cache) complete = false;
-                    if (count > 1 && complete) {
-                        const verify = (await fetchQueuedPage(sourceUrl, member.article.feedUrl || '')).threadSnapshot;
-                        if (!verify?.complete || verify.pageCount !== count || JSON.stringify(verify.posts.map(p => p.post_id)) !== JSON.stringify(snapshot.posts.map(p => p.post_id))) complete = false;
+
+                    // If startPage was >1 and pageCount collapsed below it, the
+                    // first page is still authoritative for a one-page thread.
+                    if (pageCount === 1) lastSnapshot = firstSnapshot;
+
+                    if (lastSnapshot?.complete && Number(lastSnapshot.currentPage) === pageCount && Number(lastSnapshot.pageCount) === pageCount) {
+                        const tailPosts = [...lastSnapshot.posts].sort((a, b) => (Number(a.current_position) || 0) - (Number(b.current_position) || 0));
+                        latestVerifiedPost = tailPosts.at(-1) || null;
+                        const latestAt = Date.parse(latestVerifiedPost?.source_created_at || latestVerifiedPost?.created_at || '');
+                        if (Number.isFinite(latestAt) && now() - latestAt > THREAD_IDLE_STOP_MS) {
+                            verifiedIdle = true;
+                        }
+                    } else {
+                        successful = false;
                     }
+
+                    const scannedAllPages = startPage <= 1 && fetchedPages.size >= pageCount;
+                    reconcilePosts(record, [...posts.values()], scannedAllPages && successful, syncTimestamp, {
+                        freezeBefore,
+                        markMissingRemoved: scannedAllPages && successful,
+                        successful
+                    });
                 } else {
                     if (!first.content || first.isDeletedSource) throw new Error('Article content unavailable');
-                    posts.set('article', { thread_id: id, post_id: 'article', author_id: null, author_name: first.author || '', current_content: first.content,
-                        created_at: member.article.pubDate || null, edited_at: first.edited_at || null, current_page: 1, current_position: 1, current_visible_number: null, permalink: member.url });
+                    posts.set('article', {
+                        thread_id: id,
+                        post_id: 'article',
+                        author_id: null,
+                        author_name: first.author || '',
+                        current_content: first.content,
+                        created_at: member.article.pubDate || null,
+                        edited_at: first.edited_at || null,
+                        current_page: 1,
+                        current_position: 1,
+                        current_visible_number: null,
+                        permalink: member.url
+                    });
+                    reconcilePosts(record, [...posts.values()], true, syncTimestamp, { successful: true });
                 }
-            } catch (e) { complete = false; record.sync_error = e.message; }
+            } catch (error) {
+                successful = false;
+                record.sync_error = error.message;
+                if (posts.size) {
+                    reconcilePosts(record, [...posts.values()], false, syncTimestamp, {
+                        freezeBefore,
+                        markMissingRemoved: false,
+                        successful: false
+                    });
+                } else {
+                    record.sync_status = 'incomplete';
+                }
+            }
+
             const current = (await get('cacheMembers', {}))[id];
-            if (!current?.active_caching || !current.in_cache) complete = false;
-            reconcilePosts(record, [...posts.values()], complete, new Date(now()).toISOString());
+            if (!current?.in_cache) successful = false;
             record.active_caching = current?.active_caching === true;
-            if (complete) { record.sync_error = null; record.source_removed = false; record.removed_at = null; }
-            if (removed) { record.source_removed = true; record.removed_at ||= new Date(now()).toISOString(); record.sync_status = 'removed'; record.active_caching = false; }
+            if (successful) {
+                record.sync_error = null;
+                record.source_removed = false;
+                record.removed_at = null;
+            }
+            if (removed) {
+                record.source_removed = true;
+                record.removed_at ||= new Date(now()).toISOString();
+                record.sync_status = 'removed';
+                record.active_caching = false;
+            }
+            if (latestVerifiedPost) {
+                record.last_verified_post_id = String(latestVerifiedPost.post_id || '');
+                record.last_verified_post_at = latestVerifiedPost.source_created_at || latestVerifiedPost.created_at || null;
+                record.last_live_verification_at = syncTimestamp;
+                record.live_page_count = verifiedPageCount;
+            }
+            if (verifiedIdle && successful && !removed) {
+                record.active_caching = false;
+                record.stop_reason = 'verified_idle_24h';
+                record.stopped_at = syncTimestamp;
+            } else if (successful && !removed) {
+                record.stop_reason = null;
+                record.stopped_at = null;
+            }
+
             upgradeArchiveTimes(record);
             await persist(record);
             await locked(async () => {
@@ -630,7 +741,21 @@ export function createBoardCache({ env, fetchPage, writeJson, directory = './art
                     members[id].removed_at = record.removed_at || null;
                     members[id].sync_status = record.sync_status;
                     members[id].last_successful_sync_at = record.last_successful_sync_at;
-                    if (removed) members[id].active_caching = false;
+                    members[id].last_verified_post_id = record.last_verified_post_id || members[id].last_verified_post_id || null;
+                    members[id].last_verified_post_at = record.last_verified_post_at || members[id].last_verified_post_at || null;
+                    members[id].last_live_verification_at = record.last_live_verification_at || members[id].last_live_verification_at || null;
+                    members[id].live_page_count = record.live_page_count || members[id].live_page_count || null;
+                    if (removed) {
+                        members[id].active_caching = false;
+                        members[id].stop_reason = 'source_removed';
+                    } else if (verifiedIdle && successful) {
+                        members[id].active_caching = false;
+                        members[id].stop_reason = 'verified_idle_24h';
+                        members[id].stopped_at = syncTimestamp;
+                    } else if (successful) {
+                        members[id].stop_reason = null;
+                        members[id].stopped_at = null;
+                    }
                     await db.putMany({ cacheMembers: JSON.stringify(members) }, { lightweight: true });
                 }
             });
@@ -909,6 +1034,14 @@ export function createBoardCache({ env, fetchPage, writeJson, directory = './art
             const members = await get('cacheMembers', {});
             if (!members[id]?.in_cache) throw new Error('Article is not in Cache');
             members[id].active_caching = active;
+            if (active) {
+                members[id].stop_reason = null;
+                members[id].stopped_at = null;
+                members[id].reactivated_at = new Date(now()).toISOString();
+            } else {
+                members[id].stop_reason = 'manual_pause';
+                members[id].stopped_at = new Date(now()).toISOString();
+            }
             await put('cacheMembers', members);
         });
         if (active) void syncOne(id).catch(e => console.warn('[CACHE RESUME]', e.message));

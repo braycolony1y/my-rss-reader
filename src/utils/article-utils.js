@@ -199,3 +199,10 @@ function normalizedHostname(value) {
 }
 
 export { escapeHtml, safeHttpUrl, isInvalidImage, fnv1a, normalizeStateUrl, extractImageFromHtml, publisherIcon, cleanUrl, mapWithConcurrency, NormalizedSet, normalizedHostname, NormalizedMap, decodeProxy };
+export function isRedditUrl(value) {
+    try {
+        const url = new URL(value);
+        return ['http:', 'https:'].includes(url.protocol)
+            && (url.hostname === 'reddit.com' || url.hostname.endsWith('.reddit.com') || url.hostname === 'redd.it');
+    } catch { return false; }
+}

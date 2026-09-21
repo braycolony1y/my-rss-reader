@@ -5,7 +5,7 @@ import { assertArticleResultAcceptedBySource, enhanceArticleResultForSource } fr
 import { normalizeArticleTitle } from '../../feed-parsers.js';
 import { isUnsafeVozThreadPayload, isDeletedVozThreadPayload } from '../voz-thread-state.js';
 import { isUsableArticlePage } from './markup.js';
-import { normalizedHostname } from '../utils/article-utils.js';
+import { normalizedHostname, isRedditUrl } from '../utils/article-utils.js';
 
 export function createArticlePipeline({
     fetchViaJina,
@@ -32,6 +32,7 @@ export function createArticlePipeline({
     }
 
     async function fetchParsedArticleByStrategy(strategy, url, policy, feedUrl = '', fallbackTitle = '') {
+        if (isRedditUrl(url)) return null;
         url = normalizeArticleSourceUrl(url);
         const commonMetadata = {
             url,
@@ -120,7 +121,8 @@ export function createArticlePipeline({
         const url = normalizeArticleSourceUrl(value);
         if (!url || normalizedHostname(url) === 'techmeme.com') return null;
         const policy = await getArticleFetchPolicy(url, '');
-        const preferredOrder = ['jina', 'opencli-fetch', 'opencli', 'direct', 'cloudflare', 'vietserver', 'allorigins'];
+        const preferredOrder = sourceRegistry.getHandler(url)?.preferredAggregateStrategies
+            || ['jina', 'opencli-fetch', 'opencli', 'direct', 'cloudflare', 'vietserver', 'allorigins'];
         const strategyOrder = preferredOrder.filter(strategy => policy.strategyOrder.includes(strategy));
         for (const strategy of strategyOrder) {
             try {

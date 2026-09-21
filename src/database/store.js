@@ -9,7 +9,7 @@ export function createDatabaseStore() {
 
     const SMART_DB_FILE = './smart-data.json';
     const STATE_FILE = './database-state.json';
-    const STATE_KEYS = new Set(['readStates', 'savedStates', 'hiddenStates', 'boardStates', 'userPreferences', 'cacheMembers', 'cacheIdentityLedger', 'smartAiProviderHealth']);
+    const STATE_KEYS = new Set(['readStates', 'savedStates', 'hiddenStates', 'boardStates', 'recentReadAt', 'userPreferences', 'cacheMembers', 'cacheIdentityLedger', 'smartAiProviderHealth']);
     let stateRevision = 0;
     let stateOverlay = {};
 
@@ -445,8 +445,66 @@ export function createDatabaseStore() {
 
     // Keep the lock handle alive for the lifetime of this database owner.
     let databaseWriterLock = null;
+
+    // BACKEND_EAGER_GLOBAL_DB_WARM_V1
+    //
+    // Warm the global database before normal requests begin.
+    // This does NOT create per-view/per-category response caches.
+    // It only performs the same global load/JSON parsing that would
+    // otherwise be paid by the first foreground /api/data request.
+    async function warmGlobalDatabaseMemory() {
+        await withDbLock(async () => {
+            if (!_dbCache) {
+                _dbCache = await _loadDBFromDisk();
+            }
+
+            const hotJsonKeys = [
+                'articles',
+                'feeds',
+                'readStates',
+                'savedStates',
+                'boardStates',
+                'hiddenStates',
+                'recentReadAt',
+                'categoryOrder',
+                'userPreferences',
+                'blockedArticleKeywords'
+            ];
+
+            for (const key of hotJsonKeys) {
+                const raw = _dbCache[key];
+
+                if (
+                    typeof raw !== 'string'
+                    || _jsonParsedCache[key]?.raw === raw
+                ) {
+                    continue;
+                }
+
+                try {
+                    _jsonParsedCache[key] = {
+                        raw,
+                        parsed: JSON.parse(raw)
+                    };
+                } catch (error) {
+                    console.warn(
+                        `[DB WARM] Could not preparse ${key}:`,
+                        error.message
+                    );
+                }
+            }
+        });
+
+        console.log(
+            '[DB WARM] Global database loaded and hot JSON keys parsed'
+        );
+    }
+
     async function initializeWriterLock(enabled) {
         databaseWriterLock = enabled ? await acquireDatabaseWriterLock() : null;
+
+        await warmGlobalDatabaseMemory();
+
         process.on('exit', () => {
             try {
                 const owner = JSON.parse(readFileSync(DB_WRITER_LOCK_FILE, 'utf-8'));

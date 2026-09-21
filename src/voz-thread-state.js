@@ -14,15 +14,60 @@ export function getVozThreadPageNumber(url = '') {
     if (!isVozThreadUrl(url)) return null;
     try {
         const parsed = new URL(String(url));
+        const queryPage = Number.parseInt(parsed.searchParams.get('page'), 10);
+        if (Number.isSafeInteger(queryPage) && queryPage > 0) return queryPage;
         const match = parsed.pathname.match(/\/page-(\d+)\/?$/i);
         if (!match) return null;
         const page = Number.parseInt(match[1], 10);
         return Number.isSafeInteger(page) && page > 0 ? page : null;
     } catch (error) {
-        const match = String(url).match(/\/page-(\d+)\/?(?:[?#].*)?$/i);
+        const value = String(url);
+        const queryMatch = value.match(/[?&]page=(\d+)(?:&|#|$)/i);
+        if (queryMatch) {
+            const page = Number.parseInt(queryMatch[1], 10);
+            if (Number.isSafeInteger(page) && page > 0) return page;
+        }
+        const match = value.match(/\/page-(\d+)\/?(?:[?#].*)?$/i);
         if (!match) return null;
         const page = Number.parseInt(match[1], 10);
         return Number.isSafeInteger(page) && page > 0 ? page : null;
+    }
+}
+
+export function buildVozThreadPageUrl(url = '', page = 1, { preferQuery = null } = {}) {
+    const pageNumber = Number.parseInt(page, 10);
+    if (!Number.isSafeInteger(pageNumber) || pageNumber < 1) return String(url || '');
+    try {
+        const parsed = new URL(String(url));
+        const hadQueryPage = parsed.searchParams.has('page');
+        const hadPathPage = /\/page-\d+\/?$/i.test(parsed.pathname);
+        const useQuery = preferQuery === null ? (hadQueryPage || !hadPathPage) : Boolean(preferQuery);
+        parsed.hash = '';
+        parsed.pathname = parsed.pathname
+            .replace(/\/(?:unread|latest|page-\d+|post-\d+)\/?$/i, '')
+            .replace(/\/+$/, '');
+        parsed.searchParams.delete('page');
+        if (pageNumber > 1) {
+            if (useQuery) {
+                if (!parsed.pathname.endsWith('/')) parsed.pathname += '/';
+                parsed.searchParams.set('page', String(pageNumber));
+            } else {
+                parsed.pathname += `/page-${pageNumber}`;
+            }
+        }
+        return parsed.href;
+    } catch (error) {
+        const raw = String(url || '');
+        const queryStyle = preferQuery === null ? /[?&]page=\d+/i.test(raw) || !/\/page-\d+/i.test(raw) : Boolean(preferQuery);
+        const base = raw
+            .replace(/#.*$/, '')
+            .replace(/([?&])page=\d+(&?)/i, (m, lead, tail) => lead === '?' && tail ? '?' : tail ? lead : '')
+            .replace(/[?&]$/, '')
+            .replace(/\/(?:unread|latest|page-\d+|post-\d+)\/?$/i, '')
+            .replace(/\/+$/, '');
+        if (pageNumber <= 1) return base;
+        if (queryStyle) return base + (base.includes('?') ? '&' : '?') + `page=${pageNumber}`;
+        return `${base}/page-${pageNumber}`;
     }
 }
 
@@ -41,11 +86,15 @@ export function alignVozPaginationToRequestedPage(pagination, requestedUrl, thre
     const requestedPage = getVozThreadPageNumber(requestedUrl);
     if (!requestedPage) return pagination || null;
 
-    const baseUrl = String(threadUrl || requestedUrl)
-        .replace(/[?#].*$/, '')
-        .replace(/\/(?:unread|latest|page-\d+|post-\d+)\/?$/i, '')
-        .replace(/\/+$/, '');
-    const pageUrl = page => page === 1 ? baseUrl : `${baseUrl}/page-${page}`;
+    const paginationEntries = Array.isArray(pagination?.pages) ? pagination.pages : [];
+    const preferQuery = (() => {
+        try {
+            if (new URL(String(requestedUrl)).searchParams.has('page')) return true;
+        } catch {}
+        return paginationEntries.some(entry => /[?&]page=\d+/i.test(String(entry?.url || '')));
+    })();
+    const baseUrl = buildVozThreadPageUrl(threadUrl || requestedUrl, 1, { preferQuery });
+    const pageUrl = page => buildVozThreadPageUrl(baseUrl, page, { preferQuery });
     const knownPages = new Map();
 
     for (const entry of Array.isArray(pagination?.pages) ? pagination.pages : []) {
@@ -113,12 +162,17 @@ export async function getCachedVozResumePage(url, pageHint, getCachedArticle) {
     const postId = parsed.pathname.match(/\/post-(\d+)\/?$/)?.[1];
     const page = Number(pageHint);
     if (!postId || !Number.isSafeInteger(page) || page < 1) return null;
-    parsed.pathname = parsed.pathname.replace(/\/post-\d+\/?$/, page > 1 ? `/page-${page}` : '');
-    parsed.search = '';
-    parsed.hash = '';
-    const pageUrl = parsed.href;
-    const cached = await getCachedArticle(pageUrl);
-    if (!cached?.content || isUnsafeVozThreadPayload(pageUrl, cached)) return null;
-    if (!new RegExp(`data-absolute-post-id=["']${postId}["']`).test(cached.content)) return null;
-    return { url: pageUrl, cached };
+    const candidates = [
+        buildVozThreadPageUrl(url, page, { preferQuery: true }),
+        buildVozThreadPageUrl(url, page, { preferQuery: false })
+    ];
+
+    for (const pageUrl of [...new Set(candidates)]) {
+        const cached = await getCachedArticle(pageUrl);
+        if (!cached?.content || isUnsafeVozThreadPayload(pageUrl, cached)) continue;
+        if (!new RegExp(`data-absolute-post-id=["']${postId}["']`).test(cached.content)) continue;
+        return { url: pageUrl, cached };
+    }
+
+    return null;
 }

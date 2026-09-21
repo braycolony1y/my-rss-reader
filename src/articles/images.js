@@ -1,6 +1,6 @@
 import { createTrackedFetch } from '../fetch-response.js';
 import sourceRegistry from '../sources/index.js';
-import { isInvalidImage, extractImageFromHtml } from '../utils/article-utils.js';
+import { isInvalidImage, extractImageFromHtml, isRedditUrl } from '../utils/article-utils.js';
 import { enhanceArticleResultForSource } from './source-results.js';
 
 export function createArticleImages({
@@ -11,6 +11,7 @@ export function createArticleImages({
     CF_PROXY_BASE,
 } = {}) {
     async function getBestImage(targetUrl, fetchFn, rssFallback = null) {
+        if (isRedditUrl(targetUrl)) return rssFallback || '';
         const trackedFetch = createTrackedFetch(fetchFn);
         try {
             try {

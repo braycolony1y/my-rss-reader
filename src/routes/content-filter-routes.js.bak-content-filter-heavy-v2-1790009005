@@ -19,30 +19,10 @@ export function registerContentFilterRoutes({
     });
 
     app.post('/api/content-filter-settings', authMiddleware, async (req, res) => {
-        const keywords =
-            normalizeBlockedKeywordEntries(
-                req.body?.keywords
-            ).map(
-                entry => entry.keyword
-            );
-
-        /*
-         * CONTENT_FILTER_TRUE_CHEAP_SAVE_V5
-         *
-         * Save has exactly one durable operation.
-         *
-         * Do not fan this out as content-filter-changed here: that event can
-         * cause browser clients to perform heavyweight data reconciliation.
-         */
-        await env.RSS_DATA.put(
-            'blockedArticleKeywords',
-            JSON.stringify(keywords)
-        );
-
-        res.json({
-            ok: true,
-            keywords
-        });
+        const keywords = normalizeBlockedKeywordEntries(req.body?.keywords).map(entry => entry.keyword);
+        await env.RSS_DATA.put('blockedArticleKeywords', JSON.stringify(keywords));
+        publishAppEvent('content-filter-changed', { keywords });
+        res.json({ ok: true, keywords });
     });
 
     let _contentFilterPreviewCache = null;
@@ -60,49 +40,10 @@ export function registerContentFilterRoutes({
 
         if (!cacheEntry || now - cacheEntry.timestamp > 30000) {
             const articles = await env.RSS_DATA.get('articles', { type: 'json' }) || [];
-
-            // CONTENT_FILTER_HEAVY_GATE_V2
-            //
-            // Filtered Smart-source articles are intentionally excluded from
-            // Smart clustering/AI, but remain in smartRawArticles. Include the
-            // raw Smart snapshot here so Content Filters can still show the
-            // matching article when the user checks a keyword.
-            const smartRawArticles =
-                await env.RSS_DATA.get(
-                    'smartRawArticles',
-                    { type: 'json' }
-                ) || [];
-
-            const smartClusters =
-                (
-                    await env.RSS_DATA.get(
-                        'smartClusters',
-                        { type: 'json' }
-                    ) || []
-                ).map(
-                    article =>
-                        cleanStoredCluster(article)
-                );
-
+            const smartClusters = (await env.RSS_DATA.get('smartClusters', { type: 'json' }) || []).map(article => cleanStoredCluster(article));
             const candidates = [
-                ...articles.map(
-                    article => ({
-                        article,
-                        surface: 'Feed'
-                    })
-                ),
-                ...smartRawArticles.map(
-                    article => ({
-                        article,
-                        surface: 'Smart'
-                    })
-                ),
-                ...smartClusters.map(
-                    article => ({
-                        article,
-                        surface: 'Smart'
-                    })
-                )
+                ...articles.map(article => ({ article, surface: 'Feed' })),
+                ...smartClusters.map(article => ({ article, surface: 'Smart' }))
             ];
             const affected = [];
             const byLink = new Map();

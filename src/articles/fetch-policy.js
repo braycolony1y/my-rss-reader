@@ -1,4 +1,4 @@
-import { normalizeStateUrl, normalizedHostname } from '../utils/article-utils.js';
+import { normalizeStateUrl, normalizedHostname, isRedditUrl } from '../utils/article-utils.js';
 import { sourceFetchPolicyIdentity } from '../../smart-news.js';
 
 export function createArticleFetchPolicy({
@@ -134,6 +134,11 @@ export function createArticleFetchPolicy({
 
     async function getArticleFetchPolicy(targetUrl, feedUrl = '') {
         const hostname = normalizedHostname(targetUrl);
+        if (isRedditUrl(targetUrl)) return {
+            hostname, openExternally: true, allAvailableStrategies: [], availableStrategies: [],
+            configuredMethods: [], hasStrictConfiguredMethods: true, strategyOrder: [],
+            excludedStrategies: new Set(Object.keys(ARTICLE_FETCH_BASE_POINTS))
+        };
         const allAvailableStrategies = Object.keys(ARTICLE_FETCH_BASE_POINTS)
             .filter(name => name !== 'vietserver' || Boolean(VIETSERVER_PROXY_BASE));
         const configuredMethods = await getConfiguredArticleFetchMethods(targetUrl, feedUrl);

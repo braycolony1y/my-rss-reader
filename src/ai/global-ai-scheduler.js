@@ -91,6 +91,39 @@ function backgroundRankFor(task) {
     ) || 0;
 }
 
+// SMART_VIEWPORT_P0_BURST_V1
+//
+// Actual viewport-visible Smart briefing jobs can outrank ordinary
+// foreground work. The newest viewport generation wins.
+//
+// One extra P0 burst position is allowed only while:
+// - reading mode is active;
+// - both ordinary P0 slots are already occupied;
+// - another viewport-visible P0 task is waiting;
+// - no viewport burst task is already active.
+function foregroundRankFor(task) {
+    return Number(
+        dynamicTaskValue(
+            task,
+            'getForegroundRank',
+            'foregroundRank',
+            0
+        )
+    ) || 0;
+}
+
+function viewportBurstFor(task) {
+    return Boolean(
+        dynamicTaskValue(
+            task,
+            'getViewportBurst',
+            'viewportBurst',
+            false
+        )
+    );
+}
+
+
 function freshnessBucketFor(task) {
     if (!backgroundFor(task)) {
         return -1;
@@ -123,6 +156,18 @@ function taskBefore(left, right) {
 
     if (leftBackground !== rightBackground) {
         return !leftBackground;
+    }
+
+    if (!leftBackground && !rightBackground) {
+        const leftRank =
+            foregroundRankFor(left);
+
+        const rightRank =
+            foregroundRankFor(right);
+
+        if (leftRank !== rightRank) {
+            return leftRank > rightRank;
+        }
     }
 
     if (leftBackground) {
@@ -232,7 +277,13 @@ function activeCount(lane) {
     let count = 0;
 
     for (const item of active.values()) {
-        if (item.lane === lane) {
+        if (
+            item.lane === lane &&
+            !(
+                lane === 'p0' &&
+                item.viewportBurst === true
+            )
+        ) {
             count++;
         }
     }
@@ -246,6 +297,21 @@ function activeLowCount() {
         activeCount('p3') +
         activeCount('p4')
     );
+}
+
+function activeViewportBurstCount() {
+    let count = 0;
+
+    for (const item of active.values()) {
+        if (
+            item.lane === 'p0' &&
+            item.viewportBurst === true
+        ) {
+            count++;
+        }
+    }
+
+    return count;
 }
 
 
@@ -325,13 +391,21 @@ function takeLow() {
 }
 
 
-function startTask(task, lane) {
+function startTask(
+    task,
+    lane,
+    {
+        viewportBurst = false
+    } = {}
+) {
     active.set(
         task.id,
         {
             lane,
             label:
-                task.label || null
+                task.label || null,
+            viewportBurst:
+                viewportBurst === true
         }
     );
 
@@ -494,7 +568,47 @@ function armWakeTimer() {
 }
 
 
+function dispatchViewportBurst() {
+    if (!readingMode) {
+        return;
+    }
+
+    // Burst exists only as +1 on top of two already-occupied
+    // ordinary P0 positions.
+    if (activeCount('p0') < 2) {
+        return;
+    }
+
+    if (activeViewportBurstCount() >= 1) {
+        return;
+    }
+
+    const task =
+        takeLane('p0');
+
+    if (!task) {
+        return;
+    }
+
+    // A P0 task can change lane dynamically while waiting.
+    // The viewport eligibility check is therefore evaluated now.
+    if (!viewportBurstFor(task)) {
+        pending.push(task);
+        return;
+    }
+
+    startTask(
+        task,
+        'p0',
+        {
+            viewportBurst: true
+        }
+    );
+}
+
+
 function dispatch() {
+
     if (dispatching) {
         return;
     }
@@ -595,6 +709,9 @@ function dispatch() {
         dispatching = false;
         armWakeTimer();
     }
+
+    // Visible Smart cards may use one temporary +1 P0 slot.
+    dispatchViewportBurst();
 }
 
 
@@ -677,6 +794,22 @@ export function runGlobalAiTask(
 
                 getBackgroundRank:
                     options.getBackgroundRank ||
+                    null,
+
+                foregroundRank:
+                    options.foregroundRank ||
+                    0,
+
+                getForegroundRank:
+                    options.getForegroundRank ||
+                    null,
+
+                viewportBurst:
+                    options.viewportBurst ??
+                    false,
+
+                getViewportBurst:
+                    options.getViewportBurst ||
                     null,
 
                 label:

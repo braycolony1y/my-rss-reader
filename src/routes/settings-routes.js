@@ -3,6 +3,34 @@ import { setClusteringModel } from '../../smart-news.js';
 import { normalizeStateUrl } from '../utils/article-utils.js';
 import { publishAppEvent } from '../events.js';
 
+function parseVozReadCursor(value) {
+    if (value == null) return null;
+    try {
+        const parsed = typeof value === 'string' && value.trim().startsWith('{')
+            ? JSON.parse(value)
+            : { index: Number(value) || 0 };
+        const index = Number(parsed?.index) || 0;
+        const absId = Number(parsed?.absId) || 0;
+        const page = Number(parsed?.page) || 0;
+        return { raw: value, index, absId, page };
+    } catch {
+        return null;
+    }
+}
+
+function newerVozReadCursor(currentValue, incomingValue) {
+    const current = parseVozReadCursor(currentValue);
+    const incoming = parseVozReadCursor(incomingValue);
+    if (!current) return incomingValue;
+    if (!incoming) return currentValue;
+    // Permanent XenForo post IDs are the strongest monotonic anchor. Fall
+    // back to the visible post index for legacy entries without absId.
+    if (current.absId && incoming.absId) return incoming.absId >= current.absId ? incomingValue : currentValue;
+    if (incoming.index > current.index) return incomingValue;
+    if (incoming.index < current.index) return currentValue;
+    return incoming.page >= current.page ? incomingValue : currentValue;
+}
+
 export function registerSettingsRoutes({
     app,
     boardCache,
@@ -26,6 +54,8 @@ export function registerSettingsRoutes({
                 savedStates: await env.RSS_DATA.get('savedStates', { type: 'json' }) || [],
                 boardStates: await env.RSS_DATA.get('boardStates', { type: 'json' }) || [],
                 hiddenStates: await env.RSS_DATA.get('hiddenStates', { type: 'json' }) || [],
+                recentReadAt: await env.RSS_DATA.get('recentReadAt', { type: 'json' }) || {},
+                categoryOrder: await env.RSS_DATA.get('categoryOrder', { type: 'json' }) || [],
                 userPreferences: prefs,
                 clusteringModel: normalizeClusteringModel(prefs.clusteringModel)
             });
@@ -56,8 +86,15 @@ export function registerSettingsRoutes({
                 }
             }
 
-            await boardCache.updatePreference(key, value);
-            if (key === 'clusteringModel') setClusteringModel(value);
+            let requestedValue = value;
+            if (key.startsWith('voz_last_read_post_')) {
+                const currentPrefs = await env.RSS_DATA.get('userPreferences', { type: 'json' }) || {};
+                requestedValue = newerVozReadCursor(currentPrefs[key], value);
+            }
+
+            const updatedPreferences = await boardCache.updatePreference(key, requestedValue);
+            const storedValue = updatedPreferences?.[key];
+            if (key === 'clusteringModel') setClusteringModel(storedValue);
             if (key === 'boardFolderMappings') {
                 await boardCache?.reconcileMembership();
                 void boardCache?.tick().catch(error => console.warn('[CACHE MEMBERSHIP]', error.message));
@@ -68,15 +105,42 @@ export function registerSettingsRoutes({
                 {
                     kind: 'preference',
                     key,
-                    value
+                    value: storedValue
                 }
             );
 
-            res.json({ success: true });
+            res.json({ success: true, key, value: storedValue });
         } catch (error) {
             res.status(500).json({ success: false, error: error.message });
         }
     });
+
+    app.post('/api/recently-read', authMiddleware, serializeStateWrite(async (req, res) => {
+        const normLink = normalizeStateUrl(req.body?.link);
+        if (!normLink) return res.status(400).json({ error: 'Missing link' });
+
+        const recentReadAt = await env.RSS_DATA.get('recentReadAt', { type: 'json' }) || {};
+        const at = Date.now();
+        recentReadAt[normLink] = Math.max(Number(recentReadAt[normLink]) || 0, at);
+
+        // Bound durable history independently of read/unread state. The view
+        // itself uses a seven-day window, while retaining extra entries makes
+        // brief clock/offline gaps harmless.
+        const entries = Object.entries(recentReadAt)
+            .filter(([, value]) => Number.isFinite(Number(value)) && Number(value) > 0)
+            .sort((a, b) => Number(b[1]) - Number(a[1]))
+            .slice(0, 4000);
+        const bounded = Object.fromEntries(entries);
+        await env.RSS_DATA.put('recentReadAt', JSON.stringify(bounded));
+
+        publishAppEvent('user-state-changed', {
+            kind: 'recent-read',
+            link: normLink,
+            at: bounded[normLink] || at
+        });
+
+        res.json({ success: true, link: normLink, at: bounded[normLink] || at });
+    }));
 
     app.post('/api/toggle', authMiddleware, serializeStateWrite(async (req, res) => {
         const { link, list, forceAdd, forceRemove } = req.body;

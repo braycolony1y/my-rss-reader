@@ -1,5 +1,5 @@
 import { parseK, parseBaoMoi, parseMorningstar, parseTechcombank, parseUOB, parseUOBVN } from './source-parsers.js';
-import { publisherIcon, isInvalidImage, cleanUrl, normalizeStateUrl } from '../utils/article-utils.js';
+import { publisherIcon, isInvalidImage, cleanUrl, normalizeStateUrl, isRedditUrl } from '../utils/article-utils.js';
 import sourceRegistry from '../sources/index.js';
 import { discardResponseBody } from '../fetch-response.js';
 import path from 'path';
@@ -836,16 +836,16 @@ export function createFeedSync({
                             rssFallbackMap: rssImageUrl,
                             pubDate: normalizedPubDate,
                             createDate: finalCreateDate,
-                            content: item.content,
+                            content: isRedditUrl(safeLink) ? '' : item.content,
                             replyCount: finalReplyCount,
                             viewCount: finalViewCount,
                             ...(item.guid ? { id: item.id || item.guid, guid: item.guid } : {}),
                             ...(item.groundNews ? { groundNews: item.groundNews, description: item.description, publishedAt: item.publishedAt, url: item.url } : {})
                         };
                         newArticles.push(articleRecord);
-                        cacheArticles.push(articleRecord);
+                        if (!isRedditUrl(safeLink)) cacheArticles.push(articleRecord);
 
-                        if (hasOnlyOpenCliFetchMethod(feed.fetchMethods)) {
+                        if (!isRedditUrl(safeLink) && hasOnlyOpenCliFetchMethod(feed.fetchMethods)) {
                             openCliOnlyArticlesToPrefetch.push(articleRecord);
                         }
 

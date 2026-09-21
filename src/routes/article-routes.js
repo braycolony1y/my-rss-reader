@@ -1,10 +1,10 @@
 import { authMiddleware } from '../middleware/auth.js';
 import { decodeHTMLEntities, normalizeArticleTitle } from '../../feed-parsers.js';
-import { isInvalidImage, extractImageFromHtml, normalizeStateUrl } from '../utils/article-utils.js';
+import { isInvalidImage, extractImageFromHtml, normalizeStateUrl, isRedditUrl } from '../utils/article-utils.js';
 import { normalizeArticleSourceUrl, deletedSourceKind, isDeletedArticlePayload } from '../article-source-state.js';
 import fs from 'fs/promises';
 import path from 'path';
-import { isVozThreadUrl, isUnsafeVozThreadPayload, getCachedVozResumePage } from '../voz-thread-state.js';
+import { isVozThreadUrl, isUnsafeVozThreadPayload, getCachedVozResumePage, getVozThreadPageNumber, buildVozThreadPageUrl, alignVozPaginationToRequestedPage } from '../voz-thread-state.js';
 import sourceRegistry from '../sources/index.js';
 import { isGoogleNewsArticleUrl } from '../articles/search-destination.js';
 import { enhanceArticleResultForSource, assertArticleResultAcceptedBySource } from '../articles/source-results.js';
@@ -227,6 +227,7 @@ export function registerArticleRoutes({
     app.get('/api/article-content', authMiddleware, articleFetchLaneMiddleware, async (req, res) => {
         const requestedUrl = req.query.url;
         if (!requestedUrl) return res.status(400).json({ error: 'URL required' });
+        if (isRedditUrl(requestedUrl)) return res.json({ url: requestedUrl, externalUrl: requestedUrl, openExternally: true, content: '' });
         progress.activeForegroundRequests++;
         let url = normalizeArticleSourceUrl(requestedUrl);
         let prefetchTargets = [];
@@ -410,12 +411,6 @@ export function registerArticleRoutes({
             const feedConfiguredMethods = policy.hasStrictConfiguredMethods ? policy.configuredMethods : null;
             let rankedStrategies = [...policy.strategyOrder];
 
-            // Fast-track Reddit to opencli to avoid wasting time on HTTP proxies that will fail
-            const isReddit = hostname === 'reddit.com' || hostname === 'www.reddit.com' || hostname === 'old.reddit.com';
-            if (isReddit && !policy.hasStrictConfiguredMethods) {
-                rankedStrategies = ['opencli'];
-            }
-
             if (requestedStrategy && requestedStrategy !== 'refresh'
                 && policy.hasStrictConfiguredMethods
                 && !availableStrategies.includes(requestedStrategy)) {
@@ -448,7 +443,7 @@ export function registerArticleRoutes({
                 'opencli-fetch': 'OpenCLI browser fetch',
                 allorigins: 'backup reader proxy',
                 jina: 'text reader backup',
-                opencli: isReddit ? 'Reddit API bridge' : 'browser reader backup'
+                opencli: 'browser reader backup'
             };
             updateArticleFetchProgress(requestId, 'ranking', 'Choosing the best reader method for this source…', {
                 methods: strategyOrder.length
@@ -591,6 +586,82 @@ export function registerArticleRoutes({
             }
 
             if (!html) {
+                // VOZ_LAST_KNOWN_GOOD_OPEN_FALLBACK_V2
+                //
+                // A dead/stale OpenCLI browser target must not turn a thread
+                // that we already have into a blank reader. This is only a
+                // display fallback after every configured live reader failed;
+                // live frontier requests can detect `liveRefreshFailed` and
+                // must NOT treat this stale snapshot as proof that page N+1
+                // exists live.
+                if (isVozThreadUrl(url)) {
+                    const hintedPage = Number.parseInt(req.query.resumePage, 10);
+                    const requestedPage =
+                        getVozThreadPageNumber(url)
+                        || (Number.isSafeInteger(hintedPage) && hintedPage > 0 ? hintedPage : 1);
+                    const baseUrl = normalizeStateUrl(url);
+                    const fallbackCandidates = [
+                        url,
+                        buildVozThreadPageUrl(baseUrl, requestedPage, { preferQuery: true }),
+                        buildVozThreadPageUrl(baseUrl, requestedPage, { preferQuery: false })
+                    ];
+
+                    let fallback = null;
+                    let fallbackUrl = '';
+
+                    for (const candidate of [...new Set(fallbackCandidates)]) {
+                        const cached = await getLastKnownCachedArticle(candidate);
+                        if (
+                            cached?.content
+                            && cached.sourceDeleted !== true
+                            && !isUnsafeVozThreadPayload(candidate, cached)
+                        ) {
+                            fallback = cached;
+                            fallbackUrl = candidate;
+                            break;
+                        }
+                    }
+
+                    if (fallback) {
+                        let payload = enhanceArticleResultForSource(
+                            fallbackUrl,
+                            {
+                                ...fallback,
+                                url: fallbackUrl,
+                                cached: true,
+                                liveRefreshFailed: true,
+                                liveRefreshError: strategyErrors.join('\n')
+                            },
+                            { description: requestedDescription }
+                        );
+
+                        payload.pagination = alignVozPaginationToRequestedPage(
+                            payload.pagination,
+                            fallbackUrl,
+                            baseUrl
+                        );
+
+                        finishArticleFetchProgress(
+                            requestId,
+                            'Live VOZ fetch failed. Serving the last cached page.',
+                            { method: 'cache', cached: true }
+                        );
+
+                        return res.json({
+                            ...payload,
+                            content: cleanArticleMarkup(payload.content),
+                            title: normalizeArticleTitle(payload.title),
+                            cached: true,
+                            liveRefreshFailed: true,
+                            liveRefreshError: strategyErrors.join('\n'),
+                            attemptedStrategies: [...attemptedStrategies],
+                            availableStrategies,
+                            configuredFetchMethods: feedConfiguredMethods || [],
+                            methodPreferences
+                        });
+                    }
+                }
+
                 if (requiresIndependentDeletionConfirmation(url) && deletionEvidence.size >= 2) {
                     finishArticleFetchProgress(requestId, 'Source deletion confirmed by independent readers.', { method: 'cache' });
                     return res.json(await buildDeletedSourceResponse(url, {

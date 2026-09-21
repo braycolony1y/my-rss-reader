@@ -1,4 +1,6 @@
 import { touchAntigravityBriefingFocus, clearAntigravityBriefingFocus } from './ai/antigravity.js';
+import { acquireOpenCliBrowserOriginLease, releaseOpenCliBrowserOriginLease } from './opencli-reader.js';
+import { authMiddleware } from './middleware/auth.js';
 import { createPdfService } from './exports/pdf-service.js';
 import { registerPdfRoutes } from './routes/pdf-routes.js';
 import { isVozThreadUrl } from './voz-thread-state.js';
@@ -174,6 +176,78 @@ export async function createApplication({ isMainModule = false } = {}) {
     registerEventRoutes({
         app: http.app
     });
+
+    // OPENCLI_VOZ_LEASE_ROUTE_V1
+    //
+    // Fixed-origin endpoint: the browser cannot ask the server to pin
+    // arbitrary publishers. It only controls the existing shared voz.vn
+    // opencli-fetch context.
+    http.app.post(
+        '/api/opencli/voz-lease',
+        authMiddleware,
+        async (req, res) => {
+            try {
+                const viewerId =
+                    String(
+                        req.body?.viewerId ||
+                        ''
+                    ).trim();
+
+                if (
+                    !viewerId ||
+                    viewerId.length > 160
+                ) {
+                    return res
+                        .status(400)
+                        .json({
+                            error:
+                                'Invalid viewerId'
+                        });
+                }
+
+                if (
+                    req.body?.active ===
+                        false
+                ) {
+                    const result =
+                        releaseOpenCliBrowserOriginLease(
+                            'https://voz.vn/',
+                            viewerId
+                        );
+
+                    return res.json({
+                        success: true,
+                        ...result
+                    });
+                }
+
+                const result =
+                    await acquireOpenCliBrowserOriginLease(
+                        'https://voz.vn/',
+                        viewerId
+                    );
+
+                return res.json({
+                    success: true,
+                    ...result
+                });
+            }
+            catch (error) {
+                console.warn(
+                    '[OPENCLI LEASE] VOZ lease request failed:',
+                    error.message
+                );
+
+                return res
+                    .status(500)
+                    .json({
+                        error:
+                            error.message
+                    });
+            }
+        }
+    );
+
 
     http.app.post(
         '/api/ai/briefing-focus',

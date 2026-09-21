@@ -251,12 +251,23 @@ function renderXPosts(items) {
     </section>`;
 }
 
-export function extractTechmemeStory(markup = '', pageUrl = '') {
+export function extractTechmemeStory(markup = '', pageUrl = '', pageTitle = '') {
     const storyId = storyIdFromUrl(pageUrl);
     if (!storyId || !String(markup).trim()) return null;
 
     const $ = cheerio.load(`<main id="techmeme-reader-root">${markup}</main>`, null, false);
     const root = $('#techmeme-reader-root');
+    // Native pages nest each lead story in its own item. Flatten just that
+    // item into the same blocks used by the Markdown reader.
+    const nativeItem = root.find(`[pml="${storyId}"]`).closest('.item');
+    if (nativeItem.length) {
+        const blocks = [`<p>${escapeHtml(`<cite>${nativeItem.find('cite').first().text()}</cite><span pml="${storyId}"></span>`)}</p>`];
+        blocks.push(`<p>${nativeItem.children('.ii').first().html() || ''}</p>`);
+        nativeItem.find('.drhed, .di').each((_, element) => {
+            blocks.push(`<p>${$(element).html() || ''}</p>`);
+        });
+        root.html(blocks.join(''));
+    }
     const existingStory = root.children('.techmeme-story').first();
     if (existingStory.length) {
         let changed = false;
@@ -320,9 +331,17 @@ export function extractTechmemeStory(markup = '', pageUrl = '') {
     }
 
     const children = root.children().toArray();
-    const markerIndex = children.findIndex(element => $(element).text().includes(`pml="${storyId}"`));
+    let markerIndex = children.findIndex(element => $(element).text().includes(`pml="${storyId}"`));
+    // Jina may omit the native story IDs. The page title still identifies the
+    // requested headline; never select the first headline of the daily page.
+    if (markerIndex < 0 && pageTitle) {
+        const matches = children.map((element, index) => ({ element, index }))
+            .filter(({ element }) => cleanText($(element).find('strong a').first().text()) === cleanText(pageTitle));
+        if (matches.length === 1 && matches[0].index > 0) markerIndex = matches[0].index - 1;
+    }
     if (markerIndex < 0) return null;
-    let endIndex = children.findIndex((element, index) => index > markerIndex && /pml="\d{6}p\d+"/i.test($(element).text()));
+    let endIndex = children.findIndex((element, index) => index > markerIndex + 1
+        && (/pml="\d{6}p\d+"/i.test($(element).text()) || $(element).find('strong a[href]').length > 0));
     if (endIndex < 0) endIndex = children.length;
 
     const markerText = cleanText($(children[markerIndex]).text());
@@ -460,11 +479,23 @@ function cleanNestedPrimaryArticle(markup = '', context = {}) {
 }
 
 export default class TechmemeSource {
+    parseArticleHtmlContent(html, url, result) {
+        const extracted = extractTechmemeStory(html, url);
+        if (!extracted) return false;
+        result.title = extracted.title;
+        result.author = extracted.author;
+        return extracted.html;
+    }
+
     match(hostname) {
         return hostname === 'techmeme.com' || hostname.endsWith('.techmeme.com');
     }
 
     parseOpenCliMarkdown(markdown) {
+        return { markdown, readerType: 'techmeme-story' };
+    }
+
+    parseJinaReaderText(markdown) {
         return { markdown, readerType: 'techmeme-story' };
     }
 
@@ -476,7 +507,7 @@ export default class TechmemeSource {
     }
 
     cleanCachedArticleContent(content, context = {}) {
-        const extracted = extractTechmemeStory(content, context.url);
+        const extracted = extractTechmemeStory(content, context.url, context.title);
         return extracted ? cleanNestedPrimaryArticle(extracted.html, context) : content;
     }
 

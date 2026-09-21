@@ -418,6 +418,10 @@ function parseJinaReaderText(text, url) {
     const allImages = [...markdown.matchAll(/!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/g)].map(m => m[1]);
     const validImage = allImages.find(img => !isInvalidImage(img) && !img.includes('avplayer.com')) || allImages.find(img => !isInvalidImage(img)) || '';
     let content = normalizeArticleMediaMarkup(cleanArticleMarkup(jinaMarkdownToHtml(markdown, url)), url);
+    const sourceHandler = sourceRegistry.getHandler(url);
+    if (readerType === 'techmeme-story' && sourceHandler?.cleanCachedArticleContent) {
+        content = sourceHandler.cleanCachedArticleContent(content, { url, title, source: 'jina-reader' });
+    }
     if (title) {
         const escapedTitle = escapeHtml(title).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         content = content.replace(new RegExp('^<h[1-3]>' + escapedTitle + '<\\/h[1-3]>', 'i'), '');
@@ -485,6 +489,7 @@ function parseOpenCliMarkdown(markdown, url, options = {}) {
         content = sourceHandler.cleanCachedArticleContent(content, {
             url,
             source: 'opencli',
+            title,
             chartUrls: sourceMetadata.chartUrls || [],
             latestArticles: sourceMetadata.latestArticles || null
         });

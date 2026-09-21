@@ -24,9 +24,13 @@ export function isActiveArticleSession(session, url, now = Date.now()) {
 // No publisher tab is opened on a successful normal fetch.
 //
 // If direct HTTP is stale/blocked:
-//   real Chrome open once -> refresh cookies/request template -> retry direct
-//   -> if still blocked, fetch() in the same one-tab-per-origin queue.
-// The tab closes only when that origin queue becomes empty.
+//   - normal sources: navigate the SAME reusable per-origin browser tab to the
+//     EXACT requested URL, then read that real rendered page.
+//   - VOZ only: an origin page is enough; retrieve thread/page HTML with
+//     browser-side fetch(url) inside that logged-in origin context.
+// Same-origin fallback jobs are serialized so the tab can change URL safely.
+// The Browser Bridge owns physical cleanup with a 60-second idle lease; this
+// module never calls closeWindow() on an idle fetch tab, avoiding about:blank.
 //
 // Fetch transport is generic. Source-specific parsing belongs in source handlers.
 // ---------------------------------------------------------------------------
@@ -36,12 +40,7 @@ const openCliBrowserFetchQueues = new Map();
 
 // OPENCLI_FETCH_SHARED_ORIGIN_CONTEXT_V3
 // Priority lanes schedule work above this transport. opencli-fetch owns
-// one shared background browser page/context per origin regardless of P lane.
-const OPENCLI_BROWSER_FETCH_IDLE_CLOSE_MS = Math.max(
-    0,
-    Number(process.env.OPENCLI_BROWSER_FETCH_IDLE_CLOSE_MS || 60000)
-);
-
+// one reusable background browser page/context per origin regardless of P lane.
 const openCliBrowserFetchSleep = ms =>
     new Promise(resolve => setTimeout(resolve, ms));
 
@@ -110,10 +109,19 @@ function sameOpenCliBrowserFetchUrl(left, right) {
     }
 }
 
+// VOZ can keep one logged-in origin context and use browser-side fetch(url).
+// Other OpenCLI Browser Fetch fallbacks must open the exact requested page.
+function openCliBrowserFetchUsesOriginContext(state) {
+    const hostname = String(state?.hostname || '').toLowerCase();
+    return hostname === 'voz.vn' || hostname.endsWith('.voz.vn');
+}
+
+const OPENCLI_BROWSER_FETCH_BRIDGE_IDLE_SECONDS = 60 * 60;
+
 function createOpenCliBrowserPage(Page, session, profile) {
     return new Page(
         session,        // session
-        3600,           // queue owns lifecycle; close explicitly when origin queue becomes empty
+        OPENCLI_BROWSER_FETCH_BRIDGE_IDLE_SECONDS,
         undefined,      // contextId
         'background',   // windowMode
         'browser',      // surface
@@ -177,6 +185,49 @@ async function getOpenCliBrowserFetchState(url) {
     return state;
 }
 
+async function closeOpenCliBrowserFetchTab(page, timeoutMs = 4000) {
+    if (!page?.getActivePage?.()) return false;
+
+    try {
+        await Promise.race([
+            page.closeTab(),
+            openCliBrowserFetchSleep(timeoutMs)
+        ]);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+async function resetOpenCliBrowserFetchPage(state, {
+    closeTab = false,
+    reason = ''
+} = {}) {
+    const previous = state?.page;
+
+    state.browserReady = false;
+    state.browserLeaseOpen = false;
+    state.refreshPromise = null;
+
+    if (previous) {
+        if (closeTab) {
+            await closeOpenCliBrowserFetchTab(previous);
+        }
+        try {
+            previous.setActivePage?.(undefined);
+        } catch {
+        }
+    }
+
+    state.page = state.createPage();
+
+    if (reason) {
+        console.log(
+            `[OPENCLI FETCH] Reset shared browser page for ${state.origin}: ${reason}`
+        );
+    }
+}
+
 async function waitForOpenCliBrowserUsablePage(page, timeoutMs = 20000) {
     const deadline = Date.now() + timeoutMs;
     let last = null;
@@ -221,8 +272,7 @@ async function waitForOpenCliBrowserUsablePage(page, timeoutMs = 20000) {
 async function refreshOpenCliBrowserFetchSession(state, url) {
     // OPENCLI_FETCH_CURL_REFRESH_SHARED_BROWSER_V3
     // A real navigation is only for refreshing stale publisher state.
-    // The same tab is retained for browser-fetch fallback until this origin's
-    // queue becomes empty.
+    // The same tab is retained for browser-fetch fallback and later origin work.
     console.log(
         `[OPENCLI FETCH] Opening/refreshing shared background browser page for ${state.origin}`
     );
@@ -303,6 +353,67 @@ async function refreshOpenCliBrowserFetchSession(state, url) {
         state.initialized = true;
         state.browserReady = true;
         state.refreshedAt = Date.now();
+    } catch (error) {
+        state.browserReady = false;
+        throw error;
+    }
+}
+
+async function openCliBrowserNavigateExactPageOnce(state, url) {
+    // OPENCLI_FETCH_EXACT_REAL_PAGE_FALLBACK_V3
+    // Reuse the existing per-origin Page/session, but every fallback request
+    // navigates that tab to the exact requested URL. This is intentionally
+    // different from VOZ, where same-origin context + fetch(url) is sufficient.
+    console.log(
+        `[OPENCLI FETCH] Navigating reusable real-page fallback to exact URL ${url}`
+    );
+
+    const page = state.page;
+    state.browserLeaseOpen = true;
+    state.browserReady = false;
+
+    try {
+        await page.goto(url, {
+            settleMs: 2000
+        });
+
+        const usable = await waitForOpenCliBrowserUsablePage(page);
+
+        const result = await page.evaluate(`(() => {
+            const html = document.documentElement?.outerHTML || '';
+            const nav = performance.getEntriesByType?.('navigation')?.[0];
+            const responseStatus = Number(nav?.responseStatus || 0);
+
+            return {
+                status: responseStatus > 0 ? responseStatus : 200,
+                finalUrl: location.href,
+                html,
+                userAgent: navigator.userAgent || ''
+            };
+        })()`);
+
+        if (!result || typeof result.html !== 'string') {
+            throw new Error('OpenCLI exact-page fallback returned no HTML');
+        }
+
+        if (result.html.length > 12 * 1024 * 1024) {
+            throw new Error('OpenCLI browser fetch response exceeded 12 MB');
+        }
+
+        if (result.userAgent) {
+            state.requestHeaders ||= {};
+            state.requestHeaders['User-Agent'] = String(result.userAgent);
+        }
+
+        state.initialized = true;
+        state.browserReady = true;
+        state.refreshedAt = Date.now();
+
+        return {
+            status: Number(result.status || 200),
+            finalUrl: result.finalUrl || usable?.url || url,
+            html: result.html
+        };
     } catch (error) {
         state.browserReady = false;
         throw error;
@@ -409,6 +520,10 @@ async function evaluateOpenCliSharedBrowserPage(state, input, ...args) {
 }
 
 async function openCliBrowserFetchOnce(state, url) {
+    if (!openCliBrowserFetchUsesOriginContext(state)) {
+        return openCliBrowserNavigateExactPageOnce(state, url);
+    }
+
     if (!state.browserReady) {
         throw new Error('OpenCLI shared browser tab is not ready');
     }
@@ -486,37 +601,20 @@ function finishOpenCliBrowserFetchResult(result) {
     return result.html;
 }
 
-async function closeOpenCliBrowserFetchQueueTab(state) {
-    if (!state?.browserLeaseOpen) return;
-
-    console.log(
-        `[OPENCLI FETCH] Origin request set idle; closing shared browser page for ${state.origin}`
-    );
-
-    const page = state.page;
-    state.browserReady = false;
-    state.browserLeaseOpen = false;
-
-    await page.closeWindow?.().catch(() => {});
-
-    state.page = state.createPage();
-}
 
 // OPENCLI_FETCH_DIRECT_DISABLE_PARALLEL_V4
 //
 // Per-origin transport policy:
 //   1. Try direct Node HTTP first unless this origin was proven incompatible.
-//   2. On direct failure, navigate/refresh ONE shared OpenCLI tab.
-//   3. After that real-browser refresh, start a fresh direct retry and
-//      browser-context fetch in parallel in the SAME shared tab.
-//   4. If the fresh direct retry still fails, disable direct HTTP for this
-//      origin for the rest of this process and immediately use the already
-//      running browser result.
-//   5. While direct is disabled, every later job skips curl/direct entirely
-//      and reuses the shared browser tab. The existing per-origin queue closes
-//      that tab only when the origin queue becomes empty.
-//   6. A service/process restart intentionally clears directDisabled so an
-//      origin can be tested again in the future.
+//   2. Normal sources: on failure, navigate ONE reusable source tab to the
+//      exact requested URL and read that rendered page.
+//   3. VOZ: keep the existing origin-context optimization and fetch target
+//      URLs inside that logged-in page.
+//   4. Retry direct once after the real browser refreshed session cookies.
+//   5. If fresh direct still fails, disable direct HTTP for this origin until
+//      process restart and use browser fallback only.
+//   6. Browser Bridge owns the 60-second physical idle cleanup; this module
+//      does not explicitly release fetch tabs to about:blank.
 
 function describeOpenCliFetchAttempt(result, error = null) {
     const html = typeof result?.html === 'string' ? result.html : '';
@@ -627,8 +725,8 @@ async function ensureOpenCliSharedBrowserReady(state, url, {
         return;
     }
 
-    // Only real navigation/session refresh is serialized. Normal same-origin
-    // article/thread retrieval uses fetch(url) inside this one shared page.
+    // VOZ origin-context refresh is serialized here. Other Browser Fetch
+    // sources bypass this helper and navigate the reusable tab to exact URLs.
     if (state.refreshPromise) {
         console.log(
             `[OPENCLI FETCH] Waiting for in-progress shared browser refresh for ${state.origin}`
@@ -639,7 +737,42 @@ async function ensureOpenCliSharedBrowserReady(state, url, {
 
     const refreshTask = (async () => {
         if (state.browserReady && !forceRefresh) return;
-        await refreshOpenCliBrowserFetchSession(state, url);
+
+        try {
+            await refreshOpenCliBrowserFetchSession(state, url);
+        } catch (firstError) {
+            // OPENCLI_SHARED_PAGE_RECOVERY_V6
+            //
+            // Browser Bridge may have removed the physical target while this
+            // long-lived Page object still remembers the old target/session.
+            // Reusing that stale Page makes every later VOZ open wait for the
+            // daemon timeout and then fail again. Retire the exact stale target,
+            // create a fresh Page wrapper for the SAME persistent site session,
+            // and retry once.
+            console.warn(
+                `[OPENCLI FETCH] Shared browser refresh failed for ${state.origin}; `
+                + `recreating the stale Page wrapper once: `
+                + `${firstError instanceof Error ? firstError.message : String(firstError)}`
+            );
+
+            await resetOpenCliBrowserFetchPage(state, {
+                closeTab: true,
+                reason: 'stale/dead target recovery'
+            });
+
+            try {
+                await refreshOpenCliBrowserFetchSession(state, url);
+            } catch (retryError) {
+                // Leave the next request with a fresh wrapper instead of the
+                // just-failed target so one bad Chromium target cannot poison
+                // every later VOZ open.
+                await resetOpenCliBrowserFetchPage(state, {
+                    closeTab: true,
+                    reason: 'refresh retry failed; prepare clean next attempt'
+                });
+                throw retryError;
+            }
+        }
     })();
 
     state.refreshPromise = refreshTask;
@@ -656,6 +789,37 @@ async function ensureOpenCliSharedBrowserReady(state, url, {
 async function runOpenCliBrowserOnly(state, url, {
     existingAttempt = null
 } = {}) {
+    if (!openCliBrowserFetchUsesOriginContext(state)) {
+        let browserAttempt =
+            existingAttempt
+            || await attemptOpenCliBrowserFetch(state, url);
+
+        if (browserAttempt.details.usable) {
+            console.log(
+                `[OPENCLI FETCH] Exact real-page fallback succeeded for ${state.origin}: `
+                + formatOpenCliFetchAttempt(browserAttempt.details)
+            );
+            return finishOpenCliBrowserFetchResult(browserAttempt.result);
+        }
+
+        console.warn(
+            `[OPENCLI FETCH] Exact real-page fallback stale/blocked for ${state.origin}: `
+            + `${formatOpenCliFetchAttempt(browserAttempt.details)}; `
+            + `reloading the SAME source tab at the exact URL once`
+        );
+
+        browserAttempt = await attemptOpenCliBrowserFetch(state, url);
+
+        if (!browserAttempt.details.usable) {
+            console.warn(
+                `[OPENCLI FETCH] Exact real-page retry failed for ${state.origin}: `
+                + formatOpenCliFetchAttempt(browserAttempt.details)
+            );
+        }
+
+        return finishOpenCliBrowserFetchResult(browserAttempt.result);
+    }
+
     await ensureOpenCliSharedBrowserReady(state, url);
 
     let browserAttempt =
@@ -720,6 +884,40 @@ async function runOpenCliBrowserFetchNow(url) {
         + formatOpenCliFetchAttempt(initialDirect.details)
     );
 
+    if (!openCliBrowserFetchUsesOriginContext(state)) {
+        // Normal Browser Fetch fallback must open the REAL requested page.
+        // Reuse one per-origin tab, but navigate it to this exact URL first.
+        const browserAttempt = await attemptOpenCliBrowserFetch(state, url);
+
+        // The exact-page navigation may have refreshed cookies/session state.
+        const freshDirect = await attemptOpenCliDirectFetch(state, url);
+
+        if (freshDirect.details.usable) {
+            console.log(
+                `[OPENCLI FETCH] Fresh direct retry succeeded after exact-page navigation for ${state.origin}: `
+                + formatOpenCliFetchAttempt(freshDirect.details)
+            );
+            return finishOpenCliBrowserFetchResult(freshDirect.result);
+        }
+
+        disableOpenCliDirectFetch(state, {
+            initialAttempt: initialDirect.details,
+            freshAttempt: freshDirect.details
+        });
+
+        if (browserAttempt.details.usable) {
+            console.log(
+                `[OPENCLI FETCH] Exact real-page fallback succeeded for ${state.origin}: `
+                + formatOpenCliFetchAttempt(browserAttempt.details)
+            );
+            return finishOpenCliBrowserFetchResult(browserAttempt.result);
+        }
+
+        return runOpenCliBrowserOnly(state, url, {
+            existingAttempt: browserAttempt
+        });
+    }
+
     await ensureOpenCliSharedBrowserReady(state, url, {
         forceRefresh: true
     });
@@ -766,90 +964,537 @@ async function runOpenCliBrowserFetchNow(url) {
     });
 }
 
+// OPENCLI_VOZ_SHARED_TAB_LEASE_V1
+//
+// All origins reuse one persistent shared browser page/context.
+//
+// A UI lease can additionally PIN an origin's existing shared browser page:
+//   lease active   -> page is logically pinned to the viewer
+//   lease released -> pin ends, but the persistent physical page stays warm
+//
+// The lease does NOT create a separate browser page. It owns the exact same
+// one-page-per-origin context used by runOpenCliBrowserFetch().
+//
+// Running requests are never interrupted by lease release.
+
+function getOpenCliBrowserFetchTracker(origin) {
+    let tracker =
+        openCliBrowserFetchQueues.get(origin);
+
+    if (
+        !tracker ||
+        typeof tracker !== 'object' ||
+        !('pending' in tracker)
+    ) {
+        tracker = {
+            pending: 0,
+            tail: Promise.resolve(),
+            closeTimer: null,
+            closePromise: null,
+            // viewerId -> last heartbeat time. A Map is deliberate: every
+            // browser tab gets its own viewer id, and stale tabs expire even
+            // if pagehide/beforeunload never reaches the server.
+            pinnedViewers: new Map(),
+            viewerExpiryTimer: null
+        };
+
+        openCliBrowserFetchQueues.set(
+            origin,
+            tracker
+        );
+    }
+
+    if (!(tracker.pinnedViewers instanceof Map)) {
+        const previous = tracker.pinnedViewers;
+        tracker.pinnedViewers = new Map();
+        if (previous instanceof Set) {
+            const now = Date.now();
+            for (const viewerId of previous) {
+                tracker.pinnedViewers.set(viewerId, now);
+            }
+        }
+    }
+
+    if (!('viewerExpiryTimer' in tracker)) {
+        tracker.viewerExpiryTimer = null;
+    }
+
+    if (!tracker.tail || typeof tracker.tail.then !== 'function') {
+        tracker.tail = Promise.resolve();
+    }
+
+    return tracker;
+}
+
+
+function cancelOpenCliBrowserIdleClose(tracker) {
+    if (!tracker?.closeTimer) {
+        return;
+    }
+
+    clearTimeout(
+        tracker.closeTimer
+    );
+
+    tracker.closeTimer =
+        null;
+}
+
+
+const OPENCLI_VOZ_VIEWER_HEARTBEAT_TTL_MS = 75_000;
+
+function pruneOpenCliBrowserViewerPins(tracker, now = Date.now()) {
+    if (!(tracker?.pinnedViewers instanceof Map)) {
+        return 0;
+    }
+
+    for (const [viewerId, lastSeenAt] of tracker.pinnedViewers) {
+        if (now - Number(lastSeenAt || 0) > OPENCLI_VOZ_VIEWER_HEARTBEAT_TTL_MS) {
+            tracker.pinnedViewers.delete(viewerId);
+        }
+    }
+
+    return tracker.pinnedViewers.size;
+}
+
+function openCliBrowserOriginPinned(tracker) {
+    return pruneOpenCliBrowserViewerPins(tracker) > 0;
+}
+
+function cancelOpenCliBrowserViewerExpiry(tracker) {
+    if (!tracker?.viewerExpiryTimer) return;
+    clearTimeout(tracker.viewerExpiryTimer);
+    tracker.viewerExpiryTimer = null;
+}
+
+function scheduleOpenCliBrowserViewerExpiry(origin, tracker) {
+    if (!tracker) return;
+
+    cancelOpenCliBrowserViewerExpiry(tracker);
+    pruneOpenCliBrowserViewerPins(tracker);
+
+    if (!(tracker.pinnedViewers instanceof Map) || !tracker.pinnedViewers.size) {
+        if (tracker.pending === 0) {
+            scheduleOpenCliBrowserIdleClose(origin, tracker);
+        }
+        return;
+    }
+
+    let oldest = Infinity;
+    for (const lastSeenAt of tracker.pinnedViewers.values()) {
+        oldest = Math.min(oldest, Number(lastSeenAt || 0));
+    }
+
+    const delay = Math.max(
+        1_000,
+        oldest + OPENCLI_VOZ_VIEWER_HEARTBEAT_TTL_MS - Date.now() + 250
+    );
+
+    tracker.viewerExpiryTimer = setTimeout(() => {
+        tracker.viewerExpiryTimer = null;
+        const before = tracker.pinnedViewers.size;
+        const after = pruneOpenCliBrowserViewerPins(tracker);
+
+        if (before !== after) {
+            console.log(
+                `[OPENCLI LEASE] Expired ${before - after} stale viewer pin(s) for ${origin}; leases=${after}`
+            );
+        }
+
+        if (after > 0) {
+            scheduleOpenCliBrowserViewerExpiry(origin, tracker);
+        } else if (tracker.pending === 0) {
+            scheduleOpenCliBrowserIdleClose(origin, tracker);
+        }
+    }, delay);
+
+    tracker.viewerExpiryTimer.unref?.();
+}
+
+async function touchOpenCliPinnedBrowserPage(origin) {
+    const state = openCliBrowserFetchStates.get(origin);
+
+    // Heartbeats are keep-alive only. They must never create, navigate,
+    // rebind, or replace a browser page. Real fetch work owns creation.
+    if (
+        !state?.browserReady ||
+        !state?.browserLeaseOpen ||
+        !state.page?.getActivePage?.()
+    ) {
+        return false;
+    }
+
+    try {
+        await evaluateOpenCliSharedBrowserPage(state, 'void 0');
+        return true;
+    } catch (error) {
+        state.browserReady = false;
+        state.browserLeaseOpen = false;
+        console.warn(
+            `[OPENCLI LEASE] Viewer keepalive found stale shared page for ${origin}: ${error instanceof Error ? error.message : String(error)}`
+        );
+        return false;
+    }
+}
+
+
+function maybeDeleteOpenCliBrowserTracker(
+    origin,
+    tracker
+) {
+    if (
+        tracker.pending === 0 &&
+        !tracker.closeTimer &&
+        !tracker.closePromise &&
+        !tracker.viewerExpiryTimer &&
+        !openCliBrowserOriginPinned(tracker) &&
+        openCliBrowserFetchQueues.get(origin) ===
+            tracker
+    ) {
+        openCliBrowserFetchQueues.delete(
+            origin
+        );
+    }
+}
+
+
+function scheduleOpenCliBrowserIdleClose(
+    origin,
+    tracker
+) {
+    if (!tracker) {
+        return;
+    }
+
+    cancelOpenCliBrowserIdleClose(
+        tracker
+    );
+
+    if (
+        tracker.pending !== 0 ||
+        tracker.closePromise ||
+        openCliBrowserOriginPinned(tracker)
+    ) {
+        return;
+    }
+
+    // OPENCLI_FETCH_EXACT_IDLE_CLOSE_V6
+    //
+    // Keep Browser Bridge's own idle timeout long enough that it cannot reap a
+    // VOZ tab while an RSS viewer is pinned. Our policy owns the real 60-second
+    // idle lifetime: only when there are no queued/running jobs AND no active
+    // viewer do we close the exact owned tab. Closing the exact target avoids
+    // the old closeWindow()/lease-release path that produced about:blank tabs.
+    tracker.closeTimer = setTimeout(() => {
+        tracker.closeTimer = null;
+
+        if (
+            tracker.pending !== 0 ||
+            tracker.closePromise ||
+            openCliBrowserOriginPinned(tracker) ||
+            openCliBrowserFetchQueues.get(origin) !== tracker
+        ) {
+            return;
+        }
+
+        const state = openCliBrowserFetchStates.get(origin);
+        const closeTask = (async () => {
+            if (state) {
+                await resetOpenCliBrowserFetchPage(state, {
+                    closeTab: true,
+                    reason: '60s fetch-idle cleanup'
+                });
+            }
+
+            console.log(
+                `[OPENCLI FETCH] ${origin} idle for 60s; closed exact reusable browser tab`
+            );
+        })();
+
+        tracker.closePromise = closeTask;
+
+        closeTask.finally(() => {
+            if (tracker.closePromise === closeTask) {
+                tracker.closePromise = null;
+            }
+
+            maybeDeleteOpenCliBrowserTracker(
+                origin,
+                tracker
+            );
+        }).catch(() => {});
+    }, 60_000);
+
+    tracker.closeTimer.unref?.();
+}
+
+
+function normalizeOpenCliLeaseOrigin(
+    url
+) {
+    const parsed =
+        new URL(url);
+
+    if (
+        parsed.protocol !== 'http:' &&
+        parsed.protocol !== 'https:'
+    ) {
+        throw new Error(
+            'OpenCLI shared-tab lease requires HTTP(S)'
+        );
+    }
+
+    return parsed.origin;
+}
+
+
+/*
+ * Pin an origin LOGICALLY for a UI viewer.
+ *
+ * OPENCLI_VOZ_LOGICAL_LEASE_ONLY_V2
+ *
+ * A viewer lease is metadata only. It MUST NOT create, navigate, close,
+ * rebind, retain, or otherwise touch a physical OpenCLI/Chromium tab.
+ *
+ * The shared browser transport is owned exclusively by
+ * runOpenCliBrowserFetch(). If/when real VOZ work arrives, that transport
+ * creates or reuses the one persistent origin page. Multiple viewers merely
+ * share this logical reference count.
+ *
+ * This avoids a subtle Browser Bridge failure mode where concurrent lease
+ * preparation can allocate/release placeholder targets and leave visible
+ * about:blank tabs behind even though the fetch transport itself is shared.
+ */
+export async function acquireOpenCliBrowserOriginLease(
+    url,
+    viewerId
+) {
+    const origin =
+        normalizeOpenCliLeaseOrigin(
+            url
+        );
+
+    const normalizedViewerId =
+        String(viewerId || '')
+            .trim();
+
+    if (
+        !normalizedViewerId ||
+        normalizedViewerId.length > 160
+    ) {
+        throw new Error(
+            'Invalid OpenCLI lease viewer'
+        );
+    }
+
+    const tracker =
+        getOpenCliBrowserFetchTracker(
+            origin
+        );
+
+    tracker.pinnedViewers.set(
+        normalizedViewerId,
+        Date.now()
+    );
+
+    // A visible VOZ-only RSS view outranks the 60-second fetch-idle cleanup.
+    // Cancel local idle bookkeeping immediately and keep this viewer's stale
+    // expiry armed. Each active browser tab has its own viewer id.
+    cancelOpenCliBrowserIdleClose(tracker);
+    scheduleOpenCliBrowserViewerExpiry(origin, tracker);
+
+    const state = openCliBrowserFetchStates.get(origin);
+    const ready = Boolean(
+        state?.browserReady &&
+        state?.browserLeaseOpen
+    );
+
+    // OPENCLI_VOZ_VIEWER_KEEPALIVE_V3
+    // The Browser Bridge itself also has a 60-second idle lease. Merely keeping
+    // metadata pinned is therefore insufficient: while a VOZ-only RSS view is
+    // open, heartbeat requests touch the EXISTING shared page with a no-op.
+    // This renews the physical session without navigation/focus changes and
+    // without creating a page if the transport has not opened one yet.
+    const keptAlive = ready
+        ? await touchOpenCliPinnedBrowserPage(origin)
+        : false;
+
+    console.log(
+        `[OPENCLI LEASE] Pinned/heartbeat viewer for ${origin}; `
+        + `viewer=${normalizedViewerId}; `
+        + `leases=${tracker.pinnedViewers.size}; `
+        + `sharedPageReady=${ready}; `
+        + `keptAlive=${keptAlive}`
+    );
+
+    return {
+        origin,
+        active: true,
+        reused: ready,
+        ready,
+        leases:
+            tracker.pinnedViewers.size
+    };
+}
+
+
+/*
+ * Releasing the last UI pin ends only the logical viewer pin. If no fetch
+ * work remains, the origin enters the same 60-second warm-idle window. The
+ * Browser Bridge idle lease performs physical cleanup; this app does not call
+ * closeWindow() on the fetch tab.
+ */
+export function releaseOpenCliBrowserOriginLease(
+    url,
+    viewerId
+) {
+    const origin =
+        normalizeOpenCliLeaseOrigin(
+            url
+        );
+
+    const normalizedViewerId =
+        String(viewerId || '')
+            .trim();
+
+    const tracker =
+        openCliBrowserFetchQueues.get(
+            origin
+        );
+
+    if (!tracker) {
+        return {
+            origin,
+            active: false,
+            leases: 0
+        };
+    }
+
+    if (!(tracker.pinnedViewers instanceof Map)) {
+        const previous = tracker.pinnedViewers;
+        tracker.pinnedViewers = new Map();
+        if (previous instanceof Set) {
+            const now = Date.now();
+            for (const existingViewerId of previous) {
+                tracker.pinnedViewers.set(existingViewerId, now);
+            }
+        }
+    }
+
+    tracker.pinnedViewers.delete(normalizedViewerId);
+    pruneOpenCliBrowserViewerPins(tracker);
+    scheduleOpenCliBrowserViewerExpiry(origin, tracker);
+
+    console.log(
+        `[OPENCLI LEASE] Released shared browser pin for ${origin}; `
+        + `viewer=${normalizedViewerId || 'unknown'}; `
+        + `leases=${tracker.pinnedViewers.size}; `
+        + `pending=${tracker.pending}`
+    );
+
+    /*
+     * Running OpenCLI requests are intentionally untouched.
+     *
+     * If pending > 0, their normal finally() path handles tracker cleanup.
+     * Otherwise start/restart the 60-second warm-idle timer.
+     */
+    if (
+        tracker.pending === 0 &&
+        !openCliBrowserOriginPinned(
+            tracker
+        )
+    ) {
+        scheduleOpenCliBrowserIdleClose(
+            origin,
+            tracker
+        );
+    }
+
+    return {
+        origin,
+        active:
+            openCliBrowserOriginPinned(
+                tracker
+            ),
+        leases:
+            tracker.pinnedViewers.size,
+        pending:
+            tracker.pending
+    };
+}
+
+
 export function runOpenCliBrowserFetch(url) {
     let origin;
 
     try {
-        origin = new URL(url).origin;
-    } catch {
+        origin =
+            new URL(url).origin;
+    }
+    catch {
         return Promise.reject(
-            new Error('Invalid URL for OpenCLI browser fetch')
+            new Error(
+                'Invalid URL for OpenCLI browser fetch'
+            )
         );
     }
 
-    let tracker = openCliBrowserFetchQueues.get(origin);
+    const tracker =
+        getOpenCliBrowserFetchTracker(
+            origin
+        );
 
-    if (!tracker || typeof tracker !== 'object' || !('pending' in tracker)) {
-        tracker = {
-            pending: 0,
-            closeTimer: null,
-            closePromise: null
-        };
-        openCliBrowserFetchQueues.set(origin, tracker);
-    }
-
-    if (tracker.closeTimer) {
-        clearTimeout(tracker.closeTimer);
-        tracker.closeTimer = null;
-    }
+    // OPENCLI_FETCH_REUSE_PER_ORIGIN_EXACT_URL_V3
+    // One queue per source/origin. Browser fallback jobs reuse the same tab.
+    // For normal sources that tab is navigated to each job's exact URL; VOZ
+    // keeps its origin-context fetch optimization. Other origins run independently.
+    cancelOpenCliBrowserIdleClose(
+        tracker
+    );
 
     tracker.pending += 1;
 
-    // P lanes are scheduled above this layer. Do not create a per-lane page
-    // and do not serialize browser-side fetch(url) calls here.
-    const task = (async () => {
-        // If an actual close already began, finish it before using the
-        // recreated shared page. An idle-close timer itself never blocks work.
+    const start = async () => {
+        // If the 60s idle timer fired at the exact moment this request arrived,
+        // wait for that physical release to finish, then reopen/rebind once.
         if (tracker.closePromise) {
             await tracker.closePromise;
         }
 
-        return runOpenCliBrowserFetchNow(url);
-    })();
+        return runOpenCliBrowserFetchNow(
+            url
+        );
+    };
+
+    const task = tracker.tail.then(
+        start,
+        start
+    );
+
+    // A failed request must not poison later work for this origin.
+    tracker.tail = task.then(
+        () => undefined,
+        () => undefined
+    );
 
     return task.finally(() => {
-        tracker.pending = Math.max(0, tracker.pending - 1);
+        tracker.pending =
+            Math.max(
+                0,
+                tracker.pending - 1
+            );
 
-        // Keep this origin's one shared page/context while ANY request remains.
-        if (tracker.pending !== 0) return;
-
-        if (tracker.closeTimer) {
-            clearTimeout(tracker.closeTimer);
+        if (tracker.pending !== 0) {
+            return;
         }
 
-        // OPENCLI_FETCH_ROLLING_IDLE_REUSE_V1
-        // Keep this origin's shared browser context warm for a rolling idle
-        // window. Any new opencli-fetch request cancels this timer above and
-        // reuses the same context. This covers delayed article/thread prefetch,
-        // cache ticks and follow-up page requests without creating another tab.
-        // The context closes only after the origin has genuinely been idle.
-        tracker.closeTimer = setTimeout(() => {
-            tracker.closeTimer = null;
-            if (tracker.pending !== 0) return;
-
-            const closeTask = (async () => {
-                const state = openCliBrowserFetchStates.get(origin);
-                await closeOpenCliBrowserFetchQueueTab(state);
-            })();
-
-            tracker.closePromise = closeTask;
-
-            closeTask.finally(() => {
-                if (tracker.closePromise === closeTask) {
-                    tracker.closePromise = null;
-                }
-
-                if (
-                    tracker.pending === 0
-                    && !tracker.closeTimer
-                    && openCliBrowserFetchQueues.get(origin) === tracker
-                ) {
-                    openCliBrowserFetchQueues.delete(origin);
-                }
-            }).catch(() => {});
-        }, OPENCLI_BROWSER_FETCH_IDLE_CLOSE_MS);
+        scheduleOpenCliBrowserIdleClose(
+            origin,
+            tracker
+        );
     });
 }
+
 
 export async function readWithHumanVerification(read, page, kwargs, canWait) {
     const guardedPage = new Proxy(page, {
@@ -878,86 +1523,499 @@ export async function readWithHumanVerification(read, page, kwargs, canWait) {
         }
     });
 
-    try {
-        return await read(guardedPage, kwargs, false);
-    } finally {
-        await page.closeWindow?.().catch(() => {});
+    // OPENCLI_READER_PER_SOURCE_REUSE_60S_V1
+    // The normal OpenCLI reader MUST open the exact requested URL, but it no
+    // longer needs a fresh physical tab for every article. The caller keeps
+    // one background Page per source/origin and command.func() navigates that
+    // same Page to kwargs.url for every queued read.
+    return read(guardedPage, kwargs, false);
+}
+
+
+// ---------------------------------------------------------------------------
+// Normal OpenCLI real-page reader pool
+//
+// This is deliberately separate from `opencli-fetch` above.
+//
+//   normal OpenCLI:
+//     same source -> one real browser tab -> exact URL A -> exact URL B -> ...
+//     source queue is serialized; tab closes after 60 seconds with no work.
+//
+//   opencli-fetch:
+//     keeps its own transport/fallback policy (including VOZ origin-context).
+//
+// A long-lived child worker owns each source tab so stdout produced by
+// `opencli web read --stdout` can be captured without monkey-patching stdout in
+// the RSS server process. Different sources can still run independently.
+// ---------------------------------------------------------------------------
+
+const OPENCLI_READER_IDLE_MS = 60_000;
+const OPENCLI_READER_JOB_TIMEOUT_MS = 60_000;
+const openCliReaderPools = new Map();
+let openCliReaderJobSequence = 0;
+
+function getOpenCliReaderOrigin(kwargs) {
+    const url = String(kwargs?.url || '');
+    const parsed = new URL(url);
+
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+        throw new Error('OpenCLI reader only supports HTTP(S) URLs');
     }
+
+    return parsed.origin;
+}
+
+function clearOpenCliReaderPoolIdleTimer(pool) {
+    if (!pool?.idleTimer) return;
+    clearTimeout(pool.idleTimer);
+    pool.idleTimer = null;
+}
+
+function clearOpenCliReaderJobTimer(job) {
+    if (!job?.timer) return;
+    clearTimeout(job.timer);
+    job.timer = null;
+}
+
+function rejectOpenCliReaderPoolJobs(pool, error) {
+    for (const job of pool.jobs.values()) {
+        clearOpenCliReaderJobTimer(job);
+        job.reject(error);
+    }
+    pool.jobs.clear();
+}
+
+function scheduleOpenCliReaderPoolIdleClose(pool) {
+    clearOpenCliReaderPoolIdleTimer(pool);
+
+    if (pool.jobs.size !== 0 || pool.closing) return;
+
+    pool.idleTimer = setTimeout(() => {
+        pool.idleTimer = null;
+        if (pool.jobs.size !== 0 || pool.closing) return;
+
+        pool.closing = true;
+        if (openCliReaderPools.get(pool.origin) === pool) {
+            openCliReaderPools.delete(pool.origin);
+        }
+
+        console.log(
+            `[OPENCLI READER] ${pool.origin} idle for 60s; closing its reusable exact-page tab`
+        );
+
+        if (pool.child.connected) {
+            pool.child.send({ type: 'shutdown' });
+        } else {
+            pool.child.kill('SIGTERM');
+        }
+
+        pool.forceKillTimer = setTimeout(() => {
+            if (!pool.exited) pool.child.kill('SIGTERM');
+        }, 5000);
+        pool.forceKillTimer.unref?.();
+    }, OPENCLI_READER_IDLE_MS);
+    pool.idleTimer.unref?.();
+}
+
+function createOpenCliReaderPool(origin) {
+    const child = fork(
+        fileURLToPath(import.meta.url),
+        ['--reader-pool-worker', origin],
+        { silent: true, execArgv: [] }
+    );
+
+    const pool = {
+        origin,
+        child,
+        jobs: new Map(),
+        idleTimer: null,
+        forceKillTimer: null,
+        closing: false,
+        exited: false,
+        stderrTail: ''
+    };
+
+    openCliReaderPools.set(origin, pool);
+
+    child.stdout.on('data', data => {
+        // Pooled read results travel over IPC. Anything written directly to
+        // stdout is only diagnostic residue; keep a small tail for crashes.
+        pool.stderrTail = (pool.stderrTail + String(data)).slice(-1024 * 1024);
+    });
+
+    child.stderr.on('data', data => {
+        pool.stderrTail = (pool.stderrTail + String(data)).slice(-1024 * 1024);
+    });
+
+    child.on('message', message => {
+        const jobId = String(message?.jobId || '');
+        const job = jobId ? pool.jobs.get(jobId) : null;
+
+        if (message?.type === 'started' && job) {
+            clearOpenCliReaderJobTimer(job);
+            job.timer = setTimeout(() => {
+                if (!pool.jobs.has(jobId)) return;
+
+                pool.jobs.delete(jobId);
+                job.reject(new Error('OpenCLI reader failed or timed out.'));
+
+                // A timed-out navigation can leave this one source worker in
+                // an unknown page state. Kill only this source; the next read
+                // recreates it cleanly.
+                pool.closing = true;
+                if (openCliReaderPools.get(origin) === pool) {
+                    openCliReaderPools.delete(origin);
+                }
+                child.kill('SIGTERM');
+            }, OPENCLI_READER_JOB_TIMEOUT_MS);
+            job.timer.unref?.();
+            return;
+        }
+
+        if (message?.type === 'verification' && job) {
+            clearOpenCliReaderJobTimer(job);
+            job.timer = setTimeout(() => {
+                if (!pool.jobs.has(jobId)) return;
+                pool.jobs.delete(jobId);
+                job.reject(new Error('OpenCLI reader failed or timed out.'));
+                pool.closing = true;
+                if (openCliReaderPools.get(origin) === pool) {
+                    openCliReaderPools.delete(origin);
+                }
+                child.kill('SIGTERM');
+            }, OPENCLI_READER_JOB_TIMEOUT_MS);
+            job.timer.unref?.();
+
+            Promise.resolve()
+                .then(() => job.canWait())
+                .then(Boolean)
+                .catch(() => false)
+                .then(allowed => {
+                    if (child.connected && pool.jobs.has(jobId)) {
+                        child.send({
+                            type: 'verification-decision',
+                            jobId,
+                            allowed
+                        });
+                    }
+                });
+            return;
+        }
+
+        if (message?.type === 'result' && job) {
+            clearOpenCliReaderJobTimer(job);
+            pool.jobs.delete(jobId);
+
+            if (message.ok) {
+                job.resolve({
+                    stdout: String(message.stdout || ''),
+                    stderr: String(message.stderr || '')
+                });
+            } else {
+                job.reject(
+                    new Error(
+                        String(message.error || message.stderr || '').trim()
+                        || 'OpenCLI reader failed.'
+                    )
+                );
+            }
+
+            scheduleOpenCliReaderPoolIdleClose(pool);
+        }
+    });
+
+    child.on('error', error => {
+        if (pool.exited) return;
+        pool.closing = true;
+        if (openCliReaderPools.get(origin) === pool) {
+            openCliReaderPools.delete(origin);
+        }
+        rejectOpenCliReaderPoolJobs(pool, error);
+    });
+
+    child.on('close', code => {
+        pool.exited = true;
+        clearOpenCliReaderPoolIdleTimer(pool);
+        if (pool.forceKillTimer) clearTimeout(pool.forceKillTimer);
+        if (openCliReaderPools.get(origin) === pool) {
+            openCliReaderPools.delete(origin);
+        }
+
+        if (pool.jobs.size > 0) {
+            const detail = pool.stderrTail.trim();
+            rejectOpenCliReaderPoolJobs(
+                pool,
+                new Error(
+                    detail
+                    || `OpenCLI reader worker exited${code == null ? '' : ` (${code})`}.`
+                )
+            );
+        }
+    });
+
+    console.log(
+        `[OPENCLI READER] Created reusable exact-page worker for ${origin}`
+    );
+
+    return pool;
 }
 
 export function runOpenCliReader(kwargs, canWait = () => false) {
+    let origin;
+
+    try {
+        origin = getOpenCliReaderOrigin(kwargs);
+    } catch (error) {
+        return Promise.reject(error);
+    }
+
+    let pool = openCliReaderPools.get(origin);
+    if (!pool || pool.closing || pool.exited) {
+        pool = createOpenCliReaderPool(origin);
+    }
+
+    clearOpenCliReaderPoolIdleTimer(pool);
+
+    const jobId = `${process.pid}-${Date.now()}-${++openCliReaderJobSequence}`;
+
     return new Promise((resolve, reject) => {
-        const child = fork(fileURLToPath(import.meta.url), ['--worker', JSON.stringify(kwargs)], {
-            silent: true, execArgv: []
-        });
-        let stdout = '', stderr = '';
-        let timer;
-        const resetTimeout = () => {
-            clearTimeout(timer);
-            timer = setTimeout(() => { child.kill(); }, 60_000);
+        const job = {
+            jobId,
+            resolve,
+            reject,
+            canWait,
+            timer: null
         };
-        resetTimeout();
-        child.stdout.on('data', data => {
-            stdout += data;
-            if (stdout.length > 12 * 1024 * 1024) child.kill();
-        });
-        child.stderr.on('data', data => { stderr = (stderr + data).slice(-1024 * 1024); });
-        child.on('message', message => {
-            if (message?.type !== 'verification') return;
-            const allowed = Boolean(canWait());
-            resetTimeout();
-            if (child.connected) child.send({ type: 'verification-decision', allowed });
-        });
-        child.on('error', error => { clearTimeout(timer); reject(error); });
-        child.on('close', code => {
-            clearTimeout(timer);
-            if (code !== 0) reject(new Error(stderr.trim() || 'OpenCLI reader failed or timed out.'));
-            else resolve({ stdout, stderr });
+
+        pool.jobs.set(jobId, job);
+
+        if (!pool.child.connected) {
+            pool.jobs.delete(jobId);
+            reject(new Error('OpenCLI reader worker is not connected.'));
+            return;
+        }
+
+        // Jobs for this source are serialized inside the worker. That keeps
+        // exactly one source tab and makes every job navigate that SAME tab to
+        // its own exact requested URL.
+        pool.child.send({
+            type: 'read',
+            jobId,
+            kwargs
         });
     });
 }
 
-if (process.argv[2] === '--worker') {
-    let activePage;
-    process.on('SIGTERM', async () => {
-        await Promise.race([
-            activePage?.closeWindow?.().catch(() => {}),
-            new Promise(resolve => setTimeout(resolve, 2000))
-        ]);
-        process.exit(1);
-    });
-    const canWait = () => new Promise(resolve => {
-        const timeout = setTimeout(() => { process.off('message', receive); resolve(false); }, 2000);
-        const receive = message => {
-            if (message?.type !== 'verification-decision') return;
+
+if (process.argv[2] === '--reader-pool-worker') {
+    const origin = String(process.argv[3] || '');
+    let activePage = null;
+    let processing = false;
+    let shuttingDown = false;
+    const queue = [];
+    const verificationWaiters = new Map();
+
+    const writeChunkToString = chunk =>
+        Buffer.isBuffer(chunk) ? chunk.toString('utf8') : String(chunk ?? '');
+
+    const reply = message => {
+        if (process.connected) process.send(message);
+    };
+
+    const askForVerification = jobId => new Promise(resolve => {
+        const timeout = setTimeout(() => {
+            verificationWaiters.delete(jobId);
+            resolve(false);
+        }, 2000);
+
+        verificationWaiters.set(jobId, allowed => {
             clearTimeout(timeout);
-            process.off('message', receive);
-            resolve(message.allowed === true);
-        };
-        process.on('message', receive);
-        if (process.connected) process.send({ type: 'verification' });
+            verificationWaiters.delete(jobId);
+            resolve(allowed === true);
+        });
+
+        reply({ type: 'verification', jobId });
     });
-    try {
-        const { executeCommand } = await import('../node_modules/@jackwener/opencli/dist/src/execution.js');
-        const { setDaemonCommandTimeoutSeconds } = await import('../node_modules/@jackwener/opencli/dist/src/browser/daemon-client.js');
-        const { __test__: { command } } = await import('../node_modules/@jackwener/opencli/clis/web/read.js');
-        await executeCommand({
-            ...command,
-            args: [...command.args, { name: 'timeout', type: 'int', default: 86400 }],
-            func: (page, kwargs) => {
-                activePage = page;
-                // Human waiting may be long; individual browser operations must not be.
-                setDaemonCommandTimeoutSeconds(20);
-                return readWithHumanVerification(command.func, page, kwargs, canWait);
+
+    const closeReaderTabAndExit = async (code = 0) => {
+        if (activePage) {
+            try {
+                // Close the exact owned tab, NOT closeWindow()/lease release.
+                // The latter is the path that produced orphan about:blank tabs.
+                await activePage.closeTab();
+            } catch {
             }
-        }, JSON.parse(process.argv[3]), false, { keepTab: 'true', siteSession: 'ephemeral', windowMode: 'background' });
-    } catch (error) {
-        process.stderr.write(error.message + '\n');
-        process.exitCode = 1;
-    } finally {
+        }
+
         if (process.connected) process.disconnect();
-        // OpenCLI's daemon transport can retain sockets after the adapter ends.
-        // This isolated worker owns no further work once the tab is released.
-        process.exit(process.exitCode || 0);
+        process.exit(code);
+    };
+
+    const runJob = async (job, command, setDaemonCommandTimeoutSeconds) => {
+        const { jobId, kwargs } = job;
+        reply({ type: 'started', jobId });
+
+        let stdout = '';
+        let stderr = '';
+        const originalStdoutWrite = process.stdout.write;
+        const originalStderrWrite = process.stderr.write;
+
+        process.stdout.write = function(chunk, encoding, callback) {
+            const text = writeChunkToString(chunk);
+            if (stdout.length + text.length > 12 * 1024 * 1024) {
+                throw new Error('OpenCLI reader output exceeded 12 MB');
+            }
+            stdout += text;
+            if (typeof encoding === 'function') encoding();
+            if (typeof callback === 'function') callback();
+            return true;
+        };
+
+        process.stderr.write = function(chunk, encoding, callback) {
+            stderr = (stderr + writeChunkToString(chunk)).slice(-1024 * 1024);
+            if (typeof encoding === 'function') encoding();
+            if (typeof callback === 'function') callback();
+            return true;
+        };
+
+        try {
+            // Human waiting may be long; individual browser operations must not be.
+            setDaemonCommandTimeoutSeconds(20);
+
+            await readWithHumanVerification(
+                command.func,
+                activePage,
+                kwargs,
+                () => askForVerification(jobId)
+            );
+
+            reply({
+                type: 'result',
+                jobId,
+                ok: true,
+                stdout,
+                stderr
+            });
+        } catch (error) {
+            reply({
+                type: 'result',
+                jobId,
+                ok: false,
+                stdout,
+                stderr,
+                error: error?.message || String(error)
+            });
+        } finally {
+            process.stdout.write = originalStdoutWrite;
+            process.stderr.write = originalStderrWrite;
+        }
+    };
+
+    const main = async () => {
+        let parsedOrigin;
+        try {
+            parsedOrigin = new URL(origin);
+        } catch {
+            throw new Error('Invalid OpenCLI reader worker origin');
+        }
+
+        const [
+            { Page },
+            { setDaemonCommandTimeoutSeconds },
+            { __test__: { command } }
+        ] = await Promise.all([
+            import('../node_modules/@jackwener/opencli/dist/src/browser/page.js'),
+            import('../node_modules/@jackwener/opencli/dist/src/browser/daemon-client.js'),
+            import('../node_modules/@jackwener/opencli/clis/web/read.js')
+        ]);
+
+        const profile =
+            process.env.OPENCLI_BROWSER_PROFILE
+            || process.env.OPENCLI_PROFILE
+            || undefined;
+
+        const sourceKey =
+            `${parsedOrigin.protocol}-${parsedOrigin.host}`
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, '-')
+                .replace(/^-+|-+$/g, '');
+
+        // The worker lifetime is the lease. The same Page remembers targetId,
+        // so goto(exactUrl) navigates the existing tab instead of allocating a
+        // new one for each article. Parent closes this worker after 60s idle.
+        activePage = new Page(
+            `rss-opencli-reader-${sourceKey}-${process.pid}`,
+            3600,
+            undefined,
+            'background',
+            'adapter',
+            'persistent',
+            profile
+        );
+
+        const pump = async () => {
+            if (processing) return;
+            processing = true;
+
+            try {
+                while (queue.length > 0) {
+                    const job = queue.shift();
+                    await runJob(job, command, setDaemonCommandTimeoutSeconds);
+                }
+            } finally {
+                processing = false;
+                if (shuttingDown && queue.length === 0) {
+                    await closeReaderTabAndExit(0);
+                }
+            }
+        };
+
+        process.on('message', message => {
+            if (message?.type === 'verification-decision') {
+                const resolver = verificationWaiters.get(String(message.jobId || ''));
+                if (resolver) resolver(message.allowed === true);
+                return;
+            }
+
+            if (message?.type === 'read') {
+                if (shuttingDown) {
+                    reply({
+                        type: 'result',
+                        jobId: String(message.jobId || ''),
+                        ok: false,
+                        error: 'OpenCLI reader worker is shutting down.'
+                    });
+                    return;
+                }
+
+                queue.push({
+                    jobId: String(message.jobId || ''),
+                    kwargs: message.kwargs || {}
+                });
+                void pump();
+                return;
+            }
+
+            if (message?.type === 'shutdown') {
+                shuttingDown = true;
+                if (!processing && queue.length === 0) {
+                    void closeReaderTabAndExit(0);
+                }
+            }
+        });
+
+        process.on('SIGTERM', () => {
+            shuttingDown = true;
+            void closeReaderTabAndExit(1);
+        });
+
+        reply({ type: 'ready', origin });
+    };
+
+    try {
+        await main();
+    } catch (error) {
+        process.stderr.write((error?.message || String(error)) + '\n');
+        await closeReaderTabAndExit(1);
     }
 }

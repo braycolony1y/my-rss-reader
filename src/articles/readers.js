@@ -1,8 +1,7 @@
-import { fetchRedditViaOpenCli } from '../sources/reddit-fetcher.js';
 import { runArticleFetchTask } from './fetch-lanes.js';
 import sourceRegistry from '../sources/index.js';
 import { normalizeArticleSourceUrl, deletedSourceKind, deletedSourceTitle } from '../article-source-state.js';
-import { safeHttpUrl } from '../utils/article-utils.js';
+import { safeHttpUrl, isRedditUrl } from '../utils/article-utils.js';
 import { runOpenCliReader, runOpenCliBrowserFetch, isActiveArticleSession } from '../opencli-reader.js';
 import { parseOpenCliMarkdown, parseJinaReaderText } from './reader-markdown.js';
 import { assertArticleResultAcceptedBySource } from './source-results.js';
@@ -31,9 +30,6 @@ export function createArticleReaders({
     }
 
     async function fetchViaOpenCli(url, requestId = '') {
-        if (url.match(/reddit\.com\/r\/.*\/comments\//)) {
-            return fetchRedditViaOpenCli(url);
-        }
         const sourceHandler = sourceRegistry.getHandler(url);
         const readerUrl = normalizeArticleSourceUrl(sourceHandler?.getOpenCliReaderUrl?.(url) || url);
         const captureDiagnostics = Boolean(sourceHandler?.needsOpenCliDiagnostics?.());
@@ -224,8 +220,10 @@ export function createArticleReaders({
     // ARTICLE_FETCH_PRIORITY_LANES_V1
     // Scheduling is deliberately outside strategy selection: whichever method
     // policy selected is the exact method that runs in the current lane.
-    const scheduleUrlFirst = fn => (url, ...args) =>
-        runArticleFetchTask(url, () => fn(url, ...args));
+    const scheduleUrlFirst = fn => (url, ...args) => {
+        if (isRedditUrl(url)) return Promise.reject(new Error('Reddit articles open on the original website.'));
+        return runArticleFetchTask(url, () => fn(url, ...args));
+    };
 
     return {
         fetchWithCookies: scheduleUrlFirst(fetchWithCookies),
@@ -233,7 +231,9 @@ export function createArticleReaders({
         fetchViaOpenCliBrowserFetch: scheduleUrlFirst(fetchViaOpenCliBrowserFetch),
         fetchViaVietserver: scheduleUrlFirst(fetchViaVietserver),
         fetchViaJina: scheduleUrlFirst(fetchViaJina),
-        fetchArticleHtmlByStrategy: (strategy, url, ...args) =>
-            runArticleFetchTask(url, () => fetchArticleHtmlByStrategy(strategy, url, ...args))
+        fetchArticleHtmlByStrategy: (strategy, url, ...args) => {
+            if (isRedditUrl(url)) return Promise.reject(new Error('Reddit articles open on the original website.'));
+            return runArticleFetchTask(url, () => fetchArticleHtmlByStrategy(strategy, url, ...args));
+        }
     };
 }

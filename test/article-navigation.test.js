@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
+import { webcrypto } from 'node:crypto';
 
 function createReaderApp(hash = '#category/Forum') {
     const code = readFileSync(new URL('../script.js', import.meta.url), 'utf8');
@@ -33,6 +34,8 @@ function createReaderApp(hash = '#category/Forum') {
     };
     const context = {
         window,
+        location,
+        crypto: webcrypto,
         document,
         navigator: { maxTouchPoints: 0 },
         localStorage: storage,
@@ -42,7 +45,7 @@ function createReaderApp(hash = '#category/Forum') {
         console,
         setTimeout,
         clearTimeout,
-        setInterval,
+        setInterval: () => 0,
         clearInterval,
         fetch: async () => ({ ok: false }),
         performance: { now: () => 0 },
@@ -56,6 +59,27 @@ function createReaderApp(hash = '#category/Forum') {
     vm.runInContext(code, context);
     return { app: vm.runInContext('rssApp()', context), location, historyCalls, document, context };
 }
+
+test('Reddit opens directly in a new tab on desktop, mobile and related-article navigation', async () => {
+    for (const mobile of [false, true]) {
+        const { app, context, historyCalls } = createReaderApp();
+        const opened = [];
+        const article = { link: 'https://old.reddit.com/r/test/comments/abc/story/' };
+        context.window.open = (...args) => opened.push(args);
+        context.fetch = () => assert.fail('Reddit must not fetch reader content');
+        app.isMobile = mobile;
+        app.markAsReadExplicit = link => assert.equal(link, article.link);
+        app.handleCardClick(article, { preventDefault() {} });
+        await app.openRelatedArticle(article);
+        assert.equal(opened.length, 2);
+        assert.deepEqual(opened[0], [article.link, '_blank', 'noopener,noreferrer']);
+        assert.equal(historyCalls.length, 0);
+        assert.equal(app.articleOverlayOpen, false);
+        app.handleCardHover(article);
+        app.prefetchArticlesList([article]);
+        assert.equal(app.prefetchQueue.length, 0);
+    }
+});
 
 test('article permalink appends one encoded source URL to the active category', () => {
     const { app, location, historyCalls } = createReaderApp();

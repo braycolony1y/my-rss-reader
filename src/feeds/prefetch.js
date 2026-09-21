@@ -1,5 +1,5 @@
 import { normalizeArticleSourceUrl, isDeletedArticlePayload } from '../article-source-state.js';
-import { safeHttpUrl, normalizeStateUrl, isInvalidImage } from '../utils/article-utils.js';
+import { safeHttpUrl, normalizeStateUrl, isInvalidImage, isRedditUrl } from '../utils/article-utils.js';
 import sourceRegistry from '../sources/index.js';
 import { enhanceArticleResultForSource } from '../articles/source-results.js';
 import { normalizeBlockedKeywordEntries, articleContentFilterMatches } from '../filters/content-filter.js';
@@ -27,7 +27,7 @@ export function createArticlePrefetch({
 
     function scheduleOpenCliIngestPrefetch(article, feedUrl = '') {
         const url = normalizeArticleSourceUrl(article?.link || article?.url || '');
-        if (!safeHttpUrl(url)) return Promise.resolve(false);
+        if (!safeHttpUrl(url) || isRedditUrl(url)) return Promise.resolve(false);
         const key = normalizeStateUrl(url);
         if (openCliIngestPrefetchInFlight.has(key)) return openCliIngestPrefetchInFlight.get(key);
 
@@ -106,6 +106,7 @@ export function createArticlePrefetch({
     let currentPrefetchRunId = 0;
 
     async function triggerNextFiveArticlesPrefetch(currentUrl, dryRun = false, prefetchTargets = null, waitPromise = null) {
+        if (isRedditUrl(currentUrl)) return [];
         const runId = ++currentPrefetchRunId;
         const urlsToPrefetch = new Map();
         try {
@@ -114,7 +115,7 @@ export function createArticlePrefetch({
             if (prefetchTargets && prefetchTargets.length > 0) {
                 for (const target of prefetchTargets) {
                     const targetUrl = typeof target === 'string' ? target : (target?.url || target?.originalLink || target?.link);
-                    if (!targetUrl || urlsToPrefetch.size >= 5) continue;
+                    if (!targetUrl || isRedditUrl(targetUrl) || urlsToPrefetch.size >= 5) continue;
                     const knownArticle = articles.find(article =>
                         [article?.link, article?.originalLink, article?.id].includes(targetUrl)
                     );
@@ -130,7 +131,7 @@ export function createArticlePrefetch({
                     for (let i = idx + 1; i < Math.min(articles.length, idx + 6); i++) {
                         const art = articles[i];
                         const u = art?.originalLink || art?.link;
-                        if (u && u !== currentUrl && urlsToPrefetch.size < 5) urlsToPrefetch.set(u, art);
+                        if (u && !isRedditUrl(u) && u !== currentUrl && urlsToPrefetch.size < 5) urlsToPrefetch.set(u, art);
                     }
                 }
             }
@@ -242,7 +243,7 @@ export function createArticlePrefetch({
                     const art = list[i];
                     if (!art) continue;
                     const url = art.link || art.originalLink;
-                    if (url && !topArticlesMap.has(url)) {
+                    if (url && !isRedditUrl(url) && !topArticlesMap.has(url)) {
                         topArticlesMap.set(url, { url, title: art.title, originalLink: art.originalLink, link: art.link });
                     }
                 }
@@ -309,7 +310,7 @@ export function createArticlePrefetch({
             let prefetchedCount = 0;
             for (const art of toProcess) {
                 const url = art.link || art.originalLink;
-                if (!url) continue;
+                if (!url || isRedditUrl(url)) continue;
                 let cached = await getCachedArticle(url);
                 if (!cached && googleNews.googleNewsUrlCache && googleNews.googleNewsUrlCache.has(url) && googleNews.googleNewsUrlCache.get(url).resolvedUrl) {
                     cached = await getCachedArticle(googleNews.googleNewsUrlCache.get(url).resolvedUrl);

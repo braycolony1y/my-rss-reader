@@ -463,26 +463,31 @@ export function createStoryBriefings({ db, generate, loadSource, concurrency = 2
     };
 
 
-    /*
-     * Story briefing lanes:
-     *
-     * P0 = currently visible page while user is reading
-     *      (effective priority >= 4)
-     *
-     * P1 = current-view look-ahead / near-visible work
-     *
-     * P4 = stale-visible, ordinary background and prewarm
-     *
-     * P3 is Smart clustering and enters the same shared
-     * global scheduler from smart-news.js.
-     */
+    // SMART_VIEWPORT_BRIEFING_PRIORITY_V1
+    //
+    // P0 = cards physically visible in the reader viewport NOW.
+    // P1 = current Smart view/page but off-screen.
+    // P4 = stale views/background/prewarm.
+    //
+    // Running jobs are never cancelled or demoted mid-execution.
+    let latestViewportGeneration = 0;
+
+    const jobClusterId =
+        job =>
+            String(
+                job?.cluster?.clusterId ||
+                job?.cluster?.link ||
+                ''
+            );
+
     const briefingLane = job => {
         if (!activeViewKey) {
             return 'p4';
         }
 
         if (
-            effectivePriority(job) >= 4
+            job?.viewKey === activeViewKey &&
+            job?.viewportVisible === true
         ) {
             return 'p0';
         }
@@ -496,6 +501,48 @@ export function createStoryBriefings({ db, generate, loadSource, concurrency = 2
 
         return 'p4';
     };
+
+    const briefingForegroundRank =
+        job => {
+            if (
+                job?.viewKey === activeViewKey &&
+                job?.viewportVisible === true
+            ) {
+                // Date.now()-scale generation * 100 remains below
+                // Number.MAX_SAFE_INTEGER and lets a later viewport
+                // movement supersede all older queued viewport work.
+                return (
+                    10_000_000 +
+                    (
+                        Number(
+                            job.viewportGeneration
+                        ) || 0
+                    ) * 100 -
+                    (
+                        Number(
+                            job.viewportOrder
+                        ) || 0
+                    )
+                );
+            }
+
+            if (
+                job?.viewKey === activeViewKey
+            ) {
+                return effectivePriority(job);
+            }
+
+            return 0;
+        };
+
+    const briefingViewportBurst =
+        job =>
+            (
+                activeViewKey &&
+                job?.viewKey === activeViewKey &&
+                job?.viewportVisible === true &&
+                briefingLane(job) === 'p0'
+            );
 
     // User/current-view work is age-neutral. Only unattended background
     // briefing work participates in W0..W6 freshness ordering.
@@ -541,6 +588,14 @@ export function createStoryBriefings({ db, generate, loadSource, concurrency = 2
                     'queued'
             )
             .sort((a, b) => {
+                const viewportPriority =
+                    briefingForegroundRank(b) -
+                    briefingForegroundRank(a);
+
+                if (viewportPriority) {
+                    return viewportPriority;
+                }
+
                 const priority =
                     effectivePriority(b) -
                     effectivePriority(a);
@@ -907,6 +962,18 @@ normal form where appropriate.`;
                                 job
                             ),
 
+                    getForegroundRank:
+                        () =>
+                            briefingForegroundRank(
+                                job
+                            ),
+
+                    getViewportBurst:
+                        () =>
+                            briefingViewportBurst(
+                                job
+                            ),
+
                     label:
                         `story-briefing:${
                             job.tab ||
@@ -1005,6 +1072,107 @@ normal form where appropriate.`;
             }
         },
 
+        setViewport(
+            viewKey,
+            clusterIds,
+            generation
+        ) {
+            const normalizedViewKey =
+                typeof viewKey === 'string' &&
+                viewKey
+                    ? viewKey
+                    : null;
+
+            const normalizedGeneration =
+                Math.max(
+                    0,
+                    Number(generation) || 0
+                );
+
+            // Ignore a delayed network request from an older scroll position.
+            if (
+                normalizedGeneration &&
+                normalizedGeneration <
+                    latestViewportGeneration
+            ) {
+                return false;
+            }
+
+            if (normalizedGeneration) {
+                latestViewportGeneration =
+                    normalizedGeneration;
+            }
+
+            const nextIds =
+                new Set(
+                    Array.isArray(clusterIds)
+                        ? clusterIds
+                            .map(value =>
+                                String(value || '')
+                            )
+                            .filter(Boolean)
+                        : []
+                );
+
+            const changedView =
+                normalizedViewKey !==
+                activeViewKey;
+
+            activeViewKey =
+                normalizedViewKey;
+
+            setGlobalAiReadingMode(
+                Boolean(activeViewKey)
+            );
+
+            const order =
+                new Map(
+                    [...nextIds].map(
+                        (id, index) => [
+                            id,
+                            index
+                        ]
+                    )
+                );
+
+            for (const job of jobs.values()) {
+                // Running work is deliberately left running. Updating these
+                // flags only affects tasks that are still pending globally.
+                if (
+                    job.viewKey !==
+                    activeViewKey
+                ) {
+                    continue;
+                }
+
+                const id =
+                    jobClusterId(job);
+
+                const visible =
+                    nextIds.has(id);
+
+                job.viewportVisible =
+                    visible;
+
+                if (visible) {
+                    job.viewportGeneration =
+                        normalizedGeneration;
+
+                    job.viewportOrder =
+                        order.get(id) || 0;
+                }
+            }
+
+            if (
+                changedView ||
+                nextIds.size
+            ) {
+                drain();
+            }
+
+            return true;
+        },
+
         async peek(cluster,tab) {
             const entries=await cache(), revision=storyRevision(cluster);
             return entries[`rank:${tab}:${revision}`] || entries[`${tab}:${revision}`] || null;
@@ -1037,10 +1205,8 @@ normal form where appropriate.`;
                         requestedPriority
                     );
 
-                    // A job discovered earlier by look-ahead or another page can
-                    // become current-visible later. Only the currently active
-                    // view may take ownership, preventing delayed stale requests
-                    // from demoting a newly promoted job.
+                    // A queued job discovered earlier by look-ahead or another
+                    // page can be re-owned by the CURRENT viewport.
                     if (
                         options.viewKey &&
                         (
@@ -1048,7 +1214,44 @@ normal form where appropriate.`;
                             !existing.viewKey
                         )
                     ) {
-                        existing.viewKey = options.viewKey;
+                        const viewChanged =
+                            existing.viewKey !==
+                            options.viewKey;
+
+                        existing.viewKey =
+                            options.viewKey;
+
+                        if (viewChanged) {
+                            existing.viewportVisible =
+                                false;
+                            existing.viewportGeneration =
+                                0;
+                            existing.viewportOrder =
+                                0;
+                        }
+                    }
+
+                    if (
+                        options.viewportVisible === true &&
+                        options.viewKey === activeViewKey
+                    ) {
+                        existing.viewportVisible =
+                            true;
+
+                        existing.viewportGeneration =
+                            Math.max(
+                                Number(
+                                    existing.viewportGeneration
+                                ) || 0,
+                                Number(
+                                    options.viewportGeneration
+                                ) || 0
+                            );
+
+                        existing.viewportOrder =
+                            Number(
+                                options.viewportOrder
+                            ) || 0;
                     }
                 }
                 else if (
@@ -1066,6 +1269,16 @@ normal form where appropriate.`;
                         version,
                         priority: requestedPriority,
                         viewKey: options.viewKey || null,
+                        viewportVisible:
+                            options.viewportVisible === true,
+                        viewportGeneration:
+                            Number(
+                                options.viewportGeneration
+                            ) || 0,
+                        viewportOrder:
+                            Number(
+                                options.viewportOrder
+                            ) || 0,
                         queuedAt: Date.now(),
                         state: 'queued'
                     });

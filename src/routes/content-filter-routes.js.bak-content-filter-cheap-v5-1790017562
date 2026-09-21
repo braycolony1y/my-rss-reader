@@ -19,30 +19,10 @@ export function registerContentFilterRoutes({
     });
 
     app.post('/api/content-filter-settings', authMiddleware, async (req, res) => {
-        const keywords =
-            normalizeBlockedKeywordEntries(
-                req.body?.keywords
-            ).map(
-                entry => entry.keyword
-            );
-
-        /*
-         * CONTENT_FILTER_TRUE_CHEAP_SAVE_V5
-         *
-         * Save has exactly one durable operation.
-         *
-         * Do not fan this out as content-filter-changed here: that event can
-         * cause browser clients to perform heavyweight data reconciliation.
-         */
-        await env.RSS_DATA.put(
-            'blockedArticleKeywords',
-            JSON.stringify(keywords)
-        );
-
-        res.json({
-            ok: true,
-            keywords
-        });
+        const keywords = normalizeBlockedKeywordEntries(req.body?.keywords).map(entry => entry.keyword);
+        await env.RSS_DATA.put('blockedArticleKeywords', JSON.stringify(keywords));
+        publishAppEvent('content-filter-changed', { keywords });
+        res.json({ ok: true, keywords });
     });
 
     let _contentFilterPreviewCache = null;

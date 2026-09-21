@@ -845,7 +845,11 @@
                     }, delay);
                 },
                 readStates: new Set(),
+                recentReadAt: {},
                 pendingReadLinks: new Set(),
+                pendingUnreadLinks: new Set(),
+                pendingRecentReadLinks: new Set(),
+                pendingStateMutations: {},
                 pendingPreferences: {},
                 savedStates: [],
                 boardStates: [],
@@ -954,7 +958,9 @@
                 cacheTogglePending: {},
                 cacheBadgeText(article) {
                     const m = this.cacheMember(article);
-                    return m?.source_removed ? 'Removed from source' : !m?.active_caching ? 'Cache paused' : m?.sync_status === 'incomplete' ? 'Sync delayed' : 'Live cache';
+                    if (m?.source_removed) return 'Removed from source';
+                    if (!m?.active_caching && m?.stop_reason === 'verified_idle_24h') return 'Idle >24h · paused';
+                    return !m?.active_caching ? 'Cache paused' : m?.sync_status === 'incomplete' ? 'Sync delayed' : 'Live cache';
                 },
                 cacheLastSuccessText(article) {
                     const value = this.cacheMember(article)?.last_successful_sync_at || article?.cacheLastSync;
@@ -962,7 +968,12 @@
                 },
                 cacheBadgeTitle(article) {
                     const m = this.cacheMember(article);
-                    return `${this.cacheBadgeText(article)}. ${m?.active_caching ? 'Click to pause.' : 'Click to resume.'}${m?.last_successful_sync_at ? ' Last successful sync: ' + this.formatVietnamDateTime(m.last_successful_sync_at) : ''}`;
+                    const action = m?.active_caching
+                        ? 'Click to pause.'
+                        : m?.stop_reason === 'verified_idle_24h'
+                            ? 'The real VOZ tail was verified idle for more than 24 hours. Click to reactivate live caching.'
+                            : 'Click to resume.';
+                    return `${this.cacheBadgeText(article)}. ${action}${m?.last_successful_sync_at ? ' Last successful sync: ' + this.formatVietnamDateTime(m.last_successful_sync_at) : ''}`;
                 },
                 async setCacheActive(article) {
                     const member = this.cacheMember(article);
@@ -983,17 +994,23 @@
                 addCacheRule() {
                     this.cacheRules.push({ id: crypto.randomUUID(), keywords: [], source: '', enabled: true });
                 },
+                normalizeKeywordPhrase(value) {
+                    return String(value || '').normalize('NFKC').toLowerCase().trim();
+                },
+                normalizeKeywordList(values) {
+                    return [...new Set((Array.isArray(values) ? values : []).map(value => this.normalizeKeywordPhrase(value)).filter(Boolean))];
+                },
                 addCacheKeyword(rule, input) {
-                    const value = input.value.normalize('NFKC').toLowerCase().trim();
-                    rule.keywords = [...new Set(rule.keywords.map(k => k.normalize('NFKC').toLowerCase().trim()).filter(Boolean))];
+                    const value = this.normalizeKeywordPhrase(input.value);
+                    rule.keywords = this.normalizeKeywordList(rule.keywords);
                     if (value && !rule.keywords.includes(value)) rule.keywords.push(value);
                     input.value = '';
                 },
                 editCacheKeyword(rule, index, input) {
-                    const value = input.value.normalize('NFKC').toLowerCase().trim();
+                    const value = this.normalizeKeywordPhrase(input.value);
                     if (value) rule.keywords.splice(index, 1, value);
                     else rule.keywords.splice(index, 1);
-                    rule.keywords = [...new Set(rule.keywords.map(k => k.normalize('NFKC').toLowerCase().trim()).filter(Boolean))];
+                    rule.keywords = this.normalizeKeywordList(rule.keywords);
                 },
                 async saveCacheRules() {
                     this.cacheRulesSaving = true; this.cacheNotice = '';
@@ -1067,7 +1084,7 @@
                 markAllUndoTimer: null,
                 contentFilterSettingsOpen: false,
                 blockedKeywords: [],
-                blockedKeywordsDraft: '',
+                blockedKeywordsDraft: [],
                 savingContentFilter: false,
                 contentFilterPreview: [],
                 contentFilterPreviewTotal: 0,
@@ -1129,7 +1146,7 @@
                     if (!this.isLoggedIn || !this.articles.length) return;
 
                     const sc = document.getElementById('scroll-container');
-                    if (sc && sc.scrollTop > 0) this.lastSavedScrollY = sc.scrollTop;
+                    if (sc) this.lastSavedScrollY = sc.scrollTop;
 
                     const compactArticle = (article, includeRelated = true) => {
                         const compact = {};
@@ -1163,10 +1180,16 @@
                         feeds: this.feeds,
                         articles: this.articles.map(article => compactArticle(article)),
                         readStates: Array.from(this.readStates),
+                        recentReadAt: this.recentReadAt,
+                        pendingReadLinks: Array.from(this.pendingReadLinks),
+                        pendingUnreadLinks: Array.from(this.pendingUnreadLinks),
+                        pendingRecentReadLinks: Array.from(this.pendingRecentReadLinks),
+                        pendingStateMutations: this.pendingStateMutations,
                         savedStates: this.savedStates,
                         boardStates: this.boardStates,
                         hiddenStates: this.hiddenStates,
                         userPreferences: this.userPreferences,
+                        pendingPreferences: this.pendingPreferences,
                         categoryOrder: this.categoryOrder,
                         unreadCounts: this.unreadCounts,
                         smartClusterVersion: this.smartClusterVersion,
@@ -1429,6 +1452,18 @@
                         this.fetchContentFilterSettings();
                         this.fetchSmartSettings();
                         this.fetchSmartSources();
+                        const universalState = await this.fetchUniversalUserStateSnapshot();
+                        if (universalState) {
+                            this.readStates = new Set(universalState.readStates || []);
+                            this.savedStates = this.dedupeStateLinks(universalState.savedStates || []);
+                            this.boardStates = this.dedupeStateLinks(universalState.boardStates || []);
+                            this.hiddenStates = this.dedupeStateLinks(universalState.hiddenStates || []);
+                            this.recentReadAt = universalState.recentReadAt || {};
+                            this.userPreferences = universalState.userPreferences || {};
+                            this.categoryOrder = universalState.categoryOrder || [];
+                            if (typeof this.userPreferences.hideRead === 'boolean') this.hideRead = this.userPreferences.hideRead;
+                            if (['classic', 'glass', 'glass-light'].includes(this.userPreferences.theme)) this.theme = this.userPreferences.theme;
+                        }
                         
                         // Try to restore state from sessionStorage or localStorage (handles iOS Safari & Chrome mobile tab eviction)
                         const saved = sessionStorage.getItem('rssAppState') || localStorage.getItem('rssAppState');
@@ -1441,25 +1476,35 @@
                                 if (state.articles && state.articles.length > 0) {
                                     this.feeds = state.feeds || [];
                                     this.articles = state.articles || [];
-                                    this.readStates = new Set(state.readStates || []);
-                                    this.savedStates = state.savedStates || [];
-                                    this.boardStates = state.boardStates || [];
-                                    this.hiddenStates = this.dedupeStateLinks(state.hiddenStates || []);
-                                    this.userPreferences = state.userPreferences || {};
+                                    this.pendingReadLinks = new Set(state.pendingReadLinks || []);
+                                    this.pendingUnreadLinks = new Set(state.pendingUnreadLinks || []);
+                                    this.pendingRecentReadLinks = new Set(state.pendingRecentReadLinks || []);
+                                    this.pendingStateMutations = state.pendingStateMutations && typeof state.pendingStateMutations === 'object' ? state.pendingStateMutations : {};
+                                    this.pendingPreferences = state.pendingPreferences && typeof state.pendingPreferences === 'object' ? state.pendingPreferences : {};
+                                    this.readStates = new Set([...(universalState?.readStates || state.readStates || []), ...this.pendingReadLinks].filter(link => !this.pendingUnreadLinks.has(link)));
+                                    this.recentReadAt = { ...(universalState?.recentReadAt || state.recentReadAt || {}) };
+                                    for (const link of this.pendingRecentReadLinks) this.recentReadAt[link] ||= Date.now();
+                                    this.savedStates = this.applyPendingStateMutations('savedStates', universalState?.savedStates || state.savedStates || []);
+                                    this.boardStates = this.applyPendingStateMutations('boardStates', universalState?.boardStates || state.boardStates || []);
+                                    this.hiddenStates = this.applyPendingStateMutations('hiddenStates', universalState?.hiddenStates || state.hiddenStates || []);
+                                    this.userPreferences = { ...(universalState?.userPreferences || state.userPreferences || {}), ...this.pendingPreferences };
+                                    if (['classic', 'glass', 'glass-light'].includes(this.userPreferences.theme)) this.theme = this.userPreferences.theme;
                                     this.smartClusterVersion = state.smartClusterVersion || '';
                                     this.smartRegion = state.smartRegion === 'vietnam' ? 'vietnam' : 'world';
                                     if (this.userPreferences.clusteringModel) {
                                         this.clusteringModel = this.userPreferences.clusteringModel;
                                     }
-                                    this.categoryOrder = state.categoryOrder || [];
+                                    this.categoryOrder = universalState?.categoryOrder || state.categoryOrder || [];
+                                    if (typeof this.userPreferences.hideRead === 'boolean') this.hideRead = this.userPreferences.hideRead;
                                     this.unreadCounts = state.unreadCounts || { feeds: {}, categories: {}, total: 0 };
                                     const hashFilter = this.getFilterFromHash();
                                     if (hashFilter) {
                                         this.selectedFilterType = hashFilter.type;
                                         this.selectedFilterValue = hashFilter.value;
                                     } else {
-                                        this.selectedFilterType = state.selectedFilterType || 'smart';
-                                        this.selectedFilterValue = state.selectedFilterValue || 'news_vietnam';
+                                        const universalView = this.userPreferences.currentView;
+                                        this.selectedFilterType = universalView?.type || state.selectedFilterType || 'smart';
+                                        this.selectedFilterValue = Object.prototype.hasOwnProperty.call(universalView || {}, 'value') ? universalView.value : (state.selectedFilterValue || 'news_vietnam');
                                         window.history.replaceState(null, null, `#${this.selectedFilterType}${this.selectedFilterValue ? '/' + this.selectedFilterValue : ''}`);
                                     }
                                     cacheMatchesSmartDefault = this.selectedFilterType === state.selectedFilterType && this.selectedFilterValue === state.selectedFilterValue;
@@ -1504,6 +1549,12 @@
                                 setTimeout(() => this.fetchData(false, true, true), 50);
                             }
                         } else {
+                            const universalView = this.userPreferences.currentView;
+                            if (universalView?.type) {
+                                this.selectedFilterType = universalView.type;
+                                this.selectedFilterValue = Object.prototype.hasOwnProperty.call(universalView, 'value') ? universalView.value : null;
+                                window.history.replaceState(null, null, `#${this.selectedFilterType}${this.selectedFilterValue ? '/' + encodeURIComponent(this.selectedFilterValue) : ''}`);
+                            }
                             await this.fetchData();
                             this.expandedCategories = this.categories.map(c => c.name);
                             if (typeof this.saveState === 'function') this.saveState();
@@ -1551,28 +1602,44 @@
                         5 * 60 * 1000
                     );
 
-                    document.addEventListener('visibilitychange', () => { 
+                    // RETURN_TAB_SCROLL_FIX_V1
+                    //
+                    // A normal Chrome tab switch preserves the live DOM and its
+                    // scroll position. Never restore a saved scroll position on
+                    // visibilitychange: scrollTop=0 is a valid position and may
+                    // briefly be reported while the tab becomes visible.
+                    //
+                    // Snapshot the current value, including zero, when leaving.
+                    // Full reload/tab-eviction restoration is handled separately
+                    // by the rssAppState startup restore path.
+                    document.addEventListener('visibilitychange', () => {
+                        const sc = document.getElementById('scroll-container');
+
                         if (document.hidden) {
+                            if (sc) {
+                                this.lastSavedScrollY = sc.scrollTop;
+                            }
+
                             this.flushUserPreferences();
-                            if (typeof this.saveState === 'function') this.saveState();
+
+                            if (typeof this.saveState === 'function') {
+                                this.saveState();
+                            }
                         } else {
                             this.fetchSyncStatus();
                             this.syncUserStatesInBackground();
-                            const sc = document.getElementById('scroll-container');
-                            if (sc && sc.scrollTop === 0 && this.lastSavedScrollY > 0) {
-                                sc.scrollTop = this.lastSavedScrollY;
-                            }
+
+                            // Intentionally do not write sc.scrollTop here.
                         }
                     });
                     window.addEventListener('pagehide', () => { this.flushUserPreferences(); if (typeof this.saveState === 'function') this.saveState(); });
                     if ('onfreeze' in document) document.addEventListener('freeze', () => { if (typeof this.saveState === 'function') this.saveState(); });
-                    window.addEventListener('pageshow', (e) => { 
+                    window.addEventListener('pageshow', (e) => {
                         if (e.persisted) {
+                            // BFCache restores the live document, including its
+                            // scroll position. Do not overwrite it with a saved
+                            // position from another moment.
                             this.fetchSyncStatus();
-                            const sc = document.getElementById('scroll-container');
-                            if (sc && sc.scrollTop === 0 && this.lastSavedScrollY > 0) {
-                                sc.scrollTop = this.lastSavedScrollY;
-                            }
                         }
                     });
                     this.fetchSyncStatus();
@@ -1693,15 +1760,27 @@
                                             data.value
                                     };
 
-                                    if (
-                                        data.key ===
-                                            'clusteringModel'
-                                    ) {
-                                        this.clusteringModel =
-                                            data.value;
+                                    if (data.key === 'clusteringModel') this.clusteringModel = data.value;
+                                    if (data.key === 'theme' && ['classic', 'glass', 'glass-light'].includes(data.value)) {
+                                        this.theme = data.value;
+                                        localStorage.setItem('theme', data.value);
+                                    }
+                                    if (data.key === 'hideRead' && typeof data.value === 'boolean') {
+                                        this.hideRead = data.value;
+                                        if (this.selectedFilterType !== 'recent') this.fetchData(false, false, true);
                                     }
                                 }
 
+                                return;
+                            }
+
+                            if (data.kind === 'recent-read' && data.link) {
+                                this.recentReadAt = { ...this.recentReadAt, [data.link]: Number(data.at) || Date.now() };
+                                // A different device may have reopened an article that is
+                                // not present in this device's current seven-day list. Pull
+                                // the RAM-filtered recent view so membership as well as order
+                                // becomes universal immediately.
+                                if (this.selectedFilterType === 'recent') this.fetchData(false, false, true);
                                 return;
                             }
 
@@ -1759,8 +1838,9 @@
                                     }
                                 }
 
-                                this.readStates =
-                                    next;
+                                for (const link of this.pendingReadLinks) next.add(link);
+                                for (const link of this.pendingUnreadLinks) next.delete(link);
+                                this.readStates = next;
 
                                 return;
                             }
@@ -1796,6 +1876,7 @@
                                         }
                                     }
 
+                                    next = this.applyPendingStateMutations(data.list, next);
                                     return this.dedupeStateLinks(
                                         next
                                     );
@@ -1839,6 +1920,23 @@
                      * The normal timer is now only a 5-minute reconciliation
                      * fallback rather than a 30-second poll.
                      */
+                    source.addEventListener('content-filter-changed', event => {
+                        if (document.hidden) return;
+                        try {
+                            const data = JSON.parse(event.data || '{}');
+                            this.blockedKeywords = this.normalizeKeywordList(data.keywords || []);
+                            if (!this.contentFilterSettingsOpen) this.blockedKeywordsDraft = [...this.blockedKeywords];
+                            this.fetchData(false, false, true);
+                        } catch {}
+                    });
+
+                    source.addEventListener('board-cache-changed', () => {
+                        if (document.hidden) return;
+                        this.loadCacheState();
+                        this.syncUserStatesInBackground();
+                        if (this.selectedFilterType === 'board') this.fetchData(false, false, true);
+                    });
+
                     source.addEventListener(
                         'smart-briefing-changed',
                         event => {
@@ -1960,46 +2058,153 @@
 
                 async fetchContentFilterSettings() {
                     try {
-                        const response = await fetch('/api/content-filter-settings');
+                        const response = await fetch('/api/content-filter-settings', { cache: 'no-store' });
                         if (!response.ok) return;
                         const data = await response.json();
-                        this.blockedKeywords = Array.isArray(data.keywords)
-                            ? data.keywords.map(value => String(value || '').trim().normalize('NFC').toLocaleLowerCase('vi-VN')).filter(Boolean)
-                            : [];
-                        if (!this.contentFilterSettingsOpen) this.blockedKeywordsDraft = this.blockedKeywords.join('\n');
+                        this.blockedKeywords = this.normalizeKeywordList(data.keywords || []);
+                        if (!this.contentFilterSettingsOpen) this.blockedKeywordsDraft = [...this.blockedKeywords];
                     } catch (e) { }
                 },
 
                 openContentFilterSettings() {
-                    this.blockedKeywordsDraft = this.blockedKeywords.join('\n');
+                    // CONTENT_FILTER_INSTANT_SAVE_V3
+                    //
+                    // Opening this modal must be cheap. Matching the article
+                    // corpus happens only when the user explicitly requests it.
+                    this.blockedKeywordsDraft = [...this.blockedKeywords];
                     this.contentFilterSettingsOpen = true;
                     this.mobileSidebarOpen = false;
-                    this.fetchContentFilterPreview();
+
+                    clearTimeout(this.contentFilterPreviewDebounce);
+                    this.contentFilterPreviewDebounce = null;
+
+                    // Obsolete any preview request already in flight.
+                    this.contentFilterPreviewRequest++;
+
+                    this.contentFilterPreview = [];
+                    this.contentFilterPreviewTotal = 0;
+                    this.contentFilterPreviewKeywordTotals = [];
+                    this.contentFilterPreviewKeyword = '';
+                    this.contentFilterPreviewError = '';
+                    this.contentFilterPreviewLoading = false;
                 },
 
                 draftBlockedKeywords() {
-                    const seen = new Set();
-                    return this.blockedKeywordsDraft
-                        .split(/\n/)
-                        .map(value => value.trim().normalize('NFC').toLocaleLowerCase('vi-VN'))
-                        .filter(value => {
-                            const normalized = value;
-                            if (!normalized || seen.has(normalized)) return false;
-                            seen.add(normalized);
-                            return true;
-                        });
+                    return this.normalizeKeywordList(this.blockedKeywordsDraft);
                 },
 
-                onContentFilterInput(event) {
-                    const lowered = String(event.target.value || '')
-                        .normalize('NFC')
-                        .toLocaleLowerCase('vi-VN');
-                    if (event.target.value !== lowered) event.target.value = lowered;
-                    this.blockedKeywordsDraft = lowered;
+                scheduleContentFilterPreview(keyword = '') {
                     const keywords = this.draftBlockedKeywords();
-                    this.contentFilterPreviewKeyword = keywords[keywords.length - 1] || '';
+                    const normalized = this.normalizeKeywordPhrase(keyword);
+
+                    this.contentFilterPreviewKeyword =
+                        normalized && keywords.includes(normalized)
+                            ? normalized
+                            : (keywords[keywords.length - 1] || '');
+
+                    /*
+                     * Do not automatically scan articles after editing.
+                     * Add/edit/remove operations remain entirely local.
+                     */
                     clearTimeout(this.contentFilterPreviewDebounce);
-                    this.contentFilterPreviewDebounce = setTimeout(() => this.fetchContentFilterPreview(), 500);
+                    this.contentFilterPreviewDebounce = null;
+
+                    // Cancel/obsolete previous async preview responses.
+                    this.contentFilterPreviewRequest++;
+
+                    this.contentFilterPreview = [];
+                    this.contentFilterPreviewTotal = 0;
+                    this.contentFilterPreviewKeywordTotals = [];
+                    this.contentFilterPreviewError = '';
+                    this.contentFilterPreviewLoading = false;
+                },
+
+                addContentFilterKeyword(input) {
+                    // CONTENT_FILTER_KEYWORD_UI_V4
+                    const value =
+                        this.normalizeKeywordPhrase(
+                            input.value
+                        );
+
+                    /*
+                     * Enter followed by blur can call this twice.
+                     * Empty input means the phrase was already committed.
+                     */
+                    if (!value) {
+                        return;
+                    }
+
+                    this.blockedKeywordsDraft =
+                        this.normalizeKeywordList(
+                            this.blockedKeywordsDraft
+                        );
+
+                    if (
+                        !this.blockedKeywordsDraft.includes(
+                            value
+                        )
+                    ) {
+                        this.blockedKeywordsDraft.push(
+                            value
+                        );
+                    }
+
+                    input.value = '';
+
+                    /*
+                     * User finished entering the phrase:
+                     * select/highlight it and immediately preview it.
+                     */
+                    this.scheduleContentFilterPreview(
+                        value
+                    );
+
+                    this.fetchContentFilterPreview();
+                },
+
+                editContentFilterKeyword(index, input) {
+                    const value =
+                        this.normalizeKeywordPhrase(
+                            input.value
+                        );
+
+                    if (value) {
+                        this.blockedKeywordsDraft.splice(
+                            index,
+                            1,
+                            value
+                        );
+                    } else {
+                        this.blockedKeywordsDraft.splice(
+                            index,
+                            1
+                        );
+                    }
+
+                    this.blockedKeywordsDraft =
+                        this.normalizeKeywordList(
+                            this.blockedKeywordsDraft
+                        );
+
+                    if (value) {
+                        /*
+                         * Editing finished. Select the edited phrase and
+                         * automatically update its affected-article preview.
+                         */
+                        this.scheduleContentFilterPreview(
+                            value
+                        );
+
+                        this.fetchContentFilterPreview();
+                    } else {
+                        this.scheduleContentFilterPreview();
+                    }
+                },
+
+                removeContentFilterKeyword(index) {
+                    this.blockedKeywordsDraft.splice(index, 1);
+                    this.blockedKeywordsDraft = this.normalizeKeywordList(this.blockedKeywordsDraft);
+                    this.scheduleContentFilterPreview();
                 },
 
                 contentFilterPreviewCount(keyword) {
@@ -2007,8 +2212,22 @@
                 },
 
                 selectContentFilterPreviewKeyword(keyword) {
-                    if (this.contentFilterPreviewKeyword === keyword) return;
-                    this.contentFilterPreviewKeyword = keyword;
+                    const normalized =
+                        this.normalizeKeywordPhrase(
+                            keyword
+                        );
+
+                    if (!normalized) {
+                        return;
+                    }
+
+                    /*
+                     * Always check on click, even when this phrase was
+                     * already selected. This also acts as manual refresh.
+                     */
+                    this.contentFilterPreviewKeyword =
+                        normalized;
+
                     this.fetchContentFilterPreview();
                 },
 
@@ -2055,26 +2274,123 @@
                 },
 
                 async saveContentFilterSettings() {
-                    if (this.savingContentFilter) return;
-                    this.savingContentFilter = true;
-                    const keywords = this.draftBlockedKeywords();
-                    try {
-                        const response = await fetch('/api/content-filter-settings', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ keywords })
-                        });
-                        if (!response.ok) throw new Error('Could not save filters');
-                        const data = await response.json();
-                        this.blockedKeywords = data.keywords || [];
-                        this.blockedKeywordsDraft = this.blockedKeywords.join('\n');
-                        this.contentFilterSettingsOpen = false;
-                        await this.fetchData();
-                    } catch (error) {
-                        alert(error.message);
-                    } finally {
-                        this.savingContentFilter = false;
+                    // CONTENT_FILTER_TRUE_CHEAP_SAVE_V5
+
+                    if (this.savingContentFilter) {
+                        return;
                     }
+
+                    const keywords =
+                        this.draftBlockedKeywords();
+
+                    const previousKeywords =
+                        [...this.blockedKeywords];
+
+                    clearTimeout(
+                        this.contentFilterPreviewDebounce
+                    );
+
+                    this.contentFilterPreviewDebounce =
+                        null;
+
+                    this.contentFilterPreviewRequest++;
+
+                    /*
+                     * Complete the visible Save operation synchronously.
+                     *
+                     * Nothing expensive is allowed before the modal closes.
+                     */
+                    this.blockedKeywords =
+                        [...keywords];
+
+                    this.blockedKeywordsDraft =
+                        [...keywords];
+
+                    this.contentFilterSettingsOpen =
+                        false;
+
+                    this.savingContentFilter =
+                        false;
+
+                    /*
+                     * Persist in the background.
+                     *
+                     * Absolutely no fetchData(), preview scan, article
+                     * refetch or page reload belongs to this operation.
+                     */
+                    void fetch(
+                        '/api/content-filter-settings',
+                        {
+                            method: 'POST',
+
+                            headers: {
+                                'Content-Type':
+                                    'application/json'
+                            },
+
+                            body:
+                                JSON.stringify({
+                                    keywords
+                                }),
+
+                            keepalive: true
+                        }
+                    )
+                        .then(async response => {
+                            if (!response.ok) {
+                                throw new Error(
+                                    'Could not save filters'
+                                );
+                            }
+
+                            let data = null;
+
+                            try {
+                                data =
+                                    await response.json();
+                            } catch (_) {
+                            }
+
+                            if (
+                                Array.isArray(
+                                    data?.keywords
+                                )
+                            ) {
+                                this.blockedKeywords =
+                                    this.normalizeKeywordList(
+                                        data.keywords
+                                    );
+
+                                if (
+                                    !this.contentFilterSettingsOpen
+                                ) {
+                                    this.blockedKeywordsDraft =
+                                        [...this.blockedKeywords];
+                                }
+                            }
+                        })
+                        .catch(error => {
+                            /*
+                             * Never block the browser with alert().
+                             *
+                             * Restore the previous durable value if this
+                             * particular save could not reach the server.
+                             */
+                            console.warn(
+                                '[CONTENT FILTER] save failed:',
+                                error
+                            );
+
+                            this.blockedKeywords =
+                                previousKeywords;
+
+                            if (
+                                !this.contentFilterSettingsOpen
+                            ) {
+                                this.blockedKeywordsDraft =
+                                    [...previousKeywords];
+                            }
+                        });
                 },
 
                 openGeminiStatus() {
@@ -2783,12 +3099,16 @@
                                 this.articles = [...this.articles, ...newUniqueArticles];
                             } else {
                                 this.feeds = data.feeds || [];
-                                this.readStates = new Set([...(data.readStates || []), ...this.pendingReadLinks]);
-                                this.savedStates = [...new Set([...(data.savedStates || []), ...this.savedStates])];
-                                this.boardStates = this.dedupeStateLinks(data.boardStates || []);
+                                this.readStates = new Set([...(data.readStates || []), ...this.pendingReadLinks].filter(link => !this.pendingUnreadLinks.has(link)));
+                                if (data.recentReadAt) {
+                                    const localPending = Object.fromEntries([...this.pendingRecentReadLinks].map(link => [link, this.recentReadAt[link] || Date.now()]));
+                                    this.recentReadAt = { ...data.recentReadAt, ...localPending };
+                                }
+                                this.savedStates = this.applyPendingStateMutations('savedStates', data.savedStates || []);
+                                this.boardStates = this.applyPendingStateMutations('boardStates', data.boardStates || []);
                                 // The server is authoritative. Merging with an old browser snapshot
                                 // kept removed entries forever and made the sidebar count drift.
-                                this.hiddenStates = this.dedupeStateLinks(data.hiddenStates || []);
+                                this.hiddenStates = this.applyPendingStateMutations('hiddenStates', data.hiddenStates || []);
                                 
                                 let newArticles = data.articles || [];
                                 if (this.hideRead && !['recent', 'saved', 'board'].includes(this.selectedFilterType)) {
@@ -2995,6 +3315,19 @@
                     }
                 },
 
+                cycleTheme() {
+                    this.theme = this.theme === 'glass' ? 'glass-light' : (this.theme === 'glass-light' ? 'classic' : 'glass');
+                    localStorage.setItem('theme', this.theme);
+                    this.syncUserPreferenceDebounced('theme', this.theme);
+                },
+
+                toggleHideRead() {
+                    this.hideRead = !this.hideRead;
+                    localStorage.setItem('hideRead', String(this.hideRead));
+                    this.syncUserPreferenceDebounced('hideRead', this.hideRead);
+                    this.fetchData();
+                },
+
                 setFilter(type, value, preserveVersion = false) {
                     this.hideTooltip();
                     if (type !== 'smart' || !preserveVersion || this.selectedFilterType !== 'smart') {
@@ -3012,6 +3345,7 @@
 
                     this.selectedFilterType = type;
                     this.selectedFilterValue = value;
+                    this.syncUserPreferenceDebounced('currentView', { type, value: value ?? null });
 
                     if (type === 'smart') {
                         const storedMode =
@@ -3039,6 +3373,11 @@
                 },
 
                 handleCardClick(article, event) {
+                    if (this.isRedditArticle(article)) {
+                        event?.preventDefault();
+                        this.openArticleOverlay(article);
+                        return;
+                    }
                     this.prefetchNextAfter(article);
                     if (this.isMobile) {
                         if (this.mobileActiveCard === article.link) {
@@ -3053,6 +3392,7 @@
                 },
 
                 handleCardHover(article) {
+                    if (this.isRedditArticle(article)) return;
                     if (this.isMobile) return;
                     const url = this.articleReaderUrl(article);
                     if (!url) return;
@@ -3153,6 +3493,60 @@
                     this.dragTargetCategory = null;
                 },
 
+                stateMutationKey(list, link) {
+                    return `${list}:${this.normalizeStateLink(link)}`;
+                },
+
+                queueStateMutation(list, link, present) {
+                    if (!['savedStates', 'boardStates', 'hiddenStates'].includes(list)) return;
+                    const normalized = this.normalizeStateLink(link);
+                    if (!normalized) return;
+                    const key = this.stateMutationKey(list, normalized);
+                    this.pendingStateMutations = {
+                        ...this.pendingStateMutations,
+                        [key]: { list, link: normalized, present: Boolean(present) }
+                    };
+                    if (typeof this.saveState === 'function') this.saveState();
+                },
+
+                applyPendingStateMutations(list, values) {
+                    let next = this.dedupeStateLinks(values || []);
+                    for (const mutation of Object.values(this.pendingStateMutations || {})) {
+                        if (!mutation || mutation.list !== list || !mutation.link) continue;
+                        const target = this.normalizeStateLink(mutation.link);
+                        next = next.filter(link => this.normalizeStateLink(link) !== target);
+                        if (mutation.present) next.push(mutation.link);
+                    }
+                    return this.dedupeStateLinks(next);
+                },
+
+                async flushPendingStateMutations() {
+                    const snapshot = Object.entries(this.pendingStateMutations || {});
+                    for (const [key, mutation] of snapshot) {
+                        if (!mutation?.link || !mutation?.list) continue;
+                        try {
+                            const res = await fetch('/api/toggle', {
+                                method: 'POST', keepalive: true,
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    link: mutation.link,
+                                    list: mutation.list,
+                                    forceAdd: mutation.present === true,
+                                    forceRemove: mutation.present !== true
+                                })
+                            });
+                            if (!res.ok) continue;
+                            const current = this.pendingStateMutations?.[key];
+                            if (current && current.present === mutation.present && current.link === mutation.link && current.list === mutation.list) {
+                                const next = { ...this.pendingStateMutations };
+                                delete next[key];
+                                this.pendingStateMutations = next;
+                            }
+                        } catch (_) { /* Durable journal retries on visibility/reconciliation. */ }
+                    }
+                    if (typeof this.saveState === 'function') this.saveState();
+                },
+
                 async toggleState(list, link) {
                     if (!link) return;
                     if (list === 'boardStates' && this.isOnBoard(link)) {
@@ -3184,18 +3578,12 @@
                             });
                             fetch('/api/article-content?' + params.toString()).catch(() => {});
                         }
-                        await fetch('/api/toggle', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ link, list, forceAdd: true })
-                        });
+                        this.queueStateMutation(list, link, true);
+                        void this.flushPendingStateMutations();
                     } else {
                         array.splice(index, 1);
-                        await fetch('/api/toggle', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ link, list, forceRemove: true })
-                        });
+                        this.queueStateMutation(list, link, false);
+                        void this.flushPendingStateMutations();
                         
 
                     }
@@ -3425,6 +3813,7 @@
                 async markAsReadExplicit(link) {
                     this.prefetchNextAfter(link);
                     if (!this.readStates.has(link)) {
+                        this.pendingUnreadLinks.delete(link);
                         this.pendingReadLinks.add(link);
                         this.readStates = new Set([...this.readStates, link]);
                         
@@ -3477,6 +3866,7 @@
                         this.markAllUndoTimer = null;
                     }, 15000);
 
+                    linksToMark.forEach(link => { this.pendingUnreadLinks.delete(link); this.pendingReadLinks.add(link); });
                     this.readStates = new Set([...this.readStates, ...linksToMark]);
                     
                     unreadInView.forEach(article => {
@@ -3488,11 +3878,15 @@
 
                     if (typeof this.saveState === 'function') this.saveState();
 
-                    await fetch('/api/toggle-batch', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ links: linksToMark, list: 'readStates', forceAdd: true })
-                    });
+                    try {
+                        const response = await fetch('/api/toggle-batch', {
+                            method: 'POST', keepalive: true,
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ links: linksToMark, list: 'readStates', forceAdd: true })
+                        });
+                        if (response.ok) linksToMark.forEach(link => this.pendingReadLinks.delete(link));
+                    } catch (_) { /* pendingReadLinks retries later */ }
+                    if (typeof this.saveState === 'function') this.saveState();
                 },
 
                 async undoMarkAllRead() {
@@ -3502,14 +3896,19 @@
                     this.markAllUndo = null;
                     this.markAllUndoTimer = null;
                     const links = new Set(undo.links);
+                    undo.links.forEach(link => { this.pendingReadLinks.delete(link); this.pendingUnreadLinks.add(link); });
                     this.readStates = new Set([...this.readStates].filter(link => !links.has(link)));
                     this.unreadCounts = JSON.parse(JSON.stringify(undo.unreadCounts));
                     if (typeof this.saveState === 'function') this.saveState();
-                    await fetch('/api/toggle-batch', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ links: undo.links, list: 'readStates', forceRemove: true })
-                    });
+                    try {
+                        const response = await fetch('/api/toggle-batch', {
+                            method: 'POST', keepalive: true,
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ links: undo.links, list: 'readStates', forceRemove: true })
+                        });
+                        if (response.ok) undo.links.forEach(link => this.pendingUnreadLinks.delete(link));
+                    } catch (_) { /* pendingUnreadLinks retries later */ }
+                    if (typeof this.saveState === 'function') this.saveState();
                 },
                 
                 openEditModal(feed) {
@@ -3612,10 +4011,56 @@
                     }
                 },
 
+                async fetchUniversalUserStateSnapshot() {
+                    if (!this.isLoggedIn) return null;
+                    try {
+                        const res = await fetch('/api/user-states', { cache: 'no-store' });
+                        if (!res.ok) return null;
+                        return await res.json();
+                    } catch {
+                        return null;
+                    }
+                },
+
+                async recordRecentlyRead(link) {
+                    const normalized = this.normalizeStateLink(link);
+                    if (!normalized) return;
+                    this.recentReadAt = { ...this.recentReadAt, [normalized]: Date.now() };
+                    this.pendingRecentReadLinks.add(normalized);
+                    if (typeof this.saveState === 'function') this.saveState();
+                    try {
+                        const res = await fetch('/api/recently-read', {
+                            method: 'POST', keepalive: true,
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ link: normalized })
+                        });
+                        if (res.ok) {
+                            const data = await res.json();
+                            if (data?.link && data?.at) this.recentReadAt = { ...this.recentReadAt, [data.link]: Number(data.at) };
+                            this.pendingRecentReadLinks.delete(normalized);
+                        }
+                    } catch (_) { /* Retry during the next universal-state reconciliation. */ }
+                },
+
                 async syncUserStatesInBackground() {
                     if (!this.isLoggedIn) return;
                     try {
                         await this.flushUserPreferences();
+                        await this.flushPendingStateMutations();
+                        for (const link of [...this.pendingRecentReadLinks]) {
+                            try {
+                                const recentResponse = await fetch('/api/recently-read', {
+                                    method: 'POST', keepalive: true,
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ link })
+                                });
+                                if (recentResponse.ok) {
+                                    const recent = await recentResponse.json();
+                                    if (recent?.link && recent?.at) this.recentReadAt = { ...this.recentReadAt, [recent.link]: Number(recent.at) };
+                                    this.pendingRecentReadLinks.delete(link);
+                                }
+                            } catch (_) {}
+                        }
                         const pending = [...this.pendingReadLinks];
                         if (pending.length) {
                             const saved = await fetch('/api/toggle-batch', {
@@ -3625,13 +4070,26 @@
                             });
                             if (saved.ok) pending.forEach(link => this.pendingReadLinks.delete(link));
                         }
+                        const pendingUnread = [...this.pendingUnreadLinks];
+                        if (pendingUnread.length) {
+                            const removed = await fetch('/api/toggle-batch', {
+                                method: 'POST', keepalive: true,
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ links: pendingUnread, list: 'readStates', forceRemove: true })
+                            });
+                            if (removed.ok) pendingUnread.forEach(link => this.pendingUnreadLinks.delete(link));
+                        }
                         const res = await fetch('/api/user-states', { cache: 'no-store' });
                         if (res.ok) {
                             const data = await res.json();
-                            if (data.readStates) this.readStates = new Set([...data.readStates, ...this.pendingReadLinks]);
-                            if (data.savedStates) this.savedStates = this.dedupeStateLinks(data.savedStates);
-                            if (data.boardStates) this.boardStates = this.dedupeStateLinks(data.boardStates);
-                            if (data.hiddenStates) this.hiddenStates = this.dedupeStateLinks(data.hiddenStates);
+                            if (data.readStates) this.readStates = new Set([...data.readStates, ...this.pendingReadLinks].filter(link => !this.pendingUnreadLinks.has(link)));
+                            if (data.recentReadAt) {
+                                const localPending = Object.fromEntries([...this.pendingRecentReadLinks].map(link => [link, this.recentReadAt[link] || Date.now()]));
+                                this.recentReadAt = { ...data.recentReadAt, ...localPending };
+                            }
+                            if (data.savedStates) this.savedStates = this.applyPendingStateMutations('savedStates', data.savedStates);
+                            if (data.boardStates) this.boardStates = this.applyPendingStateMutations('boardStates', data.boardStates);
+                            if (data.hiddenStates) this.hiddenStates = this.applyPendingStateMutations('hiddenStates', data.hiddenStates);
                             if (data.userPreferences) this.userPreferences = { ...data.userPreferences, ...this.pendingPreferences };
                             if (data.clusteringModel) this.clusteringModel = data.clusteringModel;
                             
@@ -3962,28 +4420,49 @@
                                         return;
                                     }
 
-                                    if (
-                                        !this.overlayArticle?.sourceDeleted
-                                        && this.overlayPagination?.nextUrl
-                                    ) {
-                                        this.prefetchThreadPages(
-                                            this.overlayPagination,
-                                            this.overlayArticle?.feedUrl || ''
-                                        );
+                                    const activeVozUrl = this.overlayArticle?.resolvedLink || this.overlayArticle?.link || '';
+                                    const activeFeedUrl = this.overlayArticle?.feedUrl || '';
+                                    let vozPriorityWork = Promise.resolve();
+
+                                    if (!this.overlayArticle?.sourceDeleted) {
+                                        if (this.overlayFetchedFromCache) {
+                                            // VOZ_FRONTIER_PARALLEL_P0_V2
+                                            //
+                                            // A cached page can be stale in TWO independent ways:
+                                            //   1) newer posts may have arrived on this same page;
+                                            //   2) the thread may already have rolled over to page N+1.
+                                            //
+                                            // Refresh the exact current page and probe page N+1 in
+                                            // parallel. Neither one is allowed to block the other.
+                                            // This is shared by ordinary VOZ threads and Cache-board
+                                            // threads; Cache-board reconciliation preserves historical
+                                            // cached post bodies instead of discarding them.
+                                            vozPriorityWork = Promise.resolve(
+                                                this.checkVozNewPostsInBackground(
+                                                    activeVozUrl,
+                                                    activeFeedUrl
+                                                )
+                                            );
+                                        } else if (this.overlayPagination?.nextUrl) {
+                                            vozPriorityWork = Promise.resolve(
+                                                this.prefetchThreadPages(
+                                                    this.overlayPagination,
+                                                    activeFeedUrl
+                                                )
+                                            );
+                                        }
                                     }
 
-                                    const deferred =
-                                        this.vozDeferredArticlePrefetch;
-
-                                    if (
-                                        deferred
-                                        && deferred.requestId === applyRequestId
-                                    ) {
+                                    const deferred = this.vozDeferredArticlePrefetch;
+                                    if (deferred && deferred.requestId === applyRequestId) {
                                         this.vozDeferredArticlePrefetch = null;
-
-                                        this.prefetchNextAfter(
-                                            deferred.article
-                                        );
+                                        // Unrelated article prefetch waits until VOZ continuation
+                                        // discovery/read-ahead has had first use of the source queue.
+                                        Promise.resolve(vozPriorityWork).finally(() => {
+                                            if (this.articleOverlayOpen && this.overlayRequestId === applyRequestId) {
+                                                this.prefetchNextAfter(deferred.article);
+                                            }
+                                        });
                                     }
                                 });
                             });
@@ -4014,10 +4493,6 @@
                         } else {
                             lastRead = lastReadRaw;
                         }
-                    }
-                    
-                    if (this.overlayFetchedFromCache && !this.overlayArticle.sourceDeleted) {
-                        this.checkVozNewPostsInBackground(url, this.overlayArticle.feedUrl || '');
                     }
                     
                     if (this.vozPollingInterval) {
@@ -4065,8 +4540,10 @@
                                     const currentPage = this.overlayPagination ? this.overlayPagination.currentPage : 1;
                                     if (targetPage > 1 && targetPage !== currentPage) {
                                         // Build the target page URL from the thread URL
-                                        const baseThreadUrl = (this.overlayArticle.originalLink || this.overlayArticle.link || url).split(/[?#]/)[0].replace(/\/(?:page-\d+|post-\d+|unread|latest)\/?$/, '').replace(/\/$/, '');
-                                        const targetPageUrl = lastReadAbsId ? baseThreadUrl + '/post-' + lastReadAbsId : baseThreadUrl + '/page-' + targetPage;
+                                        const baseThreadUrl = this.overlayArticle.originalLink || this.overlayArticle.link || url;
+                                        const targetPageUrl = lastReadAbsId
+                                            ? this.vozThreadPageUrlFrom(baseThreadUrl, 1).replace(/\/$/, '') + '/post-' + lastReadAbsId
+                                            : this.vozThreadPageUrlFrom(baseThreadUrl, targetPage);
                                         this.vozThreadNotice = {
                                             text: `📍 Lần trước bạn đã đọc đến bài #${lastRead}.`,
                                             actionText: 'Tới bài',
@@ -4123,7 +4600,15 @@
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({ key, value })
                             });
-                            if (res.ok && this.pendingPreferences[key] === value) delete this.pendingPreferences[key];
+                            if (res.ok && this.pendingPreferences[key] === value) {
+                                let returned = null;
+                                try { returned = await res.json(); } catch {}
+                                delete this.pendingPreferences[key];
+                                if (returned && Object.prototype.hasOwnProperty.call(returned, 'value')) {
+                                    this.userPreferences = { ...this.userPreferences, [key]: returned.value };
+                                    try { localStorage.setItem(key, typeof returned.value === 'string' ? returned.value : JSON.stringify(returned.value)); } catch {}
+                                }
+                            }
                         } catch (_) { /* Retry on the next state sync. */ }
                     }));
                 },
@@ -4165,101 +4650,458 @@
                     });
                 },
 
-                async checkVozNewPostsInBackground(url, feedUrl = '') {
-                    const requestId = this.overlayRequestId;
+                vozThreadPageNumberFromUrl(url = '') {
                     try {
-                        const params = new URLSearchParams({ url, feedUrl, bypassCache: 'true' });
-                        const res = await fetch('/api/article-content?' + params.toString());
-                        if (!res.ok) return;
-                        const freshData = await res.json();
-                        if (!freshData || freshData.error) return;
-                        /* Never let a background refresh for an old article
-                           write into the newly opened article. */
-                        if (!this.articleOverlayOpen || this.overlayRequestId !== requestId) return;
-                        const activeUrl = this.overlayArticle?.resolvedLink || this.overlayArticle?.link || this.overlayArticle?.originalLink || '';
-                        if (activeUrl !== url) return;
-
-                        const renderedContainer = document.querySelector('#overlay-scroll-container .article-rendered-content');
-                        const currentPostsCount = renderedContainer
-                            ? renderedContainer.querySelectorAll('.voz-post[data-post-index], .voz-post').length
-                            : (this.overlayContent?.match(/class=["'][^"']*voz-post[^"']*["']/gi) || []).length;
-                        const freshPostsCount = (freshData.content?.match(/class=["'][^"']*voz-post[^"']*["']/gi) || []).length;
-                        const currentPageNum = this.overlayPagination?.currentPage || 1;
-                        const freshPageNum = freshData.pagination?.currentPage || 1;
-
-                        // Never splice posts from another VOZ page into the page
-                        // currently being read. This was the source of page 8
-                        // posts being followed by the sticky/page-1 post #1.
-                        if (freshPageNum !== currentPageNum) return;
-                        
-                        if (freshPostsCount > 0) {
-                            const parser = new DOMParser();
-                            const doc = parser.parseFromString(freshData.content, 'text/html');
-                            this.updateSourceTimes(doc);
-                            const freshPosts = Array.from(doc.querySelectorAll('.voz-post'));
-                            let contentUpdated = false;
-                            
-                            if (renderedContainer && this.overlayRequestId === requestId) {
-                                const currentPosts = Array.from(renderedContainer.querySelectorAll('.voz-post'));
-                                
-                                freshPosts.forEach(freshPost => {
-                                    const id = freshPost.id;
-                                    if (!id) return;
-                                    const currentPost = currentPosts.find(p => p.id === id);
-                                    
-                                    if (currentPost) {
-                                        if (currentPost.innerHTML !== freshPost.innerHTML) {
-                                            currentPost.innerHTML = freshPost.innerHTML;
-                                            contentUpdated = true;
-                                        }
-                                    } else {
-                                        renderedContainer.appendChild(freshPost.cloneNode(true));
-                                        contentUpdated = true;
-                                    }
-                                });
-                                
-                                if (contentUpdated) {
-                                    this.overlayContent = renderedContainer.innerHTML;
-                                    this.overlayPagination = freshData.pagination || this.overlayPagination;
-                                    this.hydrateTwitterEmbeds(renderedContainer);
-                                    const cached = this.articleContentCache?.get(url);
-                                    if (cached) {
-                                        cached.content = this.overlayContent;
-                                        cached.pagination = this.overlayPagination;
-                                    }
-                                }
-                            }
-                            
-                            if (contentUpdated && (freshData.url || url)) {
-                                const cacheKey = 'article_cache_v26_' + (freshData.url || url);
-                                try { localStorage.setItem(cacheKey, JSON.stringify({ data: { ...freshData, content: this.overlayContent }, timestamp: Date.now() })); } catch(e) {}
-                            }
+                        const parsed = new URL(String(url || ''), window.location.origin);
+                        const queryPage = Number.parseInt(parsed.searchParams.get('page'), 10);
+                        if (Number.isSafeInteger(queryPage) && queryPage > 0) return queryPage;
+                        const match = parsed.pathname.match(/\/page-(\d+)\/?$/i);
+                        if (match) {
+                            const page = Number.parseInt(match[1], 10);
+                            if (Number.isSafeInteger(page) && page > 0) return page;
                         }
-                    } catch(e) {}
+                    } catch (_) {}
+                    return null;
                 },
 
-                fetchThreadPage(targetUrl, feedUrl = '', prefetch = false) {
-                    if (!this.articleContentCache) this.articleContentCache = new Map();
-                    const cached = this.articleContentCache.get(targetUrl);
-                    if (cached) return Promise.resolve(cached);
-                    if (!this.threadPageRequests) this.threadPageRequests = new Map();
-                    if (this.threadPageRequests.has(targetUrl)) return this.threadPageRequests.get(targetUrl);
+                vozThreadPageUrlFrom(url = '', page = 1) {
+                    const pageNumber = Number.parseInt(page, 10);
+                    if (!Number.isSafeInteger(pageNumber) || pageNumber < 1) return String(url || '');
+                    try {
+                        const parsed = new URL(String(url || ''), window.location.origin);
+                        const hadQueryPage = parsed.searchParams.has('page');
+                        const hadPathPage = /\/page-\d+\/?$/i.test(parsed.pathname);
+                        const preferQuery = hadQueryPage || !hadPathPage;
+                        parsed.hash = '';
+                        parsed.pathname = parsed.pathname
+                            .replace(/\/(?:unread|latest|page-\d+|post-\d+)\/?$/i, '')
+                            .replace(/\/+$/, '');
+                        parsed.searchParams.delete('page');
+                        if (pageNumber > 1) {
+                            if (preferQuery) {
+                                if (!parsed.pathname.endsWith('/')) parsed.pathname += '/';
+                                parsed.searchParams.set('page', String(pageNumber));
+                            } else {
+                                parsed.pathname += '/page-' + pageNumber;
+                            }
+                        }
+                        return parsed.href;
+                    } catch (_) {
+                        const raw = String(url || '');
+                        const queryStyle = /[?&]page=\d+/i.test(raw) || !/\/page-\d+/i.test(raw);
+                        const base = raw
+                            .replace(/#.*$/, '')
+                            .replace(/([?&])page=\d+(&?)/i, (m, lead, tail) => lead === '?' && tail ? '?' : tail ? lead : '')
+                            .replace(/[?&]$/, '')
+                            .replace(/\/(?:unread|latest|page-\d+|post-\d+)\/?$/i, '')
+                            .replace(/\/+$/, '');
+                        if (pageNumber <= 1) return base;
+                        return queryStyle
+                            ? base + (base.includes('?') ? '&' : '?') + 'page=' + pageNumber
+                            : base + '/page-' + pageNumber;
+                    }
+                },
+
+                alignVozPaginationForCurrentView(livePagination, currentUrl, currentPage, nextUrl) {
+                    const current = Number(currentPage) || this.vozThreadPageNumberFromUrl(currentUrl) || 1;
+                    const known = new Map();
+                    const existingPages = Array.isArray(this.overlayPagination?.pages) ? this.overlayPagination.pages : [];
+                    const livePages = Array.isArray(livePagination?.pages) ? livePagination.pages : [];
+                    for (const entry of [...existingPages, ...livePages]) {
+                        const page = Number(entry?.page);
+                        if (!Number.isSafeInteger(page) || page < 1) continue;
+                        known.set(page, {
+                            ...entry,
+                            page,
+                            url: entry?.url || this.vozThreadPageUrlFrom(currentUrl, page),
+                            isCurrent: page === current
+                        });
+                    }
+                    if (!known.has(current)) {
+                        known.set(current, {
+                            page: current,
+                            url: this.vozThreadPageUrlFrom(currentUrl, current),
+                            isCurrent: true
+                        });
+                    }
+                    const nextPage = current + 1;
+                    if (nextUrl && !known.has(nextPage)) {
+                        known.set(nextPage, { page: nextPage, url: nextUrl, isCurrent: false });
+                    }
+                    return {
+                        ...(this.overlayPagination || {}),
+                        ...(livePagination || {}),
+                        currentPage: current,
+                        pages: [...known.values()].sort((a, b) => a.page - b.page)
+                            .map(entry => ({ ...entry, isCurrent: entry.page === current })),
+                        prevUrl: current > 1
+                            ? (known.get(current - 1)?.url || this.overlayPagination?.prevUrl || this.vozThreadPageUrlFrom(currentUrl, current - 1))
+                            : null,
+                        nextUrl: nextUrl || known.get(nextPage)?.url || livePagination?.nextUrl || null
+                    };
+                },
+
+                async probeVozLiveContinuationFromTail(url, feedUrl = '') {
+                    if (!this.articleOverlayOpen || !this.overlayArticle || this.overlayArticle.sourceDeleted) return null;
+
+                    const requestId = this.overlayRequestId;
+                    const currentPage = Number(this.overlayPagination?.currentPage)
+                        || this.vozThreadPageNumberFromUrl(url)
+                        || 1;
+                    const nextUrl = this.vozThreadPageUrlFrom(url, currentPage + 1);
+                    if (!nextUrl || nextUrl === url) return null;
+
+                    if (!this.vozTailProbeRequests) this.vozTailProbeRequests = new Map();
+                    const baseKey = this.vozThreadPageUrlFrom(url, 1);
+                    const key = `${baseKey}|${currentPage + 1}`;
+                    if (this.vozTailProbeRequests.has(key)) return this.vozTailProbeRequests.get(key);
+
                     const request = (async () => {
-                        const params = new URLSearchParams({ url: targetUrl, feedUrl, threadPage: '1' });
-                        if (prefetch) params.set('prefetch', '1');
-                        const res = await fetch('/api/article-content?' + params.toString());
-                        const data = await res.json();
-                        if (!res.ok || data.error || !data.content) throw new Error(data.error || 'Trang không tồn tại hoặc lỗi tải');
-                        this.articleContentCache.set(targetUrl, data);
-                        if (this.articleContentCache.size > 60) this.articleContentCache.delete(this.articleContentCache.keys().next().value);
-                        return data;
-                    })();
-                    this.threadPageRequests.set(targetUrl, request);
-                    request.finally(() => this.threadPageRequests.delete(targetUrl)).catch(() => {});
+                        try {
+                            console.log(
+                                `[VOZ FRONTIER] P0 probe live page ${currentPage + 1} while reading page ${currentPage}: ${nextUrl}`
+                            );
+
+                            // liveContinuation=true MUST bypass both frontend and
+                            // server caches. This request is the authoritative
+                            // "does page N+1 exist live now?" probe.
+                            const data = await this.fetchThreadPage(nextUrl, feedUrl, false, true);
+
+                            if (!this.articleOverlayOpen || this.overlayRequestId !== requestId) return null;
+
+                            const returnedPage = Number(data?.pagination?.currentPage)
+                                || this.vozThreadPageNumberFromUrl(data?.url || nextUrl)
+                                || (currentPage + 1);
+
+                            if (!data?.content || returnedPage <= currentPage) {
+                                console.log(
+                                    `[VOZ FRONTIER] No live continuation beyond page ${currentPage}`
+                                );
+                                return null;
+                            }
+
+                            console.log(
+                                `[VOZ FRONTIER] Live continuation found: page ${currentPage} -> ${returnedPage}`
+                            );
+
+                            this.overlayPagination = this.alignVozPaginationForCurrentView(
+                                data.pagination,
+                                url,
+                                currentPage,
+                                nextUrl
+                            );
+
+                            const currentKeys = [
+                                url,
+                                this.vozThreadPageUrlFrom(url, currentPage)
+                            ];
+                            for (const keyUrl of currentKeys) {
+                                const currentCached = this.articleContentCache?.get(keyUrl);
+                                if (currentCached) currentCached.pagination = this.overlayPagination;
+                            }
+
+                            // Page N+1 is already warm from the P0 probe. Normal
+                            // two-logical-page read-ahead can therefore consume
+                            // that in-memory page and fetch N+2 at P1 without
+                            // re-fetching N+1 live.
+                            this.prefetchThreadPages(
+                                { ...this.overlayPagination, nextUrl },
+                                feedUrl,
+                                false
+                            );
+
+                            return data;
+                        } catch (error) {
+                            console.warn(
+                                `[VOZ FRONTIER] Live page ${currentPage + 1} probe failed: ${error?.message || error}`
+                            );
+                            return null;
+                        }
+                    })().finally(() => this.vozTailProbeRequests?.delete(key));
+
+                    this.vozTailProbeRequests.set(key, request);
                     return request;
                 },
 
-                async prefetchThreadPages(pagination, feedUrl = '') {
+                async checkVozNewPostsInBackground(url, feedUrl = '') {
+                    const requestId = this.overlayRequestId;
+                    const currentPageNum = Number(this.overlayPagination?.currentPage)
+                        || this.vozThreadPageNumberFromUrl(url)
+                        || 1;
+                    const currentLiveUrl = this.vozThreadPageUrlFrom(url, currentPageNum);
+
+                    // Start N+1 immediately. Do not wait for the current-page
+                    // refresh: a 524/slow page N must never hide a live page N+1.
+                    const nextProbe = Promise.resolve(
+                        this.probeVozLiveContinuationFromTail(currentLiveUrl, feedUrl)
+                    );
+
+                    const currentRefresh = (async () => {
+                        try {
+                            const freshData = await this.fetchThreadPage(
+                                currentLiveUrl,
+                                feedUrl,
+                                false,
+                                true
+                            );
+
+                            if (!freshData || freshData.error) return null;
+
+                            // Never let a background refresh for an old article
+                            // write into the newly opened article.
+                            if (!this.articleOverlayOpen || this.overlayRequestId !== requestId) return null;
+
+                            const activeUrl =
+                                this.overlayArticle?.resolvedLink
+                                || this.overlayArticle?.link
+                                || this.overlayArticle?.originalLink
+                                || '';
+
+                            const activeBase = this.vozThreadPageUrlFrom(activeUrl, 1);
+                            const requestedBase = this.vozThreadPageUrlFrom(url, 1);
+                            if (activeBase !== requestedBase) return null;
+
+                            const renderedContainer = document.querySelector(
+                                '#overlay-scroll-container .article-rendered-content'
+                            );
+                            const freshPostsCount = (
+                                freshData.content?.match(/class=["'][^"']*voz-post[^"']*["']/gi)
+                                || []
+                            ).length;
+                            const freshPageNum = Number(freshData.pagination?.currentPage)
+                                || this.vozThreadPageNumberFromUrl(freshData.url || currentLiveUrl)
+                                || 1;
+
+                            // Never splice posts from another VOZ page into the
+                            // page currently being read.
+                            if (freshPageNum !== currentPageNum) return null;
+
+                            if (freshPostsCount > 0) {
+                                const parser = new DOMParser();
+                                const doc = parser.parseFromString(freshData.content, 'text/html');
+                                this.updateSourceTimes(doc);
+                                const freshPosts = Array.from(doc.querySelectorAll('.voz-post'));
+                                let contentUpdated = false;
+
+                                if (renderedContainer && this.overlayRequestId === requestId) {
+                                    const currentPosts = Array.from(
+                                        renderedContainer.querySelectorAll('.voz-post')
+                                    );
+                                    const postId = node =>
+                                        node.getAttribute('data-absolute-post-id')
+                                        || node.id
+                                        || '';
+                                    const freshById = new Map(
+                                        freshPosts
+                                            .map(node => [postId(node), node])
+                                            .filter(([id]) => id)
+                                    );
+                                    const freshIds = new Set(freshById.keys());
+                                    const currentById = new Map(
+                                        currentPosts
+                                            .map(node => [postId(node), node])
+                                            .filter(([id]) => id)
+                                    );
+                                    const currentIds = currentPosts.map(postId);
+                                    const preserveCachedBodies =
+                                        this.boardFolderFor(this.overlayArticle) === 'cache';
+                                    const after = new Map();
+                                    const leading = [];
+
+                                    // Cache-board only: posts that disappeared
+                                    // live remain historical overlays at their
+                                    // original sequence location. Normal VOZ
+                                    // threads follow the live page exactly.
+                                    if (preserveCachedBodies) {
+                                        for (let i = 0; i < currentPosts.length; i++) {
+                                            const id = currentIds[i];
+                                            if (!id || freshIds.has(id)) continue;
+
+                                            let previousLive = '';
+                                            for (let j = i - 1; j >= 0; j--) {
+                                                if (freshIds.has(currentIds[j])) {
+                                                    previousLive = currentIds[j];
+                                                    break;
+                                                }
+                                            }
+
+                                            const node = currentPosts[i].cloneNode(true);
+                                            if (previousLive) {
+                                                if (!after.has(previousLive)) after.set(previousLive, []);
+                                                after.get(previousLive).push(node);
+                                            } else {
+                                                leading.push(node);
+                                            }
+                                        }
+                                    }
+
+                                    const fragment = document.createDocumentFragment();
+                                    leading.forEach(node => fragment.appendChild(node));
+
+                                    freshPosts.forEach(freshPost => {
+                                        const id = postId(freshPost);
+                                        const sourceNode =
+                                            preserveCachedBodies && currentById.has(id)
+                                                ? currentById.get(id)
+                                                : freshPost;
+
+                                        fragment.appendChild(sourceNode.cloneNode(true));
+                                        (after.get(id) || []).forEach(node =>
+                                            fragment.appendChild(node)
+                                        );
+                                    });
+
+                                    const beforeHtml = renderedContainer.innerHTML;
+                                    renderedContainer.replaceChildren(fragment);
+                                    contentUpdated = beforeHtml !== renderedContainer.innerHTML;
+                                    this.overlayContent = renderedContainer.innerHTML;
+
+                                    this.overlayPagination =
+                                        this.alignVozPaginationForCurrentView(
+                                            freshData.pagination,
+                                            currentLiveUrl,
+                                            currentPageNum,
+                                            freshData.pagination?.nextUrl || null
+                                        );
+
+                                    this.hydrateTwitterEmbeds(renderedContainer);
+
+                                    const cacheKeys = [
+                                        url,
+                                        currentLiveUrl,
+                                        freshData.url
+                                    ].filter(Boolean);
+
+                                    for (const cacheUrl of new Set(cacheKeys)) {
+                                        const cached = this.articleContentCache?.get(cacheUrl);
+                                        if (cached) {
+                                            cached.content = this.overlayContent;
+                                            cached.pagination = this.overlayPagination;
+                                        }
+                                    }
+                                }
+
+                                if (
+                                    this.overlayPagination?.nextUrl
+                                    && this.overlayRequestId === requestId
+                                ) {
+                                    this.prefetchThreadPages(
+                                        this.overlayPagination,
+                                        this.overlayArticle.feedUrl || '',
+                                        false
+                                    );
+                                }
+
+                                if (contentUpdated && (freshData.url || currentLiveUrl)) {
+                                    const cacheKey =
+                                        'article_cache_v26_' + (freshData.url || currentLiveUrl);
+                                    try {
+                                        localStorage.setItem(
+                                            cacheKey,
+                                            JSON.stringify({
+                                                data: {
+                                                    ...freshData,
+                                                    content: this.overlayContent,
+                                                    pagination: this.overlayPagination
+                                                },
+                                                timestamp: Date.now()
+                                            })
+                                        );
+                                    } catch(e) {}
+                                }
+                            }
+
+                            return freshData;
+                        } catch (error) {
+                            console.warn(
+                                `[VOZ FRONTIER] Current-page live refresh failed for page ${currentPageNum}: ${error?.message || error}`
+                            );
+                            return null;
+                        }
+                    })();
+
+                    const results = await Promise.allSettled([
+                        currentRefresh,
+                        nextProbe
+                    ]);
+
+                    return results;
+                },
+
+                fetchThreadPage(targetUrl, feedUrl = '', prefetch = false, liveContinuation = false) {
+                    if (!this.articleContentCache) this.articleContentCache = new Map();
+                    const cached = this.articleContentCache.get(targetUrl);
+
+                    // Normal navigation/read-ahead is cache-first. A live frontier
+                    // probe is the opposite: it MUST bypass the in-memory page too,
+                    // otherwise a stale cached last page can masquerade as live.
+                    if (cached && !liveContinuation) return Promise.resolve(cached);
+
+                    if (!this.threadPageRequests) this.threadPageRequests = new Map();
+                    const requestKey = liveContinuation ? `live:${targetUrl}` : targetUrl;
+                    if (this.threadPageRequests.has(requestKey)) return this.threadPageRequests.get(requestKey);
+
+                    const request = (async () => {
+                        const params = new URLSearchParams({
+                            url: targetUrl,
+                            feedUrl,
+                            threadPage: '1'
+                        });
+
+                        // liveContinuation is P0 interactive frontier work.
+                        // Do not mark it as ordinary P1/P2 prefetch.
+                        if (prefetch && !liveContinuation) params.set('prefetch', '1');
+
+                        if (liveContinuation) {
+                            params.set('bypassCache', 'true');
+                            params.set('bypassBoardCache', '1');
+                            params.set('frontier', '1');
+                        }
+
+                        const controller = liveContinuation ? new AbortController() : null;
+                        const timeout = controller
+                            ? setTimeout(() => controller.abort(), 35_000)
+                            : null;
+
+                        try {
+                            const res = await fetch(
+                                '/api/article-content?' + params.toString(),
+                                controller ? { signal: controller.signal } : undefined
+                            );
+                            const data = await res.json();
+
+                            if (liveContinuation && data?.liveRefreshFailed) {
+                                throw new Error(
+                                    data.liveRefreshError
+                                    || 'Live VOZ refresh failed; stale cache was returned'
+                                );
+                            }
+
+                            if (!res.ok || data.error || !data.content) {
+                                throw new Error(
+                                    data.error || 'Trang không tồn tại hoặc lỗi tải'
+                                );
+                            }
+
+                            this.articleContentCache.set(targetUrl, data);
+                            if (this.articleContentCache.size > 60) {
+                                this.articleContentCache.delete(
+                                    this.articleContentCache.keys().next().value
+                                );
+                            }
+
+                            return data;
+                        } finally {
+                            if (timeout) clearTimeout(timeout);
+                        }
+                    })();
+
+                    this.threadPageRequests.set(requestKey, request);
+                    request.finally(() => this.threadPageRequests.delete(requestKey)).catch(() => {});
+                    return request;
+                },
+
+                async prefetchThreadPages(pagination, feedUrl = '', liveContinuation = false) {
                     const requestId = this.overlayRequestId;
                     let nextUrl = pagination?.nextUrl;
                     // Read ahead directly instead of waiting behind the article queue.
@@ -4267,7 +5109,7 @@
                     for (let depth = 0; depth < 2 && nextUrl; depth++) {
                         if (!this.articleOverlayOpen || this.overlayRequestId !== requestId) return;
                         try {
-                            const data = await this.fetchThreadPage(nextUrl, feedUrl, true);
+                            const data = await this.fetchThreadPage(nextUrl, feedUrl, true, liveContinuation);
                             nextUrl = data.pagination?.nextUrl;
                         } catch { return; }
                     }
@@ -4666,7 +5508,7 @@
                 },
 
                 vozPdfPageUrl(baseUrl, page) {
-                    return page <= 1 ? baseUrl : `${baseUrl}/page-${page}`;
+                    return this.vozThreadPageUrlFrom(baseUrl, page);
                 },
 
                 vozPdfBaseUrl(article = this.overlayArticle) {
@@ -4748,7 +5590,7 @@
                             Number(data.pagination?.currentPage || page),
                             ...paginationPages.map(item => Number(item?.page || 0))
                         );
-                        const nextPage = String(data.pagination?.nextUrl || '').match(/\/page-(\d+)/i)?.[1];
+                        const nextPage = this.vozThreadPageNumberFromUrl(data.pagination?.nextUrl || '');
                         if (nextPage) totalPages = Math.max(totalPages, Number(nextPage));
 
                         let parsed = new DOMParser().parseFromString(`<main>${data.content || ''}</main>`, 'text/html');
@@ -5186,6 +6028,14 @@
                     return this.normalizeArticleSourceUrl(raw);
                 },
 
+                isRedditArticle(articleOrUrl) {
+                    try {
+                        const url = new URL(this.articleReaderUrl(articleOrUrl));
+                        return ['http:', 'https:'].includes(url.protocol)
+                            && (url.hostname === 'reddit.com' || url.hostname.endsWith('.reddit.com') || url.hostname === 'redd.it');
+                    } catch { return false; }
+                },
+
                 articleSourceUrl(article) {
                     const raw = this.articleReaderUrl(article);
                     if (this.selectedFilterType === 'board' || this.isOnBoard(article)) {
@@ -5399,6 +6249,7 @@
                 },
 
                 prefetchNextAfter(articleOrLink) {
+                    if (this.isRedditArticle(articleOrLink)) return;
                     const targetUrl = typeof articleOrLink === 'string'
                         ? articleOrLink
                         : (this.articleReaderUrl(articleOrLink) || articleOrLink?.id);
@@ -5425,6 +6276,7 @@
                     if (!this.prefetchQueue) this.prefetchQueue = [];
 
                     for (const art of articlesToPrefetch) {
+                        if (this.isRedditArticle(art)) continue;
                         const url = this.articleReaderUrl(art);
                         if (!url || this.articleContentCache.has(url)) continue;
                         if (!this.prefetchQueue.some(item => this.articleReaderUrl(item) === url)) {
@@ -5447,7 +6299,7 @@
                         }
 
                         const art = this.prefetchQueue.shift();
-                        if (!art) continue;
+                        if (!art || this.isRedditArticle(art)) continue;
                         const url = this.articleReaderUrl(art);
                         if (!url || (this.articleContentCache && this.articleContentCache.has(url))) continue;
 
@@ -5561,6 +6413,11 @@
                 },
 
                 async openArticleOverlay(article, options = {}) {
+                    if (this.isRedditArticle(article)) {
+                        window.open(this.articleReaderUrl(article), '_blank', 'noopener,noreferrer');
+                        this.markAsReadExplicit(article.originalLink || article.link);
+                        return;
+                    }
                     this.releaseArticleReaderSession();
                     if (this.articlePdfState === 'preparing') this.cancelArticlePdf({ silent: true });
                     if (this.articlePdfResetTimer) clearTimeout(this.articlePdfResetTimer);
@@ -5575,9 +6432,10 @@
                     const requestId = 'article-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
                     let targetUrl = this.articleReaderUrl(article);
                     let resumePage = null;
-                    const hasExplicitPage = /\/page-\d+(?:[/?#]|$)/i.test(targetUrl);
+                    const explicitPageNumber = this.vozThreadPageNumberFromUrl(targetUrl);
+                    const hasExplicitPage = Number.isSafeInteger(explicitPageNumber) && explicitPageNumber > 0;
                     const isVoz = targetUrl.includes('voz.vn') || article.siteName === 'VOZ';
-                    if (isVoz && !/\/(?:page|post)-\d+(?:[/?#]|$)/i.test(targetUrl)) {
+                    if (isVoz && !hasExplicitPage && !/\/post-\d+(?:[/?#]|$)/i.test(targetUrl)) {
                         const threadMatch = targetUrl.match(/threads\/[^\/.]+\.(\d+)/i) || targetUrl.match(/\b(\d{5,8})\b/);
                         const threadId = threadMatch ? threadMatch[1] : targetUrl;
                         const prefKey = 'voz_last_read_post_' + threadId;
@@ -5604,8 +6462,7 @@
                         } else if (lastRead && Number(lastRead) > 1) {
                             const targetPage = Math.ceil(Number(lastRead) / 20);
                             if (targetPage > 1) {
-                                const baseThreadUrl = targetUrl.split(/[?#]/)[0].replace(/\/unread\/?(?:[?#].*)?$/i, '').replace(/\/(?:page-\d+|post-\d+|unread|latest)\/?$/, '').replace(/\/$/, '');
-                                targetUrl = baseThreadUrl + '/page-' + targetPage;
+                                targetUrl = this.vozThreadPageUrlFrom(targetUrl, targetPage);
                             }
                         }
                     }
@@ -5637,6 +6494,7 @@
                     const articleScroll = document.getElementById('overlay-scroll-container');
                     if (articleScroll) articleScroll.scrollTop = 0;
                     this.markAsReadExplicit(article.originalLink || article.link);
+                    this.recordRecentlyRead(article.originalLink || article.link);
                     document.body.style.overflow = 'hidden';
 
                     // AI Summary: reset and fetch
@@ -5661,6 +6519,7 @@
                     if (currentIndex !== -1) {
                         for (let i = currentIndex + 1; i < Math.min(sourceArray.length, currentIndex + 6); i++) {
                             const nextArticle = sourceArray[i];
+                            if (this.isRedditArticle(nextArticle)) continue;
                             const u = this.articleReaderUrl(nextArticle);
                             if (u && u !== targetUrl) {
                                 prefetchTargets.push({
@@ -5694,7 +6553,7 @@
                     if (resumePostId && Number.isSafeInteger(resumePage) && resumePage > 0) {
                         // Prefer the saved page over a publisher post redirect,
                         // but only display it if the permanent post ID is present.
-                        const hintedUrl = targetUrl.replace(/\/post-\d+\/?$/, resumePage > 1 ? '/page-' + resumePage : '');
+                        const hintedUrl = this.vozThreadPageUrlFrom(targetUrl, resumePage);
                         try {
                             const hinted = await this.fetchThreadPage(hintedUrl, article.feedUrl || '');
                             if (!this.articleOverlayOpen || this.overlayRequestId !== requestId) return;
@@ -6759,3 +7618,1061 @@ document.addEventListener('click', event => {
     reconcileFocus(true);
 })();
 
+
+/*
+ * SMART_VIEWPORT_CLIENT_V1
+ *
+ * The page-level Smart queue is not enough when the reader quickly scrolls
+ * from story #2 to #15 (or back upward). Report the cards physically visible
+ * inside #scroll-container so the server can re-promote them dynamically.
+ *
+ * No /api/data refetch is performed here.
+ */
+(() => {
+    if (window.__smartViewportPriorityInstalled) {
+        return;
+    }
+
+    window.__smartViewportPriorityInstalled = true;
+
+    const ENDPOINT =
+        '/api/ai/briefing-viewport';
+
+    const SCROLL_REPUSH_PX = 80;
+    const DEBOUNCE_MS = 80;
+    const HEARTBEAT_MS = 5000;
+    const MAX_VISIBLE = 8;
+
+    let timer = null;
+    let observer = null;
+    let heartbeat = null;
+
+    let lastSignature = '';
+    let lastScrollTop = -1;
+    let lastGeneration = 0;
+    let forceNext = true;
+
+    function nextGeneration() {
+        lastGeneration =
+            Math.max(
+                Date.now(),
+                lastGeneration + 1
+            );
+
+        return lastGeneration;
+    }
+
+    function root() {
+        return document.getElementById(
+            'scroll-container'
+        );
+    }
+
+    function isTopActive(sc) {
+        return (
+            sc &&
+            sc.dataset.smartTop === '1' &&
+            Boolean(
+                sc.dataset.smartView
+            ) &&
+            !document.hidden
+        );
+    }
+
+    function visibleCards(sc) {
+        const rootRect =
+            sc.getBoundingClientRect();
+
+        const center =
+            (
+                rootRect.top +
+                rootRect.bottom
+            ) / 2;
+
+        const result = [];
+
+        for (
+            const card
+            of sc.querySelectorAll(
+                '.article-card[data-smart-cluster-id]'
+            )
+        ) {
+            const id =
+                String(
+                    card.dataset
+                        .smartClusterId ||
+                    ''
+                ).trim();
+
+            if (!id) {
+                continue;
+            }
+
+            const rect =
+                card.getBoundingClientRect();
+
+            const overlap =
+                Math.max(
+                    0,
+                    Math.min(
+                        rect.bottom,
+                        rootRect.bottom
+                    ) -
+                    Math.max(
+                        rect.top,
+                        rootRect.top
+                    )
+                );
+
+            const minimumVisible =
+                Math.min(
+                    80,
+                    Math.max(
+                        30,
+                        rect.height * 0.12
+                    )
+                );
+
+            if (
+                overlap <
+                minimumVisible
+            ) {
+                continue;
+            }
+
+            result.push({
+                id,
+                page:
+                    Math.max(
+                        1,
+                        Number(
+                            card.dataset
+                                .smartCardPage
+                        ) || 1
+                    ),
+                centerDistance:
+                    Math.abs(
+                        (
+                            rect.top +
+                            rect.bottom
+                        ) / 2 -
+                        center
+                    )
+            });
+        }
+
+        result.sort(
+            (a, b) =>
+                a.centerDistance -
+                b.centerDistance
+        );
+
+        return result.slice(
+            0,
+            MAX_VISIBLE
+        );
+    }
+
+    function sendViewport(
+        {
+            force = false
+        } = {}
+    ) {
+        const sc = root();
+
+        if (!isTopActive(sc)) {
+            lastSignature = '';
+            lastScrollTop = -1;
+            return;
+        }
+
+        const cards =
+            visibleCards(sc);
+
+        if (!cards.length) {
+            return;
+        }
+
+        // The card closest to viewport center defines the active page.
+        // Visible cards straddling the boundary are still promoted together.
+        const page =
+            cards[0]?.page ||
+            Math.max(
+                1,
+                Number(
+                    sc.dataset
+                        .smartCurrentPage
+                ) || 1
+            );
+
+        const ids =
+            cards.map(
+                card => card.id
+            );
+
+        const signature =
+            JSON.stringify([
+                sc.dataset.smartView,
+                sc.dataset.smartFilter,
+                sc.dataset.smartRegion,
+                page,
+                ids
+            ]);
+
+        const scrollTop =
+            Number(sc.scrollTop) || 0;
+
+        const moved =
+            lastScrollTop < 0 ||
+            Math.abs(
+                scrollTop -
+                lastScrollTop
+            ) >=
+                SCROLL_REPUSH_PX;
+
+        if (
+            !force &&
+            !forceNext &&
+            signature ===
+                lastSignature &&
+            !moved
+        ) {
+            return;
+        }
+
+        forceNext = false;
+        lastSignature = signature;
+        lastScrollTop = scrollTop;
+
+        const generation =
+            nextGeneration();
+
+        fetch(
+            ENDPOINT,
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type':
+                        'application/json'
+                },
+                keepalive: true,
+                body:
+                    JSON.stringify({
+                        smartViewToken:
+                            sc.dataset
+                                .smartView,
+                        filterValue:
+                            sc.dataset
+                                .smartFilter ||
+                            '',
+                        smartRegion:
+                            sc.dataset
+                                .smartRegion ||
+                            '',
+                        page,
+                        visibleClusterIds:
+                            ids,
+                        generation
+                    })
+            }
+        ).catch(() => {});
+    }
+
+    function schedule(
+        force = false
+    ) {
+        if (force) {
+            forceNext = true;
+        }
+
+        if (timer) {
+            clearTimeout(timer);
+        }
+
+        timer =
+            setTimeout(
+                () => {
+                    timer = null;
+
+                    sendViewport({
+                        force:
+                            forceNext
+                    });
+                },
+                DEBOUNCE_MS
+            );
+    }
+
+    function install() {
+        const sc = root();
+
+        if (!sc) {
+            setTimeout(
+                install,
+                250
+            );
+            return;
+        }
+
+        sc.addEventListener(
+            'scroll',
+            () => schedule(false),
+            {
+                passive: true
+            }
+        );
+
+        window.addEventListener(
+            'resize',
+            () => schedule(true),
+            {
+                passive: true
+            }
+        );
+
+        document.addEventListener(
+            'visibilitychange',
+            () => {
+                if (!document.hidden) {
+                    schedule(true);
+                }
+            }
+        );
+
+        observer =
+            new MutationObserver(
+                () => schedule(true)
+            );
+
+        observer.observe(
+            sc,
+            {
+                childList: true,
+                subtree: true,
+                attributes: true,
+                attributeFilter: [
+                    'data-smart-view',
+                    'data-smart-top',
+                    'data-smart-cluster-id',
+                    'data-smart-card-page'
+                ]
+            }
+        );
+
+        heartbeat =
+            setInterval(
+                () => {
+                    if (
+                        isTopActive(sc)
+                    ) {
+                        sendViewport({
+                            force: true
+                        });
+                    }
+                },
+                HEARTBEAT_MS
+            );
+
+        schedule(true);
+    }
+
+    if (
+        document.readyState ===
+        'loading'
+    ) {
+        document.addEventListener(
+            'DOMContentLoaded',
+            install,
+            {
+                once: true
+            }
+        );
+    }
+    else {
+        install();
+    }
+})();
+
+
+/*
+ * OPENCLI_VOZ_LEASE_CLIENT_V1
+ *
+ * Automatically pins the ONE existing voz.vn OpenCLI shared browser page
+ * whenever the currently selected RSS tab contains only VOZ sources/threads.
+ *
+ * Detection is data-driven:
+ * - a selected feed is VOZ when that feed URL belongs to voz.vn;
+ * - a selected category is VOZ-only when every feed in that category is VOZ;
+ * - other views qualify only when all currently loaded articles are VOZ
+ *   thread URLs.
+ *
+ * We do NOT hard-code names such as "Forum" or "Điểm báo".
+ *
+ * Leaving the VOZ-only view releases the pin. The server then applies its
+ * ordinary 60-second idle-close policy rather than closing immediately.
+ */
+(() => {
+    if (
+        window.__vozOpenCliLeaseClientInstalled
+    ) {
+        return;
+    }
+
+    window.__vozOpenCliLeaseClientInstalled =
+        true;
+
+    const ENDPOINT =
+        '/api/opencli/voz-lease';
+
+    // Every browser document/tab must own a distinct lease id. sessionStorage
+    // can be cloned when a tab is duplicated, which allowed one tab to release
+    // another tab's VOZ pin. Stale ids are expired server-side by heartbeat.
+    const HEARTBEAT_MS =
+        20 * 1000;
+
+    // OPENCLI_VOZ_VIEWER_STABLE_PIN_V4
+    // A one-second SPA reconciliation must never tear down the physical VOZ
+    // keepalive while the user is still on a VOZ-only view. A short release
+    // grace absorbs transient empty/mixed article arrays during pagination and
+    // route changes; true navigation away still releases shortly afterwards.
+    const RELEASE_GRACE_MS =
+        10 * 1000;
+
+    let leaseActive = false;
+    let lastWanted = null;
+    let reconcileTimer = null;
+    let releaseTimer = null;
+
+
+    function makeViewerId() {
+        return (
+            crypto?.randomUUID?.() ||
+            (
+                Date.now().toString(36)
+                + '-'
+                + Math.random()
+                    .toString(36)
+                    .slice(2)
+            )
+        );
+    }
+
+
+    const viewerId =
+        makeViewerId();
+
+
+    function appState() {
+        const body =
+            document.body;
+
+        if (!body) {
+            return null;
+        }
+
+        try {
+            if (
+                window.Alpine &&
+                typeof window.Alpine.$data ===
+                    'function'
+            ) {
+                return window.Alpine.$data(
+                    body
+                );
+            }
+        }
+        catch {
+        }
+
+        return (
+            body._x_dataStack?.[0] ||
+            null
+        );
+    }
+
+
+    function parsedUrl(value) {
+        try {
+            return new URL(
+                String(value || ''),
+                location.origin
+            );
+        }
+        catch {
+            return null;
+        }
+    }
+
+
+    function isVozHostUrl(value) {
+        const url =
+            parsedUrl(value);
+
+        if (!url) {
+            return false;
+        }
+
+        const hostname =
+            url.hostname
+                .toLowerCase();
+
+        return (
+            hostname === 'voz.vn' ||
+            hostname.endsWith(
+                '.voz.vn'
+            )
+        );
+    }
+
+
+    function isVozThreadUrl(value) {
+        const url =
+            parsedUrl(value);
+
+        if (
+            !url ||
+            !isVozHostUrl(url.href)
+        ) {
+            return false;
+        }
+
+        return /^\/(?:t|threads)\//i.test(
+            url.pathname
+        );
+    }
+
+
+    function feedCategory(feed) {
+        return String(
+            feed?.category ||
+            feed?.feedCategory ||
+            'Others'
+        );
+    }
+
+
+    function feedUrl(feed) {
+        return (
+            feed?.url ||
+            feed?.feedUrl ||
+            feed?.link ||
+            ''
+        );
+    }
+
+
+    function articleUrl(article) {
+        return (
+            article?.originalLink ||
+            article?.resolvedLink ||
+            article?.link ||
+            ''
+        );
+    }
+
+
+    function routedArticleUrl() {
+        const hash =
+            String(location.hash || '');
+        const marker =
+            '?article=';
+        const index =
+            hash.lastIndexOf(marker);
+
+        if (index < 0) {
+            return '';
+        }
+
+        try {
+            return decodeURIComponent(
+                hash.slice(
+                    index + marker.length
+                )
+            );
+        }
+        catch {
+            return '';
+        }
+    }
+
+
+    function currentViewIsVozOnly(
+        state
+    ) {
+        if (
+            !state ||
+            state.isLoggedIn === false
+        ) {
+            return false;
+        }
+
+        const type =
+            String(
+                state.selectedFilterType ||
+                ''
+            );
+
+        const value =
+            String(
+                state.selectedFilterValue ||
+                ''
+            );
+
+        const feeds =
+            Array.isArray(state.feeds)
+                ? state.feeds
+                : [];
+
+
+        // An open VOZ thread is authoritative even if the backing list is in a
+        // transient loading state or contains stale cards from the prior view.
+        if (
+            isVozThreadUrl(
+                articleUrl(
+                    state.overlayArticle
+                )
+            ) ||
+            isVozThreadUrl(
+                routedArticleUrl()
+            )
+        ) {
+            return true;
+        }
+
+
+        /*
+         * Feed selection can be identified before its article list finishes
+         * loading, so clicking a VOZ feed can start the shared browser warmup
+         * immediately.
+         */
+        if (
+            type === 'feed' &&
+            value
+        ) {
+            const selectedFeeds =
+                feeds.filter(
+                    feed =>
+                        String(
+                            feedUrl(feed)
+                        ) === value
+                );
+
+            if (
+                selectedFeeds.length
+            ) {
+                return selectedFeeds.every(
+                    feed =>
+                        isVozHostUrl(
+                            feedUrl(feed)
+                        )
+                );
+            }
+
+            return isVozHostUrl(
+                value
+            );
+        }
+
+
+        /*
+         * Likewise for categories such as Forum / Điểm báo: derive the answer
+         * from their member feed URLs rather than from the category's name.
+         */
+        if (
+            type === 'category' &&
+            value
+        ) {
+            const categoryFeeds =
+                feeds.filter(
+                    feed =>
+                        feedCategory(feed) ===
+                        value
+                );
+
+            if (
+                categoryFeeds.length
+            ) {
+                return categoryFeeds.every(
+                    feed =>
+                        isVozHostUrl(
+                            feedUrl(feed)
+                        )
+                );
+            }
+        }
+
+
+        /*
+         * Generic fallback for other tabs/views.
+         * They qualify only when every loaded item is actually a VOZ thread.
+         */
+        const articles =
+            Array.isArray(
+                state.displayedArticles
+            )
+                ? state.displayedArticles
+                : (
+                    Array.isArray(state.articles)
+                        ? state.articles
+                        : []
+                );
+
+        // Ignore transient/placeholder cards with no article URL. They should
+        // not turn an otherwise VOZ-only tab into a non-VOZ view.
+        const articleUrls =
+            articles
+                .map(articleUrl)
+                .filter(Boolean);
+
+        if (!articleUrls.length) {
+            // Do not briefly drop the VOZ pin while the same VOZ-only tab is
+            // reloading/paginating and its article array is temporarily empty.
+            return Boolean(
+                leaseActive &&
+                state.isLoadingArticles
+            );
+        }
+
+        return articleUrls.every(
+            isVozThreadUrl
+        );
+    }
+
+
+    async function postLease(
+        active,
+        {
+            unload = false
+        } = {}
+    ) {
+        const body =
+            JSON.stringify({
+                viewerId,
+                active:
+                    active === true
+            });
+
+        if (
+            unload &&
+            navigator.sendBeacon
+        ) {
+            try {
+                const payload =
+                    new Blob(
+                        [body],
+                        {
+                            type:
+                                'application/json'
+                        }
+                    );
+
+                if (
+                    navigator.sendBeacon(
+                        ENDPOINT,
+                        payload
+                    )
+                ) {
+                    return;
+                }
+            }
+            catch {
+            }
+        }
+
+        try {
+            await fetch(
+                ENDPOINT,
+                {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type':
+                            'application/json'
+                    },
+                    body,
+                    keepalive: true
+                }
+            );
+        }
+        catch {
+            /*
+             * The next click/hash reconciliation or heartbeat retries.
+             * Never make navigation/UI depend on this optimization.
+             */
+        }
+    }
+
+
+    function cancelReleaseTimer() {
+        if (!releaseTimer) {
+            return;
+        }
+
+        clearTimeout(
+            releaseTimer
+        );
+        releaseTimer = null;
+    }
+
+
+    function reconcile(
+        {
+            force = false
+        } = {}
+    ) {
+        const state =
+            appState();
+
+        if (!state) {
+            return;
+        }
+
+        const wanted =
+            currentViewIsVozOnly(
+                state
+            );
+
+        lastWanted =
+            wanted;
+
+        if (wanted) {
+            cancelReleaseTimer();
+
+            const wasActive =
+                leaseActive;
+            leaseActive = true;
+
+            if (
+                force ||
+                !wasActive
+            ) {
+                void postLease(true);
+            }
+            return;
+        }
+
+        if (!leaseActive) {
+            cancelReleaseTimer();
+            return;
+        }
+
+        // Do not release on the first transient false result. Re-evaluate after
+        // a short stable interval; a VOZ route/article/list that comes back in
+        // the meantime cancels this timer.
+        if (releaseTimer) {
+            return;
+        }
+
+        releaseTimer =
+            setTimeout(
+                () => {
+                    releaseTimer = null;
+
+                    const freshState =
+                        appState();
+
+                    if (
+                        freshState &&
+                        currentViewIsVozOnly(
+                            freshState
+                        )
+                    ) {
+                        lastWanted = true;
+                        void postLease(true);
+                        return;
+                    }
+
+                    leaseActive = false;
+                    lastWanted = false;
+                    void postLease(false);
+                },
+                RELEASE_GRACE_MS
+            );
+    }
+
+
+    function scheduleReconcile(
+        delay = 0,
+        force = false
+    ) {
+        if (reconcileTimer) {
+            clearTimeout(
+                reconcileTimer
+            );
+        }
+
+        reconcileTimer =
+            setTimeout(
+                () => {
+                    reconcileTimer =
+                        null;
+
+                    reconcile({
+                        force
+                    });
+                },
+                delay
+            );
+    }
+
+
+    function install() {
+        /*
+         * Click is especially useful: Alpine's tab handler normally mutates
+         * selectedFilterType/value synchronously. Running just after it means a
+         * VOZ category/feed can begin browser bootstrap before its article list
+         * has finished loading.
+         */
+        document.addEventListener(
+            'click',
+            () => {
+                scheduleReconcile(
+                    0,
+                    false
+                );
+
+                /*
+                 * A second cheap pass catches async filter state changes.
+                 */
+                setTimeout(
+                    () =>
+                        scheduleReconcile(
+                            0,
+                            false
+                        ),
+                    120
+                );
+            },
+            true
+        );
+
+
+        window.addEventListener(
+            'hashchange',
+            () =>
+                scheduleReconcile(
+                    0,
+                    false
+                )
+        );
+
+
+        window.addEventListener(
+            'popstate',
+            () =>
+                scheduleReconcile(
+                    0,
+                    false
+                )
+        );
+
+
+        window.addEventListener(
+            'pageshow',
+            () =>
+                scheduleReconcile(
+                    0,
+                    true
+                )
+        );
+
+
+        /*
+         * Do NOT release on document.hidden.
+         *
+         * Merely changing Chrome tabs/minimizing the window does not mean the
+         * RSS website was closed or switched away from the VOZ RSS view.
+         */
+
+
+        const releaseOnExit =
+            () => {
+                cancelReleaseTimer();
+
+                if (!leaseActive) {
+                    return;
+                }
+
+                leaseActive =
+                    false;
+
+                void postLease(
+                    false,
+                    {
+                        unload: true
+                    }
+                );
+            };
+
+
+        window.addEventListener(
+            'pagehide',
+            releaseOnExit
+        );
+
+
+        window.addEventListener(
+            'beforeunload',
+            releaseOnExit
+        );
+
+
+        /*
+         * Reconciliation catches article/filter data that changed without a
+         * user click. This does not hit the server unless the VOZ-only state
+         * actually changes.
+         */
+        setInterval(
+            () =>
+                reconcile({
+                    force: false
+                }),
+            1000
+        );
+
+
+        /*
+         * Heartbeat keeps BOTH layers alive while this browser tab remains on
+         * a VOZ-only view: the logical viewer pin and the existing OpenCLI
+         * Browser Bridge session. It never creates/navigates a publisher tab.
+         * Each browser tab uses a unique viewerId; stale/crashed tabs expire
+         * server-side if heartbeats stop.
+         */
+        setInterval(
+            () => {
+                // Once pinned, heartbeat unconditionally until the stable
+                // release path above confirms that the tab really left VOZ.
+                // This prevents a transient SPA state from allowing Browser
+                // Bridge's 60-second physical lease to expire.
+                if (leaseActive) {
+                    void postLease(
+                        true
+                    );
+                }
+            },
+            HEARTBEAT_MS
+        );
+
+
+        scheduleReconcile(
+            0,
+            true
+        );
+    }
+
+
+    if (
+        document.readyState ===
+        'loading'
+    ) {
+        document.addEventListener(
+            'DOMContentLoaded',
+            install,
+            {
+                once: true
+            }
+        );
+    }
+    else {
+        install();
+    }
+})();

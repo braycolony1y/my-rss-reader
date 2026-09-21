@@ -1,5 +1,6 @@
 import { meaningfulVersions } from '../board/thread-model.js';
 import { authMiddleware } from '../middleware/auth.js';
+import { publishAppEvent } from '../events.js';
 export function registerBoardCacheRoutes({ app, boardCache }) {
     app.post('/api/board-cache/view', async (req, res) => {
         try {
@@ -68,7 +69,7 @@ export function registerBoardCacheRoutes({ app, boardCache }) {
     });
 
     app.get('/api/article-content', authMiddleware, async (req, res, next) => {
-        if (!req.query.url) return next();
+        if (!req.query.url || req.query.bypassBoardCache === '1' || req.query.bypassBoardCache === 'true') return next();
         try {
             // Retained history must not replace live content after leaving Cache.
             if (!await boardCache.managed(req.query.url)) return next();
@@ -83,16 +84,28 @@ export function registerBoardCacheRoutes({ app, boardCache }) {
         res.json(await boardCache.status());
     });
     app.post('/api/board-cache/folder', authMiddleware, async (req, res) => {
-        try { res.json(await boardCache.setFolder(req.body.article, req.body.folder, { compact: req.body.compact === true })); }
+        try {
+            const result = await boardCache.setFolder(req.body.article, req.body.folder, { compact: req.body.compact === true });
+            publishAppEvent('board-cache-changed', { kind: 'folder', threadId: result?.thread_id || null, folder: result?.folder ?? req.body.folder ?? null });
+            res.json(result);
+        }
         catch (e) { res.status(400).json({ error: e.message }); }
     });
     app.put('/api/board-cache/rules', authMiddleware, async (req, res) => {
-        try { res.json({ rules: await boardCache.saveRules(req.body.rules) }); }
+        try {
+            const rules = await boardCache.saveRules(req.body.rules);
+            publishAppEvent('board-cache-changed', { kind: 'rules' });
+            res.json({ rules });
+        }
         catch (e) { res.status(400).json({ error: e.message }); }
     });
     app.post('/api/board-cache/active', authMiddleware, async (req, res) => {
         if (typeof req.body.active !== 'boolean') return res.status(400).json({ error: 'Active must be On or Off' });
-        try { await boardCache.setActive(req.body.url, req.body.active); res.json({ success: true }); }
+        try {
+            await boardCache.setActive(req.body.url, req.body.active);
+            publishAppEvent('board-cache-changed', { kind: 'active', url: req.body.url, active: req.body.active });
+            res.json({ success: true });
+        }
         catch (e) { res.status(400).json({ error: e.message }); }
     });
     app.get('/api/board-cache/archive', authMiddleware, async (req, res) => {

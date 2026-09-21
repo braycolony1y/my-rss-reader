@@ -6128,3 +6128,16 @@ No diagonal.
         0 2px 6px rgba(15, 23, 42, 0.10);
 }
 
+
+
+/* FIX: readable VOZ/XenForo inline code in light theme */
+.theme-glass-light .article-rendered-content code {
+    color: #0f172a !important;
+    background-color: #e2e8f0 !important;
+}
+
+.theme-glass-light .article-rendered-content pre code {
+    color: inherit !important;
+    background: transparent !important;
+    border: 0 !important;
+}
