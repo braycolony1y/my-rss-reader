@@ -41,7 +41,7 @@ export function registerDataRoutes({
                         : (
                             req.body?.smartRegion ===
                                 'global'
-                                ? 'global'
+                                ? 'world'
                                 : ''
                         );
 

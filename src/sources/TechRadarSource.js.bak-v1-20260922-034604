@@ -1,0 +1,201 @@
+import { decodeHTML } from 'entities';
+import { load } from 'cheerio';
+
+function cleanText(value = '') {
+    return decodeHTML(String(value || ''))
+        .replace(/<[^>]*>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function cleanTechRadarMarkup(markup = '') {
+    const value = String(markup || '');
+    if (!value) return value;
+
+    const $ = load(
+        `<div id="techradar-clean-root">${value}</div>`,
+        null,
+        false
+    );
+
+    const root = $('#techradar-clean-root');
+
+    root.find([
+        '#utility-bar',
+        '[data-analytics-id="utility-bar"]',
+        '[data-jwp-carousel]',
+        '[data-component-name^="JwPlayer"]',
+        'script',
+        'style',
+        'noscript',
+        'form',
+        'button',
+        'input'
+    ].join(',')).remove();
+
+    root.find([
+        '[class*="newsletter"]',
+        '[id*="newsletter"]',
+        '[data-component-name*="Newsletter"]',
+        '[class*="subscription"]',
+        '[class*="subscribe"]'
+    ].join(',')).each((_, node) => {
+        const text = cleanText($(node).text());
+
+        if (
+            /subscribe|newsletter|sign up|email/i.test(text)
+            && text.length < 1500
+        ) {
+            $(node).remove();
+        }
+    });
+
+    const junkText = [
+        /^Follow us$/i,
+        /^Latest Videos From TechRadar$/i,
+        /^Watch full video here:/i,
+        /^You may like$/i,
+        /^Are you a pro\?\s*Subscribe to our newsletter/i,
+        /^Sign up to the TechRadar Pro newsletter/i,
+        /^By submitting your information you agree to/i,
+        /^Contact me with news and offers/i,
+        /^Receive email from us on behalf of/i
+    ];
+
+    root.find(
+        'p, h2, h3, h4, span, div, section, aside'
+    ).each((_, node) => {
+        const text = cleanText($(node).text());
+
+        if (
+            text.length <= 1000
+            && junkText.some(pattern => pattern.test(text))
+        ) {
+            $(node).remove();
+        }
+    });
+
+    return root.html().trim();
+}
+
+function extractTechRadarArticle(html = '') {
+    const source = String(html || '');
+    if (!source) return null;
+
+    const $ = load(source);
+
+    /*
+     * Current Future/TechRadar layout.
+     *
+     * The live OpenCLI page confirms the complete story, including the
+     * final "The importance of collaboration" section, is available on
+     * the real rendered page.
+     */
+    const articleBody =
+        $('#article-body').first();
+
+    if (!articleBody.length) {
+        return null;
+    }
+
+    const bodyMarkup =
+        cleanTechRadarMarkup(
+            articleBody.html() || ''
+        );
+
+    if (
+        cleanText(bodyMarkup).length < 250
+    ) {
+        return null;
+    }
+
+    /*
+     * Preserve TechRadar's hero image when it sits immediately outside
+     * #article-body. Keep only the simple figure, not its layout wrapper.
+     */
+    let heroMarkup = '';
+
+    const hero =
+        $('.hero-image-wrapper figure.article-media-figure')
+            .first();
+
+    if (hero.length) {
+        const heroClone = hero.clone();
+
+        heroClone
+            .find('script, style, noscript')
+            .remove();
+
+        heroMarkup =
+            heroClone.toString().trim();
+    }
+
+    /*
+     * Avoid duplicating the same hero if TechRadar later moves it inside
+     * #article-body.
+     */
+    if (heroMarkup) {
+        const heroSrc =
+            hero.find('img').first().attr('src') || '';
+
+        if (
+            heroSrc &&
+            bodyMarkup.includes(heroSrc)
+        ) {
+            heroMarkup = '';
+        }
+    }
+
+    return [
+        heroMarkup,
+        bodyMarkup
+    ]
+        .filter(Boolean)
+        .join('\n')
+        .trim();
+}
+
+export default class TechRadarSource {
+    match(hostname) {
+        return (
+            hostname === 'techradar.com'
+            || hostname.endsWith('.techradar.com')
+        );
+    }
+
+    parseArticleHtmlContent(html) {
+        /*
+         * Never fall back to the whole TechRadar document.
+         *
+         * If #article-body cannot be found, return false so another fetch
+         * strategy can be attempted rather than caching navigation/UI.
+         */
+        return extractTechRadarArticle(html) || false;
+    }
+
+    cleanCachedArticleContent(content) {
+        const value = String(content || '');
+        if (!value) return value;
+
+        /*
+         * Full-document historical caches can be repaired locally.
+         * Truncated historical caches cannot recreate paragraphs that were
+         * never stored, so the installer invalidates those once.
+         */
+        if (
+            /<!doctype\s+html|<html\b/i.test(value)
+            && /id=["']article-body["']/i.test(value)
+        ) {
+            return extractTechRadarArticle(value) || value;
+        }
+
+        return cleanTechRadarMarkup(value);
+    }
+
+    isUsableArticleResult(result) {
+        const text =
+            cleanText(result?.content || '');
+
+        return text.length >= 300;
+    }
+}

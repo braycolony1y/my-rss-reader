@@ -440,6 +440,7 @@ export function createStoryBriefings({ db, generate, loadSource, concurrency = 2
     );
     let running = 0, cachePromise, persistence = Promise.resolve(), providerRetryAt = 0;
     let activeViewKey = null;
+    let viewportViewKey = null;
 
     const effectivePriority = job => {
         const base = Number.isFinite(job?.priority)
@@ -714,6 +715,8 @@ export function createStoryBriefings({ db, generate, loadSource, concurrency = 2
                     briefingVersion:
                         result?.briefing_version ??
                         null,
+                    materialVersion: job.cluster?.topStory?.material_version ?? null,
+                    briefing: { ...result, status: 'ready', generationState: 'cache-hit', analysisStatus: 'evaluated' },
                     status:
                         result?.status ||
                         null
@@ -1052,6 +1055,11 @@ normal form where appropriate.`;
                     ? viewKey
                     : null;
 
+            // Data reconciliation and loading another page must not take
+            // ownership away from the cards physically visible in this view.
+            if (viewportViewKey && nextViewKey &&
+                viewportViewKey.split(':page:')[0] === nextViewKey.split(':page:')[0]) return;
+            viewportViewKey = null;
             const changed =
                 nextViewKey !==
                 activeViewKey;
@@ -1120,10 +1128,7 @@ normal form where appropriate.`;
 
             activeViewKey =
                 normalizedViewKey;
-
-            setGlobalAiReadingMode(
-                Boolean(activeViewKey)
-            );
+            viewportViewKey = normalizedViewKey;
 
             const order =
                 new Map(
@@ -1136,20 +1141,9 @@ normal form where appropriate.`;
                 );
 
             for (const job of jobs.values()) {
-                // Running work is deliberately left running. Updating these
-                // flags only affects tasks that are still pending globally.
-                if (
-                    job.viewKey !==
-                    activeViewKey
-                ) {
-                    continue;
-                }
-
-                const id =
-                    jobClusterId(job);
-
-                const visible =
-                    nextIds.has(id);
+                const id = jobClusterId(job);
+                const visible = nextIds.has(id);
+                if (visible) job.viewKey = activeViewKey;
 
                 job.viewportVisible =
                     visible;
@@ -1170,6 +1164,8 @@ normal form where appropriate.`;
                 drain();
             }
 
+            // Wake pending global tasks only after every lane/rank is updated.
+            setGlobalAiReadingMode(Boolean(activeViewKey));
             return true;
         },
 
@@ -1319,7 +1315,7 @@ failed
 ? 'unavailable'
 : providerDeferred
 ? 'deferred'
-: options.generate===false
+: options.generate===false && !job
 ? 'not-evaluated'
 : 'pending';
             const queue = queuedJobs();

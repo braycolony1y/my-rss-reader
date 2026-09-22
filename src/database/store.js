@@ -370,7 +370,7 @@ export function createDatabaseStore() {
                     const oldItems = _parseStoredArray(previous, key) || [];
                     const newItems = _parseStoredArray(next, key);
                     if (!newItems) throw new Error(`[DB SAFETY] ${key} write is not a valid array`);
-                    if (oldItems.length > 0 && newItems.length === 0) {
+                    if (oldItems.length > 0 && newItems.length === 0 && !(key === 'blockedArticleKeywords' && options.allowLargeReduction)) {
                         throw new Error(`[DB SAFETY] Refusing to wipe ${oldItems.length} ${key}`);
                     }
                     const destructiveDrop = oldItems.length >= 20 && newItems.length < Math.ceil(oldItems.length * 0.1);
@@ -410,7 +410,7 @@ export function createDatabaseStore() {
                         const oldItems = _parseStoredArray(previous, key) || [];
                         const newItems = _parseStoredArray(next, key);
                         if (!newItems) throw new Error(`[DB SAFETY] ${key} write is not a valid array`);
-                        if (oldItems.length > 0 && newItems.length === 0) {
+                        if (oldItems.length > 0 && newItems.length === 0 && !(key === 'blockedArticleKeywords' && options.allowLargeReduction)) {
                             throw new Error(`[DB SAFETY] Refusing to wipe ${oldItems.length} ${key}`);
                         }
                         const destructiveDrop = oldItems.length >= 20 && newItems.length < Math.ceil(oldItems.length * 0.1);

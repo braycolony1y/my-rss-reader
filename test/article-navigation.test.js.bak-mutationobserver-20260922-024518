@@ -56,20 +56,6 @@ function createReaderApp(hash = '#category/Forum') {
     };
 
     vm.createContext(context);
-    // TEST_MUTATION_OBSERVER_STUB_V1
-    // Browser API shim for the VM test environment only.
-    // Production browsers provide MutationObserver natively.
-    if (typeof context.MutationObserver === 'undefined') {
-        context.MutationObserver = class MutationObserver {
-            constructor(callback) {
-                this.callback = callback;
-            }
-            observe() {}
-            disconnect() {}
-            takeRecords() { return []; }
-        };
-    }
-
     vm.runInContext(code, context);
     return { app: vm.runInContext('rssApp()', context), location, historyCalls, document, context };
 }
@@ -405,65 +391,22 @@ test('visible cache status uses last successful sync, including while a later sy
     assert.equal(app.cacheLastSuccessText(article), 'Waiting for first successful cache');
 });
 
-test('VOZ resume opens the saved page directly without a blocking post redirect check', async () => {
+test('VOZ resume falls back to the permanent post URL when the hinted page misses the post', async () => {
     const { app, context } = createReaderApp();
     const requested = [];
-
     context.fetch = async value => {
         requested.push(new URL(value, 'http://localhost'));
-        return {
-            ok: true,
-            json: async () => ({
-                url: 'https://voz.vn/t/example.123456/page-4',
-                content: 'Saved page'
-            })
-        };
+        return { ok: true, json: async () => ({ content: 'Saved post' }) };
     };
-
-    for (const method of [
-        'releaseArticleReaderSession',
-        'hideTooltip',
-        'stopArticleSpeech',
-        'markAsReadExplicit',
-        'setArticleCopyState',
-        'prefetchNextAfter',
-        'applyOverlayArticleData'
-    ]) {
-        app[method] = () => {};
-    }
-
+    for (const method of ['releaseArticleReaderSession', 'hideTooltip', 'stopArticleSpeech', 'markAsReadExplicit', 'setArticleCopyState', 'prefetchNextAfter', 'applyOverlayArticleData']) app[method] = () => {};
     app.cacheMember = () => false;
-
-    app.userPreferences = {
-        voz_last_read_post_123456: JSON.stringify({
-            index: '82',
-            absId: '999999',
-            page: 4
-        })
-    };
-
-    await app.openArticleOverlay(
-        { link: 'https://voz.vn/t/example.123456/unread' },
-        { updateHistory: false }
-    );
-
-    const pageRequests = requested.filter(
-        url => url.pathname === '/api/article-content'
-    );
-
-    assert.equal(pageRequests.length, 1);
-    assert.equal(
-        pageRequests[0].searchParams.get('url'),
-        'https://voz.vn/t/example.123456/page-4'
-    );
-    assert.equal(
-        pageRequests[0].searchParams.get('resumePage'),
-        '4'
-    );
-    assert.equal(
-        pageRequests[0].searchParams.get('threadPage'),
-        '1'
-    );
+    app.userPreferences = { voz_last_read_post_123456: JSON.stringify({ index: '82', absId: '999999', page: 4 }) };
+    await app.openArticleOverlay({ link: 'https://voz.vn/t/example.123456/unread' }, { updateHistory: false });
+    const pageRequests = requested.filter(url => url.pathname === '/api/article-content');
+    assert.equal(pageRequests[0].searchParams.get('url'), 'https://voz.vn/t/example.123456/page-4');
+    const request = pageRequests[1];
+    assert.equal(request.searchParams.get('url'), 'https://voz.vn/t/example.123456/post-999999');
+    assert.equal(request.searchParams.get('resumePage'), '4');
 });
 
 test('clicking a page already being prefetched shares the request and caches the result', async () => {
@@ -524,7 +467,7 @@ test('thread read-ahead fetches just the next two pages independently of the art
     assert.equal(app.prefetchQueue.length, 1);
 });
 
-test('resume opens the saved page directly and reuses its cached page', async () => {
+test('resume opens the hinted page directly when it contains the permanent post', async () => {
     for (const cached of [false, true]) {
         const { app, context } = createReaderApp();
         const requests = [];
@@ -539,22 +482,8 @@ test('resume opens the saved page directly and reuses its cached page', async ()
         if (cached) app.articleContentCache = new Map([[pageUrl, data]]);
         await app.openArticleOverlay({ link: 'https://voz.vn/t/example.123456/unread' }, { updateHistory: false });
         assert.equal(applied.content, data.content);
-
-        // Only reader-content requests matter here. openArticleOverlay()
-        // may also persist recently-read state through a separate fetch.
-        const articleRequests = requests.filter(value =>
-            new URL(value, 'http://localhost').pathname === '/api/article-content'
-        );
-
-        assert.equal(articleRequests.length, cached ? 0 : 1);
-
-        if (!cached) {
-            assert.equal(
-                new URL(articleRequests[0], 'http://localhost').searchParams.get('url'),
-                pageUrl
-            );
-        }
-
+        assert.equal(requests.length, cached ? 0 : 1);
+        if (!cached) assert.equal(new URL(requests[0], 'http://localhost').searchParams.get('url'), pageUrl);
         assert.equal(app.vozInitialThreadLoad, true);
     }
 });

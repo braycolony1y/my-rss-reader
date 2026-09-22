@@ -1089,10 +1089,9 @@ async function geminiGenerate(model, prompt, options = {}) {
                 model,
                 keyIndex: Number(keyObj.index) + 1,
                 status: 'failed',
-                httpStatus: 504,
                 durationMs: Date.now() - startTime,
                 errorCode: 'TIMEOUT',
-                error: 'Gemini generation request timed out.'
+                error: `Gemini generation request exceeded its ${options.timeoutMs || 120000}ms client timeout.`
             });
             usageLogged = true;
             geminiKeyManager.reportError(err, keyObj);
@@ -1146,9 +1145,9 @@ async function generateWithFallback(geminiModel, prompt, options = {}) {
         timeoutMs = 120000
     } = options;
 
-    const globalTimeout =
-        Date.now() +
-        timeoutMs;
+    // Each provider gets its own bounded attempt. Browser setup/queue time
+    // must not leave the API fallback with only a few seconds to generate.
+    const providerTimeoutMs = Math.max(5000, Number(timeoutMs) || 120000);
 
     const primaryModel =
         geminiModel ||
@@ -1321,11 +1320,7 @@ async function generateWithFallback(geminiModel, prompt, options = {}) {
             throw error;
         }
 
-        const remaining =
-            globalTimeout -
-            Date.now();
-
-        if (remaining > 5000) {
+        {
             const result =
                 await generateWithGeminiWeb(
                     prompt,
@@ -1334,11 +1329,7 @@ async function generateWithFallback(geminiModel, prompt, options = {}) {
                         timeoutMs:
                             Math.min(
                                 90000,
-                                Math.max(
-                                    5000,
-                                    remaining -
-                                        20000
-                                )
+                                providerTimeoutMs
                             ),
                         json:
                             options.json,
@@ -1387,13 +1378,6 @@ async function generateWithFallback(geminiModel, prompt, options = {}) {
     // Gemini API remains after Web.  A short Web cooldown only blocks the
     // transition to LOCAL Qwen, not another usable online provider.
     for (const step of sequence) {
-        if (
-            Date.now() >
-            globalTimeout
-        ) {
-            break;
-        }
-
         try {
             const res =
                 await geminiGenerate(
@@ -1406,8 +1390,7 @@ async function generateWithFallback(geminiModel, prompt, options = {}) {
                                 1000,
                                 Math.min(
                                     step.timeout,
-                                    globalTimeout -
-                                        Date.now()
+                                    providerTimeoutMs
                                 )
                             ),
                         operation,
@@ -2327,6 +2310,6 @@ export {
 
 export async function generateStoryBriefing(prompt, options = {}) {
     const result = await generateWithFallback(GEMINI_PRIMARY_MODEL, prompt,
-        { maxTokens: options.maxTokens || 6000, timeoutMs: 45000, operation: options.operation || 'story-briefing', json: true });
+        { maxTokens: options.maxTokens || 6000, timeoutMs: 120000, operation: options.operation || 'story-briefing', json: true });
     return result.text;
 }

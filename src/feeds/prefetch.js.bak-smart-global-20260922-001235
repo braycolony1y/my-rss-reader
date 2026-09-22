@@ -250,10 +250,10 @@ export function createArticlePrefetch({
             };
 
             // 1. Smart tabs top 5 each
-            const smartCategories = ['news_vietnam', 'news_global', 'finance_vietnam', 'finance_global', 'tech'];
+            const smartCategories = ['news_vietnam', 'news_world', 'finance_vietnam', 'finance_global', 'tech'];
             for (const cat of smartCategories) {
                 const catArticles = smartClusters.filter(a => {
-                    if (cat === 'news_vietnam' || cat === 'news_global') return ['news_vietnam', 'news_global'].includes(a.smartCategory) && (cat === 'news_vietnam' ? a.smartCategory === 'news_vietnam' : a.smartCategory === 'news_global');
+                    if (cat === 'news_vietnam' || cat === 'news_world') return ['news_vietnam', 'news_world'].includes(a.smartCategory) && (cat === 'news_vietnam' ? a.smartCategory === 'news_vietnam' : a.smartCategory === 'news_world');
                     if (cat === 'finance_vietnam' || cat === 'finance_global') return ['finance_vietnam', 'finance_global'].includes(a.smartCategory) && (cat === 'finance_vietnam' ? a.smartCategory === 'finance_vietnam' : a.smartCategory === 'finance_global');
                     return a.smartCategory === cat;
                 }).sort((a, b) =>

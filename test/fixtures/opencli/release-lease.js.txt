@@ -1,0 +1,52 @@
+async function releaseLease(leaseKey, reason = "released") {
+  const session = automationSessions.get(leaseKey);
+  if (!session) {
+    sessionOverrides.delete(leaseKey);
+    scheduleIdleAlarm(leaseKey, IDLE_TIMEOUT_NONE);
+    await persistRuntimeState();
+    return;
+  }
+  if (session.idleTimer) clearTimeout(session.idleTimer);
+  scheduleIdleAlarm(leaseKey, IDLE_TIMEOUT_NONE);
+  if (session.owned) {
+    const tabId = session.preferredTabId;
+    if (tabId !== null) {
+      const hasOtherOwnedLease = [...automationSessions.entries()].some(
+        ([otherLease, otherSession]) => otherLease !== leaseKey && otherSession.owned && otherSession.windowId === session.windowId && otherSession.preferredTabId !== null
+      );
+      await safeDetach(tabId);
+      evictTab(tabId);
+      if (hasOtherOwnedLease) {
+        await chrome.tabs.remove(tabId).catch(() => {
+        });
+        console.log(`[opencli] Released owned tab lease ${tabId} (session=${session.session}, surface=${session.surface}, ${reason})`);
+      } else {
+        try {
+          const tab = await chrome.tabs.update(tabId, { url: BLANK_PAGE, active: true });
+          const group = await ensureOwnedContainerGroup(getOwnedWindowRole(leaseKey), session.windowId, [tab.id ?? tabId]);
+          if (group) session.windowId = group.windowId;
+          console.log(`[opencli] Released owned tab lease ${tabId} as reusable placeholder (session=${session.session}, surface=${session.surface}, ${reason})`);
+        } catch {
+          await chrome.tabs.remove(tabId).catch(() => {
+          });
+          console.log(`[opencli] Released owned tab lease ${tabId} (session=${session.session}, surface=${session.surface}, ${reason})`);
+        }
+      }
+    } else {
+      console.log(`[opencli] Released legacy owned window lease ${session.windowId} without closing container (session=${session.session}, surface=${session.surface}, ${reason})`);
+    }
+  } else if (session.preferredTabId !== null) {
+    await safeDetach(session.preferredTabId);
+    console.log(`[opencli] Detached borrowed tab lease ${session.preferredTabId} (session=${session.session}, surface=${session.surface}, ${reason})`);
+  }
+  automationSessions.delete(leaseKey);
+  sessionOverrides.delete(leaseKey);
+  await persistRuntimeState();
+}
+
+async function dispatch(cmd, leaseKey) {
+  switch(cmd.action) {
+      case "exec":
+        return await handleExec(cmd, leaseKey);
+  }
+}

@@ -5,7 +5,7 @@ import { storyText } from './story-ranking.js';
 import { TOP_STORIES_DEFAULTS } from './top-stories.js';
 import { storyMembers } from './story-ranking.js';
 
-const POLICY = 2;
+const POLICY = 1;
 const valid = value => {
     if (value?.policy !== POLICY || !Array.isArray(value.articles) || !value.articles.length) return false;
     const ids = new Set(), feeds = new Map();
@@ -153,7 +153,7 @@ export function createTopStoriesSnapshots({ db, config, compute = rankInWorker, 
                 !state.contents ||
                 !state.rank ||
                 !state.ranking?.signals ||
-                state.relevancePolicyVersion !== 4
+                state.relevancePolicyVersion !== 3
             ) return;
             const members = Object.keys(state.contents).map(link=>byLink.get(link));
             if (members.some(a=>!a)) return;

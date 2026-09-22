@@ -40,8 +40,8 @@ export function registerDataRoutes({
                         ? 'vietnam'
                         : (
                             req.body?.smartRegion ===
-                                'global'
-                                ? 'global'
+                                'world'
+                                ? 'world'
                                 : ''
                         );
 
@@ -264,7 +264,7 @@ export function registerDataRoutes({
                 })
                 .filter(article => !hiddenSet.has(article.link) && !articleIsBlocked(article));
             if (filterValue === 'news') {
-                filteredArticles = filteredArticles.filter(article => ['news_vietnam', 'news_global'].includes(article.smartCategory));
+                filteredArticles = filteredArticles.filter(article => ['news_vietnam', 'news_world'].includes(article.smartCategory));
             } else if (filterValue === 'finance') {
                 filteredArticles = filteredArticles.filter(article => ['finance_vietnam', 'finance_global'].includes(article.smartCategory));
             } else if (filterValue === 'tech') {

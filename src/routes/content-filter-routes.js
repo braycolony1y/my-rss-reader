@@ -26,18 +26,9 @@ export function registerContentFilterRoutes({
                 entry => entry.keyword
             );
 
-        /*
-         * CONTENT_FILTER_TRUE_CHEAP_SAVE_V5
-         *
-         * Save has exactly one durable operation.
-         *
-         * Do not fan this out as content-filter-changed here: that event can
-         * cause browser clients to perform heavyweight data reconciliation.
-         */
-        await env.RSS_DATA.put(
-            'blockedArticleKeywords',
-            JSON.stringify(keywords)
-        );
+        await env.RSS_DATA.put('blockedArticleKeywords', JSON.stringify(keywords), { allowLargeReduction: true });
+        _contentFilterPreviewCache = null;
+        publishAppEvent('content-filter-changed', { keywords });
 
         res.json({
             ok: true,

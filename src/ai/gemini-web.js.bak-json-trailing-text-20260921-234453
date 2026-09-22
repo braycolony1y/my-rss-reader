@@ -146,7 +146,7 @@ async function browserModules() {
     if (!browserModulesPromise) {
         browserModulesPromise = Promise.all([
             import(
-                '../browser/opencli-page.js'
+                '../../node_modules/@jackwener/opencli/dist/src/browser/page.js'
             ),
             import(
                 '../../node_modules/@jackwener/opencli/dist/src/browser/daemon-client.js'
@@ -437,7 +437,7 @@ async function getPage(slot) {
         slot,
         new Page(
             `rss-gemini-web-${slot.id}`,
-            -1,
+            180,
             undefined,
             'background',
             'browser',
@@ -697,7 +697,6 @@ async function temporaryChatState(page) {
                 ),
 
             freshRoute,
-            conversationEmpty: !document.querySelector('model-response,[data-message-author-role="model"],user-query'),
 
             url:
                 location.href
@@ -1068,7 +1067,6 @@ async function waitForFreshNormalChat(
          */
         if (
             state?.freshRoute &&
-            state?.conversationEmpty &&
             !state?.enabled &&
             state?.canEnable
         ) {
@@ -2145,11 +2143,10 @@ async function responseState(page) {
         let text = '';
 
         if (modelResponses.length) {
-            const response = modelResponses[modelResponses.length - 1];
-            // Read the answer body rather than action buttons and other
-            // changing chrome in the model-response wrapper.
-            const body = response.querySelector('.model-response-text') || response.querySelector('.response-container-content');
-            text = (body || response).innerText || '';
+            text =
+                modelResponses[
+                    modelResponses.length - 1
+                ].innerText || '';
         }
 
         if (!text.trim()) {
@@ -2421,9 +2418,6 @@ async function responseState(page) {
             responseCompletionControls,
 
             alerts: alerts.slice(0, 1000),
-            error1095Visible: /Something went wrong\s*\(\s*1095\s*\)/i.test(
-                String(document.body?.innerText || document.body?.textContent || '')
-            ),
             debug: {
                 candidateCount:
                     debugCandidates.length,
@@ -2445,105 +2439,6 @@ async function responseState(page) {
  * For JSON jobs, do not accept text that is obviously cut off.
  */
 function geminiWebJsonCompletionState(value) {
-  // GEMINI_WEB_STRIP_TRAILING_PROVIDER_TEXT_V1
-  //
-  // Gemini Web can append UI/provider advisory text after an otherwise
-  // complete JSON response, e.g.:
-  //
-  //   {...valid JSON...}
-  //
-  //   Election info changes quickly. Verify responses with official sources.
-  //
-  // If the response begins with a valid complete root JSON object/array,
-  // trim everything after that JSON before the existing completion/parser
-  // logic runs. Genuinely truncated JSON is left untouched.
-  {
-    let candidate = String(value ?? '')
-      .replace(/^\uFEFF/, '')
-      .trim();
-
-    candidate = candidate.replace(/^```(?:json)?\s*/i, '');
-
-    const first = candidate[0];
-
-    if (first === '{' || first === '[') {
-      const stack = [];
-      let inString = false;
-      let escaped = false;
-      let rootEnd = -1;
-
-      for (let i = 0; i < candidate.length; i += 1) {
-        const ch = candidate[i];
-
-        if (inString) {
-          if (escaped) {
-            escaped = false;
-            continue;
-          }
-
-          if (ch === '\\') {
-            escaped = true;
-            continue;
-          }
-
-          if (ch === '"') {
-            inString = false;
-          }
-
-          continue;
-        }
-
-        if (ch === '"') {
-          inString = true;
-          continue;
-        }
-
-        if (ch === '{' || ch === '[') {
-          stack.push(ch);
-          continue;
-        }
-
-        if (ch === '}' || ch === ']') {
-          if (!stack.length) {
-            break;
-          }
-
-          const opener = stack[stack.length - 1];
-
-          const matches =
-            (opener === '{' && ch === '}') ||
-            (opener === '[' && ch === ']');
-
-          if (!matches) {
-            break;
-          }
-
-          stack.pop();
-
-          if (stack.length === 0) {
-            rootEnd = i + 1;
-            break;
-          }
-        }
-      }
-
-      if (rootEnd > 0) {
-        const jsonPrefix = candidate.slice(0, rootEnd);
-
-        try {
-          JSON.parse(jsonPrefix);
-
-          // Preserve all existing completion/repair behavior, but make it
-          // operate on the actual JSON rather than Gemini Web footer text.
-          value = jsonPrefix;
-        } catch {
-          // Closed-looking but invalid JSON: leave original value untouched
-          // so the existing repair logic can deal with it.
-        }
-      }
-    }
-  }
-
     const text =
         cleanResponse(value);
 
@@ -2709,7 +2604,7 @@ function geminiWebJsonCompletionState(value) {
 }
 
 
-export async function waitForResponse(
+async function waitForResponse(
     page,
     baseline,
     timeoutMs,
@@ -2719,7 +2614,6 @@ export async function waitForResponse(
         Date.now() + timeoutMs;
 
     let lastText = '';
-    let lastState = null;
     let stableCount = 0;
     let started = false;
 
@@ -2741,7 +2635,6 @@ export async function waitForResponse(
     while (Date.now() < deadline) {
         const state =
             await responseState(page);
-        lastState = state;
 
         if (
             expectJson &&
@@ -2836,7 +2729,77 @@ export async function waitForResponse(
          * Detect it on every response poll, even if generation already
          * produced partial text.
          */
-        if (state.error1095Visible) {
+        const error1095Visible =
+            await page.evaluate(() => {
+                const pattern =
+                    /Something went wrong\s*\(\s*1095\s*\)/i;
+
+                const selectors = [
+                    '.mat-mdc-snack-bar-label',
+                    'mat-snack-bar-container',
+                    '.mat-mdc-snack-bar-container',
+                    '[role="alert"]',
+                    '[role="dialog"]',
+                    '[aria-live]'
+                ].join(',');
+
+                const visible = element => {
+                    if (!element) {
+                        return false;
+                    }
+
+                    const style =
+                        getComputedStyle(element);
+
+                    const rect =
+                        element.getBoundingClientRect();
+
+                    return (
+                        style.display !== 'none' &&
+                        style.visibility !== 'hidden' &&
+                        rect.width > 0 &&
+                        rect.height > 0
+                    );
+                };
+
+                for (
+                    const element
+                    of document.querySelectorAll(
+                        selectors
+                    )
+                ) {
+                    if (!visible(element)) {
+                        continue;
+                    }
+
+                    const text =
+                        String(
+                            element.innerText ||
+                            element.textContent ||
+                            ''
+                        )
+                            .replace(/\s+/g, ' ')
+                            .trim();
+
+                    if (pattern.test(text)) {
+                        return true;
+                    }
+                }
+
+                /*
+                 * Fallback because the confirmed Gemini 1095 snackbar
+                 * is also visible through document text.
+                 */
+                return pattern.test(
+                    String(
+                        document.body?.innerText ||
+                        document.body?.textContent ||
+                        ''
+                    )
+                );
+            });
+
+        if (error1095Visible) {
             const error =
                 new Error(
                     'Gemini Web modal error 1095 detected: Something went wrong (1095)'
@@ -2870,14 +2833,6 @@ export async function waitForResponse(
                  */
                 incompleteSince = 0;
                 incompleteLogged = false;
-            }
-
-            // A fresh, complete root JSON document is conclusive even when
-            // background-tab rendering leaves Stop/actions stale. Fresh-chat
-            // verification and the baseline check exclude a previous response.
-            const jsonCompletion = expectJson ? geminiWebJsonCompletionState(state.text) : null;
-            if (jsonCompletion?.accepted) {
-                return state.text;
             }
 
             if (
@@ -3033,11 +2988,6 @@ export async function waitForResponse(
 
     error.code =
         'GEMINI_WEB_TIMEOUT';
-    error.rawResponse = cleanResponse(lastState?.text || '');
-    error.responseDomDebug = lastState?.debug || null;
-    error.timeoutMs = timeoutMs;
-    error.responseStarted = started;
-    error.responseMatchesBaseline = Boolean(lastState?.text && lastState.text === baseline);
 
     throw error;
 }
@@ -3232,19 +3182,59 @@ function buildInput(prompt, options) {
 }
 
 async function resetGeminiJobPage(page) {
-    // Keep the physical tab inactive, but allow Gemini's visibility-gated UI
-    // and response rendering to run. This does not select or focus Chrome.
-    await page.evaluate(() => location.href);
-    await page.cdp('Emulation.setFocusEmulationEnabled', { enabled: true });
-    // A hard navigation clears old response nodes and stuck generation state
-    // without closing, selecting, or replacing the physical browser tab.
-    await page.goto(GEMINI_WEB_URL);
-    await waitForGeminiPage(page, 20000);
-    const fresh = await waitForFreshNormalChat(page, 10000);
-    if (!fresh) {
-        return providerError(page, 'Gemini did not clear the previous conversation', 'GEMINI_WEB_FRESH_CHAT_NOT_CONFIRMED');
+    /*
+     * Reuse this slot's browser tab and Google login.
+     *
+     * If the tab is not on Gemini, navigate there first.
+     * Navigation itself is NOT considered a new conversation.
+     */
+    const current =
+        await page.evaluate(
+            () => ({
+                url:
+                    location.href
+            })
+        ).catch(
+            () => ({
+                url: ''
+            })
+        );
+
+    if (
+        !/^https:\/\/gemini\.google\.com\//i.test(
+            current.url ||
+            ''
+        )
+    ) {
+        console.log(
+            '[GEMINI WEB] Opening Gemini app in existing slot'
+        );
+
+        await page.goto(
+            GEMINI_WEB_URL
+        );
+
+        await waitForGeminiPage(
+            page,
+            20000
+        );
     }
-    await resetFreshTemporaryChat(page);
+
+    /*
+     * Every AI job must receive a genuinely new conversation.
+     */
+    await returnToGeminiChatHome(
+        page
+    );
+
+    /*
+     * Then turn Temporary Chat ON for that new conversation.
+     */
+    await resetFreshTemporaryChat(
+        page
+    );
+
+    await sleep(500);
 }
 
 
@@ -3331,9 +3321,16 @@ async function runOnSlot(
             Boolean(options?.json)
         );
     } catch (error) {
-        // Provider errors do not mean the physical tab is broken. Preserve
-        // its lease and reset the conversation in that same tab on the next job.
-        console.warn(`[GEMINI WEB] Slot ${slot.id}: preserving tab after ${error.code || error.name}`);
+        // Discard a bad tab/session. The slot itself remains reusable.
+        try {
+            await slot.page
+                ?.closeWindow?.();
+        } catch {
+            // Ignore cleanup errors.
+        }
+
+        slot.page = null;
+
         throw error;
     }
 }
@@ -3728,9 +3725,6 @@ const inputBytes =
                     error.rawResponse
                         ? String(error.rawResponse).length > 100000
                         : false,
-                responseStarted: error.responseStarted,
-                responseMatchesBaseline: error.responseMatchesBaseline,
-                timeoutMs: error.timeoutMs,
                 ui:
                     error.ui ||
                     undefined

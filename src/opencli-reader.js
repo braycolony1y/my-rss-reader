@@ -141,7 +141,7 @@ async function getOpenCliBrowserFetchState(url) {
         { Page },
         { setDaemonCommandTimeoutSeconds }
     ] = await Promise.all([
-        import('../node_modules/@jackwener/opencli/dist/src/browser/page.js'),
+        import('./browser/opencli-page.js'),
         import('../node_modules/@jackwener/opencli/dist/src/browser/daemon-client.js')
     ]);
 
@@ -1924,7 +1924,7 @@ if (process.argv[2] === '--reader-pool-worker') {
             { setDaemonCommandTimeoutSeconds },
             { __test__: { command } }
         ] = await Promise.all([
-            import('../node_modules/@jackwener/opencli/dist/src/browser/page.js'),
+            import('./browser/opencli-page.js'),
             import('../node_modules/@jackwener/opencli/dist/src/browser/daemon-client.js'),
             import('../node_modules/@jackwener/opencli/clis/web/read.js')
         ]);

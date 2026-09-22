@@ -259,7 +259,7 @@ export function createArticlePresentation({
 
         if (!section) return null;
 
-        return `${vietnam ? 'vietnam' : 'global'}:${section}`;
+        return `${vietnam ? 'vietnam' : 'world'}:${section}`;
     };
 
     const storyPrewarmOne = async article => {
@@ -672,70 +672,50 @@ export function createArticlePresentation({
         return text.includes('investing.com');
     }
 
-    // TOP_STORIES_GLOBAL_CANONICAL_V1
-    function canonicalSmartCategory(value) {
-        return String(value || '')
-            .replace(/_world$/, '_global')
-            .replace(/_foreign$/, '_global');
-    }
-
-    function canonicalTopStoryFeed(value) {
-        return canonicalSmartCategory(value);
-    }
-
     function smartTechRegion(article) {
         const region = String(article?.region || '').toLowerCase();
 
         if (region === 'vietnam') return 'vietnam';
-
-        if (['foreign', 'world', 'global'].includes(region)) {
-            return 'global';
-        }
+        if (['foreign', 'world', 'global'].includes(region)) return 'world';
 
         // Older stored records may not have region populated.
         return /^vi(?:-|$)/i.test(String(article?.language || ''))
             ? 'vietnam'
-            : 'global';
+            : 'world';
     }
 
     function smartArticleMatchesSection(
         article,
         filterValue,
-        smartRegion = 'global'
+        smartRegion = 'world'
     ) {
         if (!filterValue) return true;
 
-        const category =
-            canonicalSmartCategory(
-                article?.smartCategory
-            );
-
         if (filterValue === 'news') {
-            return category === `news_${smartRegion}`;
+            return ['news_vietnam', 'news_global']
+                .includes(article.smartCategory);
         }
 
         if (filterValue === 'finance') {
-            return category === `finance_${smartRegion}`;
+            return ['finance_vietnam', 'finance_global']
+                .includes(article.smartCategory);
         }
 
         if (filterValue === 'tech') {
             return (
-                category === 'tech' &&
+                article.smartCategory === 'tech' &&
                 !isInvestingSmartArticle(article) &&
                 smartTechRegion(article) === smartRegion
             );
         }
 
-        return (
-            category ===
-            canonicalSmartCategory(filterValue)
-        );
+        return article.smartCategory === filterValue;
     }
 
     function buildSmartApiView(
         rawClusters,
         filterValue,
-        smartRegion = 'global'
+        smartRegion = 'world'
     ) {
         const clusters = [];
         for (const storedArticle of rawClusters) {
@@ -915,12 +895,7 @@ export function createArticlePresentation({
                     ])
             );
 
-        // A newer scroll may arrive while loading the snapshot.
-        if (!briefings.setViewport(viewKey, ids, generation)) {
-            return { success: true, staleViewport: true, promoted: 0 };
-        }
         let promoted = 0;
-        const updates = [];
 
         for (
             let index = 0;
@@ -941,7 +916,7 @@ export function createArticlePresentation({
                 continue;
             }
 
-            const briefing = await briefings.get(
+            await briefings.get(
                 article,
                 article.topStory.feed,
                 {
@@ -954,14 +929,12 @@ export function createArticlePresentation({
                 }
             );
 
-            updates.push({ clusterId: id, materialVersion: article.topStory.material_version, briefing });
             promoted++;
         }
 
         return {
             success: true,
             promoted,
-            updates,
             viewKey
         };
     }
@@ -976,7 +949,7 @@ export function createArticlePresentation({
         const smartRegion =
             req.query.smartRegion === 'vietnam'
                 ? 'vietnam'
-                : 'global';
+                : 'world';
         const smartRegionKey =
             filterValue === 'tech' ? smartRegion : '';
         const hideRead = req.query.hideRead === 'true';
@@ -1054,23 +1027,11 @@ export function createArticlePresentation({
 
             publishedArticles = snapshot?.articles;
             smartClusterVersion = snapshot?.clusterVersion || '';
-            // TOP_STORIES_ONE_DESTINATION_V1
             const destination =
                 filterValue === 'tech'
                     ? `tech_${smartRegion}`
-                    : (
-                        ['news', 'finance'].includes(filterValue)
-                            ? `${filterValue}_${smartRegion}`
-                            : canonicalSmartCategory(filterValue)
-                    );
-
-            filteredArticles = (snapshot?.articles || [])
-                    .filter(
-                        article =>
-                            canonicalTopStoryFeed(
-                                article?.topStory?.feed
-                            ) === destination
-                    );
+                    : filterValue.replace('_global', '_world');
+            filteredArticles = (snapshot?.articles || []).filter(a => a.topStory.feed === destination || (['news','finance'].includes(filterValue) && a.topStory.feed.startsWith(filterValue + '_')));
             mark('candidate-collection');
             // Start only after the response is handed to the transport.
             if (res.once) res.once('finish', () => topSnapshots.schedule());
@@ -1407,7 +1368,7 @@ export function createArticlePresentation({
 
         // null when leaving Top Stories, so the previous page
         // immediately loses its active-view priority boost.
-        if (req.query.briefingRefresh !== '1') briefings.setActiveView(briefingViewKey);
+        briefings.setActiveView(briefingViewKey);
         mark("snapshot-construction");
         const rankingPending = Boolean(isTop && topSnapshots.pending);
         if (isTop && filterValue) {

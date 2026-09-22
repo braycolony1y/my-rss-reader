@@ -37,7 +37,7 @@
                     };
                     for (const key of [
                         'news_vietnam',
-                        'news_world',
+                        'news_global',
                         'finance_vietnam',
                         'finance_global',
                         'tech'
@@ -142,7 +142,7 @@
                         }, 5000);
                     }
                 },
-                smartRegion: 'world',
+                smartRegion: 'global',
                 topUpdatesAvailable: false,
                 storyAnalysisOpen: {},
                 storyCoverageOpen: {},
@@ -808,6 +808,20 @@
                 briefingFor(article) {
                     return article.briefing || { status: 'queued', headline: this.stripHtml(article.title), sections: [], sources: [] };
                 },
+                applyBriefingUpdates(updates) {
+                    if (!this.usesTopStories) return false;
+                    let applied = false;
+                    for (const update of updates || []) {
+                        const article = this.articles.find(item => (item.clusterId || item.link) === update.clusterId);
+                        if (!article || !update.briefing) continue;
+                        if (update.materialVersion != null && update.materialVersion !== article.topStory?.material_version) continue;
+                        // A heartbeat sent before completion must not overwrite a pushed result.
+                        if (article.briefing?.analysisStatus === 'evaluated' && update.briefing.analysisStatus !== 'evaluated') continue;
+                        article.briefing = update.briefing;
+                        applied = true;
+                    }
+                    return applied;
+                },
                 uniqueCitations(citations) { return [...new Map((citations || []).map(c => [c.link, c])).values()]; },
                 scheduleBriefingRefresh(attempt = 0, delay = 300000) {
                     if (this.briefingRefreshTimer) clearTimeout(this.briefingRefreshTimer);
@@ -831,7 +845,7 @@
 
                         try {
                             const page = (attempt % Math.max(1,this.currentPage)) + 1;
-                            const response = await fetch('/api/data?' + new URLSearchParams({ filterType: 'smart', filterValue: tab, smartMode: 'top', smartRegion: this.smartRegion, smartView: token, page, limit: this.isMobile ? 15 : 40, hideRead: this.hideRead, searchQuery: this.searchQuery || '' }));
+                            const response = await fetch('/api/data?' + new URLSearchParams({ filterType: 'smart', filterValue: tab, smartMode: 'top', smartRegion: this.smartRegion, smartView: token, briefingRefresh: '1', page, limit: this.isMobile ? 15 : 40, hideRead: this.hideRead, searchQuery: this.searchQuery || '' }));
                             if (!response.ok) throw new Error('Briefing refresh unavailable');
                             const latest = await response.json();
                             if (!this.usesTopStories || this.selectedFilterValue !== tab || this.smartViewToken !== token) return;
@@ -1086,6 +1100,10 @@
                 blockedKeywords: [],
                 blockedKeywordsDraft: [],
                 savingContentFilter: false,
+                contentFilterLoaded: false,
+                contentFilterLoading: false,
+                contentFilterLoadPromise: null,
+                contentFilterError: '',
                 contentFilterPreview: [],
                 contentFilterPreviewTotal: 0,
                 contentFilterPreviewKeyword: '',
@@ -1113,7 +1131,7 @@
                 smartSourceKind: 'news_vietnam',
                 smartSourceSections: [
                     { value: 'news_vietnam', short: 'News · VN', label: 'News · Vietnam' },
-                    { value: 'news_world', short: 'News · World', label: 'News · World' },
+                    { value: 'news_global', short: 'News · World', label: 'News · World' },
                     { value: 'finance_vietnam', short: 'Finance · VN', label: 'Finance · Vietnam' },
                     { value: 'finance_global', short: 'Finance · Global', label: 'Finance · Global' },
                     { value: 'tech_vietnam', short: 'Tech · VN', label: 'Technology · Vietnam' },
@@ -1490,7 +1508,7 @@
                                     this.userPreferences = { ...(universalState?.userPreferences || state.userPreferences || {}), ...this.pendingPreferences };
                                     if (['classic', 'glass', 'glass-light'].includes(this.userPreferences.theme)) this.theme = this.userPreferences.theme;
                                     this.smartClusterVersion = state.smartClusterVersion || '';
-                                    this.smartRegion = state.smartRegion === 'vietnam' ? 'vietnam' : 'world';
+                                    this.smartRegion = state.smartRegion === 'vietnam' ? 'vietnam' : 'global';
                                     if (this.userPreferences.clusteringModel) {
                                         this.clusteringModel = this.userPreferences.clusteringModel;
                                     }
@@ -1913,12 +1931,10 @@
                     /*
                      * SMART_BRIEFING_SSE_V1
                      *
-                     * Story briefing completions are pushed by the server.
-                     * Use the existing timer as a debounce so a burst of
-                     * completions produces one targeted /api/data refresh.
-                     *
-                     * The normal timer is now only a 5-minute reconciliation
-                     * fallback rather than a 30-second poll.
+                     * Apply completed briefings directly so bursts across
+                     * multiple pages cannot cancel one another's refreshes.
+                     * Legacy events and material revisions still reconcile
+                     * through /api/data; viewport heartbeats recover missed events.
                      */
                     source.addEventListener('content-filter-changed', event => {
                         if (document.hidden) return;
@@ -1926,7 +1942,7 @@
                             const data = JSON.parse(event.data || '{}');
                             this.blockedKeywords = this.normalizeKeywordList(data.keywords || []);
                             if (!this.contentFilterSettingsOpen) this.blockedKeywordsDraft = [...this.blockedKeywords];
-                            this.fetchData(false, false, true);
+                            if (!this.savingContentFilter) this.fetchData(false, false, true);
                         } catch {}
                     });
 
@@ -1936,6 +1952,13 @@
                         this.syncUserStatesInBackground();
                         if (this.selectedFilterType === 'board') this.fetchData(false, false, true);
                     });
+
+                    if (!this.briefingViewportListener) {
+                        this.briefingViewportListener = event => {
+                            if (event.detail.smartViewToken === this.smartViewToken) this.applyBriefingUpdates(event.detail.updates);
+                        };
+                        window.addEventListener('briefing-viewport-updated', this.briefingViewportListener);
+                    }
 
                     source.addEventListener(
                         'smart-briefing-changed',
@@ -1958,6 +1981,8 @@
                             } catch {
                                 data = {};
                             }
+
+                            if (data.briefing && this.applyBriefingUpdates([data])) return;
 
                             let targetAttempt = 0;
 
@@ -2057,23 +2082,36 @@
                 },
 
                 async fetchContentFilterSettings() {
-                    try {
-                        const response = await fetch('/api/content-filter-settings', { cache: 'no-store' });
-                        if (!response.ok) return;
-                        const data = await response.json();
-                        this.blockedKeywords = this.normalizeKeywordList(data.keywords || []);
-                        if (!this.contentFilterSettingsOpen) this.blockedKeywordsDraft = [...this.blockedKeywords];
-                    } catch (e) { }
+                    if (this.contentFilterLoadPromise) return this.contentFilterLoadPromise;
+                    if (this.savingContentFilter) return;
+                    this.contentFilterLoading = true;
+                    this.contentFilterError = '';
+                    const draftBeforeLoad = JSON.stringify(this.blockedKeywordsDraft);
+                    this.contentFilterLoadPromise = (async () => {
+                        try {
+                            const response = await fetch('/api/content-filter-settings', { cache: 'no-store' });
+                            if (!response.ok) throw new Error('Could not load saved filters. Reopen Content filters to retry.');
+                            const data = await response.json();
+                            this.blockedKeywords = this.normalizeKeywordList(data.keywords || []);
+                            this.contentFilterLoaded = true;
+                            if (!this.contentFilterSettingsOpen || JSON.stringify(this.blockedKeywordsDraft) === draftBeforeLoad) {
+                                this.blockedKeywordsDraft = [...this.blockedKeywords];
+                            }
+                        } catch (error) {
+                            this.contentFilterError = error.message;
+                        } finally {
+                            this.contentFilterLoading = false;
+                            this.contentFilterLoadPromise = null;
+                        }
+                    })();
+                    return this.contentFilterLoadPromise;
                 },
 
                 openContentFilterSettings() {
-                    // CONTENT_FILTER_INSTANT_SAVE_V3
-                    //
-                    // Opening this modal must be cheap. Matching the article
-                    // corpus happens only when the user explicitly requests it.
                     this.blockedKeywordsDraft = [...this.blockedKeywords];
                     this.contentFilterSettingsOpen = true;
                     this.mobileSidebarOpen = false;
+                    if (!this.contentFilterLoaded) void this.fetchContentFilterSettings();
 
                     clearTimeout(this.contentFilterPreviewDebounce);
                     this.contentFilterPreviewDebounce = null;
@@ -2274,123 +2312,31 @@
                 },
 
                 async saveContentFilterSettings() {
-                    // CONTENT_FILTER_TRUE_CHEAP_SAVE_V5
-
-                    if (this.savingContentFilter) {
-                        return;
-                    }
-
-                    const keywords =
-                        this.draftBlockedKeywords();
-
-                    const previousKeywords =
-                        [...this.blockedKeywords];
-
-                    clearTimeout(
-                        this.contentFilterPreviewDebounce
-                    );
-
-                    this.contentFilterPreviewDebounce =
-                        null;
-
+                    if (this.savingContentFilter || this.contentFilterLoading || !this.contentFilterLoaded) return;
+                    const keywords = this.draftBlockedKeywords();
+                    this.savingContentFilter = true;
+                    this.contentFilterError = '';
+                    clearTimeout(this.contentFilterPreviewDebounce);
                     this.contentFilterPreviewRequest++;
-
-                    /*
-                     * Complete the visible Save operation synchronously.
-                     *
-                     * Nothing expensive is allowed before the modal closes.
-                     */
-                    this.blockedKeywords =
-                        [...keywords];
-
-                    this.blockedKeywordsDraft =
-                        [...keywords];
-
-                    this.contentFilterSettingsOpen =
-                        false;
-
-                    this.savingContentFilter =
-                        false;
-
-                    /*
-                     * Persist in the background.
-                     *
-                     * Absolutely no fetchData(), preview scan, article
-                     * refetch or page reload belongs to this operation.
-                     */
-                    void fetch(
-                        '/api/content-filter-settings',
-                        {
+                    try {
+                        const response = await fetch('/api/content-filter-settings', {
                             method: 'POST',
-
-                            headers: {
-                                'Content-Type':
-                                    'application/json'
-                            },
-
-                            body:
-                                JSON.stringify({
-                                    keywords
-                                }),
-
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ keywords }),
                             keepalive: true
-                        }
-                    )
-                        .then(async response => {
-                            if (!response.ok) {
-                                throw new Error(
-                                    'Could not save filters'
-                                );
-                            }
-
-                            let data = null;
-
-                            try {
-                                data =
-                                    await response.json();
-                            } catch (_) {
-                            }
-
-                            if (
-                                Array.isArray(
-                                    data?.keywords
-                                )
-                            ) {
-                                this.blockedKeywords =
-                                    this.normalizeKeywordList(
-                                        data.keywords
-                                    );
-
-                                if (
-                                    !this.contentFilterSettingsOpen
-                                ) {
-                                    this.blockedKeywordsDraft =
-                                        [...this.blockedKeywords];
-                                }
-                            }
-                        })
-                        .catch(error => {
-                            /*
-                             * Never block the browser with alert().
-                             *
-                             * Restore the previous durable value if this
-                             * particular save could not reach the server.
-                             */
-                            console.warn(
-                                '[CONTENT FILTER] save failed:',
-                                error
-                            );
-
-                            this.blockedKeywords =
-                                previousKeywords;
-
-                            if (
-                                !this.contentFilterSettingsOpen
-                            ) {
-                                this.blockedKeywordsDraft =
-                                    [...previousKeywords];
-                            }
                         });
+                        if (!response.ok) throw new Error('Could not save filters. Your changes are still here; please retry.');
+                        const data = await response.json();
+                        this.blockedKeywords = this.normalizeKeywordList(data.keywords);
+                        this.blockedKeywordsDraft = [...this.blockedKeywords];
+                        this.contentFilterSettingsOpen = false;
+                        void this.fetchData(false, false, true);
+                    } catch (error) {
+                        this.contentFilterError = error.message;
+                        this.contentFilterSettingsOpen = true;
+                    } finally {
+                        this.savingContentFilter = false;
+                    }
                 },
 
                 openGeminiStatus() {
@@ -2698,7 +2644,7 @@
                 smartSourceCategoryLabel(source) {
                     const labels = {
                         news_vietnam: 'News · Vietnam',
-                        news_world: 'News · World',
+                        news_global: 'News · World',
                         finance_vietnam: 'Finance · Vietnam',
                         finance_global: 'Finance · Global'
                     };
@@ -2708,7 +2654,7 @@
 
                 smartSourceKindFor(source) {
                     if (source.category === 'tech') return source.region === 'vietnam' ? 'tech_vietnam' : 'tech_foreign';
-                    return source.category || 'news_world';
+                    return source.category || 'news_global';
                 },
 
                 smartSourceKindLabel(kind) {
@@ -3273,7 +3219,7 @@
                     if (this.selectedFilterType === 'smart') {
                         const labels = {
                             news_vietnam: 'Smart News · Vietnam',
-                            news_world: 'Smart News · World',
+                            news_global: 'Smart News · World',
                             finance_vietnam: 'Smart Finance · Vietnam',
                             finance_global: 'Smart Finance · Global',
                             tech: this.smartRegion === 'vietnam'
@@ -3303,8 +3249,55 @@
                 },
 
                 setSmartSection(section) {
-                    const defaults = { news: 'news_vietnam', finance: 'finance_vietnam', tech: 'tech' };
-                    this.setFilter('smart', defaults[section] || 'news_vietnam', true);
+        // SMART_REGION_GLOBAL_ONLY_V3
+        //
+        // The left News / Finance / Tech selector must preserve the
+        // currently selected Vietnam / Global region.
+        //
+        // Smart region has exactly two canonical values:
+        //   vietnam | global
+
+        let region =
+            this.smartRegion === 'vietnam'
+                ? 'vietnam'
+                : 'global';
+
+        // News and Finance also encode the current region in their
+        // filter ID. Use that visible state as authoritative before
+        // changing section.
+        if (
+            this.selectedFilterValue === 'news_vietnam' ||
+            this.selectedFilterValue === 'finance_vietnam'
+        ) {
+            region = 'vietnam';
+        } else if (
+            this.selectedFilterValue === 'news_global' ||
+            this.selectedFilterValue === 'finance_global'
+        ) {
+            region = 'global';
+        }
+
+        this.smartRegion = region;
+
+        const target = {
+            news:
+                region === 'vietnam'
+                    ? 'news_vietnam'
+                    : 'news_global',
+
+            finance:
+                region === 'vietnam'
+                    ? 'finance_vietnam'
+                    : 'finance_global',
+
+            tech: 'tech'
+        };
+
+        this.setFilter(
+            'smart',
+            target[section] || target.news,
+            true
+        );
                 },
 
                 toggleCategory(name) {
@@ -3378,7 +3371,11 @@
                         this.openArticleOverlay(article);
                         return;
                     }
-                    this.prefetchNextAfter(article);
+                    if (!this.isVozArticle(article)) {
+                        // VOZ_SKIP_CARDCLICK_PREFETCH_V5
+                        // VOZ has its own post-first-paint deferred prefetch.
+                        this.prefetchNextAfter(article);
+                    }
                     if (this.isMobile) {
                         if (this.mobileActiveCard === article.link) {
                             this.openArticleOverlay(article);
@@ -4479,7 +4476,7 @@
                     const threadMatch = url.match(/threads\/[^\/.]+\.(\d+)/i) || url.match(/\b(\d{5,8})\b/);
                     const threadId = threadMatch ? threadMatch[1] : url;
                     const prefKey = 'voz_last_read_post_' + threadId;
-                    const lastReadRaw = this.userPreferences[prefKey] || localStorage.getItem(prefKey);
+                    const lastReadRaw = localStorage.getItem(prefKey) || this.userPreferences[prefKey]; // VOZ_CURRENT_POSITION_LOCAL_FIRST_V5
                     
                     let lastRead = null;
                     let lastReadAbsId = null;
@@ -4508,7 +4505,7 @@
                             if (!this.articleOverlayOpen || this.overlayRequestId !== requestId) return;
                             const postEl = lastReadAbsId ? Array.from(document.querySelectorAll('.voz-post[data-absolute-post-id]')).find(el => el.getAttribute('data-absolute-post-id') === String(lastReadAbsId)) : document.getElementById('voz-post-' + lastRead);
                             if (postEl && postEl.offsetParent !== null) {
-                                setTimeout(() => { if (this.overlayRequestId === requestId) this.vozResumePending = false; }, 250);
+                                setTimeout(() => { if (this.overlayRequestId === requestId) this.vozResumePending = false; }, 50); // VOZ_RESUME_TRACKING_50MS_V5
                                 lastRead = postEl.getAttribute('data-post-index') || lastRead;
                                 const existingNotice = document.getElementById('voz-inline-notice');
                                 if (existingNotice) existingNotice.remove();
@@ -4520,9 +4517,9 @@
                                 postEl.parentElement.insertBefore(inlineNotice, postEl);
                                 
                                 inlineNotice.scrollIntoView({ behavior: 'auto', block: 'center' });
-                            } else if (attempts < 30) {
+                            } else if (attempts < 6 /* VOZ_FAST_RESUME_DOM_V5 */) {
                                 attempts++;
-                                setTimeout(checkAndScroll, 100); // Poll every 100ms for up to 3 seconds
+                                setTimeout(checkAndScroll, 50); // max ~300ms after nextTick
                             } else {
                                 this.vozResumePending = false;
                                 const targetPage = Math.ceil(Number(lastRead) / 20);
@@ -6439,7 +6436,7 @@
                         const threadMatch = targetUrl.match(/threads\/[^\/.]+\.(\d+)/i) || targetUrl.match(/\b(\d{5,8})\b/);
                         const threadId = threadMatch ? threadMatch[1] : targetUrl;
                         const prefKey = 'voz_last_read_post_' + threadId;
-                        const lastReadRaw = this.userPreferences[prefKey] || localStorage.getItem(prefKey);
+                        const lastReadRaw = localStorage.getItem(prefKey) || this.userPreferences[prefKey]; // VOZ_CURRENT_POSITION_LOCAL_FIRST_V5
                         
                         let lastRead = null;
                         let lastReadAbsId = null;
@@ -6457,8 +6454,40 @@
                         }
 
                         if (lastReadAbsId) {
-                            const baseThreadUrl = targetUrl.split(/[?#]/)[0].replace(/\/unread\/?(?:[?#].*)?$/i, '').replace(/\/(?:page-\d+|post-\d+|unread|latest)\/?$/, '').replace(/\/$/, '');
-                            targetUrl = baseThreadUrl + '/post-' + lastReadAbsId;
+                            // VOZ_DIRECT_SAVED_PAGE_V5
+                            //
+                            // page + absId are saved together. Load the known page
+                            // directly so /post-ID redirect verification is not on
+                            // the critical open path. absId is still used below by
+                            // checkVozThreadPosition() for the exact in-page jump.
+                            if (Number.isSafeInteger(resumePage) && resumePage > 0) {
+                                // VOZ_CANONICAL_SAVED_PAGE_V6
+                                //
+                                // Last-read resume uses one stable page key.
+                                // Do not let /unread become ?page=N here because
+                                // the existing VOZ page cache/read-ahead commonly
+                                // uses /page-N.
+                                const baseThreadUrl = targetUrl
+                                    .split(/[?#]/)[0]
+                                    .replace(
+                                        /\/(?:unread|latest|page-\d+|post-\d+)\/?$/i,
+                                        ''
+                                    )
+                                    .replace(/\/+$/, '');
+
+                                targetUrl = resumePage > 1
+                                    ? baseThreadUrl + '/page-' + resumePage
+                                    : baseThreadUrl;
+                            } else {
+                                const baseThreadUrl = targetUrl
+                                    .split(/[?#]/)[0]
+                                    .replace(/\/unread\/?(?:[?#].*)?$/i, '')
+                                    .replace(/\/(?:page-\d+|post-\d+|unread|latest)\/?$/, '')
+                                    .replace(/\/$/, '');
+
+                                targetUrl =
+                                    baseThreadUrl + '/post-' + lastReadAbsId;
+                            }
                         } else if (lastRead && Number(lastRead) > 1) {
                             const targetPage = Math.ceil(Number(lastRead) / 20);
                             if (targetPage > 1) {
@@ -6488,7 +6517,7 @@
                     this.overlayRequestId = requestId;
                     this.overlayProgress = { message: 'Preparing article reader…' };
                     this.overlayArticle = { ...article };
-                    if (this.cacheMember(article)) this.articleContentCache?.delete(this.articleReaderUrl(article));
+                    if (this.cacheMember(article) && !isVoz) this.articleContentCache?.delete(this.articleReaderUrl(article)); // VOZ_KEEP_RAM_CACHE_V5
                     this.lastVozMeasureAt = 0;
                     this.lastTrackedVozPost = '';
                     const articleScroll = document.getElementById('overlay-scroll-container');
@@ -6659,6 +6688,15 @@
                 },
             
             closeArticleOverlay(options = {}) {
+                    // VOZ_FLUSH_POSITION_ON_CLOSE_V5
+                    if (
+                        Object.keys(this.pendingPreferences || {}).some(
+                            key => key.startsWith('voz_last_read_post_')
+                        )
+                    ) {
+                        this.flushUserPreferences().catch(() => {});
+                    }
+
                     this.releaseArticleReaderSession();
                     const closeOptions = options && options.constructor === Object ? options : {};
                     if (this.articlePdfState === 'preparing') this.cancelArticlePdf({ silent: true });
@@ -7875,7 +7913,16 @@ document.addEventListener('click', event => {
                         generation
                     })
             }
-        ).catch(() => {});
+        ).then(async response => {
+            if (!response.ok) throw new Error('Viewport update failed');
+            const data = await response.json();
+            if (generation !== lastGeneration || !isTopActive(sc) || data.staleViewport) return;
+            window.dispatchEvent(new CustomEvent('briefing-viewport-updated', {
+                detail: { smartViewToken: sc.dataset.smartView, updates: data.updates || [] }
+            }));
+        }).catch(() => {
+            if (generation === lastGeneration) forceNext = true;
+        });
     }
 
     function schedule(

@@ -7,7 +7,7 @@
     <title>My RSS Reader</title>
     <link rel="icon"
         href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22%238b5cf6%22/><circle cx=%2230%22 cy=%2270%22 r=%2210%22 fill=%22white%22/><path d=%22M30 40a30 30 0 0 1 30 30M30 20a50 50 0 0 1 50 50%22 fill=%22none%22 stroke=%22white%22 stroke-width=%2210%22 stroke-linecap=%22round%22/></svg>">
-    <link rel="stylesheet" href="/public/styles.css?v=voz-code-1790019124">
+    <link rel="stylesheet" href="/public/styles.css?v=20260922_filters_briefings">
     <script>
         // Start the first Smart News request while the browser is still parsing
         // the page. Returning visitors paint saved cards immediately instead.
@@ -3605,7 +3605,7 @@
     <div x-show="contentFilterSettingsOpen" x-cloak
         class="fixed inset-0 bg-[#0B101E]/90 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
         <div class="bg-[#111827] rounded-2xl max-w-5xl w-full max-h-[92vh] border border-white/10 shadow-2xl overflow-hidden flex flex-col"
-            @click.outside="contentFilterSettingsOpen = false">
+            @click.outside="if (!savingContentFilter) contentFilterSettingsOpen = false">
             <div class="flex items-start justify-between gap-4 px-6 py-5 border-b border-white/10">
                 <div>
                     <h2 class="text-xl font-bold text-white flex items-center gap-2">
@@ -3619,7 +3619,7 @@
                     <p class="text-sm text-gray-500 mt-1">Hide stories containing words or phrases you do not want to
                         see.</p>
                 </div>
-                <button type="button" @click.prevent.stop="contentFilterSettingsOpen = false"
+                <button type="button" @click.prevent.stop="if (!savingContentFilter) contentFilterSettingsOpen = false"
                     class="text-gray-500 hover:text-white transition p-1"><svg class="w-5 h-5" fill="none"
                         stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12">
@@ -3627,6 +3627,9 @@
                     </svg></button>
             </div>
             <div class="p-5 md:p-6 overflow-y-auto">
+                <p x-show="contentFilterLoading" role="status">Loading saved filters…</p>
+                <p x-show="contentFilterError" role="alert" x-text="contentFilterError"></p>
+                <fieldset :disabled="contentFilterLoading || savingContentFilter || !contentFilterLoaded">
                 <label class="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">Blocked words or
                     phrases</label>
                 <div class="cache-chip-list w-full bg-[#0B101E] border border-white/10 rounded-xl px-3 py-3 focus-within:border-emerald-500/60 focus-within:ring-1 focus-within:ring-emerald-500/30">
@@ -3731,13 +3734,14 @@
                             x-text="contentFilterPreviewLoading ? 'Loading…' : 'Load more affected articles'"></button>
                     </div>
                 </div>
+                </fieldset>
             </div>
             <div class="px-5 md:px-6 py-4 border-t border-white/10 bg-[#0B101E]/70 flex items-center justify-end gap-3">
-                <button type="button" @click.prevent.stop="blockedKeywordsDraft = []; saveContentFilterSettings()"
+                <button type="button" @click.prevent.stop="blockedKeywordsDraft = []; saveContentFilterSettings()" :disabled="savingContentFilter || contentFilterLoading || !contentFilterLoaded"
                     class="mr-auto text-sm text-gray-500 hover:text-red-300 transition">Clear all</button>
-                <button type="button" @click.prevent.stop="contentFilterSettingsOpen = false"
+                <button type="button" @click.prevent.stop="if (!savingContentFilter) contentFilterSettingsOpen = false"
                     class="px-4 py-2 text-sm text-gray-400 hover:text-white transition">Cancel</button>
-                <button type="button" @click.prevent.stop="saveContentFilterSettings()" :disabled="savingContentFilter"
+                <button type="button" @click.prevent.stop="saveContentFilterSettings()" :disabled="savingContentFilter || contentFilterLoading || !contentFilterLoaded"
                     class="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-[#07130f] text-sm font-bold transition disabled:opacity-50"
                     x-text="savingContentFilter ? 'Saving…' : 'Save filters'"></button>
             </div>
@@ -5311,9 +5315,9 @@
                             @click="setFilter('smart', smartSection === 'news' ? 'news_vietnam' : 'finance_vietnam')"
                             class="px-2 py-1.5 rounded-lg text-[11px] font-medium transition border"
                             :class="(selectedFilterValue || '').endsWith('_vietnam') ? (theme === 'glass-light' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-teal-400/10 border-teal-400/30 text-teal-200') : (theme === 'glass-light' ? 'border-transparent text-gray-500 hover:text-gray-900 hover:bg-gray-100' : 'border-transparent text-gray-500 hover:text-white hover:bg-white/5')">Vietnam</button>
-                        <button @click="setFilter('smart', smartSection === 'news' ? 'news_world' : 'finance_global')"
+                        <button @click="setFilter('smart', smartSection === 'news' ? 'news_global' : 'finance_global')"
                             class="px-2 py-1.5 rounded-lg text-[11px] font-medium transition border"
-                            :class="selectedFilterValue === 'news_world' || selectedFilterValue === 'finance_global' ? (theme === 'glass-light' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-teal-400/10 border-teal-400/30 text-teal-200') : (theme === 'glass-light' ? 'border-transparent text-gray-500 hover:text-gray-900 hover:bg-gray-100' : 'border-transparent text-gray-500 hover:text-white hover:bg-white/5')"
+                            :class="selectedFilterValue === 'news_global' || selectedFilterValue === 'finance_global' ? (theme === 'glass-light' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-teal-400/10 border-teal-400/30 text-teal-200') : (theme === 'glass-light' ? 'border-transparent text-gray-500 hover:text-gray-900 hover:bg-gray-100' : 'border-transparent text-gray-500 hover:text-white hover:bg-white/5')"
                             x-text="smartSection === 'news' ? 'World' : 'Global'"></button>
                     </div>
                     <div x-show="(sidebarExpanded || isMobile) && selectedFilterType === 'smart' && smartSection === 'tech'"
@@ -5325,9 +5329,9 @@
                             Vietnam
                         </button>
                         <button
-                            @click="setSmartRegion('world')"
+                            @click="setSmartRegion('global')"
                             class="px-2 py-1.5 rounded-lg text-[11px] font-medium transition border"
-                            :class="smartRegion === 'world' ? (theme === 'glass-light' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-teal-400/10 border-teal-400/30 text-teal-200') : (theme === 'glass-light' ? 'border-transparent text-gray-500 hover:text-gray-900 hover:bg-gray-100' : 'border-transparent text-gray-500 hover:text-white hover:bg-white/5')">
+                            :class="smartRegion === 'global' ? (theme === 'glass-light' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-teal-400/10 border-teal-400/30 text-teal-200') : (theme === 'glass-light' ? 'border-transparent text-gray-500 hover:text-gray-900 hover:bg-gray-100' : 'border-transparent text-gray-500 hover:text-white hover:bg-white/5')">
                             Global
                         </button>
                     </div>
@@ -5901,9 +5905,9 @@
                     <button @click="setFilter('smart', 'news_vietnam')"
                         class="px-3 py-1.5 rounded-full text-xs font-semibold transition"
                         :class="selectedFilterValue === 'news_vietnam' ? 'bg-emerald-500 text-[#08130f]' : 'text-gray-500 hover:text-white'">Vietnam</button>
-                    <button @click="setFilter('smart', 'news_world')"
+                    <button @click="setFilter('smart', 'news_global')"
                         class="px-3 py-1.5 rounded-full text-xs font-semibold transition"
-                        :class="selectedFilterValue === 'news_world' ? 'bg-emerald-500 text-[#08130f]' : 'text-gray-500 hover:text-white'">World</button>
+                        :class="selectedFilterValue === 'news_global' ? 'bg-emerald-500 text-[#08130f]' : 'text-gray-500 hover:text-white'">World</button>
                 </div>
 
                 <div x-show="selectedFilterType === 'smart' && smartSection === 'finance'"
@@ -5928,9 +5932,9 @@
                     </button>
                     <button
                         type="button"
-                        @click="setSmartRegion('world')"
+                        @click="setSmartRegion('global')"
                         class="px-3 py-1.5 rounded-full text-xs font-semibold transition"
-                        :class="smartRegion === 'world' ? 'bg-emerald-500 text-[#08130f]' : 'text-gray-500 hover:text-white'">
+                        :class="smartRegion === 'global' ? 'bg-emerald-500 text-[#08130f]' : 'text-gray-500 hover:text-white'">
                         Global
                     </button>
                 </div>
@@ -7720,7 +7724,7 @@
         </section>
     </div>
 
-    <script src="/script.js?v=20260921_reddit_external"></script>
+    <script src="/script.js?v=20260922_filters_briefings"></script>
 </body>
 
 </html>

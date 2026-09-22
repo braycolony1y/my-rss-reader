@@ -5,11 +5,11 @@ export const SMART_EDITORIAL_POLICY_VERSION =
 
 export const SMART_EDITORIAL_DESTINATIONS = [
   'news_vietnam',
-  'news_global',
+  'news_world',
   'finance_vietnam',
-  'finance_global',
+  'finance_world',
   'tech_vietnam',
-  'tech_global'
+  'tech_world'
 ];
 
 const DESTINATION_SET =
@@ -115,7 +115,7 @@ function sourceDestinations(
     'finance_global'
   ) {
     return [
-      'finance_global'
+      'finance_world'
     ];
   }
 
@@ -126,7 +126,7 @@ function sourceDestinations(
       'tech_global'
   ) {
     return [
-      'tech_global'
+      'tech_world'
     ];
   }
 
@@ -158,13 +158,13 @@ function sourceDestinations(
       'vietnam'
     ) {
       return [
-        'tech_global'
+        'tech_world'
       ];
     }
 
     return [
       'tech_vietnam',
-      'tech_global'
+      'tech_world'
     ];
   }
 
@@ -405,11 +405,11 @@ export function buildSmartEditorialPrompt(
     '',
     'Destination definitions:',
     '- news_vietnam: consequential general news primarily about Vietnam or directly and materially affecting Vietnam.',
-    '- news_global: consequential general news primarily outside Vietnam.',
+    '- news_world: consequential general news primarily outside Vietnam.',
     '- finance_vietnam: Vietnam markets, banking, macroeconomics, business regulation or materially important companies.',
-    '- finance_global: materially important global markets, finance, macroeconomics, business regulation or companies.',
+    '- finance_world: materially important global markets, finance, macroeconomics, business regulation or companies.',
     '- tech_vietnam: material technology developments primarily about Vietnam.',
-    '- tech_global: material global technology developments.',
+    '- tech_world: material global technology developments.',
     '',
     'Return 0..1 scores:',
     '- relevance: semantic fit with selected destination.',
