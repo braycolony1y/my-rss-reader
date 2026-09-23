@@ -53,7 +53,7 @@ test('tab requests hold foreground priority until their async work finishes and 
     const progress = { activeForegroundRequests: 2 };
     let handler, finish;
     registerDataRoutes({
-        app: { get: (...args) => { handler = args.at(-1); } }, progress,
+        app: { post() {}, get: (...args) => { handler = args.at(-1); } }, progress,
         serveSmartData: () => new Promise((resolve, reject) => { finish = reject; })
     });
     const request = handler({ query: { filterType: 'smart' } }, {});
@@ -93,7 +93,7 @@ test('tab filtering reuses immutable articles but updates for keywords, snapshot
     const state = { articles: [article], blockedArticleKeywords: ['blocked'], readStates: [] };
     let handler;
     registerDataRoutes({
-        app: { get: (...args) => { handler = args.at(-1); } },
+        app: { post() {}, get: (...args) => { handler = args.at(-1); } },
         env: { RSS_DATA: { get: async key => state[key] } },
         prepareArticleForClient: async article => ({ link: article.link })
     });
@@ -145,4 +145,42 @@ test('fresh headlines without cached thumbnails retain publisher image discovery
     const presentation = createArticlePresentation({ getLastKnownCachedArticleImage: async () => null });
     const article = await presentation.prepareArticleForClient({ link: 'https://example.com/story', title: 'Fresh story' });
     assert.equal(article.image, '/api/og-image?url=https%3A%2F%2Fexample.com%2Fstory');
+});
+
+test('unchanged Classic navigation reuses ranking and invalidates on a fresh raw snapshot or filter change', async () => {
+    let contentReads = 0;
+    const cluster = {clusterId: 'one', isCluster: true, link: 'https://example.com/one', title: 'Central bank cuts interest rates',
+        smartCategory: 'news_global', pubDate: new Date().toISOString(), image,
+        get content() {contentReads++; return 'The central bank approved a national interest rate cut.';}};
+    const state = {smartClusters: [cluster], smartRawArticles: [], smartClusterVersion: 'v1', hiddenStates: [], readStates: []};
+    const presentation = createArticlePresentation({env: {RSS_DATA: {get: async key => state[key]}}});
+    const request = async query => {
+        let result;
+        await presentation.serveSmartData({query: {filterValue: 'news_global', smartMode: 'classic', ...query}},
+            {setHeader() {}, json(value) {result = value;}});
+        return result;
+    };
+    const initial = await request();
+    const firstReads = contentReads;
+    const second = await request();
+    assert.equal(second.articles[0].ranking.score, initial.articles[0].ranking.score);
+    assert.equal(contentReads, firstReads, 'unchanged navigation must not reread story bodies for ranking');
+    state.smartRawArticles = [{...cluster, clusterId: undefined, link: 'https://example.com/new', title: 'Earthquake forces city evacuation'}];
+    assert.equal((await request()).articles.length, 2);
+    state.hiddenStates = [cluster.link];
+    assert.deepEqual((await request()).articles.map(a => a.link), ['https://example.com/new']);
+});
+
+test('unread counts reuse the current snapshot and update immediately when read state changes', async () => {
+    let reads = 0, handler;
+    const state = {articles: [{get link() {reads++; return url;}, title: 'Forum post', feedCategory: 'Forum', feedUrl: 'forum-feed'}], readStates: [], hiddenStates: []};
+    registerDataRoutes({app: {post() {}, get: (...args) => {handler = args.at(-1);}},
+        env: {RSS_DATA: {get: async key => state[key]}}, prepareArticleForClient: async article => ({title: article.title})});
+    const request = async () => {let result; await handler({query: {filterType: 'feed', filterValue: 'another-feed'}}, {json(value) {result = value;}}); return result;};
+    assert.equal((await request()).unreadCounts.total, 1);
+    const firstReads = reads;
+    await request();
+    assert.ok(reads - firstReads < firstReads, 'second navigation should not rescan articles for unread counts');
+    state.readStates = [url];
+    assert.equal((await request()).unreadCounts.total, 0);
 });

@@ -40,7 +40,7 @@
                         'news_global',
                         'finance_vietnam',
                         'finance_global',
-                        'tech'
+                        'tech', 'tech_vietnam', 'tech_global'
                     ]) {
                         synchronizedModes[key] = mode;
                     }
@@ -152,23 +152,18 @@
                     this.topUpdatesAvailable = false;
                     await this.fetchData();
                 },
+                normalizeSmartDestination(value) {
+                    const category = String(value || '').replace(/_(world|foreign)$/, '_global');
+                    return ['news', 'finance', 'tech'].includes(category)
+                        ? `${category}_${this.smartRegion === 'vietnam' ? 'vietnam' : 'global'}`
+                        : category;
+                },
                 async setSmartRegion(region) {
-                    const normalized =
-                        region === 'vietnam' ? 'vietnam' : 'world';
-
-                    if (
-                        normalized === this.smartRegion &&
-                        this.selectedFilterType === 'smart' &&
-                        this.smartSection === 'tech'
-                    ) {
-                        return;
-                    }
-
+                    const normalized = region === 'vietnam' ? 'vietnam' : 'global';
+                    const destination = `${this.smartSection}_${normalized}`;
+                    if (this.selectedFilterType === 'smart' && this.selectedFilterValue === destination) return;
                     this.smartRegion = normalized;
-                    this.smartViewToken = '';
-                    this.storyAnalysisOpen = {};
-                    this.topUpdatesAvailable = false;
-                    await this.fetchData();
+                    this.setFilter('smart', destination);
                 },
 
                 // Backward-compatible alias for any older callers.
@@ -1131,11 +1126,11 @@
                 smartSourceKind: 'news_vietnam',
                 smartSourceSections: [
                     { value: 'news_vietnam', short: 'News · VN', label: 'News · Vietnam' },
-                    { value: 'news_global', short: 'News · World', label: 'News · World' },
+                    { value: 'news_global', short: 'News · Global', label: 'News · Global' },
                     { value: 'finance_vietnam', short: 'Finance · VN', label: 'Finance · Vietnam' },
                     { value: 'finance_global', short: 'Finance · Global', label: 'Finance · Global' },
                     { value: 'tech_vietnam', short: 'Tech · VN', label: 'Technology · Vietnam' },
-                    { value: 'tech_foreign', short: 'Tech · Global', label: 'Technology · Global' }
+                    { value: 'tech_global', short: 'Tech · Global', label: 'Technology · Global' }
                 ],
                 smartSourceView: 'enabled',
                 smartDiscoveryKind: 'news_vietnam',
@@ -1519,6 +1514,7 @@
                                     if (hashFilter) {
                                         this.selectedFilterType = hashFilter.type;
                                         this.selectedFilterValue = hashFilter.value;
+                        if (hashFilter.type === 'smart') this.smartRegion = String(hashFilter.value).endsWith('_vietnam') ? 'vietnam' : 'global';
                                     } else {
                                         const universalView = this.userPreferences.currentView;
                                         this.selectedFilterType = universalView?.type || state.selectedFilterType || 'smart';
@@ -2644,16 +2640,16 @@
                 smartSourceCategoryLabel(source) {
                     const labels = {
                         news_vietnam: 'News · Vietnam',
-                        news_global: 'News · World',
+                        news_global: 'News · Global',
                         finance_vietnam: 'Finance · Vietnam',
                         finance_global: 'Finance · Global'
                     };
                     if (source.category === 'tech') return source.region === 'vietnam' ? 'Technology · Vietnam' : 'Technology · Global';
-                    return labels[source.category] || 'News · World';
+                    return labels[source.category] || 'News · Global';
                 },
 
                 smartSourceKindFor(source) {
-                    if (source.category === 'tech') return source.region === 'vietnam' ? 'tech_vietnam' : 'tech_foreign';
+                    if (source.category === 'tech') return source.region === 'vietnam' ? 'tech_vietnam' : 'tech_global';
                     return source.category || 'news_global';
                 },
 
@@ -2918,10 +2914,20 @@
                 },
 
                 async fetchData(isLoadMore = false, skipPageReset = false, keepVisible = false) {
+                    if (this.selectedFilterType === 'smart') {
+                        this.selectedFilterValue = this.normalizeSmartDestination(this.selectedFilterValue);
+                        this.smartRegion = this.selectedFilterValue.endsWith('_vietnam') ? 'vietnam' : 'global';
+                        const route = this.getFilterFromHash();
+                        const suffix = route?.articleUrl ? '?article=' + encodeURIComponent(route.articleUrl) : '';
+                        window.history.replaceState(window.history.state, '', '#smart/' + this.selectedFilterValue + suffix);
+                    }
                     const smartTiming = this.usesTopStories ? {startedAt:performance.now()} : null;
                     const topContext = this.usesTopStories ? JSON.stringify([this.selectedFilterValue,this.smartRegion,this.hideRead,this.searchQuery]) : null;
                     const retainTop = topContext && this._renderedTopContext === topContext && this.articles.length > 0;
                     const requestGeneration = ++this.articleRequestGeneration;
+                    this._articleListAbort?.abort();
+                    const listController = typeof AbortController === 'function' ? new AbortController() : null;
+                    this._articleListAbort = listController;
                     if (!isLoadMore && !skipPageReset) {
                         this.currentPage = 1;
                     }
@@ -2986,7 +2992,11 @@
                             window.__rssInitialDataRequest = null;
                             res = await earlyRequest.promise;
                         }
-                        if (!res) res = await fetch(`/api/data?${params.toString()}`);
+                        if (!res) res = await fetch(`/api/data?${params.toString()}`, { signal: listController?.signal });
+                        if (requestGeneration !== this.articleRequestGeneration) {
+                            await res.body?.cancel();
+                            return;
+                        }
                         if (res.ok) {
                             if (!isLoadMore) this.loadingArticleStatus = 'Downloading data...';
                             
@@ -3100,9 +3110,11 @@
                             }
                         }
                     } catch (e) {
-                        console.error("Failed to load data:", e);
+                        if (e?.name !== 'AbortError') console.error("Failed to load data:", e);
                     } finally {
                         if (requestGeneration === this.articleRequestGeneration) {
+                            this._articleListAbort = null;
+                            clearInterval(this._connectTimer);
                             if (!isLoadMore) this.isLoadingArticles = false;
                             this.scheduleBriefingRefresh();
                             if (smartTiming?.renderStartedAt) this.$nextTick(() => requestAnimationFrame(() => {
@@ -3219,9 +3231,11 @@
                     if (this.selectedFilterType === 'smart') {
                         const labels = {
                             news_vietnam: 'Smart News · Vietnam',
-                            news_global: 'Smart News · World',
+                            news_global: 'Smart News · Global',
                             finance_vietnam: 'Smart Finance · Vietnam',
                             finance_global: 'Smart Finance · Global',
+                            tech_vietnam: 'Smart Technology · Vietnam',
+                            tech_global: 'Smart Technology · Global',
                             tech: this.smartRegion === 'vietnam'
                                 ? 'Smart Technology · Vietnam'
                                 : 'Smart Technology · Global'
@@ -3290,7 +3304,7 @@
                     ? 'finance_vietnam'
                     : 'finance_global',
 
-            tech: 'tech'
+            tech: `tech_${region}`
         };
 
         this.setFilter(
@@ -3322,6 +3336,10 @@
                 },
 
                 setFilter(type, value, preserveVersion = false) {
+                    if (type === 'smart') {
+                        value = this.normalizeSmartDestination(value);
+                        this.smartRegion = value.endsWith('_vietnam') ? 'vietnam' : 'global';
+                    }
                     this.hideTooltip();
                     if (type !== 'smart' || !preserveVersion || this.selectedFilterType !== 'smart') {
                         this.smartClusterVersion = '';
@@ -6146,7 +6164,7 @@
                         try { articleUrl = encodedArticle ? this.normalizeArticleSourceUrl(decodeURIComponent(encodedArticle)) : ''; } catch (e) { }
                         return {
                             type: parts[0],
-                            value: parts.length > 1 ? (() => { try { return decodeURIComponent(parts.slice(1).join('/')); } catch { return parts.slice(1).join('/'); } })() : null,
+                            value: parts.length > 1 ? (() => { let value; try { value = decodeURIComponent(parts.slice(1).join('/')); } catch { value = parts.slice(1).join('/'); } return parts[0] === 'smart' ? this.normalizeSmartDestination(value) : value; })() : null,
                             articleUrl
                         };
                     }
@@ -6160,6 +6178,7 @@
                     if (hashFilter.type !== this.selectedFilterType || hashFilter.value !== this.selectedFilterValue) {
                         this.selectedFilterType = hashFilter.type;
                         this.selectedFilterValue = hashFilter.value;
+                        if (hashFilter.type === 'smart') this.smartRegion = String(hashFilter.value).endsWith('_vietnam') ? 'vietnam' : 'global';
                         this.currentPage = 1;
                         this.hasMore = false;
                         this.articles = [];

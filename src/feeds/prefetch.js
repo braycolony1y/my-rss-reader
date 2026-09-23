@@ -10,6 +10,7 @@ export function createArticlePrefetch({
     getBestImage,
     BROWSER_HEADERS,
     getCachedArticle,
+    getCachedArticleMetadata,
     getArticleFetchPolicy,
     hasOnlyOpenCliFetchMethod,
     fetchParsedArticleByStrategy,
@@ -139,6 +140,12 @@ export function createArticlePrefetch({
 
         const list = await Promise.all([...urlsToPrefetch.keys()].map(async u => {
             try {
+                // The open article only needs status badges for upcoming cards.
+                // Preparing five full thread bodies here delayed its response.
+                if (getCachedArticleMetadata) {
+                    const metadata = await getCachedArticleMetadata(u);
+                    return { url: u, isCached: metadata?.fresh === true };
+                }
                 const cached = await getCachedArticle(u);
                 return { url: u, isCached: !!(cached && cached.content) };
             } catch {
@@ -174,13 +181,13 @@ export function createArticlePrefetch({
                         let prefetched = false;
                         for (const strategy of policy.strategyOrder) {
                             try {
-                                const parsedPayload = await fetchParsedP2(
+                                const parsedPayload = await withArticleFetchLane('p2', () => fetchParsedArticleByStrategy(
                                     strategy,
                                     targetUrl,
                                     policy,
                                     art?.feedUrl || '',
                                     art?.title || ''
-                                );
+                                ));
                                 if (isDeletedArticlePayload(targetUrl, parsedPayload)) {
                                     deletionEvidence.add(strategy);
                                     if (requiresIndependentDeletionConfirmation(targetUrl)) continue;
@@ -326,13 +333,13 @@ export function createArticlePrefetch({
                     let prefetched = false;
                     for (const strategy of policy.strategyOrder) {
                         try {
-                            const parsedPayload = await fetchParsedP4(
+                            const parsedPayload = await withArticleFetchLane('p4', () => fetchParsedArticleByStrategy(
                                 strategy,
                                 url,
                                 policy,
                                 art.feedUrl || '',
                                 art.title || ''
-                            );
+                            ));
                             if (isDeletedArticlePayload(url, parsedPayload)) {
                                 deletionEvidence.add(strategy);
                                 if (requiresIndependentDeletionConfirmation(url)) continue;

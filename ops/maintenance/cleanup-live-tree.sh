@@ -20,7 +20,10 @@ fi
 
 is_kept_root_file() {
     case "$1" in
-        .env|.gitignore|README.md|article-media.js|database.json|database.json.backup|database.writer.lock|feed-parsers.js|feed-worker.js|feeds_backup.json|feeds_backup.json.backup|gemini.env|gemini-keys.txt|index.html|package-lock.json|package.json|qwen-keys.txt|script.js|server.js|smart-cluster-worker.js|smart-data.json|smart-data.json.backup|smart-embedding-worker.js|smart-embeddings-worker.json|smart-hnsw-clustering.js|smart-news.js|smart-sources.js|summary-engine.js|tailwind.config.js)
+        .env|.gitignore|README.md|article-media.js|database.json|database-state.json|database.json.backup|database.writer.lock|feed-parsers.js|feed-worker.js|feeds_backup.json|feeds_backup.json.backup|gemini.env|gemini-keys.txt|index.html|package-lock.json|package.json|qwen-keys.txt|script.js|server.js|smart-cluster-worker.js|smart-data.json|smart-data.json.backup|smart-embedding-worker.js|smart-embeddings-worker.json|smart-hnsw-clustering.js|smart-news.js|smart-sources.js|summary-engine.js|tailwind.config.js)
+            return 0
+            ;;
+        database.json.tmp-*|database.json.backup.tmp-*|database-state.json.tmp-*|smart-data.json.tmp-*|smart-data.json.backup.tmp-*|feeds_backup.json.tmp-*|feeds_backup.json.backup.tmp-*)
             return 0
             ;;
         *)
@@ -48,6 +51,7 @@ while IFS= read -r -d '' root_file; do
 done < <(find "${LIVE_DIR}" -mindepth 1 -maxdepth 1 -type f -print0)
 
 for disposable_dir in \
+    .patch-backups \
     .codex-staging-deleted-voz-only \
     .codex-staging-fetch-policy-ui \
     .codex-staging-reader-safety \

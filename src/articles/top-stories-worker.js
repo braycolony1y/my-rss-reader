@@ -1,6 +1,7 @@
 // The existing deterministic index runs away from the HTTP event loop.
 import { parentPort, workerData } from 'node:worker_threads';
 import { createTopStoriesIndex } from './top-stories.js';
+import { storyMembers } from './story-ranking.js';
 
 const PRIVATE_PUBLISHED_FIELDS = new Set([
     'contents',
@@ -42,6 +43,35 @@ const state = {
 };
 
 try {
+    let candidates = workerData.candidates;
+    if (typeof workerData.publicationJson === 'string') {
+        const publication = JSON.parse(workerData.publicationJson);
+        if (workerData.progressiveVersion && (
+            publication?.version !== workerData.progressiveVersion ||
+            Number(publication?.revision || 0) !== workerData.progressiveRevision ||
+            !Array.isArray(publication?.clusters)
+        )) {
+            parentPort.postMessage({ skipped: true });
+            process.exit(0);
+        }
+        candidates = workerData.progressiveVersion ? publication.clusters : (publication || []);
+        const represented = new Set();
+        for (const cluster of candidates) {
+            for (const member of storyMembers(cluster)) if (member?.link) represented.add(member.link);
+        }
+        for (const article of JSON.parse(workerData.rawJson || '[]')) {
+            if (article?.link && !represented.has(article.link)) {
+                candidates.push(article);
+                represented.add(article.link);
+            }
+        }
+        workerData.publicationJson = null;
+        workerData.rawJson = null;
+    }
+    if (!candidates?.length) {
+        parentPort.postMessage({ skipped: true });
+        process.exit(0);
+    }
     const timings = {};
 
     const index = createTopStoriesIndex({
@@ -57,13 +87,13 @@ try {
                     topStoriesStateJson = value;
                 }
 
-                state[key] = JSON.parse(value);
+                if (key !== 'topStoriesState') state[key] = JSON.parse(value);
             }
         }
     });
 
     const articles = await index.rank(
-        workerData.candidates,
+        candidates,
         workerData.sources,
         workerData.now,
         timings

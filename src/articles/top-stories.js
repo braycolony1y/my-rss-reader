@@ -1070,7 +1070,14 @@ export function createTopStoriesIndex({ db, config = {} } = {}) {
                 mark("relevance-computation");
                 const overlaps = [...new Set(all.flatMap(a => previousByLink.get(a.link) || []))];
                 const inherited = overlaps.find(s => !active.has(s.id));
-                const id = inherited?.id || (cluster.clusterId && !active.has(cluster.clusterId) ? cluster.clusterId : digest(members.map(a => a.link).sort()));
+                const memberLinks = members.map(a => a.link).sort();
+                let id = inherited?.id || (cluster.clusterId && !active.has(cluster.clusterId) ? cluster.clusterId : digest(memberLinks));
+                // A split's content-derived ID can already belong to its sibling
+                // through inherited state. Every output needs a distinct identity
+                // before indexing state, or the entire publication is invalid.
+                for (let collision = 1; active.has(id); collision++) {
+                    id = digest([memberLinks, home, collision]);
+                }
                 active.add(id);
                 const prior = states[id];
                 const isRoundup = Boolean(cluster.roundup?.isRoundup);

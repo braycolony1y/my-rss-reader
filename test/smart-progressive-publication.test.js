@@ -90,7 +90,7 @@ test('Top Stories ranks a version-matched progressive Smart publication while Sm
 
 test('a mismatched progressive publication is never ranked', async () => {
   const oldPublication = {
-    policy: 1,
+    policy: 2,
     signature: 'old',
     createdAt: 1,
     clusterVersion: 'final-v1',

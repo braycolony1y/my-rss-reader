@@ -86,7 +86,7 @@ test(
 );
 
 test(
-  'generic Tech source permits AI to choose Vietnam or World',
+  'generic Tech source permits AI to choose Vietnam or Global',
   () => {
     const techSource = {
       url:
@@ -108,8 +108,8 @@ test(
         [techSource]
       ),
       [
-        'tech_vietnam',
-        'tech_world'
+        'tech_global',
+        'tech_vietnam'
       ]
     );
   }
@@ -141,7 +141,7 @@ test(
     assert.equal(
       feedRelevance(
         article,
-        'news_world'
+        'news_global'
       ),
       0
     );
@@ -165,7 +165,7 @@ test(
               {
                 id: 'x',
                 destination:
-                  'news_world',
+                  'news_global',
                 relevance: .9,
                 impact: .8,
                 novelty: .8,

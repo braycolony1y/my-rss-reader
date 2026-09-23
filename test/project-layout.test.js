@@ -50,6 +50,7 @@ const allowedRootDirectories = new Set([
     'ops',
     'public',
     'src',
+    'scripts',
     'test',
     'tools'
 ]);

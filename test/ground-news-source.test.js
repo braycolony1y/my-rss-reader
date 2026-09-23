@@ -172,11 +172,12 @@ test('perspectives and publisher filters work through a stopped overlay click an
     const content = new GroundNewsSource().parseArticleHtmlContent(html, url, {});
     const { cleanArticleMarkup } = await import('../src/articles/markup.js');
     const cachedContent = cleanArticleMarkup(content);
-    const dom = new JSDOM(`<div id="overlay">${cachedContent}</div>`, { runScripts: 'outside-only' });
+    const dom = new JSDOM(`<div id="overlay">${cachedContent}</div>`, { runScripts: 'outside-only', url: 'https://reader.test/' });
     try {
         const { document } = dom.window;
         document.querySelector('#overlay').addEventListener('click', e => e.stopPropagation());
         const script = readFileSync(new URL('../script.js', import.meta.url), 'utf8');
+        dom.window.fetch = async () => ({ok: true, json: async () => ({})});
         dom.window.eval(script.slice(script.indexOf('// Capture runs before the reader overlay')));
         for (const group of ['left', 'center', 'right', 'all']) {
             document.querySelector(`[data-ground-filter="${group}"]`).click();

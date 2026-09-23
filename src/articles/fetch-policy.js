@@ -1,3 +1,4 @@
+import { hasWarmOpenCliBrowserFetch } from '../opencli-reader.js';
 import { normalizeStateUrl, normalizedHostname, isRedditUrl } from '../utils/article-utils.js';
 import { sourceFetchPolicyIdentity } from '../../smart-news.js';
 
@@ -5,6 +6,7 @@ export function createArticleFetchPolicy({
     env,
     VIETSERVER_PROXY_BASE,
     smartNews,
+    isBrowserWarm = hasWarmOpenCliBrowserFetch,
 } = {}) {
     // --- ADAPTIVE ARTICLE FETCH STRATEGY RANKING ---
     const ARTICLE_FETCH_BASE_POINTS = {
@@ -146,9 +148,12 @@ export function createArticleFetchPolicy({
         const configuredAvailableStrategies = hasStrictConfiguredMethods
             ? configuredMethods.filter(method => allAvailableStrategies.includes(method))
             : [];
-        const strategyOrder = hasStrictConfiguredMethods
+        let strategyOrder = hasStrictConfiguredMethods
             ? configuredAvailableStrategies
             : await rankArticleFetchStrategies(hostname);
+        if (strategyOrder.includes('opencli-fetch') && isBrowserWarm(targetUrl)) {
+            strategyOrder = ['opencli-fetch', ...strategyOrder.filter(method => method !== 'opencli-fetch')];
+        }
         const availableStrategies = hasStrictConfiguredMethods
             ? configuredAvailableStrategies
             : allAvailableStrategies;

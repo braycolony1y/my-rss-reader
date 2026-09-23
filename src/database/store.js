@@ -1,3 +1,4 @@
+import { writeJsonSnapshot } from './json-writer.js';
 import { readFileSync, unlinkSync } from 'node:fs';
 import fs from 'fs/promises';
 import path from 'path';
@@ -9,7 +10,7 @@ export function createDatabaseStore() {
 
     const SMART_DB_FILE = './smart-data.json';
     const STATE_FILE = './database-state.json';
-    const STATE_KEYS = new Set(['readStates', 'savedStates', 'hiddenStates', 'boardStates', 'recentReadAt', 'userPreferences', 'cacheMembers', 'cacheIdentityLedger', 'smartAiProviderHealth']);
+    const STATE_KEYS = new Set(['readStates', 'savedStates', 'hiddenStates', 'boardStates', 'recentReadAt', 'userPreferences', 'cacheMembers', 'cacheIdentityLedger', 'smartAiProviderHealth', 'articleFetchStrategyStats', 'googleNewsUrlCache']);
     let stateRevision = 0;
     let stateOverlay = {};
 
@@ -76,6 +77,7 @@ export function createDatabaseStore() {
         const value = snapshot?.[key];
         if (Array.isArray(value)) return value;
         if (typeof value !== 'string') return null;
+        if (_jsonParsedCache[key]?.raw === value && Array.isArray(_jsonParsedCache[key].parsed)) return _jsonParsedCache[key].parsed;
         try {
             const parsed = JSON.parse(value);
             return Array.isArray(parsed) ? parsed : null;
@@ -99,11 +101,10 @@ export function createDatabaseStore() {
     async function _writeJsonAtomic(filename, value) {
         const tempFile = `${filename}.tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         try {
-            const serialized = typeof value === 'string' ? value : JSON.stringify(value);
-            if (typeof value === 'string') JSON.parse(serialized); // Refuse to place invalid JSON on disk.
-            await fs.writeFile(tempFile, serialized, 'utf-8');
+            await writeJsonSnapshot(tempFile, value);
             await fs.rename(tempFile, filename);
-            if (serialized.length > 5000000 && global.gc) global.gc();
+            // Let V8 schedule collection. Forcing a full collection after every
+            // snapshot/backup repeatedly scans the entire live application heap.
         } catch (error) {
             await fs.unlink(tempFile).catch(() => {});
             throw error;
@@ -265,7 +266,9 @@ export function createDatabaseStore() {
         const changedKeys = Array.isArray(updatedKeys)
             ? updatedKeys
             : (updatedKeys ? [updatedKeys] : []);
-        if (options.lightweight && changedKeys.length && changedKeys.every(key => STATE_KEYS.has(key))) {
+        // Both single and batch state updates use the durable overlay. A caller
+        // should not have to opt in to avoid rewriting the article corpus.
+        if (changedKeys.length && changedKeys.every(key => STATE_KEYS.has(key))) {
             const values = { ...stateOverlay };
             for (const key of changedKeys) values[key] = data[key];
             const revision = stateRevision + 1;
@@ -361,8 +364,9 @@ export function createDatabaseStore() {
                 return val;
             },
             put: (key, value, options = {}) => withDbLock(async () => {
-                delete _jsonParsedCache[key];
                 if (!_dbCache) _dbCache = await _loadDBFromDisk();
+                if (typeof value === 'string' && _dbCache[key] === value) return;
+                delete _jsonParsedCache[key];
                 const previous = _dbCache;
                 const next = { ...previous, [key]: value };
 
@@ -399,6 +403,10 @@ export function createDatabaseStore() {
             }),
             putMany: (keyValuePairs, options = {}) => withDbLock(async () => {
                 if (!_dbCache) _dbCache = await _loadDBFromDisk();
+                keyValuePairs = Object.fromEntries(Object.entries(keyValuePairs).filter(
+                    ([key, value]) => typeof value !== 'string' || _dbCache[key] !== value
+                ));
+                if (!Object.keys(keyValuePairs).length) return;
                 const previous = _dbCache;
                 let next = { ...previous };
 

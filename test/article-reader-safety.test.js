@@ -105,7 +105,7 @@ test('canonical publisher URLs cannot be overwritten by their malformed request 
     assert.match(endpoint, /if \(!isGoogleNewsArticleUrl\(requestedUrl\)\) \{[\s\S]*url = normalizeArticleSourceUrl\(requestedUrl\)/);
     assert.doesNotMatch(endpoint, /if \(!isGoogleNewsArticleUrl\(requestedUrl\)\) \{[\s\S]{0,300}resolveGoogleNewsUrl\(requestedUrl/);
     assert.match(server, /async function fetchArticleHtmlByStrategy\(strategy, url\) \{\s*url = normalizeArticleSourceUrl\(url\)/);
-    assert.match(server, /async function fetchParsedArticleByStrategy\(strategy, url,[\s\S]{0,120}\{\s*url = normalizeArticleSourceUrl\(url\)/);
+    assert.match(server, /async function fetchParsedArticleByStrategy\(strategy, url,[\s\S]{0,120}\{\s*(?:if \(isRedditUrl\(url\)\) return null;\s*)?url = normalizeArticleSourceUrl\(url\)/);
 });
 
 test('Google News cards fetch and route to the resolved publisher while keeping their stable original identity', () => {
@@ -165,7 +165,7 @@ test('all Alpine-bound reader settings exist before the first render', () => {
     assert.match(script, /editFeedExcludeFromSmart: false/);
     assert.match(script, /overlayRemainingAvailable: false/);
     assert.match(html, /<script src="\/script\.js\?v=[^"]+"><\/script>/);
-    assert.match(html, /class="mt-2 text-\[11px\] text-gray-400 space-y-0\.5"\s+x-data="\{ healthType:/);
+    assert.match(html, /class="mt-2 text-\[11px\] text-gray-400 space-y-0\.5"\s+x-data="\{ healthKey:/);
     assert.match(html, /x-for="\(item, idx\) in \(debugData\?\.prefetchQueue \|\| \[\]\)"/);
     assert.match(html, /:title="overlayArticle && savedStates\.includes\(overlayArticle\.link\) \? 'Remove from Read Later' : 'Read Later'"/);
     assert.match(html, /:title="isOnBoard\(overlayArticle\) \? 'Remove from Board' : 'Save to Board'"/);

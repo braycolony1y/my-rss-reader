@@ -27,10 +27,10 @@ function fakePage(results) {
 }
 const read = page => page.evaluate('extract');
 
-test('background CAPTCHA closes normally without a manual prompt', async () => {
+test('background CAPTCHA leaves tab cleanup to the owning reader pool', async () => {
     const page = fakePage([blocked]);
     await assert.rejects(readWithHumanVerification(read, page, {}, () => false), /verification blocked/);
-    assert.equal(page.closed, true);
+    assert.equal(page.closed, false);
     assert.equal(page.focused, false);
 });
 
@@ -44,20 +44,20 @@ test('the active article waits for manual verification and then resumes', async 
     });
     assert.equal(result, article);
     assert.equal(prompts, 2);
-    assert.equal(page.focused, true);
-    assert.equal(page.closed, true);
+    assert.equal(page.focused, false);
+    assert.equal(page.closed, false);
 });
 
-test('leaving the article during verification closes its browser tab', async () => {
+test('leaving the article during verification rejects without closing the shared source tab', async () => {
     const page = fakePage([blocked]);
     let checks = 0;
     await assert.rejects(readWithHumanVerification(read, page, {}, () => ++checks === 1), /verification blocked/);
-    assert.equal(page.closed, true);
+    assert.equal(page.closed, false);
     assert.equal(checks, 2);
 });
 
-test('ordinary successful reads close without consulting manual verification', async () => {
+test('ordinary successful reads leave the reusable tab open without consulting manual verification', async () => {
     const page = fakePage([article]);
     assert.equal(await readWithHumanVerification(read, page, {}, () => assert.fail('Unexpected CAPTCHA prompt')), article);
-    assert.equal(page.closed, true);
+    assert.equal(page.closed, false);
 });

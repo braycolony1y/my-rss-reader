@@ -8,7 +8,7 @@ import {createTopStoriesIndex} from '../src/articles/top-stories.js';
 import {createStoryBriefings, ANALYSIS_VERSION} from '../src/articles/story-briefing.js';
 const article = id => ({clusterId:id,link:`https://example.com/${id}`,feedUrl:'https://example.com/rss',title:`Critical vulnerability in router ${id}`,content:'A critical vulnerability affects router firmware.',language:'en',pubDate:'2026-09-13T00:00:00Z'});
 const ranked = id => ({...article(id),ranking:{score:1},topStory:{feed:'tech_world',rank:1,isTop:true,cutoff:{count:1},material_version:1}});
-const published = {policy:1,signature:'old',createdAt:1,articles:[ranked('old')],states:{}};
+const published = {policy:2,signature:'old',createdAt:1,articles:[ranked('old')],states:{}};
 function fixture(extra={}) {
  const values={topStoriesPublished:structuredClone(published),smartClusters:[article('new')],smartRawArticles:[],smartSources:[{url:'https://example.com/rss',category:'tech',region:'world'}],...extra};
  let calls=0, writes=0, clock=180000;
@@ -84,7 +84,7 @@ test('A/B/E/F: News → Finance → News serves cached cards during RSS processi
  const {EventEmitter}=await import('node:events');
  const {createArticlePresentation}=await import('../src/articles/presentation.js');
  const cards=[['news','news_vietnam'],['finance','finance_vietnam']].map(([id,feed])=>({...ranked(id),topStory:{...ranked(id).topStory,feed}}));
- const values={topStoriesPublished:{policy:1,articles:cards},smartClusterState:{provisional:true},storyBriefings:{}};
+ const values={topStoriesPublished:{policy:2,articles:cards},smartClusterState:{provisional:true},storyBriefings:{}};
  for(const a of cards)values.storyBriefings[`${a.topStory.feed}:${a.clusterId}:material:1:analysis:${ANALYSIS_VERSION}`]={analysisVersion:ANALYSIS_VERSION,briefing_version:1,sections:[{label:'What happened',text:'Cached factual excerpt.'}]};
  let calls=0;
  const p=createArticlePresentation({env:{RSS_DATA:{get:async k=>values[k]}},generateBriefing:async()=>{calls++;throw Error('unexpected AI')},getLastKnownCachedArticle:async()=>null});
@@ -114,7 +114,7 @@ test('a completed material update refreshes safe card content without changing t
  const values={smartClusters:[original],smartRawArticles:[],smartSources:[{url:original.feedUrl,category:'news_world'}],storyBriefings:{}};
  const db={get:async k=>values[k],put:async(k,v)=>{values[k]=JSON.parse(v)}};
  const index=createTopStoriesIndex({db});const initial=await index.rank(values.smartClusters,values.smartSources);
- values.topStoriesPublished={policy:1,articles:initial};
+ values.topStoriesPublished={policy:2,articles:initial};
  const item=initial[0], version=item.topStory.material_version;
  const briefing={analysisVersion:ANALYSIS_VERSION,briefing_version:version,sections:[{label:'What happened',text:original.content,citations:[{link:original.link,quote:original.content}]}]};
  values.storyBriefings[`news_world:${item.clusterId}:material:${version}:analysis:${ANALYSIS_VERSION}`]=briefing;
@@ -133,10 +133,10 @@ test('a completed material update refreshes safe card content without changing t
  assert.match(second.articles[0].content,/95/);assert.equal(second.articles[0].briefing.sections.length,0);
 });
 
-test('source reconciliation retains the last ranking even before provisional clusters are published',async()=>{
+test('source reconciliation ranks the durable clusters with fresh raw articles during refresh',async()=>{
  const f=fixture({smartStatus:{state:'refreshing'}});
- await f.service.revalidate();assert.equal(f.calls,0);assert.equal((await f.service.get()).articles[0].clusterId,'old');
- f.values.smartStatus={state:'ready'};await f.service.revalidate();assert.equal(f.calls,1);
+ await f.service.revalidate();assert.equal(f.calls,1);assert.equal((await f.service.get()).articles[0].clusterId,'new');
+ f.values.smartStatus={state:'ready'};await f.service.revalidate();assert.equal(f.calls,2);
 });
 test('client boot retains cached Top cards while fetching, then installs the authoritative ordering atomically; Classic keeps its merge behavior',async()=>{
  const vm=await import('node:vm');
@@ -145,8 +145,8 @@ test('client boot retains cached Top cards while fetching, then installs the aut
  for(const isTop of [true,false]){
   let release;const gate=new Promise(r=>release=r);
   const latest=[{link:'b',topStory:{rank:1,isTop:true}},{link:'a',topStory:{rank:2,isTop:false}}];
-  const {fetchData}=vm.runInNewContext('({'+method+'})',{performance,URLSearchParams,Set,console,window:{},setTimeout:()=>0,setInterval:()=>0,clearInterval:()=>{},requestAnimationFrame:()=>{},fetch:async()=>{await gate;return {ok:true,json:async()=>({articles:latest,smartTabMode:isTop?'top':'classic'})}}});
-  const app={usesTopStories:isTop,articleRequestGeneration:0,currentPage:1,isMobile:false,selectedFilterType:'smart',selectedFilterValue:'news_vietnam',smartRegion:'vietnam',hideRead:false,searchQuery:'',smartTabMode:isTop?'top':'classic',articles:[{link:'a'},{link:'b'}],pendingPreferences:{},pendingReadLinks:[],savedStates:[],readStates:new Set(),dedupeStateLinks:a=>a,hideTooltip(){},saveState(){},scheduleBriefingRefresh(){},$nextTick(){}};
+  const {fetchData}=vm.runInNewContext('({'+method+'})',{performance,URLSearchParams,Set,console,window:{history:{replaceState(){}}},setTimeout:()=>0,setInterval:()=>0,clearInterval:()=>{},requestAnimationFrame:()=>{},fetch:async()=>{await gate;return {ok:true,json:async()=>({articles:latest,smartTabMode:isTop?'top':'classic'})}}});
+  const app={normalizeSmartDestination:value=>value,getFilterFromHash:()=>null,pendingUnreadLinks:new Set(),pendingRecentReadLinks:new Set(),applyPendingStateMutations:(_,values)=>values,usesTopStories:isTop,articleRequestGeneration:0,currentPage:1,isMobile:false,selectedFilterType:'smart',selectedFilterValue:'news_vietnam',smartRegion:'vietnam',hideRead:false,searchQuery:'',smartTabMode:isTop?'top':'classic',articles:[{link:'a'},{link:'b'}],pendingPreferences:{},pendingReadLinks:[],savedStates:[],readStates:new Set(),dedupeStateLinks:a=>a,hideTooltip(){},saveState(){},scheduleBriefingRefresh(){},$nextTick(){}};
   const pending=fetchData.call(app,false,true,true);
   assert.deepEqual(app.articles.map(a=>a.link),['a','b']);
   release();await pending;

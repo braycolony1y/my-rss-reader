@@ -4,6 +4,8 @@ import { EventEmitter } from 'node:events';
 import { createSmartNewsEngine } from '../smart-news.js';
 
 test('A/B/P/Q/R/S refresh, failure retention, browser read and explicit rebuild', async () => {
+  const oldWebEnabled = process.env.GEMINI_WEB_ENABLED;
+  process.env.GEMINI_WEB_ENABLED = 'false';
   const oldFetch = global.fetch, oldEnabled = process.env.ANTIGRAVITY_ENABLED, oldKey = process.env.GEMINI_API_KEY;
   process.env.ANTIGRAVITY_ENABLED = 'false'; delete process.env.GEMINI_API_KEY;
   const values = {}; let failPersistence = false, workerCalls = 0, aiCalls = 0, ambiguity = false;
@@ -110,6 +112,7 @@ test('A/B/P/Q/R/S refresh, failure retention, browser read and explicit rebuild'
     console.log('SNAPSHOT_FAILURE_COUNTS',JSON.stringify({firstPassAiCalls:1,repairCalls:1,invalidJson:1,repeatedRefreshAiCalls:0,invalidPublications:0}));
   } finally {
     global.fetch=oldFetch;
+    if(oldWebEnabled===undefined)delete process.env.GEMINI_WEB_ENABLED;else process.env.GEMINI_WEB_ENABLED=oldWebEnabled;
     if(oldEnabled===undefined)delete process.env.ANTIGRAVITY_ENABLED;else process.env.ANTIGRAVITY_ENABLED=oldEnabled;
     if(oldKey===undefined)delete process.env.GEMINI_API_KEY;else process.env.GEMINI_API_KEY=oldKey;
   }

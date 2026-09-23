@@ -93,7 +93,7 @@ const VIETNAM_NEWS = makeSources('news_vietnam', [
     ['Bao Khanh Hoa', 'baokhanhhoa.vn', '', 1]
 ]);
 
-const WORLD_NEWS = makeSources('news_world', [
+const GLOBAL_NEWS = makeSources('news_global', [
     ['BBC World', 'bbc.com', 'https://feeds.bbci.co.uk/news/world/rss.xml', 1.5],
     ['The Guardian World', 'theguardian.com', 'https://www.theguardian.com/world/rss', 1.3],
     ['Al Jazeera', 'aljazeera.com', 'https://www.aljazeera.com/xml/rss/all.xml', 1.3],
@@ -343,7 +343,7 @@ const REQUESTED_VIETNAM_NEWS = makeSources('news_vietnam', [
     ['Phu Nu TP.HCM', 'phunuonline.com.vn', '', 1]
 ]);
 
-const REQUESTED_WORLD_NEWS = makeSources('news_world', [
+const REQUESTED_GLOBAL_NEWS = makeSources('news_global', [
     ['The Washington Post', 'washingtonpost.com', '', 1.5],
     ['The Independent', 'independent.co.uk', 'https://www.independent.co.uk/news/world/rss', 1],
     ['The Telegraph World', 'telegraph.co.uk', '', 1],
@@ -396,7 +396,7 @@ const REQUESTED_TECH = makeSources('tech', [
 
 export const SMART_REQUESTED_SOURCE_ADDITIONS = [
     ...REQUESTED_VIETNAM_NEWS,
-    ...REQUESTED_WORLD_NEWS,
+    ...REQUESTED_GLOBAL_NEWS,
     ...REQUESTED_VIETNAM_FINANCE,
     ...REQUESTED_GLOBAL_FINANCE,
     ...REQUESTED_TECH
@@ -404,7 +404,7 @@ export const SMART_REQUESTED_SOURCE_ADDITIONS = [
 
 export const SMART_SOURCES = [
     ...VIETNAM_NEWS,
-    ...WORLD_NEWS,
+    ...GLOBAL_NEWS,
     ...VIETNAM_FINANCE,
     ...GLOBAL_FINANCE,
     ...TECHNOLOGY,
@@ -413,7 +413,7 @@ export const SMART_SOURCES = [
 
 export const SMART_SOURCE_COUNTS = {
     news_vietnam: VIETNAM_NEWS.length + REQUESTED_VIETNAM_NEWS.length,
-    news_world: WORLD_NEWS.length + REQUESTED_WORLD_NEWS.length,
+    news_world: GLOBAL_NEWS.length + REQUESTED_GLOBAL_NEWS.length,
     finance_vietnam: VIETNAM_FINANCE.length + REQUESTED_VIETNAM_FINANCE.length,
     finance_global: GLOBAL_FINANCE.length + REQUESTED_GLOBAL_FINANCE.length,
     tech: TECHNOLOGY.length + REQUESTED_TECH.length

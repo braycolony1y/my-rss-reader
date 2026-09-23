@@ -7,7 +7,7 @@
     <title>My RSS Reader</title>
     <link rel="icon"
         href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22%238b5cf6%22/><circle cx=%2230%22 cy=%2270%22 r=%2210%22 fill=%22white%22/><path d=%22M30 40a30 30 0 0 1 30 30M30 20a50 50 0 0 1 50 50%22 fill=%22none%22 stroke=%22white%22 stroke-width=%2210%22 stroke-linecap=%22round%22/></svg>">
-    <link rel="stylesheet" href="/public/styles.css?v=20260922_filters_briefings">
+    <link rel="stylesheet" href="/public/styles.css?v=20260923_global_voz_performance">
     <script>
         // Start the first Smart News request while the browser is still parsing
         // the page. Returning visitors paint saved cards immediately instead.
@@ -24,6 +24,16 @@
                     hideRead: String(localStorage.getItem('hideRead') === 'true'),
                     searchQuery: ''
                 };
+                const route = location.hash.slice(1).split('?article=')[0].split('/');
+                if (route[0] && route[0] !== 'smart') return;
+                if (route[1]) {
+                    let destination = decodeURIComponent(route[1]).replace(/_(world|foreign)$/, '_global');
+                    if (['news', 'finance', 'tech'].includes(destination)) destination += '_global';
+                    if (!/^(news|finance|tech)_(vietnam|global)$/.test(destination)) return;
+                    request.filterValue = destination;
+                }
+                request.smartRegion = request.filterValue.endsWith('_vietnam') ? 'vietnam' : 'global';
+                request.smartMode = 'top';
                 const params = new URLSearchParams(request);
                 window.__rssInitialDataRequest = {
                     ...request,
@@ -33,7 +43,11 @@
                 };
             } catch (_) {
                 // Storage can be disabled in strict privacy modes. The normal
-                // request in script.js?v=sse-1789844318"https://cdn.jsdelivr.net/npm/@alpinejs/collapse@3.x.x/dist/cdn.min.js"></script>
+                // The normal request in script.js handles disabled storage.
+            }
+        })();
+    </script>
+    <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/collapse@3.x.x/dist/cdn.min.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <style>
         .hide-scrollbar::-webkit-scrollbar,
@@ -5318,7 +5332,7 @@
                         <button @click="setFilter('smart', smartSection === 'news' ? 'news_global' : 'finance_global')"
                             class="px-2 py-1.5 rounded-lg text-[11px] font-medium transition border"
                             :class="selectedFilterValue === 'news_global' || selectedFilterValue === 'finance_global' ? (theme === 'glass-light' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-teal-400/10 border-teal-400/30 text-teal-200') : (theme === 'glass-light' ? 'border-transparent text-gray-500 hover:text-gray-900 hover:bg-gray-100' : 'border-transparent text-gray-500 hover:text-white hover:bg-white/5')"
-                            x-text="smartSection === 'news' ? 'World' : 'Global'"></button>
+                            x-text="'Global'"></button>
                     </div>
                     <div x-show="(sidebarExpanded || isMobile) && selectedFilterType === 'smart' && smartSection === 'tech'"
                         x-transition.opacity class="grid grid-cols-2 gap-1 mb-2 transition-opacity duration-300">
@@ -5907,7 +5921,7 @@
                         :class="selectedFilterValue === 'news_vietnam' ? 'bg-emerald-500 text-[#08130f]' : 'text-gray-500 hover:text-white'">Vietnam</button>
                     <button @click="setFilter('smart', 'news_global')"
                         class="px-3 py-1.5 rounded-full text-xs font-semibold transition"
-                        :class="selectedFilterValue === 'news_global' ? 'bg-emerald-500 text-[#08130f]' : 'text-gray-500 hover:text-white'">World</button>
+                        :class="selectedFilterValue === 'news_global' ? 'bg-emerald-500 text-[#08130f]' : 'text-gray-500 hover:text-white'">Global</button>
                 </div>
 
                 <div x-show="selectedFilterType === 'smart' && smartSection === 'finance'"
@@ -7724,7 +7738,7 @@
         </section>
     </div>
 
-    <script src="/script.js?v=20260922_filters_briefings"></script>
+    <script src="/script.js?v=20260923_article_list_recovery"></script>
 </body>
 
 </html>

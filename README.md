@@ -6,6 +6,7 @@ Production RSS reader served by `rss-reader.service` from `/home/ubuntu/my-rss-r
 
 - `server.js`, `index.html`, `script.js`: application entry points.
 - `src/`: source adapters and shared modules.
+- `scripts/`: production service lifecycle hooks, including the graceful-stop script referenced by systemd.
 - `public/`: compiled CSS and static assets.
 - `test/`: maintained regression tests used by `npm test`.
 - `test/fixtures/`: stable test inputs; generated fixtures belong under its ignored `generated/` directory.

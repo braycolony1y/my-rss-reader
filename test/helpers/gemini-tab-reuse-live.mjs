@@ -16,16 +16,14 @@ const profile = process.env.GEMINI_WEB_PROFILE || process.env.OPENCLI_BROWSER_PR
 const page = new Page(session, 120, undefined, 'background', 'browser', 'persistent', profile);
 const slot = { id: 'verification', page };
 let originalId;
-const originalEvaluate = page.evaluate.bind(page);
-let lastActive = null;
-page.evaluate = async (...args) => {
-    const result = await originalEvaluate(...args);
-    const tabs = await sendCommand('tabs', { session, surface: 'browser', windowMode: 'background', preferredContextId: profile, op: 'list' });
-    if (tabs[0]?.active !== lastActive) {
-        console.log('TAB_ACTIVE_TRANSITION', JSON.stringify({active:tabs[0]?.active,command:String(args[0]).slice(0,180)}));
-        lastActive = tabs[0]?.active;
-    }
-    return result;
+let navigations = 0;
+let newChatActions = 0;
+const originalGoto = page.goto.bind(page);
+page.goto = async (...args) => { navigations++; return originalGoto(...args); };
+const originalPressKey = page.pressKey.bind(page);
+page.pressKey = async key => {
+    if (key === 'Control+Shift+O') newChatActions++;
+    return originalPressKey(key);
 };
 try {
     for (const probe of ['first', 'second']) {
@@ -36,8 +34,10 @@ try {
         const tabs = await sendCommand('tabs', { session, surface: 'browser', windowMode: 'background', preferredContextId: profile, op: 'list' });
         assert.equal(tabs.length, 1);
         assert.equal(tabs[0].active, false);
-        console.log(`GEMINI_REUSE_PROBE_OK: ${probe}, same inactive tab, fresh response`);
+        console.log(`GEMINI_REUSE_PROBE_OK: ${probe}, same inactive tab, fresh response, navigations=${navigations}, newChatActions=${newChatActions}`);
     }
+    assert.equal(navigations, 1, 'the second normal job must use New chat without reloading');
+    assert.equal(newChatActions, 2);
 } finally {
     await page.closeTab();
 }

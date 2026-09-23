@@ -26,7 +26,7 @@ sources.push({
 
 assert.deepEqual(
     allowedDestinations(a,sources),
-    ['news_vietnam','news_world']
+    ['news_vietnam','news_global']
 );
 
 assert.deepEqual(
@@ -34,7 +34,7 @@ assert.deepEqual(
         {...a,language:'vi'},
         sources
     ),
-    ['news_vietnam','news_world']
+    ['news_vietnam','news_global']
 );
 
 assert.deepEqual(
@@ -90,9 +90,9 @@ const stories=Array.from(
                 revision:`important-${i}`,
                 eligibleDestinations:[
                     'tech_vietnam',
-                    'tech_world'
+                    'tech_global'
                 ],
-                destination:'tech_world',
+                destination:'tech_global',
                 relevance:1,
                 impact:.9,
                 novelty:.9,
@@ -140,9 +140,9 @@ const minor=article(
             revision:'minor',
             eligibleDestinations:[
                 'tech_vietnam',
-                'tech_world'
+                'tech_global'
             ],
-            destination:'tech_world',
+            destination:'tech_global',
             relevance:.2,
             impact:.05,
             novelty:.1,

@@ -198,7 +198,11 @@ export function createArticleCache({
     async function getCachedArticleMetadata(url) {
         const cached = await readLastKnownCachedArticle(url);
         if (!cached) return null;
-        return { sourceDeleted: cached.result.sourceDeleted === true };
+        return {
+            sourceDeleted: cached.result.sourceDeleted === true,
+            fresh: cached.version === ARTICLE_CACHE_VERSION && Boolean(cached.cachedAt)
+                && Date.now() - cached.cachedAt < ARTICLE_CACHE_TTL_MS
+        };
     }
 
     async function cacheArticleResult(url, result) {

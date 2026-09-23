@@ -1,7 +1,13 @@
 import { JSDOM } from 'jsdom';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import test from 'node:test';
+import test, { afterEach } from 'node:test';
+
+const readerTimers = new Set();
+afterEach(() => {
+    for (const timer of readerTimers) clearTimeout(timer);
+    readerTimers.clear();
+});
 import vm from 'node:vm';
 import { webcrypto } from 'node:crypto';
 
@@ -43,7 +49,11 @@ function createReaderApp(hash = '#category/Forum') {
         URL,
         URLSearchParams,
         console,
-        setTimeout,
+        setTimeout(callback, delay, ...args) {
+            const timer = setTimeout(callback, delay, ...args);
+            readerTimers.add(timer);
+            return timer;
+        },
         clearTimeout,
         setInterval: () => 0,
         clearInterval,

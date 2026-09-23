@@ -25,6 +25,8 @@ function createReader() {
         </div>
         <button>Download</button>
     </div></body></html>`, { url: 'https://rss.cht.edu.vn/', runScripts: 'outside-only' });
+    // Browser heartbeat requests are unrelated to export rendering.
+    dom.window.fetch = async () => ({ ok: true, json: async () => ({}) });
     dom.window.eval(script);
     const app = dom.window.rssApp();
     app.theme = 'glass-light';

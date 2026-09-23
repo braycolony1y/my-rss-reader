@@ -492,29 +492,41 @@ export function createBoardCache({ env, fetchPage, writeJson, directory = './art
     }
     async function observe(articles) {
         const candidates = await locked(async () => {
-            const ledger = await get('cacheIdentityLedger', null);
+            let ledger = await db.get('cacheIdentityLedger', { type: 'json', shared: true });
             if (!ledger) return [];
+            let changed = false;
+            const mutableLedger = () => {
+                if (!changed) {
+                    ledger = { ...ledger, articles: { ...ledger.articles }, dismissals: { ...ledger.dismissals } };
+                    changed = true;
+                }
+                return ledger;
+            };
             const rules = await get('cacheAutoRules', []);
             const pending = [];
             for (const article of articles) {
                 const id = identity(article); if (!id) continue;
                 const known = ledger.articles[id];
                 const dismissal = ledger.dismissals[id];
-                if (dismissal && dismissal.expires_at > now()) { dismissal.last_seen_at = now(); dismissal.expires_at = now() + retentionMs; }
-                else if (dismissal) delete ledger.dismissals[id];
+                if (dismissal && dismissal.expires_at > now()) {
+                    mutableLedger().dismissals[id] = { ...dismissal, last_seen_at: now(), expires_at: now() + retentionMs };
+                }
+                else if (dismissal) delete mutableLedger().dismissals[id];
                 if (known) {
-                    known.last_seen_at = now();
+                    // These entries remember identities permanently, not feed
+                    // activity. Only dismissal timestamps drive expiry. Rewriting
+                    // every known identity makes each feed copy the entire ledger.
                     if (known.pending && !dismissal) pending.push({ article: known.pending, id, initialized_at: ledger.initialized_at });
                     continue;
                 }
-                ledger.articles[id] = { first_seen_at: now(), last_seen_at: now(), auto_added: false };
+                mutableLedger().articles[id] = { first_seen_at: now(), last_seen_at: now(), auto_added: false };
                 const title = String(article.title || '').normalize('NFKC').toLowerCase();
                 const match = rules.some(rule => rule.enabled && (!rule.source || rule.source === article.feedUrl)
                     && rule.keywords.some(word => title.includes(word.normalize('NFKC').toLowerCase())));
                 if (match && !dismissal) { ledger.articles[id].pending = article; pending.push({ article, id, initialized_at: ledger.initialized_at }); }
             }
-            for (const [id, dismissal] of Object.entries(ledger.dismissals)) if (dismissal.expires_at <= now()) delete ledger.dismissals[id];
-            await put('cacheIdentityLedger', ledger);
+            for (const [id, dismissal] of Object.entries(ledger.dismissals)) if (dismissal.expires_at <= now()) delete mutableLedger().dismissals[id];
+            if (changed) await put('cacheIdentityLedger', ledger);
             return pending;
         });
         for (const candidate of candidates) {
@@ -935,6 +947,10 @@ export function createBoardCache({ env, fetchPage, writeJson, directory = './art
                 );
             }
 
+            // Only scheduling needs the cycle lock. A long thread must not
+            // prevent the next tick from using capacity freed by another scan.
+            // inFlight and the shared page queue still prevent overlap.
+            if (ticking === run) ticking = null;
             if (jobs.length) {
                 await Promise.all(jobs);
             }

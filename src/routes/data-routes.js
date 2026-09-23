@@ -15,6 +15,7 @@ export function registerDataRoutes({
     let visibleSnapshot;
     let visibleKeywordSignature;
     let visibleSnapshotArticles;
+    let unreadSnapshot;
 
     // SMART_VIEWPORT_ROUTE_V1
     app.post(
@@ -197,15 +198,19 @@ export function registerDataRoutes({
                 )
                 : null;
 
-        const unreadCounts = { feeds: {}, categories: {}, total: 0 };
-        visibleArticles.forEach(a => {
-            if (!readSet.has(a.link) && !hiddenSet.has(a.link)) {
-                unreadCounts.total++;
-                unreadCounts.feeds[a.feedUrl] = (unreadCounts.feeds[a.feedUrl] || 0) + 1;
-                let cat = a.feedCategory || 'Others';
-                unreadCounts.categories[cat] = (unreadCounts.categories[cat] || 0) + 1;
+        if (!unreadSnapshot || unreadSnapshot.articles !== visibleArticles ||
+            unreadSnapshot.read !== readStates || unreadSnapshot.hidden !== hiddenStates) {
+            const counts = { feeds: {}, categories: {}, total: 0 };
+            for (const article of visibleArticles) {
+                if (readSet.has(article.link) || hiddenSet.has(article.link)) continue;
+                counts.total++;
+                counts.feeds[article.feedUrl] = (counts.feeds[article.feedUrl] || 0) + 1;
+                const category = article.feedCategory || 'Others';
+                counts.categories[category] = (counts.categories[category] || 0) + 1;
             }
-        });
+            unreadSnapshot = { articles: visibleArticles, read: readStates, hidden: hiddenStates, counts };
+        }
+        const unreadCounts = unreadSnapshot.counts;
 
         const filterValue = req.query.filterValue || '';
         const hideRead = req.query.hideRead === 'true';
@@ -346,7 +351,7 @@ export function registerDataRoutes({
                 filteredArticles = Array.from(linkMap.values());
             }
 
-            filteredArticles = filteredArticles.filter(a => !hiddenSet.has(a.link));
+            if (!simpleStreamingView) filteredArticles = filteredArticles.filter(a => !hiddenSet.has(a.link));
             if (filterType === 'recent') {
                 const oneWeekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
                 const hasRecentTimeline = Object.keys(recentReadAt).length > 0;

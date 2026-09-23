@@ -49,7 +49,7 @@ test('database persistence, recovery, and article archives survive service extra
         assert.equal(metadata.url, url);
         const filenamePath = path.join('article_cache', filename);
         const entry = JSON.parse(await fs.readFile(filenamePath, 'utf8'));
-        assert.equal(entry.version, 56);
+        assert.equal(entry.version, 58);
         entry.cachedAt = Date.now() - 8 * 24 * 60 * 60 * 1000;
         await fs.writeFile(filenamePath, JSON.stringify(entry));
         assert.equal(await cache.getCachedArticle(url), null);
@@ -143,5 +143,53 @@ test('lightweight Board state is durable and cannot replay over a newer full sna
         await fs.unlink('database-state.json'); await fs.mkdir('database-state.json');
         await assert.rejects(again.putMany({ boardStates: '["bad"]' }, { lightweight: true }));
         assert.deepEqual(await again.get('boardStates', { type: 'json' }), []);
+    } finally { process.chdir(previousDirectory); await fs.rm(directory, { recursive: true, force: true }); }
+});
+
+test('frequent fetch metadata and Board batches avoid corpus writes and survive restart', async () => {
+    const previousDirectory = process.cwd();
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'rss-metadata-'));
+    process.chdir(directory);
+    try {
+        const initial = JSON.stringify({ articles: '[]', feeds: '[]' });
+        await fs.writeFile('database.json', initial);
+        const db = createDatabaseStore().env.RSS_DATA;
+        const stats = '{"example.org":{"direct":{"success":1}}}';
+        const destinations = '{"google-link":{"resolvedUrl":"https://example.org/a","individuallyDecoded":true}}';
+        await db.put('articleFetchStrategyStats', stats);
+        await db.put('googleNewsUrlCache', destinations);
+        await db.putMany({ boardStates: '["https://example.org/a"]', userPreferences: '{"theme":"dark"}' });
+        assert.equal(await fs.readFile('database.json', 'utf8'), initial);
+        await assert.rejects(fs.stat('database.json.backup'), { code: 'ENOENT' });
+        const recovered = createDatabaseStore().env.RSS_DATA;
+        assert.equal(await recovered.get('articleFetchStrategyStats'), stats);
+        assert.equal(await recovered.get('googleNewsUrlCache'), destinations);
+        assert.deepEqual(await recovered.get('boardStates', { type: 'json' }), ['https://example.org/a']);
+        const staleOverlay = await fs.readFile('database-state.json', 'utf8');
+        await recovered.putMany({ categoryOrder: '["news"]', articleFetchStrategyStats: '{}' });
+        assert.equal(JSON.parse(await fs.readFile('database.json', 'utf8')).articleFetchStrategyStats, '{}');
+        await fs.writeFile('database-state.json', staleOverlay);
+        assert.equal(await createDatabaseStore().env.RSS_DATA.get('articleFetchStrategyStats'), '{}');
+    } finally { process.chdir(previousDirectory); await fs.rm(directory, { recursive: true, force: true }); }
+});
+
+test('unchanged saves preserve parsed data and do not touch disk, while changed saves still fail safely', async () => {
+    const previousDirectory = process.cwd();
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'rss-noop-'));
+    process.chdir(directory);
+    try {
+        await fs.writeFile('database.json', JSON.stringify({ articles: '[]', feeds: '[]' }));
+        const db = createDatabaseStore().env.RSS_DATA;
+        await db.put('boardStates', '["a"]');
+        const parsed = await db.get('boardStates', { type: 'json', shared: true });
+        // A directory at the target makes any attempted atomic save fail.
+        await fs.unlink('database-state.json');
+        await fs.mkdir('database-state.json');
+        await db.put('boardStates', '["a"]');
+        await db.putMany({ boardStates: '["a"]', articles: '[]' });
+        await db.putMany({});
+        assert.strictEqual(await db.get('boardStates', { type: 'json', shared: true }), parsed);
+        await assert.rejects(db.putMany({ boardStates: '["b"]', articles: '[]' }));
+        assert.deepEqual(await db.get('boardStates', { type: 'json' }), ['a']);
     } finally { process.chdir(previousDirectory); await fs.rm(directory, { recursive: true, force: true }); }
 });

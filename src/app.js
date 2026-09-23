@@ -356,6 +356,7 @@ export async function createApplication({ isMainModule = false } = {}) {
         getBestImage: images.getBestImage,
         BROWSER_HEADERS: config.BROWSER_HEADERS,
         getCachedArticle: cache.getCachedArticle,
+        getCachedArticleMetadata: cache.getCachedArticleMetadata,
         getArticleFetchPolicy: policy.getArticleFetchPolicy,
         hasOnlyOpenCliFetchMethod: pipeline.hasOnlyOpenCliFetchMethod,
         fetchParsedArticleByStrategy: pipeline.fetchParsedArticleByStrategy,

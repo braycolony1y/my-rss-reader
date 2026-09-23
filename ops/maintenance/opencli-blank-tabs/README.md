@@ -52,6 +52,11 @@ and recovers existing session leases before navigation, preventing duplicate tab
 after a process or bridge reconnect. Gemini leases have no idle expiry; provider
 errors reset the next conversation in the same tab instead of closing it.
 
+Each Gemini job starts New chat and enables Temporary Chat. A reload is used
+only if New chat fails. Focus emulation lets Gemini render in an inactive tab
+without selecting it. Complete new JSON is accepted without waiting for Copy
+or other response controls to become visible.
+
 `node test/browser-tab-lifecycle.test.js` tests these contracts without a browser.
 `node test/helpers/gemini-tab-reuse-live.mjs` is an opt-in smoke test that sends
 two tiny synthetic Gemini prompts in one disposable inactive tab, then closes it.

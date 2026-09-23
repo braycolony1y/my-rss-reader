@@ -362,8 +362,7 @@ function installGeminiStalePageRecovery(slot, page) {
     // through the SAME slot/session lease.
     //
     // No reload, no new tab, no new chat. If lease rebinding also fails, the
-    // existing runOnSlot() error path still closes/discards the genuinely bad
-    // slot as before.
+    // error propagates; the next job recovers the conversation in this slot.
     if (!page || page.__geminiStalePageRecoveryInstalled) {
         return page;
     }
@@ -3234,15 +3233,22 @@ function buildInput(prompt, options) {
 async function resetGeminiJobPage(page) {
     // Keep the physical tab inactive, but allow Gemini's visibility-gated UI
     // and response rendering to run. This does not select or focus Chrome.
-    await page.evaluate(() => location.href);
+    const currentUrl = await page.evaluate(() => location.href);
     await page.cdp('Emulation.setFocusEmulationEnabled', { enabled: true });
-    // A hard navigation clears old response nodes and stuck generation state
-    // without closing, selecting, or replacing the physical browser tab.
-    await page.goto(GEMINI_WEB_URL);
-    await waitForGeminiPage(page, 20000);
-    const fresh = await waitForFreshNormalChat(page, 10000);
-    if (!fresh) {
-        return providerError(page, 'Gemini did not clear the previous conversation', 'GEMINI_WEB_FRESH_CHAT_NOT_CONFIRMED');
+    if (!/^https:\/\/gemini\.google\.com\//i.test(currentUrl || '')) {
+        await page.goto(GEMINI_WEB_URL);
+        await waitForGeminiPage(page, 20000);
+    }
+    // Normal reuse is New chat -> confirm an empty conversation -> Temporary
+    // Chat ON. Reload this same tab only to recover a failed new-chat action.
+    try {
+        await returnToGeminiChatHome(page);
+    } catch (error) {
+        if (error.code !== 'GEMINI_WEB_NEW_CHAT_FAILED') throw error;
+        console.warn('[GEMINI WEB] New chat failed; reloading the same tab for recovery');
+        await page.goto(GEMINI_WEB_URL);
+        await waitForGeminiPage(page, 20000);
+        await returnToGeminiChatHome(page);
     }
     await resetFreshTemporaryChat(page);
 }

@@ -36,125 +36,31 @@ test('CLI uses an isolated directory, safe argv and does not inherit application
 test('failed requests enter a bounded cooldown and never expose the prompt in errors',async()=>{
  let calls=0,time=100;
  const generate=createAntigravityProvider({available:()=>true,now:()=>time,cooldownMs:100,run:(binary,args,options,callback)=>{calls++;queueMicrotask(()=>callback(Object.assign(new Error('sensitive prompt'),{code:'ENOENT'})));return{pid:0}}});
- await assert.rejects(generate('sensitive prompt'),/Antigravity request failed \(ENOENT\)/);
+ await assert.rejects(generate('sensitive prompt'),error => error.code === 'ANTIGRAVITY_FAILED' && error.antigravityDetail?.exitCode === 'ENOENT' && !error.message.includes('sensitive prompt'));
  await assert.rejects(generate('sensitive prompt'),/cooling down/);assert.equal(calls,1);
- time=201;await assert.rejects(generate('sensitive prompt'),/request failed/);assert.equal(calls,2);
+ time=60101;await assert.rejects(generate('sensitive prompt'),/request failed/);assert.equal(calls,2);
 });
-test('active Smart briefing hard-reserves both Antigravity slots after existing calls finish', async () => {
- const callbacks=[];
-
- const ok=JSON.stringify({
-  status:'SUCCESS',
-  response:'ok',
-  usage:{
-   input_tokens:1,
-   output_tokens:1,
-   total_tokens:2
-  }
- });
-
- const generate=createAntigravityProvider({
-  available:()=>true,
-  maxConcurrent:2,
-  run:(_binary,_args,_options,callback)=>{
-   callbacks.push(callback);
-   return{pid:callbacks.length};
-  }
- });
-
- let oldA;
- let oldB;
- let briefing;
- let other;
-
+test('provider slots stay available while the global scheduler owns briefing priority', async () => {
+ const callbacks = [];
+ const generate = createAntigravityProvider({available: () => true, maxConcurrent: 2,
+  run: (_binary, _args, _options, callback) => {callbacks.push(callback); return {pid: 0};}});
+ const waitFor = async count => {
+  for (let i = 0; callbacks.length < count && i < 200; i++) await new Promise(resolve => setTimeout(resolve, 5));
+  assert.equal(callbacks.length, count);
+ };
+ const first = generate('old-a'), second = generate('old-b');
+ await waitFor(2);
+ touchAntigravityBriefingFocus('test-viewer');
+ const briefing = withAntigravityRequestContext({type: 'story-briefing', isInteractive: () => true}, () => generate('visible-briefing'));
+ const other = generate('other-ai');
  try {
-  /*
-   * Two ordinary jobs already occupy both Antigravity slots.
-   */
-  oldA=generate('old-a');
-  oldB=generate('old-b');
-
-  while(callbacks.length<2){
-   await new Promise(resolve=>setImmediate(resolve));
-  }
-
-  assert.equal(callbacks.length,2);
-
-  /*
-   * User is now actively reading a Smart tab.
-   */
-  touchAntigravityBriefingFocus(
-   'test-viewer'
-  );
-
-  briefing=
-   withAntigravityRequestContext(
-    {
-     type:'story-briefing',
-     isInteractive:()=>true
-    },
-    ()=>generate('visible-briefing')
-   );
-
-  /*
-   * Unrelated AI also arrives, but must not be allowed into
-   * either newly-free Antigravity slot.
-   */
-  other=generate('other-ai');
-
-  /*
-   * First existing AI finishes.
-   * The visible briefing must get this newly-free slot.
-   */
-  callbacks[0](null,ok);
-  await oldA;
-
-  while(callbacks.length<3){
-   await new Promise(resolve=>setImmediate(resolve));
-  }
-
-  assert.equal(callbacks.length,3);
-
-  /*
-   * Second existing AI finishes.
-   *
-   * There is now a physically free Antigravity slot, but it must
-   * remain RESERVED/IDLE because visible briefing work is active.
-   */
-  callbacks[1](null,ok);
-  await oldB;
-
-  await new Promise(resolve=>
-   setTimeout(resolve,120)
-  );
-
-  assert.equal(
-   callbacks.length,
-   3,
-   'other AI entered a slot while active briefing reservation was held'
-  );
-
-  /*
-   * Visible briefing finishes.
-   * Reservation should now disappear and ordinary AI may enter.
-   */
-  callbacks[2](null,ok);
-  await briefing;
-
-  while(callbacks.length<4){
-   await new Promise(resolve=>setImmediate(resolve));
-  }
-
-  assert.equal(callbacks.length,4);
-
-  callbacks[3](null,ok);
-  await other;
-
- } finally {
-  clearAntigravityBriefingFocus(
-   'test-viewer'
-  );
- }
+  callbacks[0](null, success); await first;
+  await waitFor(3);
+  callbacks[1](null, success); await second;
+  await waitFor(4);
+  callbacks[2](null, success); callbacks[3](null, success);
+  await Promise.all([briefing, other]);
+ } finally { clearAntigravityBriefingFocus('test-viewer'); }
 });
 test('Antigravity cooldown is scoped to the failing model',async()=>{
  let time=100;const calls=[];
@@ -165,7 +71,7 @@ test('Antigravity cooldown is scoped to the failing model',async()=>{
    : callback(null,success));
   return{pid:0};
  }});
- await assert.rejects(generate('high',{model:'gemini-3.8-flash-high'}),/request failed \(1\)/);
+ await assert.rejects(generate('high',{model:'gemini-3.8-flash-high'}),error => error.code === 'ANTIGRAVITY_FAILED' && error.antigravityDetail?.exitCode === '1');
  const low=await generate('low',{model:'gemini-3.8-flash-low',json:true});assert.equal(low.modelUsed,'gemini-3.8-flash-low');
  await assert.rejects(generate('high again',{model:'gemini-3.8-flash-high'}),/cooling down/);
  assert.deepEqual(calls,['gemini-3.8-flash-high','gemini-3.8-flash-low']);

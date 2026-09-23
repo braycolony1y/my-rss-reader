@@ -22,7 +22,7 @@ test('clicking outside an open sidebar closes it and toggle icons expose their s
 
 test('touch movement and feed scrolling dismiss the tooltip', () => {
     assert.match(html, /@touchmove\.window\.passive="hideTooltip\(\)"/);
-    assert.match(html, /id="scroll-container" @scroll\.passive="hideTooltip\(\)"/);
+    assert.match(html, /id="scroll-container"[^>]*@scroll\.passive="hideTooltip\(\)"/);
 });
 
 test('article tooltips have one pointer-aware lifecycle and comprehensive dismissal', () => {
@@ -74,10 +74,10 @@ test('Smart News API bypasses the regular article database path', () => {
     const smartNews = readFileSync(new URL('../smart-news.js', import.meta.url), 'utf8');
     assert.match(server, /if \(filterType === 'smart'\) return await serveSmartData\(req, res\);/);
     assert.match(server, /get\('smartClusters', \{ type: 'json', shared: true \}\)/);
-    assert.match(server, /Server-Timing.*smart-data/);
+    assert.match(server, /timings\["smart-data"\][\s\S]{0,150}"Server-Timing"/);
     assert.match(server, /helpers: \{\s*fastParseRSS,\s*waitForHttpIdle: http\.waitForHttpIdle,\s*prefetchOpenCliOnlyArticles: \(\.\.\.args\) => prefetch\.prefetchOpenCliOnlyArticles\(\.\.\.args\),\s*resolveSmartArticleDestinations: googleNews\.resolveSmartArticleDestinations/);
     assert.match(server, /skipped while HTTP requests are active/);
-    assert.match(server, /max-age=31536000, immutable/);
+    assert.match(server, /app\.get\('\/script\.js'[\s\S]{0,350}no-cache, must-revalidate/);
     assert.match(server, /no-cache, must-revalidate/);
     assert.match(server, /await waitForHttpIdle\(\);[\s\S]{0,240}const cycleStart/);
     assert.match(smartNews, /'articles',[\s\S]{0,240}type: 'json',[\s\S]{0,80}shared: true/);
@@ -104,8 +104,8 @@ test('related articles use a stacked reader and close back to the previous artic
 });
 
 test('hidden count revalidates from authoritative server state', () => {
-    assert.match(script, /this\.hiddenStates = this\.dedupeStateLinks\(data\.hiddenStates \|\| \[\]\)/);
-    assert.match(script, /if \(data\.hiddenStates\) this\.hiddenStates = this\.dedupeStateLinks\(data\.hiddenStates\)/);
+    assert.match(script, /this\.hiddenStates = this\.applyPendingStateMutations\('hiddenStates', data\.hiddenStates \|\| \[\]\)/);
+    assert.match(script, /if \(data\.hiddenStates\) this\.hiddenStates = this\.applyPendingStateMutations\('hiddenStates', data\.hiddenStates\)/);
     assert.match(html, /x-text="hiddenArticleCount\(\) \|\| ''"/);
     assert.doesNotMatch(script, /data\.hiddenStates \|\| \[\]\), \.\.\.this\.hiddenStates/);
 });

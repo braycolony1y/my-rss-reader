@@ -104,3 +104,20 @@ Detailed timings remain available through `Server-Timing`. `SMART_REFRESH_PROFIL
 ## Activation
 
 After explicit user authorization, `rss-reader` was restarted successfully. Systemd reports `active/running`, and the local `/health` endpoint returned `status: ok`. The changes are activated.
+
+### Memory-pressure recovery
+
+Top ranking reads the canonical cluster, raw-article, and editorial-state JSON
+strings and parses them in the bounded ranking worker. It no longer materializes
+another full candidate graph in the HTTP server. The production worker path
+reserves the greater of 512 MiB or 15% of the main V8 heap for publication; genuine
+pressure preserves the current snapshot and retries automatically after 15 seconds.
+Compute/persistence failures retry after 30 seconds. The legacy
+`TOP_STORIES_MAIN_HEAP_MAX_MB` / `TOP_STORIES_PROGRESSIVE_HEAP_MAX_MB` thresholds
+apply only to the object-based custom compute path. The worker's own
+`TOP_STORIES_WORKER_HEAP_MB` limit remains in force.
+
+The input signature hashes the existing JSON strings, so fresh raw articles
+invalidate Top even within a reranking time bucket. Progressive publications must
+match both version and revision. Split stories receive unique IDs before editorial
+state is assigned, and an invalid replacement cannot overwrite editorial state.

@@ -684,6 +684,7 @@ export function createStoryBriefings({ db, generate, loadSource, concurrency = 2
                     b.queuedAt
                 );
             });
+    let cacheRevision = 0;
     const cache = () => cachePromise ||= db.get('storyBriefings', {type:'json'}).then(value=>value || {});
     const persist = (entries, job, result) => {
         // Merge inside the publication queue so concurrent completions cannot
@@ -697,6 +698,8 @@ export function createStoryBriefings({ db, generate, loadSource, concurrency = 2
             await db.put('storyBriefings', JSON.stringify(next));
             for (const key of Object.keys(entries)) delete entries[key];
             Object.assign(entries,next);
+            // Top analysis does not change the legacy Classic editorial keys.
+            if (!job.cluster.topStory) cacheRevision++;
 
             /*
              * SMART_BRIEFING_SSE_V1
@@ -1169,6 +1172,7 @@ normal form where appropriate.`;
             return true;
         },
 
+        get rankingRevision() { return cacheRevision; },
         async peek(cluster,tab) {
             const entries=await cache(), revision=storyRevision(cluster);
             return entries[`rank:${tab}:${revision}`] || entries[`${tab}:${revision}`] || null;

@@ -81,7 +81,7 @@ test('every sync visits old pages, detects edits/new posts on any page, and part
     } });
     await service.tick(); run++;
     await service.tick();
-    assert.deepEqual(calls, [1, 2, 1, 1, 2, 1]);
+    assert.deepEqual(calls, [1, 2, 1, 2]);
     let record = await service.archive(url);
     assert.equal(record.posts['10'].versions.length, 2);
     assert.ok(record.posts['20']);
@@ -142,6 +142,33 @@ test('dismissals extend on activity, expire and purge, without ever treating an 
     assert.equal(values.boardStates.length, 0);
     await service.cleanup();
     assert.equal(await service.archive(url), null, 'departed archives expire independently of dismissal tracking');
+});
+
+test('observing known identities skips ledger writes and new identities never mutate shared state', async t => {
+    const article = { link: url, title: 'Known thread', feedUrl: 'feed-A' };
+    const { service, values, db, advance } = await fixture(t, { values: { articles: [article] } });
+    const originalGet = db.get;
+    const originalPut = db.put;
+    let ledgerWrites = 0;
+    db.get = async (key, options) => key === 'cacheIdentityLedger' && options?.shared
+        ? values[key] : originalGet(key);
+    db.put = async (key, value) => { if (key === 'cacheIdentityLedger') ledgerWrites++; return originalPut(key, value); };
+    const shared = values.cacheIdentityLedger;
+    const before = structuredClone(shared);
+    advance(60000);
+    await service.observe([{ ...article, link: url + 'page-2' }]);
+    await service.observe([article]);
+    assert.equal(ledgerWrites, 0);
+    assert.deepEqual(shared, before);
+    const fresh = { ...article, link: 'https://voz.vn/t/new.456/' };
+    await service.observe([fresh]);
+    assert.equal(ledgerWrites, 1);
+    assert.ok(values.cacheIdentityLedger.articles['voz.vn:thread:456']);
+    assert.deepEqual(shared, before, 'copy-on-write must preserve the published ledger');
+    const committed = structuredClone(values.cacheIdentityLedger);
+    db.put = async () => { throw new Error('Disk unavailable'); };
+    await assert.rejects(service.observe([{ ...article, link: 'https://voz.vn/t/new.789/' }]), /Disk unavailable/);
+    assert.deepEqual(values.cacheIdentityLedger, committed, 'a failed save cannot leak an uncommitted identity');
 });
 
 test('history button is hidden for one version, visible for edits, and archived HTML is sanitized', () => {
@@ -226,9 +253,9 @@ test('archive navigation returns only the requested page and retains removed pos
     const record = { thread_id: id, url, posts: { 10: post(10), 30: { ...post(30, 'Page two', 21, 2), is_removed: true } }, legacy_snapshots: [{ url, content: 'first' }, { url: url.replace(/\/$/,'')+'/page-2', content: 'second' }] };
     const first = archivePage(record, url);
     const second = archivePage(record, url+'page-2');
-    assert.deepEqual(Object.keys(first.record.posts), ['10']);
-    assert.deepEqual(Object.keys(second.record.posts), ['30']);
-    assert.equal(second.record.posts['30'].is_removed, true);
+    assert.deepEqual(Object.keys(first.record.posts), ['10', '30']);
+    assert.deepEqual(Object.keys(second.record.posts), []);
+    assert.equal(first.record.posts['30'].is_removed, true, 'removed posts follow their preceding live neighbour');
     assert.equal(second.pagination.currentPage, 2);
     assert.equal(second.pagination.prevUrl, first.url);
     assert.equal(first.pagination.nextUrl, second.url);
@@ -316,7 +343,7 @@ test('sync starts at page one when Board stores an unread link', async t => {
         return value.endsWith('/page-2') ? snapshot(2, 2, [post(20, 'Reply', 2, 2)]) : snapshot(1, 2, [post(10)]);
     } });
     await service.tick();
-    assert.deepEqual(calls, [url.slice(0, -1), url + 'page-2', url.slice(0, -1)]);
+    assert.deepEqual(calls, [url.slice(0, -1), url + 'page-2']);
     assert.equal((await service.archive(url)).sync_status, 'complete');
 });
 

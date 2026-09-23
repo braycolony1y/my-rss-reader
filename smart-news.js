@@ -1,3 +1,4 @@
+import { canonicalSmartCategory } from './src/utils/smart-destinations.js';
 import { globalAiTaskActive, runGlobalAiTask } from './src/ai/global-ai-scheduler.js';
 import { withLocalCompute } from './src/ai/local-compute.js';
 import {
@@ -51,7 +52,7 @@ export const EMBEDDING_CACHE_FILE =
 
 const VALID_SMART_CATEGORIES = new Set([
   'news_vietnam',
-  'news_world',
+  'news_global',
   'finance_vietnam',
   'finance_global',
   'tech'
@@ -1163,6 +1164,7 @@ export function refineArticleCategory(
   item,
   initialCategory
 ) {
+  initialCategory = canonicalSmartCategory(initialCategory);
   if (!item) {
     return initialCategory ||
       'news_vietnam';
@@ -1249,7 +1251,7 @@ export function refineArticleCategory(
     if (!isCyber) {
       return isVietnamese
         ? 'news_vietnam'
-        : 'news_world';
+        : 'news_global';
     }
   }
 
@@ -1336,7 +1338,7 @@ export function refineArticleCategory(
     (
       isVietnamese
         ? 'news_vietnam'
-        : 'news_world'
+        : 'news_global'
     );
 
   if (
@@ -1355,6 +1357,7 @@ function inferCategory(
   article,
   forceReinfer = false
 ) {
+  if (article.smartCategory) article = { ...article, smartCategory: canonicalSmartCategory(article.smartCategory) };
   if (
     !forceReinfer &&
     article.smartCategory &&
@@ -1394,7 +1397,7 @@ function inferCategory(
 
   let category = isVietnamese
     ? 'news_vietnam'
-    : 'news_world';
+    : 'news_global';
 
   if (isInvestingComSource(article)) {
     category = isVietnamese
@@ -1488,6 +1491,7 @@ function inferCategory(
 const SMART_SOURCE_FETCH_METHODS = new Set(['jina', 'cloudflare', 'vietserver', 'opencli', 'opencli-fetch', 'direct', 'allorigins']);
 
 function normalizeSmartSource(source) {
+  source = { ...source, category: canonicalSmartCategory(source?.category) };
   const url = canonicalSourceUrl(
     source?.url
   );
@@ -1504,7 +1508,7 @@ function normalizeSmartSource(source) {
       source.category
     )
       ? source.category
-      : 'news_world';
+      : 'news_global';
 
   if (
     category === 'tech' &&
@@ -1573,7 +1577,7 @@ function normalizeSmartSource(source) {
 function countSmartSources(sources) {
   const counts = {
     news_vietnam: 0,
-    news_world: 0,
+    news_global: 0,
     finance_vietnam: 0,
     finance_global: 0,
     tech: 0
@@ -1612,7 +1616,7 @@ export function normalizeArticle(
     detectArticleLanguage(item);
 
   const rawCategory =
-    source.category ||
+    canonicalSmartCategory(source.category) ||
     inferCategory(
       {
         ...item,
@@ -2496,30 +2500,27 @@ export function getSmartDestinationPartition(article) {
       article?.smartCategory ||
       article?.feedCategory ||
       ''
-    ).toLowerCase();
+    ).toLowerCase().replace(/_(world|foreign)$/, '_global');
 
   if (category === 'news_vietnam') {
     return 'news_vietnam';
   }
 
-  if (category === 'news_world') {
-    return 'news_world';
+  if (category === 'news_global') {
+    return 'news_global';
   }
 
   if (category === 'finance_vietnam') {
     return 'finance_vietnam';
   }
 
-  if (
-    category === 'finance_global' ||
-    category === 'finance_world'
-  ) {
-    return 'finance_world';
+  if (category === 'finance_global') {
+    return 'finance_global';
   }
 
   if (
     category === 'tech_vietnam' ||
-    category === 'tech_world'
+    category === 'tech_global'
   ) {
     return category;
   }
@@ -2538,7 +2539,7 @@ export function getSmartDestinationPartition(article) {
       region === 'world' ||
       region === 'global'
     ) {
-      return 'tech_world';
+      return 'tech_global';
     }
 
     const language =
@@ -2550,7 +2551,7 @@ export function getSmartDestinationPartition(article) {
     }
 
     if (language === 'en') {
-      return 'tech_world';
+      return 'tech_global';
     }
   }
 
@@ -11837,6 +11838,7 @@ export function createSmartNewsEngine({
   }
 
   async function addSource(input) {
+    input = { ...input, category: canonicalSmartCategory(input?.category) };
     const source =
       normalizeSmartSource({
         ...(input || {}),
@@ -12006,6 +12008,7 @@ export function createSmartNewsEngine({
   async function discoverSources(
     input = {}
   ) {
+    input = { ...input, category: canonicalSmartCategory(input.category) };
     const category =
       VALID_SMART_CATEGORIES.has(
         input.category
@@ -12282,6 +12285,7 @@ export function createSmartNewsEngine({
     targetCategory = null,
     options = {}
   ) {
+    targetCategory = targetCategory ? canonicalSmartCategory(targetCategory) : null;
     if (running) {
       return {
         ok: true,

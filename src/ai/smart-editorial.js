@@ -171,12 +171,12 @@ function sourceDestinations(
   const normalized =
     category
       .replace(
-        '_global',
-        '_world'
+        '_world',
+        '_global'
       )
       .replace(
         '_foreign',
-        '_world'
+        '_global'
       );
 
   return DESTINATION_SET.has(

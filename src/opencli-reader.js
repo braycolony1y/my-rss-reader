@@ -1,3 +1,5 @@
+import { createBrowserFetchQueue } from './browser/fetch-queue.js';
+import { getCurrentArticleFetchLaneContext, withArticleFetchLane } from './articles/fetch-lanes.js';
 import { fork } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
@@ -114,6 +116,13 @@ function sameOpenCliBrowserFetchUrl(left, right) {
 function openCliBrowserFetchUsesOriginContext(state) {
     const hostname = String(state?.hostname || '').toLowerCase();
     return hostname === 'voz.vn' || hostname.endsWith('.voz.vn');
+}
+
+export function hasWarmOpenCliBrowserFetch(url) {
+    try {
+        const state = openCliBrowserFetchStates.get(new URL(url).origin);
+        return Boolean(state?.browserReady && state?.page && openCliBrowserFetchUsesOriginContext(state));
+    } catch { return false; }
 }
 
 const OPENCLI_BROWSER_FETCH_BRIDGE_IDLE_SECONDS = 60 * 60;
@@ -1023,6 +1032,10 @@ function getOpenCliBrowserFetchTracker(origin) {
         tracker.tail = Promise.resolve();
     }
 
+    tracker.queue ||= createBrowserFetchQueue({ canFetchConcurrently: () => {
+        const state = openCliBrowserFetchStates.get(origin);
+        return hasWarmOpenCliBrowserFetch(origin) && state.directDisabled && !state.refreshPromise;
+    } });
     return tracker;
 }
 
@@ -1445,7 +1458,7 @@ export function runOpenCliBrowserFetch(url) {
         );
 
     // OPENCLI_FETCH_REUSE_PER_ORIGIN_EXACT_URL_V3
-    // One queue per source/origin. Browser fallback jobs reuse the same tab.
+    // Priority queue per origin; duplicate URLs share a request. Jobs reuse the same tab.
     // For normal sources that tab is navigated to each job's exact URL; VOZ
     // keeps its origin-context fetch optimization. Other origins run independently.
     cancelOpenCliBrowserIdleClose(
@@ -1466,16 +1479,10 @@ export function runOpenCliBrowserFetch(url) {
         );
     };
 
-    const task = tracker.tail.then(
-        start,
-        start
-    );
-
-    // A failed request must not poison later work for this origin.
-    tracker.tail = task.then(
-        () => undefined,
-        () => undefined
-    );
+    const context = getCurrentArticleFetchLaneContext();
+    const priority = Number(context.lane.slice(1)) || 0;
+    const task = tracker.queue.run(url,
+        () => withArticleFetchLane(context.lane, start, context), priority);
 
     return task.finally(() => {
         tracker.pending =
