@@ -121,7 +121,7 @@ test('Tech destination URLs select the correct region in both Classic and Top AP
     const state={smartClusters:articles,smartRawArticles:[],smartClusterVersion:'v1',
         topStoriesPublished:{policy:2,articles,createdAt:Date.now(),signature:'fixture',clusterVersion:'v1'},
         userPreferences:{smartTabModes:{__all:'classic'}}};
-    const presentation=createArticlePresentation({env:{RSS_DATA:{get:async key=>state[key]}}});
+    const presentation=createArticlePresentation({generateBriefing:async()=>{throw Error("offline list fixture")},env:{RSS_DATA:{get:async key=>state[key]}}});
     for(const mode of ['classic','top']) for(const region of ['vietnam','global']) {
         let result;
         await presentation.serveSmartData({query:{filterValue:`tech_${region}`,smartMode:mode}},

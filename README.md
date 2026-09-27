@@ -63,3 +63,5 @@ snapshot; temporary server response failures reconnect automatically.
 Runtime requirements: `puppeteer-core` (installed by npm), Chromium (default
 `/snap/bin/chromium`, overridable with `PDF_CHROMIUM_PATH`), and `qpdf` for merging
 large exports without retaining the entire document in the Node heap.
+
+`smart-state.json` durably stores frequent Smart status, analysis, and editorial updates until the next Smart corpus snapshot. Include it with `smart-data.json` in backups and restores.

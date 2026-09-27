@@ -20,10 +20,10 @@ fi
 
 is_kept_root_file() {
     case "$1" in
-        .env|.gitignore|README.md|article-media.js|database.json|database-state.json|database.json.backup|database.writer.lock|feed-parsers.js|feed-worker.js|feeds_backup.json|feeds_backup.json.backup|gemini.env|gemini-keys.txt|index.html|package-lock.json|package.json|qwen-keys.txt|script.js|server.js|smart-cluster-worker.js|smart-data.json|smart-data.json.backup|smart-embedding-worker.js|smart-embeddings-worker.json|smart-hnsw-clustering.js|smart-news.js|smart-sources.js|summary-engine.js|tailwind.config.js)
+        .env|.gitignore|README.md|article-media.js|database.json|database-state.json|database.json.backup|database.writer.lock|feed-parsers.js|feed-worker.js|feeds_backup.json|feeds_backup.json.backup|gemini.env|gemini-keys.txt|index.html|package-lock.json|package.json|qwen-keys.txt|script.js|server.js|smart-cluster-worker.js|smart-state.json|smart-data.json|smart-data.json.backup|smart-embedding-worker.js|smart-embeddings-worker.json|smart-hnsw-clustering.js|smart-news.js|smart-sources.js|summary-engine.js|tailwind.config.js)
             return 0
             ;;
-        database.json.tmp-*|database.json.backup.tmp-*|database-state.json.tmp-*|smart-data.json.tmp-*|smart-data.json.backup.tmp-*|feeds_backup.json.tmp-*|feeds_backup.json.backup.tmp-*)
+        smart-embeddings-worker.json.tmp-*|database.json.tmp-*|database.json.backup.tmp-*|database-state.json.tmp-*|smart-state.json.tmp-*|smart-data.json.tmp-*|smart-data.json.backup.tmp-*|feeds_backup.json.tmp-*|feeds_backup.json.backup.tmp-*)
             return 0
             ;;
         *)

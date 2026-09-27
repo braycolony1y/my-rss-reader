@@ -1,4 +1,5 @@
 import { Worker } from 'node:worker_threads';
+import { boundedWorkerOptions, hasWorkerHeadroom } from '../observability/memory-budget.js';
 import { createHash } from 'node:crypto';
 import { getHeapStatistics } from 'node:v8';
 import { storyText } from './story-ranking.js';
@@ -87,9 +88,7 @@ const rawStateJson = async db => {
 const rankInWorker = input => new Promise((resolve, reject) => {
     const worker = new Worker(new URL('./top-stories-worker.js', import.meta.url), {
         workerData: input,
-        resourceLimits: {
-            maxOldGenerationSizeMb: Math.max(256, Math.min(1536, Number(process.env.TOP_STORIES_WORKER_HEAP_MB) || 1024))
-        }
+        ...boundedWorkerOptions(Math.max(256, Math.min(1536, Number(process.env.TOP_STORIES_WORKER_HEAP_MB) || 1024)))
     });
     worker.once('message', result => result.error ? reject(new Error(result.error)) : resolve(result));
     worker.once('error', reject);
@@ -99,7 +98,7 @@ const rankInWorker = input => new Promise((resolve, reject) => {
 
 // A display envelope around the existing index, including its editorial state.
 // Publication is one durable write; no intermediate worker state is visible.
-export function createTopStoriesSnapshots({ db, config, compute = rankInWorker, now = Date.now, report = console.warn, memoryUsage = process.memoryUsage, heapStatistics = getHeapStatistics } = {}) {
+export function createTopStoriesSnapshots({ db, config, compute = rankInWorker, now = Date.now, report = console.warn, memoryUsage = process.memoryUsage, heapStatistics = getHeapStatistics, workerHeadroom = hasWorkerHeadroom } = {}) {
     let current, loading, pending, scheduled, checked, retryAt = 0;
     const serializedWorker = compute === rankInWorker;
     let lastInputFingerprint;
@@ -368,6 +367,12 @@ const migrated={policy:POLICY,articles,createdAt:now(),signature:'legacy',cluste
         // The worker parses it in its isolated heap.
         let statesJson = await rawStateJson(db);
 
+        if (serializedWorker && !workerHeadroom()) {
+            retryAt = now() + 30000;
+            report('[TOP STORIES] Waiting for process memory headroom; retaining current ranking.');
+            return current;
+        }
+
         const result = await compute({
             ...(serializedWorker
                 ? { publicationJson, rawJson, progressiveVersion: progressiveActive ? progressiveVersion : null, progressiveRevision }
@@ -452,6 +457,7 @@ const migrated={policy:POLICY,articles,createdAt:now(),signature:'legacy',cluste
     return {
         async get() { await load(); if (!current) { await migrate(); if (!current) await refresh(); } return current; },
         schedule,
+        releaseInputCache() { lastInputFingerprint = null; },
         async revalidate() { await load(); return refresh(); },
         dispose() { clearTimeout(scheduled); scheduled = null; },
         get pending() { return Boolean(pending || scheduled); }

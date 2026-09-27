@@ -69,3 +69,13 @@ Environment=STORY_BRIEFING_DUMP_OUTPUT=1
 # /etc/systemd/system/rss-reader.service.d/top-stories-memory.conf
 [Service]
 Environment="TOP_STORIES_MAIN_HEAP_MAX_MB=2450"
+
+# /etc/systemd/system/rss-reader.service.d/zz-memory-recovery.conf
+[Service]
+# Leave room below MemoryHigh for workers, native allocations and file I/O.
+ExecStart=
+ExecStart=/usr/bin/node --max-old-space-size=3072 --expose-gc /home/ubuntu/my-rss-reader/server.js
+# Recover a blocked HTTP event loop without requiring a manual restart.
+WatchdogSec=120s
+WatchdogSignal=SIGKILL
+NotifyAccess=all

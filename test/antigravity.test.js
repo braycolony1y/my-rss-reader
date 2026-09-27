@@ -2,12 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import {
- createAntigravityProvider,
+ createAntigravityProvider as providerFactory,
  parseAntigravityOutput,
  withAntigravityRequestContext,
  touchAntigravityBriefingFocus,
  clearAntigravityBriefingFocus
 } from '../src/ai/antigravity.js';
+const createAntigravityProvider = options => providerFactory({ ...options, quotaRuntime: {retryAt:0,lastCheckAt:Infinity,stateLoaded:true,startupCheckStarted:true,checkPromise:null} });
 const success=JSON.stringify({status:'SUCCESS',response:'{"ok":true}',usage:{input_tokens:12,output_tokens:4,total_tokens:16}});
 
 test('Antigravity response requires successful nonempty output and valid structured content',()=>{
@@ -40,7 +41,7 @@ test('failed requests enter a bounded cooldown and never expose the prompt in er
  await assert.rejects(generate('sensitive prompt'),/cooling down/);assert.equal(calls,1);
  time=60101;await assert.rejects(generate('sensitive prompt'),/request failed/);assert.equal(calls,2);
 });
-test('provider slots stay available while the global scheduler owns briefing priority', async () => {
+test('interactive briefings reserve provider slots until focus is cleared', async () => {
  const callbacks = [];
  const generate = createAntigravityProvider({available: () => true, maxConcurrent: 2,
   run: (_binary, _args, _options, callback) => {callbacks.push(callback); return {pid: 0};}});
@@ -57,8 +58,10 @@ test('provider slots stay available while the global scheduler owns briefing pri
   callbacks[0](null, success); await first;
   await waitFor(3);
   callbacks[1](null, success); await second;
-  await waitFor(4);
-  callbacks[2](null, success); callbacks[3](null, success);
+  assert.equal(callbacks.length,3);
+  callbacks[2](null, success);await briefing;
+  clearAntigravityBriefingFocus('test-viewer');
+  await waitFor(4);callbacks[3](null, success);
   await Promise.all([briefing, other]);
  } finally { clearAntigravityBriefingFocus('test-viewer'); }
 });

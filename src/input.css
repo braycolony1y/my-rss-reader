@@ -6141,3 +6141,59 @@ No diagonal.
     background: transparent !important;
     border: 0 !important;
 }
+
+/* Subject-aware card viewport. Supersedes the historical per-mode pixel
+ * translations above; all card modes use the same responsive crop geometry. */
+#scroll-container .article-card.has-story-briefing .article-card-image,
+#scroll-container .article-card .article-card-image {
+    inset: 0 0 0 auto !important;
+    width: 58% !important;
+    height: 100% !important;
+    overflow: hidden !important;
+    transform: none !important;
+    clip-path: none !important;
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 24%) !important;
+    mask-image: linear-gradient(90deg, transparent, #000 24%) !important;
+}
+
+#scroll-container .article-card.has-story-briefing .article-card-image img.thumbnail-img,
+#scroll-container .article-card.is-smart-classic-card .article-card-image img.thumbnail-img,
+#scroll-container .article-card .article-card-image img.thumbnail-img {
+    --image-focus-target: 0.66;
+    width: 100% !important;
+    height: 100% !important;
+    max-width: none !important;
+    object-fit: var(--image-focus-fit, cover) !important;
+    object-position: var(--image-focus-x, 50%) var(--image-focus-y, 50%) !important;
+    transform: none !important;
+    /* An old transition:all also animated object-position and dimensions,
+     * temporarily clipping the subject during rotation/window resizing. */
+    transition: opacity 150ms ease !important;
+    -webkit-mask-image: none !important;
+    mask-image: none !important;
+}
+
+/* Smart Top photos belong to the heading, above facts/analysis panels. */
+#scroll-container .article-card[data-image-layout="top"] .article-card-image {
+    bottom: auto !important;
+    height: var(--image-focus-height, 220px) !important;
+}
+
+/* The page marks itself before first paint; reveal only a prepared crop.
+ * With JS disabled (or if the module fails to start), normal images remain. */
+html[data-image-focus] #scroll-container .article-card .article-card-image img.thumbnail-img:not([data-focus-state="ready"]) {
+    opacity: 0 !important;
+}
+
+@media (max-width: 640px) {
+    #scroll-container .article-card.has-story-briefing .article-card-image,
+    #scroll-container .article-card .article-card-image {
+        width: 52% !important;
+    }
+
+    #scroll-container .article-card.has-story-briefing .article-card-image img.thumbnail-img,
+    #scroll-container .article-card.is-smart-classic-card .article-card-image img.thumbnail-img,
+    #scroll-container .article-card .article-card-image img.thumbnail-img {
+        --image-focus-target: 0.70;
+    }
+}

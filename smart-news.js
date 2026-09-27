@@ -1763,6 +1763,7 @@ export function embeddingCacheKey(article) {
 }
 
 import { Worker } from 'node:worker_threads';
+import { boundedWorkerOptions, hasWorkerHeadroom } from './src/observability/memory-budget.js';
 
 let embeddingWorker = null;
 let workerMsgId = 0;
@@ -1775,7 +1776,7 @@ function getClusterWorker() {
 
   clusterWorker = new Worker(
     new URL('./smart-cluster-worker.js', import.meta.url),
-    { type: 'module' }
+    { type: 'module', ...boundedWorkerOptions(1024) }
   );
 
   clusterWorker.on('error', err => {
@@ -1818,7 +1819,7 @@ export function disposeEmbeddingModel() {
 function getEmbeddingWorker() {
   if (embeddingWorker) return embeddingWorker;
 
-  embeddingWorker = new Worker(new URL('./smart-embedding-worker.js', import.meta.url), { type: 'module' });
+  embeddingWorker = new Worker(new URL('./smart-embedding-worker.js', import.meta.url), { type: 'module', ...boundedWorkerOptions(512) });
 
   embeddingWorker.on('message', (msg) => {
     if (msg.type === 'pong') return;
@@ -11287,7 +11288,7 @@ export async function startSmartSyncLoop(
   await sleep(10_000);
 
   while (true) {
-    if (activeSmartEngineRefreshes > 0) {
+    if (activeSmartEngineRefreshes > 0 || !hasWorkerHeadroom(768)) {
       console.log(
         '[SMART SYNC] Foreground Smart refresh active; background source fetch deferred.'
       );

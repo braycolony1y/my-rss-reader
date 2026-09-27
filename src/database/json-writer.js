@@ -12,31 +12,48 @@ export async function writeJsonSnapshot(filename, value) {
             await handle.writeFile(serialized, 'utf8');
             return;
         }
-        let batch = '{';
-        let first = true;
-        const flush = async () => {
-            if (!batch) return;
-            await handle.writeFile(batch, 'utf8');
-            batch = '';
-        };
-        for (const [key, item] of Object.entries(value)) {
-            if (item === undefined || typeof item === 'function' || typeof item === 'symbol') continue;
-            batch += `${first ? '' : ','}${JSON.stringify(key)}:`;
-            first = false;
+        let batch = '';
+        const ancestors = new Set();
+        function* encode(item, key = '', converted = false) {
+            if (!converted && item && typeof item.toJSON === 'function') item = item.toJSON(key);
             if (typeof item === 'string') {
-                batch += '"';
+                yield '"';
                 for (let offset = 0; offset < item.length; offset += 64 * 1024) {
-                    batch += JSON.stringify(item.slice(offset, offset + 64 * 1024)).slice(1, -1);
-                    if (batch.length >= 256 * 1024) await flush();
+                    yield JSON.stringify(item.slice(offset, offset + 64 * 1024)).slice(1, -1);
                 }
-                batch += '"';
+                yield '"';
+            } else if (item && typeof item === 'object' &&
+                (Array.isArray(item) || Object.getPrototypeOf(item) === Object.prototype || Object.getPrototypeOf(item) === null)) {
+                if (ancestors.has(item)) throw new TypeError('Converting circular structure to JSON');
+                ancestors.add(item);
+                const array = Array.isArray(item);
+                yield array ? '[' : '{';
+                let first = true;
+                for (const property of array ? Array.from({length: item.length}, (_, i) => String(i)) : Object.keys(item)) {
+                    let child = item[property];
+                    if (child && typeof child.toJSON === 'function') child = child.toJSON(property);
+                    if (child === undefined || typeof child === 'function' || typeof child === 'symbol') {
+                        if (!array) continue;
+                        child = null;
+                    }
+                    yield `${first ? '' : ','}${array ? '' : JSON.stringify(property) + ':'}`;
+                    first = false;
+                    yield* encode(child, property, true);
+                }
+                yield array ? ']' : '}';
+                ancestors.delete(item);
             } else {
-                batch += JSON.stringify(item);
+                yield JSON.stringify(item);
             }
-            if (batch.length >= 256 * 1024) await flush();
         }
-        batch += '}';
-        await flush();
+        for (const chunk of encode(value)) {
+            batch += chunk;
+            if (batch.length >= 256 * 1024) {
+                await handle.writeFile(batch, 'utf8');
+                batch = '';
+            }
+        }
+        if (batch) await handle.writeFile(batch, 'utf8');
     } finally {
         await handle.close();
     }

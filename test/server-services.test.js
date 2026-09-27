@@ -193,3 +193,27 @@ test('unchanged saves preserve parsed data and do not touch disk, while changed 
         assert.deepEqual(await db.get('boardStates', { type: 'json' }), ['a']);
     } finally { process.chdir(previousDirectory); await fs.rm(directory, { recursive: true, force: true }); }
 });
+
+test('Smart analysis updates use a durable overlay and stale overlays cannot undo a corpus commit', async () => {
+    const previousDirectory = process.cwd();
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'rss-smart-state-'));
+    process.chdir(directory);
+    try {
+        await fs.writeFile('database.json', JSON.stringify({ articles: '[]', feeds: '[]' }));
+        const original = JSON.stringify({ smartClusters: '[]', storyBriefings: '{}' });
+        await fs.writeFile('smart-data.json', original);
+        const db = createDatabaseStore().env.RSS_DATA;
+        await db.put('storyBriefings', '{"story":{"text":"ready"}}');
+        assert.equal(await fs.readFile('smart-data.json', 'utf8'), original);
+        const overlay = await fs.readFile('smart-state.json', 'utf8');
+        const recovered = createDatabaseStore().env.RSS_DATA;
+        assert.equal((await recovered.get('storyBriefings', {type:'json'})).story.text, 'ready');
+        await recovered.putMany({ storyBriefings: '{}', smartClusterVersion: 'next' });
+        await fs.writeFile('smart-state.json', overlay);
+        assert.deepEqual(await createDatabaseStore().env.RSS_DATA.get('storyBriefings', {type:'json'}), {});
+        await fs.unlink('smart-state.json');
+        await fs.mkdir('smart-state.json');
+        await assert.rejects(recovered.put('storyBriefings', '{"other":true}'));
+        assert.deepEqual(await recovered.get('storyBriefings', {type:'json'}), {});
+    } finally { process.chdir(previousDirectory); await fs.rm(directory, {recursive:true,force:true}); }
+});

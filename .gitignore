@@ -123,3 +123,6 @@ database-state.json
 # Local API keys
 gemini-keys.txt
 qwen-keys.txt
+
+smart-state.json
+smart-state.json.tmp-*

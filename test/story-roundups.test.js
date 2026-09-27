@@ -75,8 +75,9 @@ test('roundup support cannot cross unconfigured source destinations', async () =
 });
 test('ambiguous roundup bullets are not attached and short bullets create no events', async () => {
     const {index}=harness();
-    const one=article('one','Central bank announces interest rate cut on Friday in Alpha');
-    const two=article('two','Central bank announces interest rate cut on Friday in Beta');
+    const one=article('one','Central bank announces interest rate cut on Friday for Alpha manufacturing exports');
+    const two=article('two','Central bank announces interest rate cut on Friday for Beta residential mortgages');
+    two.pubDate=new Date(now-48*3600000).toISOString();
     const digest=article('daily','Daily news digest',`<ul><li>Central bank announces interest rate cut on Friday</li><li>Markets rise</li></ul>`);
     const result=await index.rank([one,two,digest],sourcesFor([one,two,digest]),now);
     assert.equal(result.length,3);

@@ -150,10 +150,12 @@ test('server keeps the old cache until a validated replacement and short-circuit
 
 test('VOZ background polling carries feed policy instead of silently enabling Jina', () => {
     const script = readFileSync(new URL('../script.js', import.meta.url), 'utf8');
-    assert.match(script, /checkVozNewPostsInBackground\(url, this\.overlayArticle\.feedUrl \|\| ''\)/);
-    assert.match(script, /new URLSearchParams\(\{ url, feedUrl, bypassCache: 'true' \}\)/);
+    assert.match(script, /checkVozNewPostsInBackground\(\s*activeVozUrl,\s*activeFeedUrl\s*\)/);
+    assert.match(script, /fetchThreadPage\(\s*currentLiveUrl,\s*feedUrl,\s*false,\s*true/);
+    assert.match(script, /params\.set\('bypassCache', 'true'\)/);
     assert.match(script, /this\.overlayArticle\.sourceDeleted = data\.sourceDeleted === true/);
-    assert.match(script, /this\.overlayFetchedFromCache && !this\.overlayArticle\.sourceDeleted/);
+    assert.match(script, /const activeFeedUrl = this\.overlayArticle\?\.feedUrl \|\| ''/);
+    assert.match(script, /if \(this\.overlayFetchedFromCache\)/);
 });
 
 test('Cache Board schedules the permanent post archive every minute', () => {
@@ -173,8 +175,8 @@ test('resume uses a cached page only when it contains the permanent post ID', as
     const calls = [];
     const cached = { content, pagination: { currentPage: 4 } };
     const lookup = async url => { calls.push(url); return cached; };
-    assert.deepEqual(await getCachedVozResumePage(url, '4', lookup), { url: 'https://voz.vn/t/example.123456/page-4', cached });
-    assert.deepEqual(calls, ['https://voz.vn/t/example.123456/page-4']);
+    assert.deepEqual(await getCachedVozResumePage(url, '4', lookup), { url: 'https://voz.vn/t/example.123456/?page=4', cached });
+    assert.deepEqual(calls, ['https://voz.vn/t/example.123456/?page=4']);
     assert.equal(await getCachedVozResumePage(url, 4, async () => ({ content: content.replace('789', '790') })), null);
     assert.equal(await getCachedVozResumePage(url, 4, async () => null), null);
     assert.equal(await getCachedVozResumePage(url, -1, lookup), null);

@@ -110,3 +110,15 @@ test('split stories cannot reuse an identity already inherited by a sibling', as
     const repeated = await index.rank([first, second], sources, time + 60000);
     for (const a of result) assert.equal(repeated.find(b => b.link === a.link).clusterId, a.clusterId);
 });
+
+test('whole-process pressure keeps cards available and retries ranking when worker headroom returns', async t => {
+    t.mock.timers.enable({apis:['setTimeout','Date'],now:time});
+    const f=fixture();let headroom=false;
+    const snapshots=createTopStoriesSnapshots({db:f.db,workerHeadroom:()=>headroom,memoryUsage:()=>({heapUsed:700*MB}),report:()=>{}});
+    t.after(()=>snapshots.dispose());
+    assert.equal((await snapshots.revalidate()).signature,'old');
+    assert.equal(f.writes.length,0);assert.ok(snapshots.pending);
+    headroom=true;t.mock.timers.tick(30000);
+    assert.notEqual((await snapshots.revalidate()).signature,'old');
+    assert.ok(f.writes.includes('topStoriesPublished'));
+});

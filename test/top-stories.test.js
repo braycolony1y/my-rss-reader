@@ -77,7 +77,8 @@ test('material correction increments version and retains timeline history',async
  assert.equal(updated.title,correction.title);
 });
 test('all scores precede enrichment; dynamic prefix can exceed ten or be empty',async()=>{
-const {index}=harness();
+// Isolate cutoff size from same-event headline reconciliation, tested separately.
+const {index}=harness({eventMergeTitleSimilarity:1.1,diversityPenalty:0});
 
 const stories=Array.from(
     {length:15},

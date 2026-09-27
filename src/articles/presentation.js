@@ -1508,6 +1508,15 @@ export function createArticlePresentation({
     }
 
     return {
+        releaseTransientCaches() {
+            _smartClustersHistory = {};
+            smartApiViewCache.clear();
+            freshViewCache.clear();
+            classicRankedViews.clear();
+            filteredTopViews.clear();
+            storyViews.clear();
+            topSnapshots.releaseInputCache();
+        },
         markUnavailableSourceUrl,
         serveSmartData,
         prioritizeVisibleBriefings,

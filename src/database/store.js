@@ -9,6 +9,10 @@ export function createDatabaseStore() {
     const DB_FILE = './database.json';
 
     const SMART_DB_FILE = './smart-data.json';
+    const SMART_STATE_FILE = './smart-state.json';
+    const SMART_STATE_KEYS = new Set(['storyBriefings', 'smartStatus', 'smartClusteringCounters', 'smartEventVerificationCache', 'smartEditorialAssessmentCache']);
+    let smartStateRevision = 0;
+    let smartStateOverlay = {};
     const STATE_FILE = './database-state.json';
     const STATE_KEYS = new Set(['readStates', 'savedStates', 'hiddenStates', 'boardStates', 'recentReadAt', 'userPreferences', 'cacheMembers', 'cacheIdentityLedger', 'smartAiProviderHealth', 'articleFetchStrategyStats', 'googleNewsUrlCache']);
     let stateRevision = 0;
@@ -213,6 +217,17 @@ export function createDatabaseStore() {
                 }
             }
         }
+        smartStateRevision = Number(mainSnapshot.__smartStateRevision) || 0;
+        try {
+            const overlay = JSON.parse(await fs.readFile(SMART_STATE_FILE, 'utf8'));
+            if (!Number.isSafeInteger(overlay.revision) || !overlay.values ||
+                Object.keys(overlay.values).some(key => !SMART_STATE_KEYS.has(key))) throw new Error('Invalid Smart state overlay');
+            if (overlay.revision > smartStateRevision) {
+                smartStateOverlay = overlay.values;
+                smartStateRevision = overlay.revision;
+                Object.assign(mainSnapshot, smartStateOverlay);
+            }
+        } catch (error) { if (error.code !== 'ENOENT') throw error; }
         // Repair historical publisher mismatches before any list or sync reads them.
         for (const key of ['articles', 'smartRawArticles', 'smartClusters']) {
             if (!mainSnapshot[key]) continue;
@@ -266,6 +281,15 @@ export function createDatabaseStore() {
         const changedKeys = Array.isArray(updatedKeys)
             ? updatedKeys
             : (updatedKeys ? [updatedKeys] : []);
+        if (changedKeys.length && changedKeys.every(key => SMART_STATE_KEYS.has(key))) {
+            const values = { ...smartStateOverlay };
+            for (const key of changedKeys) values[key] = data[key];
+            const revision = smartStateRevision + 1;
+            await _writeJsonAtomic(SMART_STATE_FILE, { revision, values });
+            smartStateOverlay = values;
+            smartStateRevision = revision;
+            return;
+        }
         // Both single and batch state updates use the durable overlay. A caller
         // should not have to opt in to avoid rewriting the article corpus.
         if (changedKeys.length && changedKeys.every(key => STATE_KEYS.has(key))) {
@@ -283,14 +307,18 @@ export function createDatabaseStore() {
         if (smartChanged) {
             const smartData = {};
             for (const k of SMART_KEYS) if (k in data && data[k] !== undefined) smartData[k] = data[k];
+            smartData.__smartStateRevision = smartStateRevision;
             if (previousData) {
                 const prevSmartData = {};
                 for (const k of SMART_KEYS) if (k in previousData && previousData[k] !== undefined) prevSmartData[k] = previousData[k];
+                prevSmartData.__smartStateRevision = smartStateRevision;
                 if (Object.keys(prevSmartData).length > 0) {
                     await _writeJsonAtomic(SMART_DB_FILE + '.backup', prevSmartData).catch(() => {});
                 }
             }
             await _writeJsonAtomic(SMART_DB_FILE, smartData);
+            smartStateOverlay = {};
+            await fs.unlink(SMART_STATE_FILE).catch(error => { if (error.code !== 'ENOENT') console.warn('[DB SMART STATE]', error.message); });
             if (!mainChanged) return;
         }
 
@@ -358,15 +386,16 @@ export function createDatabaseStore() {
                         return opts.shared ? _jsonParsedCache[key].parsed : structuredClone(_jsonParsedCache[key].parsed);
                     }
                     const parsed = JSON.parse(val);
-                    _jsonParsedCache[key] = { raw: val, parsed };
-                    return opts.shared ? parsed : structuredClone(parsed);
+                    // Mutable one-off readers already own this parse. Retaining
+                    // it AND cloning it doubled every background corpus read.
+                    if (opts.shared) _jsonParsedCache[key] = { raw: val, parsed };
+                    return parsed;
                 }
                 return val;
             },
             put: (key, value, options = {}) => withDbLock(async () => {
                 if (!_dbCache) _dbCache = await _loadDBFromDisk();
                 if (typeof value === 'string' && _dbCache[key] === value) return;
-                delete _jsonParsedCache[key];
                 const previous = _dbCache;
                 const next = { ...previous, [key]: value };
 
@@ -396,6 +425,7 @@ export function createDatabaseStore() {
                 _dbCache = next;
                 try {
                     await _persistToDisk(next, previous, key, { ...options, lightweight: STATE_KEYS.has(key) });
+                    if (_jsonParsedCache[key]?.raw !== value) delete _jsonParsedCache[key];
                 } catch (err) {
                     _dbCache = previous; // rollback on failure
                     throw err;
@@ -411,7 +441,6 @@ export function createDatabaseStore() {
                 let next = { ...previous };
 
                 for (const [key, value] of Object.entries(keyValuePairs)) {
-                    delete _jsonParsedCache[key];
                     next[key] = value;
 
                     if (['feeds', 'articles', 'smartRawArticles', 'smartClusters', 'blockedArticleKeywords'].includes(key)) {
@@ -522,6 +551,7 @@ export function createDatabaseStore() {
     }
 
     return {
+        releaseParsedCache() { _jsonParsedCache = {}; },
         initializeWriterLock,
         env,
         _writeJsonAtomic,

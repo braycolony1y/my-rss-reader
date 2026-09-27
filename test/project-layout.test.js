@@ -27,6 +27,7 @@ const allowedRootFiles = new Set([
     'script.js',
     'server.js',
     'smart-cluster-worker.js',
+    'smart-state.json',
     'smart-data.json',
     'smart-data.json.backup',
     'smart-embedding-worker.js',
@@ -59,7 +60,8 @@ test('project root contains only documented production and workspace entries', a
     const entries = await readdir(repositoryRoot, { withFileTypes: true });
     const unexpected = entries
         // The live database writer briefly stages these atomic runtime files.
-        .filter(entry => !/^(?:database\.json|database-state\.json|smart-data\.json|feeds_backup\.json)(?:\.backup)?\.tmp-\d+-[a-z0-9]+$/.test(entry.name))
+        .filter(entry => !/^smart-embeddings-worker\.json\.tmp-\d+$/.test(entry.name))
+        .filter(entry => !/^(?:database\.json|database-state\.json|smart-state\.json|smart-data\.json|feeds_backup\.json)(?:\.backup)?\.tmp-\d+-[a-z0-9]+$/.test(entry.name))
         .filter((entry) => entry.isDirectory()
             ? !allowedRootDirectories.has(entry.name)
             : !allowedRootFiles.has(entry.name))

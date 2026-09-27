@@ -65,7 +65,7 @@ test('tab requests hold foreground priority until their async work finishes and 
 
 test('Forum cards defer missing images so thread files cannot block the list', async () => {
     let reads = 0;
-    const presentation = createArticlePresentation({
+    const presentation = createArticlePresentation({generateBriefing:async()=>{throw Error("offline list fixture")},
         getLastKnownCachedArticle: async () => { throw new Error('Full body must not be loaded for a card'); },
         getLastKnownCachedArticleImage: async requested => { assert.equal(requested, url); reads++; return image; }
     });
@@ -119,7 +119,7 @@ test('Smart exposes fresh raw headlines before clustering and refreshes on a new
     const old = article('old', new Date(Date.now() - 3 * 86400000).toISOString());
     const fresh = article('fresh', new Date().toISOString());
     const state = { smartClusters: [old], smartRawArticles: [old, fresh], smartClusterVersion: 'old-version', userPreferences: { smartTabModes: { tech: 'classic' } } };
-    const presentation = createArticlePresentation({ env: { RSS_DATA: { get: async key => state[key] } } });
+    const presentation = createArticlePresentation({generateBriefing:async()=>{throw Error("offline list fixture")}, env: { RSS_DATA: { get: async key => state[key] } } });
     const request = async () => {
         let result;
         await presentation.serveSmartData({ query: { filterValue: 'tech' } }, { setHeader() {}, json(data) { result = data; } });
@@ -132,7 +132,7 @@ test('Smart exposes fresh raw headlines before clustering and refreshes on a new
 
 
 test('cards preserve publisher image lookup URLs, including RSS fallback hints', async () => {
-    const presentation = createArticlePresentation({
+    const presentation = createArticlePresentation({generateBriefing:async()=>{throw Error("offline list fixture")},
         getLastKnownCachedArticleImage: async () => { throw new Error('Existing image lookup must remain intact'); }
     });
     for (const link of [url, 'https://tinhte.vn/thread/example.123456', 'https://example.com/story']) {
@@ -142,7 +142,7 @@ test('cards preserve publisher image lookup URLs, including RSS fallback hints',
 });
 
 test('fresh headlines without cached thumbnails retain publisher image discovery', async () => {
-    const presentation = createArticlePresentation({ getLastKnownCachedArticleImage: async () => null });
+    const presentation = createArticlePresentation({generateBriefing:async()=>{throw Error("offline list fixture")}, getLastKnownCachedArticleImage: async () => null });
     const article = await presentation.prepareArticleForClient({ link: 'https://example.com/story', title: 'Fresh story' });
     assert.equal(article.image, '/api/og-image?url=https%3A%2F%2Fexample.com%2Fstory');
 });
@@ -153,7 +153,7 @@ test('unchanged Classic navigation reuses ranking and invalidates on a fresh raw
         smartCategory: 'news_global', pubDate: new Date().toISOString(), image,
         get content() {contentReads++; return 'The central bank approved a national interest rate cut.';}};
     const state = {smartClusters: [cluster], smartRawArticles: [], smartClusterVersion: 'v1', hiddenStates: [], readStates: []};
-    const presentation = createArticlePresentation({env: {RSS_DATA: {get: async key => state[key]}}});
+    const presentation = createArticlePresentation({generateBriefing:async()=>{throw Error("offline list fixture")},env: {RSS_DATA: {get: async key => state[key]}}});
     const request = async query => {
         let result;
         await presentation.serveSmartData({query: {filterValue: 'news_global', smartMode: 'classic', ...query}},

@@ -35,3 +35,14 @@ test('atomic caller can discard invalid input without replacing a valid snapshot
     await fs.rename(temporary, filename);
     assert.deepEqual(JSON.parse(await fs.readFile(filename, 'utf8')), [1, 2, 3]);
 });
+
+test('nested state strings stream correctly and preserve JSON conversions', async t => {
+    const directory=await fs.mkdtemp(path.join(os.tmpdir(),'rss-json-nested-'));
+    t.after(()=>fs.rm(directory,{recursive:true,force:true}));
+    const filename=path.join(directory,'state.json');
+    const value={revision:3,values:{large:'é😀\\\n'.repeat(500000),optional:undefined,date:new Date('2026-09-27'),list:[undefined,null,Symbol('omit')],custom:{toJSON:key=>({key})}}};
+    await writeJsonSnapshot(filename,value);
+    assert.deepEqual(JSON.parse(await fs.readFile(filename,'utf8')),JSON.parse(JSON.stringify(value)));
+    const cycle={};cycle.self=cycle;
+    await assert.rejects(writeJsonSnapshot(filename,cycle),/circular/);
+});

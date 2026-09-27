@@ -366,7 +366,7 @@ export function parseAntigravityOutput(stdout, json = false, { preserveFormattin
 
 // A bounded Antigravity process pool prevents bulk AI work from spawning too many
 // agent processes. Excess requests wait for a free slot; real failures use the API backup.
-export function createAntigravityProvider({ run = execFile, binary = ANTIGRAVITY_BINARY, available = antigravityAvailable, now = Date.now, cooldownMs = 60000, maxConcurrent = Number(process.env.ANTIGRAVITY_CONCURRENCY || 2) } = {}) {
+export function createAntigravityProvider({ quotaRuntime = ANTIGRAVITY_QUOTA_RUNTIME, run = execFile, binary = ANTIGRAVITY_BINARY, available = antigravityAvailable, now = Date.now, cooldownMs = 60000, maxConcurrent = Number(process.env.ANTIGRAVITY_CONCURRENCY || 2) } = {}) {
     let activeCount = 0;
     const concurrencyLimit = Math.max(
         1,
@@ -398,7 +398,6 @@ export function createAntigravityProvider({ run = execFile, binary = ANTIGRAVITY
      * - is never awaited by a foreground generation request
      * - consumes zero model tokens/turns
      */
-    const quotaRuntime = ANTIGRAVITY_QUOTA_RUNTIME;
 
     const ANTIGRAVITY_QUOTA_CHECK_INTERVAL_MS =
         Math.max(

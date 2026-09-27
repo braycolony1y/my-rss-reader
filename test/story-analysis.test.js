@@ -1,3 +1,4 @@
+import {runGlobalAiTask,setGlobalAiReadingMode} from '../src/ai/global-ai-scheduler.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { briefingSources, validateBriefing, createStoryBriefings, REQUIRED_ANALYSIS_REVIEW, ANALYSIS_VERSION } from '../src/articles/story-briefing.js';
@@ -32,8 +33,8 @@ test('custom sections are allowed and selected missing sections require repair',
  assert.equal(validateBriefing(value,sources,{requireAnalysisReview:true}).analysisVersion,0);
 });
 test('Timeline is explicitly considered and can use existing material events',()=>{
- const value=output([]);value.analysisReview.find(r=>r.label==='Timeline').useful=true;
- assert.equal(validateBriefing(value,sources,{requireAnalysisReview:true,timeline:[{},{}]}).analysisVersion,ANALYSIS_VERSION);
+ const value=output([]);value.analysisReview.find(r=>r.label==='Timeline').useful=true;value.timelineEntryIds=['disclosure','patch'];
+ assert.equal(validateBriefing(value,sources,{requireAnalysisReview:true,timeline:[{id:'disclosure',text:'Vulnerability disclosed'},{id:'patch',text:'Fixed firmware released'}]}).analysisVersion,ANALYSIS_VERSION);
  assert.equal(validateBriefing(value,sources,{requireAnalysisReview:true}).analysisVersion,0);
 });
 test('invalid optional section preserves factual excerpt while marking analysis incomplete',()=>{
@@ -48,14 +49,20 @@ test('old excerpt-only cache is withheld until content policy is reevaluated',as
  assert.equal(calls,1);assert.equal((await service.get(article,'tech_world')).sections.length,4);
 });
 test('all requested cards get evaluated, visible cards precede queued look-ahead',async()=>{
- const order=[];let release;const {service}=harness({concurrency:1,generate:async(prompt)=>{const id=JSON.parse(prompt.split('SOURCES:\n')[1])[0].link;order.push(id);if(order.length===1)await new Promise(r=>release=r);return JSON.stringify(output());}});
+ setGlobalAiReadingMode(true);
+ let release;const gate=new Promise(r=>release=r);
+ const blockers=[...Array.from({length:3},()=>runGlobalAiTask({lane:'p0',viewportBurst:true},()=>gate)),...Array.from({length:2},()=>runGlobalAiTask({lane:'p1'},()=>gate)),runGlobalAiTask({lane:'p4'},()=>gate)];
+ const order=[];const {service}=harness({generate:async prompt=>{order.push(JSON.parse(prompt.split('SOURCES:\n')[1])[0].link);return JSON.stringify(output());}});
  const cards=Array.from({length:5},(_,i)=>({...article,clusterId:`event${i}`,link:`https://source.example/${i}`}));
- await service.get(cards[0],'tech_world',{priority:2});await until(()=>release);
- for (const card of cards.slice(1))await service.get(card,'tech_world',{priority:0});
- await service.get(cards[4],'tech_world',{priority:2});release();
- await until(()=>order.length===5);
- assert.equal(order[1],cards[4].link);
- await until(async()=> (await service.get(cards[3],'tech_world')).status==='ready');
+ try {
+  for(const card of cards) await service.get(card,'tech_world',{priority:0,viewKey:'test-view'});
+  service.setViewport('test-view',[cards[4].clusterId],1);
+  release();await Promise.all(blockers);
+  await until(()=>order.length===5);
+  assert.equal(order[0],cards[4].link);
+  await until(async()=> (await service.get(cards[3],'tech_world')).status==='ready');
+ } finally {release();service.setActiveView(null);setGlobalAiReadingMode(false);}
+
 });
 test('background generation uses available cached source details',async()=>{
  let prompt;const {service}=harness({loadSource:async()=>({content:article.content+' The supported product range includes router model Atlas.'}),generate:async p=>{prompt=p;return JSON.stringify(output());}});

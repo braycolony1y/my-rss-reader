@@ -53,3 +53,61 @@ The production `scripts/` directory is documented and allowed by the layout guar
 Root backup/scratch files were preserved in
 `/home/ubuntu/script/cleanup-archives/rss-reader-cleanup-20260923-article-list`.
 The cleanup tool now protects the state-overlay file and live atomic-write files.
+
+## September 27 hang investigation
+
+The supplied September 25 sample showed the Node process blocked in
+`mem_cgroup_handle_over_high`, roughly 5 GB resident memory, full system swap,
+and approximately 93% full memory pressure. September 27 live inspection found
+6,396 cgroup `high` events, 4.2 GB process RSS, 0.8 GB process swap, and a 3.2 GB
+main heap. The long Board lock waits were therefore not sufficient evidence of
+a lock deadlock: memory reclaim could stop the entire HTTP event loop.
+
+Additional changes:
+
+- Frequent Smart status/analysis/editorial updates now use `smart-state.json`.
+  A revisioned overlay preserves acknowledged writes across restart and prevents
+  stale replay after a full snapshot. This avoids rewriting the 151 MB Smart
+  corpus plus its backup for each small update.
+- Nested state strings use bounded asynchronous JSON writes too; previously the
+  state overlay's nested `values` object still took the whole-object path.
+- One-off mutable database reads no longer retain a parsed copy and clone a
+  second copy. Existing shared reads keep their cached identity. Save validation
+  can reuse the old parsed array until commit.
+- Worker admission counts cgroup anonymous memory and swap, rather than only the
+  main V8 heap. Temporary list caches and parsed database caches are released
+  under pressure, with collection rate limited to once per minute. Ranking keeps
+  the last valid publication and retries automatically. A pinned view can reset
+  under memory pressure to release its old corpus.
+- Workers have explicit heap limits and do not inherit the main process's larger
+  heap flag. The deployed main heap is 3 GiB, with MemoryHigh/MemoryMax unchanged
+  at 5/6 GiB. Clustering/embedding workers use 1 GiB/512 MiB; ranking uses 1 GiB.
+- A systemd watchdog receives event-loop heartbeats and restarts the service if
+  they stop for 120 seconds. Existing atomic files protect completed saves.
+  Drop-in: `ops/systemd/rss-reader-memory-recovery.conf`, installed as
+  `/etc/systemd/system/rss-reader.service.d/zz-memory-recovery.conf`.
+
+Post-deployment local checks returned 40 articles in all three modes. First
+requests during background/test activity: Normal 393 ms, Top 438 ms, Classic
+2640 ms. Repeated requests: 183/204/125 ms respectively. These confirm working
+lists, not a fixed latency guarantee; cold Classic generation still costs more.
+Long-term recurrence cannot be ruled out by a short post-restart observation.
+
+The read-only full-corpus worker check successfully ranked **15,851 unique
+stories** under an enforced **1,024 MiB worker heap** in **92 seconds**. It did
+not write production state or call providers. Reproduce with
+`node --max-old-space-size=1536 tools/experiments/verify-ranking-memory.mjs`.
+The focused ranking/list/worker suites passed 52/52 checks.
+
+Final verification: `npm test` passed **473/473** tests, followed by the required
+server/worker syntax checks. The full suite also exposed presentation fixtures
+that could start live AI prewarming; those now inject offline generators.
+Provider tests inject isolated quota state rather than using the account's
+persisted cooldown. The remaining Timeline, scheduler, Top cutoff/diversity,
+roundup, VOZ URL/markup, and runtime-layout fixtures now match their intended
+contracts. No export feature defect was demonstrated by the old fixture errors.
+
+Final-build local request pairs (40 cards) were Normal 383/67 ms, Top 292/579 ms,
+and Classic 1571/113 ms. Background work affects these timings. The service had
+zero cgroup throttling/OOM events and no automatic restarts during the immediate
+post-deployment checks; its watchdog heartbeat was confirmed.

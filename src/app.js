@@ -43,6 +43,7 @@ import { registerSummaryRoutes } from './routes/summary-routes.js';
 import { registerMediaRoutes } from './routes/media-routes.js';
 import { registerPageRoutes } from './routes/page-routes.js';
 import { registerEventRoutes } from './events.js';
+import { startMemoryMaintenance, startServiceWatchdog } from './observability/memory-budget.js';
 
 // Construct one owner per subsystem. Deferred callbacks below connect the
 // Smart engine and feed ingestion without module cycles or duplicate state.
@@ -50,6 +51,7 @@ export async function createApplication({ isMainModule = false } = {}) {
     const config = loadConfiguration();
 
     const lifecycle = installProcessHandlers();
+    if (isMainModule) startServiceWatchdog();
 
     const http = createHttpApp();
 
@@ -305,6 +307,10 @@ export async function createApplication({ isMainModule = false } = {}) {
         getLastKnownCachedArticleImage: cache.getLastKnownCachedArticleImage,
         env: database.env
     });
+    if (isMainModule) startMemoryMaintenance({ releaseCaches: () => {
+        presentation.releaseTransientCaches();
+        database.releaseParsedCache();
+    } });
 
     const archives = createArticleArchives({
         getCachedArticle: cache.getCachedArticle,
