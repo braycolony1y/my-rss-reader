@@ -5,6 +5,9 @@ import { fileURLToPath } from 'node:url';
 const clamp = value => Math.max(0, Math.min(1, value));
 let sessionPromise;
 
+export { selectImagePalette } from '../../public/image-palette.js';
+import { selectImagePalette } from '../../public/image-palette.js';
+
 function faceSession() {
     if (!sessionPromise) {
         // Local image analysis must not start the runtime's telemetry uploader
@@ -46,6 +49,7 @@ export async function detectImageFocus(buffer) {
         .raw().toBuffer({ resolveWithObject: true });
     const decoded = sharp(data, { raw: info });
     const rgb = await decoded.clone().resize(320, 240, { fit: 'fill' }).raw().toBuffer();
+    const palette = selectImagePalette(rgb, 320, 240);
     const plane = 320 * 240;
     const input = new Float32Array(plane * 3);
     for (let i = 0; i < plane; i++) {
@@ -54,10 +58,10 @@ export async function detectImageFocus(buffer) {
     const session = await faceSession();
     const output = await session.run({ [session.inputNames[0]]: new ort.Tensor('float32', input, [1, 3, 240, 320]) });
     const face = selectFace(output.scores.data, output.boxes.data);
-    if (face) return face;
+    if (face) return { ...face, palette };
 
     const stats = await decoded.clone().stats();
-    if (stats.entropy < 0.1) return { x: 0.5, y: 0.5, type: 'center', confidence: 0 };
+    if (stats.entropy < 0.1) return { x: 0.5, y: 0.5, type: 'center', confidence: 0, palette };
     // libvips attention uses luminance, saturation and skin tones. A square
     // source is required so attention can search in both axes, not only the
     // dimension trimmed by a normal landscape/portrait cover crop.
@@ -65,5 +69,5 @@ export async function detectImageFocus(buffer) {
     const { info: crop } = await sharp(square).resize(64, 128, { fit: 'cover', position: sharp.strategy.attention, withoutEnlargement: true })
         .toBuffer({ resolveWithObject: true });
     return { x: clamp((crop.attentionX ?? 64) / 128),
-        y: clamp((crop.attentionY ?? 64) / 128), type: 'saliency', confidence: 0 };
+        y: clamp((crop.attentionY ?? 64) / 128), type: 'saliency', confidence: 0, palette };
 }

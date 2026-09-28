@@ -1,5 +1,6 @@
 import sourceRegistry from '../sources/index.js';
 import { decodeHTMLEntities } from '../../feed-parsers.js';
+import { isMismatchedVozThreadPage } from '../voz-thread-state.js';
 
 function normalizeCachedArticleForSource(url, result) {
     if (!result?.content) return result;
@@ -28,6 +29,9 @@ function enhanceArticleResultForSource(url, result, context = {}) {
 }
 
 function assertArticleResultAcceptedBySource(url, result) {
+    if (isMismatchedVozThreadPage(url, result)) {
+        throw new Error(`The source returned page ${result.pagination.currentPage} instead of the requested page. Please try again.`);
+    }
     const title = decodeHTMLEntities(String(result?.title || '')).replace(/\s+/g, ' ').trim();
     const text = decodeHTMLEntities(String(result?.content || ''))
         .replace(/<[^>]+>/g, ' ')

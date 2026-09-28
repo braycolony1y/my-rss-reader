@@ -3,6 +3,26 @@ import { authMiddleware } from '../middleware/auth.js';
 import { discardResponseBody } from '../fetch-response.js';
 import { createFocalCache, CENTER_FOCUS, publicImageUrl, readImageBytes } from '../images/focal-cache.js';
 
+export async function downloadFocalImage(url, { proxyBase, headers = {}, fetchImage = fetch } = {}) {
+    // VOZ's public attachments load directly in the reader, but the
+    // general image proxy returns 403 for them. Keep this direct path
+    // restricted to the publisher's attachment endpoint; no redirects.
+    const direct = new URL(url);
+    if (direct.protocol === 'https:' && direct.hostname === 'voz.vn' && direct.pathname.startsWith('/attachments/')) {
+        try {
+            return await readImageBytes(await fetchImage(url, {
+                headers: { ...headers, Accept: 'image/*' },
+                redirect: 'manual', signal: AbortSignal.timeout(8000)
+            }));
+        } catch { /* Other publisher behavior can still use the proxy. */ }
+    }
+    const response = await fetchImage(proxyBase + encodeURIComponent(url), {
+        headers: { ...headers, Referer: new URL(url).origin + '/', Accept: 'image/*' },
+        signal: AbortSignal.timeout(12_000)
+    });
+    return readImageBytes(response);
+}
+
 export function registerMediaRoutes({
     app,
     CF_PROXY_BASE,
@@ -18,13 +38,7 @@ export function registerMediaRoutes({
         if (resolvedImages.size > 1000) resolvedImages.delete(resolvedImages.keys().next().value);
     }
     const focalCache = imageFocalCache || createFocalCache({
-        download: async url => {
-            const response = await fetch(CF_PROXY_BASE + encodeURIComponent(url), {
-                headers: { ...BROWSER_HEADERS, Referer: new URL(url).origin + '/', Accept: 'image/*' },
-                signal: AbortSignal.timeout(12_000)
-            });
-            return readImageBytes(response);
-        }
+        download: url => downloadFocalImage(url, { proxyBase: CF_PROXY_BASE, headers: BROWSER_HEADERS })
     });
 
     app.get('/api/image-focus', authMiddleware, async (req, res) => {

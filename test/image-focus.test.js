@@ -6,9 +6,9 @@ import path from 'node:path';
 import sharp from 'sharp';
 import { JSDOM } from 'jsdom';
 import { coverPosition, installImageFocus } from '../public/image-focus.js';
-import { selectFace, detectImageFocus } from '../src/images/focal-detector.js';
+import { selectFace, detectImageFocus, selectImagePalette } from '../src/images/focal-detector.js';
 import { createFocalCache, publicImageUrl, readImageBytes } from '../src/images/focal-cache.js';
-import { registerMediaRoutes } from '../src/routes/media-routes.js';
+import { registerMediaRoutes, downloadFocalImage } from '../src/routes/media-routes.js';
 
 test('responsive cover crops keep a right-side face in view without exposing empty space', () => {
     const focus = { x: 0.88, y: 0.38, bounds: { left: 0.81, right: 0.95, top: 0.25, bottom: 0.51 } };
@@ -39,8 +39,118 @@ test('largest confident face wins over a small face or low-confidence detection'
 
 test('bundled detector runs locally and uses centre for a uniform image', async () => {
     const bytes = await sharp({ create: { width: 120, height: 90, channels: 3, background: '#808080' } }).png().toBuffer();
-    assert.deepEqual(await detectImageFocus(bytes), { x: 0.5, y: 0.5, type: 'center', confidence: 0 });
+    assert.deepEqual(await detectImageFocus(bytes), { x: 0.5, y: 0.5, type: 'center', confidence: 0,
+        palette: { primary: [128, 128, 128], secondary: [128, 128, 128] } });
     await assert.rejects(detectImageFocus(Buffer.from('not an image')));
+});
+
+test('thumbnail palettes follow image colors and ignore dark clothing and white highlights', () => {
+    for (const color of [[80, 140, 50], [45, 110, 195], [230, 145, 55]]) {
+        const pixels = Buffer.alloc(40 * 40 * 3);
+        for (let y = 0; y < 40; y++) for (let x = 0; x < 40; x++) {
+            const sample = x < 20 ? color : x < 34 ? [10, 10, 10] : [250, 250, 250];
+            pixels.set(sample, (y * 40 + x) * 3);
+        }
+        assert.deepEqual(selectImagePalette(pixels, 40, 40), { primary: color, secondary: color });
+    }
+    assert.deepEqual(selectImagePalette(Buffer.alloc(12, 255), 2, 2).primary, [255, 255, 255]);
+    assert.deepEqual(selectImagePalette(Buffer.alloc(12), 2, 2).primary, [0, 0, 0]);
+});
+
+test('related foliage shades beat a larger uniform gray area in the thumbnail', () => {
+    const pixels = Buffer.alloc(40 * 40 * 3);
+    for (let y = 0; y < 40; y++) for (let x = 0; x < 40; x++) {
+        const rgb = y >= 20 ? [180, 180, 180] : [80 + x, 120 + x, 35 + x];
+        pixels.set(rgb, (y * 40 + x) * 3);
+    }
+    const palette = selectImagePalette(pixels, 40, 40);
+    assert.ok(palette.primary[1] - palette.primary[2] > 60, 'retain the environmental green/yellow hue');
+    assert.deepEqual(palette.secondary, palette.primary, 'neutral clothing at the bottom must not turn the feather gray');
+});
+
+test('dark, muted backgrounds beat a smaller bright face or white collar', () => {
+    for (const color of [[24, 36, 61], [43, 45, 31]]) {
+        const pixels = Buffer.alloc(48 * 48 * 3);
+        for (let y = 0; y < 48; y++) for (let x = 0; x < 48; x++) {
+            const face = x > 19 && x < 28 && y > 4 && y < 18;
+            const collar = x > 18 && x < 30 && y >= 18;
+            pixels.set(face ? [215, 150, 112] : collar ? [245, 245, 245] : color, (y * 48 + x) * 3);
+        }
+        assert.deepEqual(selectImagePalette(pixels, 48, 48), { primary: color, secondary: color });
+    }
+});
+
+test('local fallback thumbnails get their own palette without remote analysis', () => {
+    const dom = new JSDOM('<div class="article-card"><div class="article-card-image"><img class="thumbnail-img" src="/public/default.jpg"></div></div>', { url: 'https://reader.example.com' });
+    const win = dom.window, img = win.document.querySelector('img');
+    Object.defineProperties(img, { complete: { get: () => true }, naturalWidth: { get: () => 816 }, naturalHeight: { get: () => 544 }, clientWidth: { get: () => 420 }, clientHeight: { get: () => 220 } });
+    const pixels = new Uint8ClampedArray(48 * 48 * 4);
+    for (let i = 0; i < pixels.length; i += 4) pixels.set([24, 36, 61, 255], i);
+    win.HTMLCanvasElement.prototype.getContext = () => ({ drawImage() {}, getImageData: () => ({ data: pixels }) });
+    win.fetch = () => assert.fail('local images must not need remote analysis');
+    const stop = installImageFocus(win);
+    assert.equal(img.closest('.article-card').style.getPropertyValue('--thumbnail-primary'), '24 36 61');
+    assert.equal(img.dataset.focusState, 'ready');
+    stop(); dom.window.close();
+});
+
+test('a desktop photo without horizontal crop room still centers its face in the clear area', async () => {
+    const dom = new JSDOM('<div class="article-card"><div class="article-card-image"><img class="thumbnail-img" src="https://example.com/portrait.jpg" style="--image-focus-target: .66"></div></div>', { url: 'https://reader.example.com' });
+    const win = dom.window, img = win.document.querySelector('img');
+    Object.defineProperties(img, { complete: { get: () => true }, naturalWidth: { get: () => 1390 }, naturalHeight: { get: () => 927 }, clientWidth: { get: () => 530 }, clientHeight: { get: () => 220 } });
+    const focus = { x: .508, y: .214, type: 'face', bounds: { left: .456, right: .56, top: .083, bottom: .344 } };
+    win.fetch = async () => ({ ok: true, json: async () => focus });
+    const stop = installImageFocus(win);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    const shift = parseFloat(img.style.getPropertyValue('--image-focus-shift-x'));
+    assert.ok(Math.abs(focus.x * 530 + shift - .66 * 530) < .01);
+    assert.ok(shift < .26 * 530, 'the exposed strip must remain inside the transparent mask');
+    assert.equal(img.style.getPropertyValue('--image-focus-y'), '0.000%', 'preserve the top of the head');
+    stop(); dom.window.close();
+});
+
+test('VOZ attachment analysis uses the working direct path and keeps redirects disabled', async () => {
+    const calls = [];
+    const fetchImage = async (url, options) => {
+        calls.push({ url, options });
+        return new Response('image', { headers: { 'content-type': 'image/webp' } });
+    };
+    const url = 'https://voz.vn/attachments/photo-webp.123/';
+    assert.equal((await downloadFocalImage(url, { proxyBase: 'https://proxy.example/?url=', fetchImage })).toString(), 'image');
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].url, url);
+    assert.equal(calls[0].options.redirect, 'manual');
+    calls.length = 0;
+    await downloadFocalImage('https://other.example/photo.jpg', { proxyBase: 'https://proxy.example/?url=', fetchImage });
+    assert.ok(calls[0].url.startsWith('https://proxy.example/?url='));
+});
+
+test('card palette changes with its thumbnail and stale image responses cannot recolor it', async () => {
+    const dom = new JSDOM('<div class="article-card"><div class="article-card-image"><img class="thumbnail-img" src="https://example.com/green.jpg"></div></div>', { url: 'https://reader.example.com' });
+    const win = dom.window;
+    const img = win.document.querySelector('img');
+    const card = win.document.querySelector('.article-card');
+    Object.defineProperties(img, { complete: { get: () => true }, naturalWidth: { get: () => 1200 }, naturalHeight: { get: () => 800 }, clientWidth: { get: () => 200 }, clientHeight: { get: () => 300 } });
+    const responses = [];
+    win.fetch = () => new Promise(resolve => responses.push(resolve));
+    const stop = installImageFocus(win);
+    const flush = () => new Promise(resolve => setTimeout(resolve, 0));
+    img.src = 'https://example.com/blue.jpg';
+    await flush();
+    const result = primary => ({ ok: true, json: async () => ({ x: .8, y: .4, palette: { primary, secondary: primary } }) });
+    responses[1](result([45, 110, 195]));
+    await flush();
+    assert.equal(card.style.getPropertyValue('--thumbnail-primary'), '45 110 195');
+    responses[0](result([80, 140, 50]));
+    await flush();
+    assert.equal(card.style.getPropertyValue('--thumbnail-primary'), '45 110 195');
+    img.src = 'https://example.com/orange.jpg';
+    await flush();
+    assert.equal(card.style.getPropertyValue('--thumbnail-primary'), '');
+    responses[2](result([230, 145, 55]));
+    await flush();
+    assert.equal(card.style.getPropertyValue('--thumbnail-secondary'), '230 145 55');
+    stop(); dom.window.close();
 });
 
 test('saliency finds a contrasting subject on the right when there is no face', async () => {

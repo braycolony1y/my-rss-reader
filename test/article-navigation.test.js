@@ -503,6 +503,95 @@ test('failed thread prefetch can be retried and does not poison the cache', asyn
     assert.equal(calls, 2);
 });
 
+test('clicking page three replaces a mismatched browser cache with the requested page', async () => {
+    for (const suffix of ['/page-3', '/?page=3']) {
+        const { app, context } = createReaderApp();
+        const url = 'https://voz.vn/t/example.123456' + suffix;
+        app.articleOverlayOpen = true;
+        app.overlayArticle = { link: 'https://voz.vn/t/example.123456/page-2' };
+        app.articleContentCache = new Map([[url, { content: 'Page two', pagination: { currentPage: 2 } }]]);
+        app.stopArticleSpeech = () => {};
+        app.applyOverlayArticleData = data => { app.overlayContent = data.content; app.overlayPagination = data.pagination; };
+        let calls = 0;
+        context.fetch = async value => {
+            calls++;
+            const request = new URL(value, 'http://localhost');
+            assert.equal(request.searchParams.get('url'), url);
+            assert.equal(request.searchParams.get('bypassCache'), 'true');
+            return { ok: true, json: async () => ({ url, content: 'Page three', pagination: { currentPage: 3 } }) };
+        };
+        await app.navigateToThreadPage(url);
+        assert.equal(calls, 1);
+        assert.equal(app.overlayContent, 'Page three');
+        assert.equal(app.overlayPagination.currentPage, 3);
+        assert.equal(app.overlayError, null);
+        assert.equal(app.isLoadingOverlay, false);
+        assert.equal((await app.fetchThreadPage(url)).content, 'Page three');
+        assert.equal(calls, 1);
+    }
+});
+
+test('wrong-page responses show an error and remain retryable instead of poisoning read-ahead', async () => {
+    const { app, context } = createReaderApp();
+    const url = 'https://voz.vn/t/example.123456/page-3';
+    app.articleOverlayOpen = true;
+    app.overlayArticle = { link: url };
+    app.stopArticleSpeech = () => {};
+    app.applyOverlayArticleData = () => assert.fail('The wrong page must never be rendered');
+    context.fetch = async () => ({ ok: true, json: async () => ({ content: 'Page two', pagination: { currentPage: 2 } }) });
+    await app.navigateToThreadPage(url);
+    assert.match(app.overlayError, /returned page 2/);
+    assert.equal(app.articleContentCache.has(url), false);
+    assert.equal(app.isLoadingOverlay, false);
+    context.fetch = async () => ({ ok: true, json: async () => ({ content: 'Page three', pagination: { currentPage: 3 } }) });
+    assert.equal((await app.fetchThreadPage(url)).content, 'Page three');
+});
+
+test('a tail probe cannot invent page two from a request URL or repeated posts', async () => {
+    const url = 'https://voz.vn/t/example.123456';
+    const content = '<div class="voz-post" data-absolute-post-id="123">Only post</div>';
+    for (const pagination of [null, { currentPage: 1 }, { currentPage: 2 }]) {
+        const { app } = createReaderApp();
+        app.articleOverlayOpen = true;
+        app.overlayRequestId = 'single-page';
+        app.overlayArticle = { link: url };
+        app.overlayContent = content;
+        app.overlayPagination = { currentPage: 1, pages: [{ page: 1, url, isCurrent: true }], nextUrl: null };
+        const before = JSON.stringify(app.overlayPagination);
+        app.fetchThreadPage = async target => {
+            assert.equal(target, url + '/page-2', 'new page probes use the source path format');
+            return { url: target, content, pagination };
+        };
+        app.prefetchThreadPages = () => assert.fail('A ghost page must not trigger read-ahead');
+        assert.equal(await app.probeVozLiveContinuationFromTail(url), null);
+        assert.equal(JSON.stringify(app.overlayPagination), before);
+    }
+});
+
+test('fresh pagination removes ghost links but preserves independently verified new posts', async () => {
+    const { app } = createReaderApp();
+    const url = 'https://voz.vn/t/example.123456';
+    app.articleOverlayOpen = true;
+    app.overlayRequestId = 'current-thread';
+    app.overlayArticle = { link: url };
+    app.overlayContent = '<div class="voz-post" data-absolute-post-id="123">First post</div>';
+    const fresh = { currentPage: 1, pages: [{ page: 1, url, isCurrent: true }], nextUrl: null };
+    app.overlayPagination = { ...fresh, pages: [...fresh.pages, { page: 2, url: url + '/page-2' }], nextUrl: url + '/page-2' };
+    app.overlayPagination = app.alignVozPaginationForCurrentView(fresh, url, 1, null);
+    assert.equal(app.overlayPagination.pages.length, 1);
+    assert.equal(app.overlayPagination.nextUrl, null);
+    app.fetchThreadPage = async target => ({ url: target, content: '<div class="voz-post" data-absolute-post-id="456">New reply</div>', pagination: { currentPage: 2, pages: [{ page: 2, url: target }], nextUrl: null } });
+    app.prefetchThreadPages = () => {};
+    assert.ok(await app.probeVozLiveContinuationFromTail(url));
+    assert.equal(app.overlayPagination.pages.length, 2);
+    assert.ok(app.overlayPagination.nextUrl);
+    app.overlayPagination = app.alignVozPaginationForCurrentView(fresh, url, 1, null);
+    assert.equal(app.overlayPagination.pages.length, 2, 'a slower current-page refresh keeps a verified continuation');
+    app.overlayRequestId = 'another-view';
+    app.overlayPagination = app.alignVozPaginationForCurrentView(fresh, url, 1, null);
+    assert.equal(app.overlayPagination.pages.length, 1, 'verification is scoped to the active view');
+});
+
 test('explicit thread page links take precedence over the saved reading position', async () => {
     const { app, context } = createReaderApp();
     const requests = [];

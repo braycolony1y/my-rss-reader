@@ -407,6 +407,7 @@ export function registerArticleRoutes({
 
             let html = '';
             let htmlStrategy = '';
+            let parsedVozResult = null;
             const attemptedStrategies = new Set();
             const feedConfiguredMethods = policy.hasStrictConfiguredMethods ? policy.configuredMethods : null;
             let rankedStrategies = [...policy.strategyOrder];
@@ -556,6 +557,13 @@ export function registerArticleRoutes({
                         }));
                     }
                     if (!isUsableArticlePage(candidateHtml)) throw new Error('Fetched page did not contain usable article HTML');
+                    // Validate before selecting a method so a stale proxy page
+                    // falls through to the next configured reader.
+                    if (isVozThreadUrl(url)) {
+                        const candidate = await parseArticleHtmlContent(candidateHtml, url, strategy, [...attemptedStrategies], availableStrategies, methodPreferences, requestId, excludedStrategies);
+                        assertArticleResultAcceptedBySource(url, candidate);
+                        parsedVozResult = candidate;
+                    }
                     html = candidateHtml;
                     htmlStrategy = strategy;
                     break;
@@ -702,7 +710,7 @@ export function registerArticleRoutes({
                 });
             }
 
-            let result = await parseArticleHtmlContent(html, url, htmlStrategy, [...attemptedStrategies], availableStrategies, methodPreferences, requestId, excludedStrategies);
+            let result = parsedVozResult || await parseArticleHtmlContent(html, url, htmlStrategy, [...attemptedStrategies], availableStrategies, methodPreferences, requestId, excludedStrategies);
             if (result) {
                 result.feedUrl = requestedFeedUrl || result.feedUrl || '';
                 result.configuredFetchMethods = feedConfiguredMethods || [];

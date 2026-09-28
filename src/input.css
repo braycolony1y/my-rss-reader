@@ -6185,6 +6185,86 @@ html[data-image-focus] #scroll-container .article-card .article-card-image img.t
     opacity: 0 !important;
 }
 
+/* Shared Top, Classic and normal-card atmosphere. Sampled thumbnail colors
+ * replace the neutral fallback; the reading surface stays almost white. */
+#scroll-container .article-card.has-story-briefing[data-image-layout] {
+    --thumbnail-paper: color-mix(in srgb, white 96%, rgb(var(--thumbnail-primary, 255 255 255)));
+    background:
+        linear-gradient(90deg, var(--thumbnail-paper) 0%,
+            color-mix(in srgb, var(--thumbnail-paper) 98%, transparent) 32%,
+            color-mix(in srgb, var(--thumbnail-paper) 94%, transparent) 44%,
+            color-mix(in srgb, var(--thumbnail-paper) 84%, transparent) 54%,
+            color-mix(in srgb, var(--thumbnail-paper) 40%, transparent) 65%, transparent 80%),
+        linear-gradient(155deg, rgb(var(--thumbnail-primary, 255 255 255)),
+            rgb(var(--thumbnail-secondary, 255 255 255))) !important;
+}
+
+/* Leave the top and right clear, as in the reference. Only the text-facing
+ * and bottom transitions dissolve; no filter touches the sharp photograph. */
+#scroll-container .article-card.has-story-briefing[data-image-layout] .article-card-image {
+    width: 64% !important;
+    border-radius: 0 !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    background: none !important;
+    --heading-photo-mask:
+        radial-gradient(ellipse 86% 94% at 100% 14%,
+            #000 0%, #000 48%, rgba(0,0,0,.94) 58%,
+            rgba(0,0,0,.60) 72%, rgba(0,0,0,.20) 85%, transparent 100%),
+        linear-gradient(90deg, transparent 0%, transparent 26%,
+            rgba(0,0,0,.15) 36%, rgba(0,0,0,.55) 48%, #000 65%),
+        linear-gradient(180deg, #000 0%, #000 var(--photo-bottom-solid, 55%),
+            rgba(0,0,0,.90) var(--photo-bottom-soft, 68%),
+            rgba(0,0,0,.50) var(--photo-bottom-fade, 82%), transparent 100%);
+    -webkit-mask-image: var(--heading-photo-mask) !important;
+    mask-image: var(--heading-photo-mask) !important;
+    -webkit-mask-composite: source-in !important;
+    mask-composite: intersect !important;
+}
+
+#scroll-container .article-card.has-story-briefing[data-image-layout]::before {
+    /* Readability now comes from the image alpha mask. A second white veil
+     * here erased the sampled colors and created the straight white seam. */
+    content: none !important;
+    background: none !important;
+    -webkit-mask-image: none !important;
+    mask-image: none !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+    filter: none !important;
+}
+
+#scroll-container .article-card.has-story-briefing[data-image-layout] .article-card-image::after {
+    content: none;
+}
+
+#scroll-container .article-card.has-story-briefing[data-image-layout] .article-card-image img.thumbnail-img {
+    filter: none !important;
+    position: absolute !important;
+    top: 0 !important;
+    left: var(--image-focus-shift-x, 0px) !important;
+    right: auto !important;
+}
+
+#scroll-container .article-card.has-story-briefing[data-image-layout] .article-card-heading::before {
+    content: none !important;
+    display: none !important;
+}
+
+/* Short Classic/normal cards need a clear photo through most of their height.
+ * Preserve the curved left feather; dissolve only near the bottom edge. */
+#scroll-container .article-card.has-story-briefing[data-image-layout="standard"] .article-card-image {
+    --photo-bottom-solid: 82%;
+    --photo-bottom-soft: 89%;
+    --photo-bottom-fade: 95%;
+}
+
+/* Read status still dims the text, but must not wash out the photo itself.
+ * The higher-specificity pending-image rule above still prevents crop flashes. */
+#scroll-container .article-card.has-story-briefing[data-image-layout="standard"] img.thumbnail-img {
+    opacity: 1 !important;
+}
+
 @media (max-width: 640px) {
     #scroll-container .article-card.has-story-briefing .article-card-image,
     #scroll-container .article-card .article-card-image {

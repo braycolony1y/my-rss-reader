@@ -1,3 +1,5 @@
+import { selectImagePalette } from './image-palette.js?v=5';
+
 const clamp = (value, low = 0, high = 1) => Math.max(low, Math.min(high, value));
 const center = { x: 0.5, y: 0.5 };
 
@@ -31,7 +33,7 @@ export function coverPosition(imageWidth, imageHeight, boxWidth, boxHeight, focu
 export function installImageFocus(win) {
     const doc = win.document;
     const selector = '.article-card-image img.thumbnail-img';
-    const storageKey = 'rss-image-focus-v1';
+    const storageKey = 'rss-image-focus-v5';
     const states = new Map();
     const cache = new Map();
     const saved = new Map();
@@ -56,7 +58,7 @@ export function installImageFocus(win) {
             active++;
             const controller = new win.AbortController();
             const timer = win.setTimeout(() => controller.abort(), 30_000);
-            win.fetch(`/api/image-focus?src=${encodeURIComponent(source)}`, { signal: controller.signal })
+            win.fetch(`/api/image-focus?v=5&src=${encodeURIComponent(source)}`, { signal: controller.signal })
                 .then(response => response.ok ? response.json() : null)
                 .then(result => {
                     if (!result || result.retry) cache.delete(source);
@@ -105,10 +107,15 @@ export function installImageFocus(win) {
         }
         const cardRect = card.getBoundingClientRect();
         let bottom = heading.getBoundingClientRect().bottom + 8;
-        // Facts, notices and analysis are opaque content, not usable photo area.
+        // Continue alongside the key facts, but never enter the tab panel.
         for (const panel of card.querySelectorAll('.article-briefing > *')) {
             const rect = panel.getBoundingClientRect();
-            if (rect.width > 0 && rect.height > 0) bottom = Math.min(bottom, rect.top - 8);
+            if (rect.width <= 0 || rect.height <= 0) continue;
+            if (panel.matches('.story-analysis-shell')) {
+                bottom = rect.top - 8;
+                break;
+            }
+            bottom = Math.max(bottom, rect.bottom + 8);
         }
         const height = `${Math.max(1, Math.min(card.clientHeight, bottom - cardRect.top)).toFixed(2)}px`;
         if (viewport.style.getPropertyValue('--image-focus-height') !== height) viewport.style.setProperty('--image-focus-height', height);
@@ -117,6 +124,27 @@ export function installImageFocus(win) {
     function apply(img, state) {
         fitViewport(img);
         if (!img.complete || !img.naturalWidth || !img.clientWidth || !img.clientHeight) return;
+        if (!state.palette && !state.paletteSampled && /^(\/public\/|data:|blob:)/.test(state.source || '')) {
+            state.paletteSampled = true;
+            try {
+                const canvas = doc.createElement('canvas');
+                canvas.width = canvas.height = 48;
+                const context = canvas.getContext('2d', { willReadFrequently: true });
+                context.drawImage(img, 0, 0, 48, 48);
+                state.palette = selectImagePalette(context.getImageData(0, 0, 48, 48).data, 48, 48, 4);
+            } catch { /* A failed/tainted image keeps the neutral fallback. */ }
+        }
+        const card = img.closest('.article-card');
+        for (const name of ['primary', 'secondary']) {
+            const color = state.palette?.[name];
+            const value = Array.isArray(color) && color.length === 3 && color.every(n => Number.isFinite(n) && n >= 0 && n <= 255)
+                ? color.map(Math.round).join(' ') : '';
+            const property = `--thumbnail-${name}`;
+            if (card && card.style.getPropertyValue(property) !== value) {
+                if (value) card.style.setProperty(property, value);
+                else card.style.removeProperty(property);
+            }
+        }
         const target = parseFloat(win.getComputedStyle(img).getPropertyValue('--image-focus-target')) || 0.62;
         const scale = Math.max(img.clientWidth / img.naturalWidth, img.clientHeight / img.naturalHeight);
         const bounds = state.focus.bounds;
@@ -126,6 +154,16 @@ export function installImageFocus(win) {
             || (bounds.bottom - bounds.top) * img.naturalHeight * scale > img.clientHeight * 0.92);
         const position = contain ? { x: 100, y: 50 }
             : coverPosition(img.naturalWidth, img.naturalHeight, img.clientWidth, img.clientHeight, state.focus, target);
+        // A wide desktop cover crop can have zero horizontal overflow, making
+        // object-position ineffective. Move that photo into the clear area;
+        // any uncovered strip stays inside the fully transparent left mask.
+        const renderedWidth = img.naturalWidth * scale;
+        const offset = (img.clientWidth - renderedWidth) * position.x / 100;
+        const faceX = offset + state.focus.x * renderedWidth;
+        const safeShift = Number.isFinite(bounds?.right) ? Math.max(0, img.clientWidth * .96 - (offset + bounds.right * renderedWidth)) : 0;
+        const shift = !contain && state.focus.type === 'face'
+            ? clamp(img.clientWidth * target - faceX, 0, Math.min(img.clientWidth * .24, safeShift)) : 0;
+        img.style.setProperty('--image-focus-shift-x', `${shift.toFixed(3)}px`);
         img.style.setProperty('--image-focus-fit', contain ? 'contain' : 'cover');
         img.style.setProperty('--image-focus-x', `${position.x.toFixed(3)}%`);
         img.style.setProperty('--image-focus-y', `${position.y.toFixed(3)}%`);
@@ -141,7 +179,7 @@ export function installImageFocus(win) {
         const source = sourceOf(img);
         if (state.source !== source) {
             win.clearTimeout(state.timer);
-            Object.assign(state, { source, focus: saved.get(source) || center, settled: saved.has(source), requested: false, shown: false, deferred: null, timer: null });
+            Object.assign(state, { source, focus: saved.get(source) || center, palette: saved.get(source)?.palette, paletteSampled: false, settled: saved.has(source), requested: false, shown: false, deferred: null, timer: null });
             img.dataset.focusState = 'pending';
         }
         if (state.deferred && !onScreen(img)) {
@@ -172,6 +210,7 @@ export function installImageFocus(win) {
         getFocus(source).then(focus => {
             if (stopped || !img.isConnected || states.get(img) !== state || state.source !== source || sourceOf(img) !== source) return;
             win.clearTimeout(state.timer);
+            state.palette = focus.palette;
             if (state.shown && onScreen(img)) state.deferred = focus;
             else state.focus = focus;
             state.settled = true;

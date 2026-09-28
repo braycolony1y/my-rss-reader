@@ -5,7 +5,7 @@ import { normalizeArticleSourceUrl } from '../article-source-state.js';
 import { fnv1a, normalizeStateUrl } from '../utils/article-utils.js';
 import path from 'path';
 import fs from 'fs/promises';
-import { isUnsafeVozThreadPayload, isVozThreadUrl } from '../voz-thread-state.js';
+import { isUnsafeVozThreadPayload, isVozThreadUrl, isMismatchedVozThreadPage } from '../voz-thread-state.js';
 import { normalizeCachedArticleForSource, enhanceArticleResultForSource, assertArticleResultAcceptedBySource } from './source-results.js';
 
 export function createArticleCache({
@@ -21,7 +21,7 @@ export function createArticleCache({
     // file remains available longer in case the publisher later removes the page.
     const ARTICLE_CACHE_LAST_KNOWN_TTL_MS = CONTENT_RETENTION_MS;
 
-    const ARTICLE_CACHE_VERSION = 58;
+    const ARTICLE_CACHE_VERSION = 60;
 
     let _articleCacheIndex = null;
     const cardImages = new Map();
@@ -81,6 +81,7 @@ export function createArticleCache({
         const filename = path.join(ARTICLE_CACHE_DIR, name);
         try {
             const cached = JSON.parse(await fs.readFile(filename, 'utf-8'));
+            if (isMismatchedVozThreadPage(url, cached.result)) return null;
             if (cached.result?.sourceDeleted && Date.now() >= deletionTime({ ...cached.result, cachedAt: cached.cachedAt }) + CONTENT_RETENTION_MS && (await getArticleRetention(url, cached.cachedAt)).expiresAt <= Date.now()) return null;
             const isExpired = Date.now() - cached.cachedAt >= ARTICLE_CACHE_TTL_MS;
             if (!cached.cachedAt || !cached.result?.content) {
@@ -151,6 +152,7 @@ export function createArticleCache({
         try {
             const cached = JSON.parse(await fs.readFile(articleCacheFilename(url), 'utf-8'));
             const result = cached?.result;
+            if (isMismatchedVozThreadPage(url, result)) return null;
             if (result?.sourceDeleted && Date.now() >= deletionTime({ ...result, cachedAt: cached.cachedAt }) + CONTENT_RETENTION_MS && (await getArticleRetention(url, cached.cachedAt)).expiresAt <= Date.now()) return null;
             if (!result?.content) return null;
             if (isUnsafeVozThreadPayload(url, result) && result.sourceDeleted !== true) return null;
@@ -230,7 +232,7 @@ export function createArticleCache({
                     console.warn(`[ARTICLE CACHE] Refusing to overwrite confirmed deleted-source snapshot for ${url}.`);
                     return false;
                 }
-                if (isVozThreadUrl(url)) {
+                if (isVozThreadUrl(url) && !isMismatchedVozThreadPage(url, existing)) {
                     const existingPostCount = (existing?.content?.match(/class=["']voz-post["']/gi) || []).length;
                     const incomingPostCount = (result.content.match(/class=["']voz-post["']/gi) || []).length;
                     if (existingPostCount > 0 && incomingPostCount < existingPostCount) {

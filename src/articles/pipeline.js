@@ -3,7 +3,7 @@ import sourceRegistry from '../sources/index.js';
 import { normalizeArticleSourceUrl, isDeletedArticlePayload, deletedSourceTitle, deletedSourceKind } from '../article-source-state.js';
 import { assertArticleResultAcceptedBySource, enhanceArticleResultForSource } from './source-results.js';
 import { normalizeArticleTitle } from '../../feed-parsers.js';
-import { isUnsafeVozThreadPayload, isDeletedVozThreadPayload } from '../voz-thread-state.js';
+import { isUnsafeVozThreadPayload, isDeletedVozThreadPayload, isVozThreadUrl } from '../voz-thread-state.js';
 import { isUsableArticlePage } from './markup.js';
 import { normalizedHostname, isRedditUrl } from '../utils/article-utils.js';
 
@@ -89,6 +89,9 @@ export function createArticlePipeline({
             null,
             policy.excludedStrategies
         );
+        if (isVozThreadUrl(url) && !isDeletedArticlePayload(url, result)) {
+            assertArticleResultAcceptedBySource(url, result);
+        }
         if (result) {
             result.threadSnapshot = extractThreadSnapshot(html, url);
             if (result.threadSnapshot) {

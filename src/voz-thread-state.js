@@ -71,6 +71,16 @@ export function buildVozThreadPageUrl(url = '', page = 1, { preferQuery = null }
     }
 }
 
+export function isMismatchedVozThreadPage(url, result) {
+    if (!isVozThreadUrl(url)) return false;
+    const requestedPage = getVozThreadPageNumber(url)
+        || (/\/t\/[^/?#]+\/?(?:[?#].*)?$/.test(String(url)) ? 1 : null);
+    const returnedPage = Number(result?.pagination?.currentPage);
+    // Unread/latest/post redirects may legitimately resolve to any page.
+    return requestedPage !== null && Number.isSafeInteger(returnedPage)
+        && returnedPage > 0 && returnedPage !== requestedPage;
+}
+
 export function getVozPaginationMaxPage(pagination, fallback = 1) {
     const candidates = [Number.parseInt(pagination?.currentPage, 10)];
     for (const entry of Array.isArray(pagination?.pages) ? pagination.pages : []) {

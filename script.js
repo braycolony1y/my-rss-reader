@@ -4685,8 +4685,7 @@
                     try {
                         const parsed = new URL(String(url || ''), window.location.origin);
                         const hadQueryPage = parsed.searchParams.has('page');
-                        const hadPathPage = /\/page-\d+\/?$/i.test(parsed.pathname);
-                        const preferQuery = hadQueryPage || !hadPathPage;
+                        const preferQuery = hadQueryPage;
                         parsed.hash = '';
                         parsed.pathname = parsed.pathname
                             .replace(/\/(?:unread|latest|page-\d+|post-\d+)\/?$/i, '')
@@ -4703,7 +4702,7 @@
                         return parsed.href;
                     } catch (_) {
                         const raw = String(url || '');
-                        const queryStyle = /[?&]page=\d+/i.test(raw) || !/\/page-\d+/i.test(raw);
+                        const queryStyle = /[?&]page=\d+/i.test(raw);
                         const base = raw
                             .replace(/#.*$/, '')
                             .replace(/([?&])page=\d+(&?)/i, (m, lead, tail) => lead === '?' && tail ? '?' : tail ? lead : '')
@@ -4720,7 +4719,14 @@
                 alignVozPaginationForCurrentView(livePagination, currentUrl, currentPage, nextUrl) {
                     const current = Number(currentPage) || this.vozThreadPageNumberFromUrl(currentUrl) || 1;
                     const known = new Map();
-                    const existingPages = Array.isArray(this.overlayPagination?.pages) ? this.overlayPagination.pages : [];
+                    // A fresh view of this page replaces stale page links. Keep
+                    // only a continuation independently verified in this view.
+                    const replacesCurrent = Number(livePagination?.currentPage) === current;
+                    const verified = this.vozVerifiedContinuation;
+                    const verifiedNextUrl = verified?.requestId === this.overlayRequestId
+                        && verified.currentPage === current ? verified.url : null;
+                    nextUrl = nextUrl || verifiedNextUrl;
+                    const existingPages = !replacesCurrent && Array.isArray(this.overlayPagination?.pages) ? this.overlayPagination.pages : [];
                     const livePages = Array.isArray(livePagination?.pages) ? livePagination.pages : [];
                     for (const entry of [...existingPages, ...livePages]) {
                         const page = Number(entry?.page);
@@ -4750,7 +4756,7 @@
                         pages: [...known.values()].sort((a, b) => a.page - b.page)
                             .map(entry => ({ ...entry, isCurrent: entry.page === current })),
                         prevUrl: current > 1
-                            ? (known.get(current - 1)?.url || this.overlayPagination?.prevUrl || this.vozThreadPageUrlFrom(currentUrl, current - 1))
+                            ? (known.get(current - 1)?.url || livePagination?.prevUrl || this.vozThreadPageUrlFrom(currentUrl, current - 1))
                             : null,
                         nextUrl: nextUrl || known.get(nextPage)?.url || livePagination?.nextUrl || null
                     };
@@ -4784,11 +4790,14 @@
 
                             if (!this.articleOverlayOpen || this.overlayRequestId !== requestId) return null;
 
-                            const returnedPage = Number(data?.pagination?.currentPage)
-                                || this.vozThreadPageNumberFromUrl(data?.url || nextUrl)
-                                || (currentPage + 1);
+                            const returnedPage = Number(data?.pagination?.currentPage);
+                            const postIds = content => [...String(content || '').matchAll(/data-absolute-post-id=["'](\d+)["']/g)].map(match => match[1]);
+                            const currentIds = new Set(postIds(this.overlayContent));
+                            const nextIds = postIds(data?.content);
+                            const hasNewPosts = currentIds.size > 0 && nextIds.some(id => !currentIds.has(id));
 
-                            if (!data?.content || returnedPage <= currentPage) {
+                            if (!data?.content || returnedPage !== currentPage + 1 || !hasNewPosts) {
+                                this.articleContentCache?.delete(nextUrl);
                                 console.log(
                                     `[VOZ FRONTIER] No live continuation beyond page ${currentPage}`
                                 );
@@ -4798,6 +4807,8 @@
                             console.log(
                                 `[VOZ FRONTIER] Live continuation found: page ${currentPage} -> ${returnedPage}`
                             );
+
+                            this.vozVerifiedContinuation = { requestId, currentPage, url: nextUrl };
 
                             this.overlayPagination = this.alignVozPaginationForCurrentView(
                                 data.pagination,
@@ -5043,14 +5054,25 @@
                     return results;
                 },
 
+                isMismatchedThreadPage(targetUrl, data) {
+                    if (!this.isVozArticle({ link: targetUrl })) return false;
+                    const requestedPage = this.vozThreadPageNumberFromUrl(targetUrl)
+                        || (/\/t\/[^/?#]+\/?(?:[?#].*)?$/.test(String(targetUrl)) ? 1 : null);
+                    const returnedPage = Number(data?.pagination?.currentPage);
+                    return requestedPage !== null && Number.isSafeInteger(returnedPage)
+                        && returnedPage > 0 && returnedPage !== requestedPage;
+                },
+
                 fetchThreadPage(targetUrl, feedUrl = '', prefetch = false, liveContinuation = false) {
                     if (!this.articleContentCache) this.articleContentCache = new Map();
                     const cached = this.articleContentCache.get(targetUrl);
+                    const mismatchedCache = this.isMismatchedThreadPage(targetUrl, cached);
+                    if (mismatchedCache) this.articleContentCache.delete(targetUrl);
 
                     // Normal navigation/read-ahead is cache-first. A live frontier
                     // probe is the opposite: it MUST bypass the in-memory page too,
                     // otherwise a stale cached last page can masquerade as live.
-                    if (cached && !liveContinuation) return Promise.resolve(cached);
+                    if (cached && !mismatchedCache && !liveContinuation) return Promise.resolve(cached);
 
                     if (!this.threadPageRequests) this.threadPageRequests = new Map();
                     const requestKey = liveContinuation ? `live:${targetUrl}` : targetUrl;
@@ -5066,6 +5088,7 @@
                         // liveContinuation is P0 interactive frontier work.
                         // Do not mark it as ordinary P1/P2 prefetch.
                         if (prefetch && !liveContinuation) params.set('prefetch', '1');
+                        if (mismatchedCache) params.set('bypassCache', 'true');
 
                         if (liveContinuation) {
                             params.set('bypassCache', 'true');
@@ -5096,6 +5119,9 @@
                                 throw new Error(
                                     data.error || 'Trang không tồn tại hoặc lỗi tải'
                                 );
+                            }
+                            if (this.isMismatchedThreadPage(targetUrl, data)) {
+                                throw new Error(`The source returned page ${data.pagination.currentPage} instead of the requested page. Please try again.`);
                             }
 
                             this.articleContentCache.set(targetUrl, data);
@@ -6610,6 +6636,9 @@
                         if (!this.articleOverlayOpen || this.overlayRequestId !== requestId) return;
                     }
 
+                    if (this.isMismatchedThreadPage(targetUrl, this.articleContentCache?.get(targetUrl))) {
+                        this.articleContentCache.delete(targetUrl);
+                    }
                     if (this.articleContentCache && this.articleContentCache.has(targetUrl)) {
                         const cachedData = this.articleContentCache.get(targetUrl);
                         cachedData.cached = true; // Frontend cache hit counts as cached

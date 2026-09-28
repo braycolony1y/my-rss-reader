@@ -1,6 +1,6 @@
 import { renderVozPost } from '../articles/voz-post-renderer.js';
 import { absoluteTimestamp } from '../articles/source-time.js';
-import { hasVozDeletedThreadMarker } from '../voz-thread-state.js';
+import { hasVozDeletedThreadMarker, getVozThreadPageNumber } from '../voz-thread-state.js';
 
 function findHtmlAttribute(tag, targetName) {
     let cursor = String(tag || '').search(/\s/);
@@ -254,11 +254,15 @@ export default class VozSource {
         
         const baseUrl = new URL(url);
         const absUrl = (href) => href ? (href.startsWith('http') ? href : baseUrl.origin + (href.startsWith('/') ? href : '/' + href)) : null;
-        const pageNumMatch = url.match(/\/page-(\d+)/i);
-        let currentPage = pageNumMatch ? parseInt(pageNumMatch[1], 10) : 1;
+        // VOZ may redirect an out-of-range page back to a single-page thread.
+        // The requested URL is not evidence that that page exists.
+        const canonicalTag = (html.match(/<link\b[^>]*>/gi) || [])
+            .find(tag => findHtmlAttribute(tag, 'rel')?.value.toLowerCase() === 'canonical');
+        const canonicalHref = canonicalTag && findHtmlAttribute(canonicalTag, 'href')?.value;
+        let currentPage = getVozThreadPageNumber(absUrl(canonicalHref)) || 1;
 
         // Try to accurately determine the current page from HTML (XenForo sets this class)
-        const currentMatch = html.match(/class=["'][^"']*pageNav-page--current[^"']*["'][^>]*>(?:<[^>]+>)*\s*(\d+)/i);
+        const currentMatch = html.match(/class=["'][^"']*pageNav-page--current[^"']*["'][^>]*>(?:\s*<[^>]+>)*\s*(\d+)/i);
         if (currentMatch) {
             currentPage = parseInt(currentMatch[1], 10);
         }
