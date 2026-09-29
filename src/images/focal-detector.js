@@ -21,7 +21,7 @@ function faceSession() {
     return sessionPromise;
 }
 
-export function selectFace(scores, boxes) {
+function faceCandidates(scores, boxes) {
     const candidates = [];
     for (let i = 0; i < scores.length / 2; i++) {
         const confidence = scores[i * 2 + 1];
@@ -37,6 +37,11 @@ export function selectFace(scores, boxes) {
         candidates.push({ x, y, type: 'face', confidence, bounds: { left, top, right, bottom }, rank });
     }
     candidates.sort((a, b) => b.rank - a.rank);
+    return candidates;
+}
+
+export function selectFace(scores, boxes) {
+    const candidates = faceCandidates(scores, boxes);
     if (!candidates.length) return null;
     const { rank, ...face } = candidates[0];
     return face;
@@ -47,9 +52,11 @@ export async function detectImageFocus(buffer) {
     const image = sharp(buffer, { limitInputPixels: 40_000_000, animated: false }).rotate().removeAlpha().toColourspace('srgb');
     const { data, info } = await image.clone().resize({ width: 640, height: 640, fit: 'inside', withoutEnlargement: true })
         .raw().toBuffer({ resolveWithObject: true });
-    const decoded = sharp(data, { raw: info });
+    // Output metadata may say premultiplied even after removeAlpha(). It is
+    // not a raw-input option to carry forward: doing so treats the last RGB
+    // channel as alpha and turns orange AVIF scenes into saturated yellow.
+    const decoded = sharp(data, { raw: { width: info.width, height: info.height, channels: info.channels } });
     const rgb = await decoded.clone().resize(320, 240, { fit: 'fill' }).raw().toBuffer();
-    const palette = selectImagePalette(rgb, 320, 240);
     const plane = 320 * 240;
     const input = new Float32Array(plane * 3);
     for (let i = 0; i < plane; i++) {
@@ -58,6 +65,8 @@ export async function detectImageFocus(buffer) {
     const session = await faceSession();
     const output = await session.run({ [session.inputNames[0]]: new ort.Tensor('float32', input, [1, 3, 240, 320]) });
     const face = selectFace(output.scores.data, output.boxes.data);
+    const bounds = faceCandidates(output.scores.data, output.boxes.data).map(face => face.bounds);
+    const palette = selectImagePalette(rgb, 320, 240, 3, bounds);
     if (face) return { ...face, palette };
 
     const stats = await decoded.clone().stats();

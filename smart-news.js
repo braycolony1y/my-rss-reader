@@ -12,6 +12,7 @@ import {
 import { parseClusteringJson, requestClusteringDecision } from './src/ai/clustering-json.js';
 import { generateWithAntigravity, antigravityAvailable, ANTIGRAVITY_MODEL } from './src/ai/antigravity.js';
 import { generateWithGeminiWeb, geminiWebConfigured, getGeminiWebCooldownState } from './src/ai/gemini-web.js';
+import { acquireGeminiKey } from './src/ai/gemini-availability.js';
 import { rankStory, retainStoryIds } from './src/articles/story-ranking.js';
 import {
   SMART_SOURCES as DEFAULT_SMART_SOURCES,
@@ -6855,14 +6856,7 @@ async function callVerificationProvider(
   }
 
   if (provider.type === 'gemini') {
-    if (keyManager?.waitForRateSlot) {
-      await keyManager.waitForRateSlot(1000);
-    }
-
-    const keyObject =
-      keyManager?.getCurrentKeyObj
-        ? keyManager.getCurrentKeyObj()
-        : null;
+    const keyObject = await acquireGeminiKey(keyManager, 1000);
 
     if (
       keyObject &&

@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { detectImageFocus } from './focal-detector.js';
 
 export const CENTER_FOCUS = Object.freeze({ x: 0.5, y: 0.5, type: 'center', confidence: 0 });
-const VERSION = 5;
+const VERSION = 7;
 const MAX_BYTES = 8 * 1024 * 1024;
 
 export function publicImageUrl(value) {

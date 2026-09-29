@@ -1,23 +1,37 @@
-import { selectImagePalette } from './image-palette.js?v=5';
+import { selectImagePalette } from './image-palette.js?v=7';
 
 const clamp = (value, low = 0, high = 1) => Math.max(low, Math.min(high, value));
 const center = { x: 0.5, y: 0.5 };
 
+// Limit vivid colors, then gently lift dark tints. A fixed CSS white blend
+// alone makes dark backgrounds much heavier than already-pale backgrounds.
+export function backdropColor(rgb) {
+    const chroma = Math.max(...rgb) - Math.min(...rgb);
+    const strength = chroma > 64 ? 64 / chroma : 1;
+    const luminance = rgb[0] * .2126 + rgb[1] * .7152 + rgb[2] * .0722;
+    const darkness = clamp((170 - luminance) / 170);
+    const lift = .16 * darkness * darkness * (3 - 2 * darkness);
+    return rgb.map(value => {
+        const muted = luminance + (value - luminance) * strength;
+        return Math.round(muted + (255 - muted) * lift);
+    });
+}
+
 // CSS percentages align the same percentage of image and box; they are not
 // source coordinates. Solve the cover crop in pixels, then convert back.
-export function coverPosition(imageWidth, imageHeight, boxWidth, boxHeight, focus = center, targetX = 0.62) {
+export function coverPosition(imageWidth, imageHeight, boxWidth, boxHeight, focus = center, targetX = 0.62, visibleHeight = boxHeight) {
     if (![imageWidth, imageHeight, boxWidth, boxHeight].every(n => Number.isFinite(n) && n > 0)) return { x: 50, y: 50 };
     const scale = Math.max(boxWidth / imageWidth, boxHeight / imageHeight);
-    function axis(source, box, point, target, start, end) {
+    function axis(source, box, point, target, start, end, visible = box) {
         const rendered = source * scale;
         const overflow = rendered - box;
         if (overflow < 0.01) return 50;
-        let offset = clamp(box * target - rendered * point, -overflow, 0);
+        let offset = clamp(visible * target - rendered * point, -overflow, 0);
         // Keep the whole face, with a little breathing room, whenever it fits.
         if (Number.isFinite(start) && Number.isFinite(end)) {
-            const margin = box * 0.04;
+            const margin = visible * 0.04;
             const low = Math.max(-overflow, margin - start * rendered);
-            const high = Math.min(0, box - margin - end * rendered);
+            const high = Math.min(0, visible - margin - end * rendered);
             if (low <= high) offset = clamp(offset, low, high);
         }
         return clamp(-offset / overflow) * 100;
@@ -26,14 +40,14 @@ export function coverPosition(imageWidth, imageHeight, boxWidth, boxHeight, focu
     const y = Number.isFinite(focus?.y) ? clamp(focus.y) : 0.5;
     return {
         x: axis(imageWidth, boxWidth, x, targetX, focus?.bounds?.left, focus?.bounds?.right),
-        y: axis(imageHeight, boxHeight, y, 0.46, focus?.bounds?.top, focus?.bounds?.bottom)
+        y: axis(imageHeight, boxHeight, y, 0.46, focus?.bounds?.top, focus?.bounds?.bottom, visibleHeight)
     };
 }
 
 export function installImageFocus(win) {
     const doc = win.document;
     const selector = '.article-card-image img.thumbnail-img';
-    const storageKey = 'rss-image-focus-v5';
+    const storageKey = 'rss-image-focus-v7';
     const states = new Map();
     const cache = new Map();
     const saved = new Map();
@@ -58,7 +72,7 @@ export function installImageFocus(win) {
             active++;
             const controller = new win.AbortController();
             const timer = win.setTimeout(() => controller.abort(), 30_000);
-            win.fetch(`/api/image-focus?v=5&src=${encodeURIComponent(source)}`, { signal: controller.signal })
+            win.fetch(`/api/image-focus?v=7&src=${encodeURIComponent(source)}`, { signal: controller.signal })
                 .then(response => response.ok ? response.json() : null)
                 .then(result => {
                     if (!result || result.retry) cache.delete(source);
@@ -107,12 +121,13 @@ export function installImageFocus(win) {
         }
         const cardRect = card.getBoundingClientRect();
         let bottom = heading.getBoundingClientRect().bottom + 8;
-        // Continue alongside the key facts, but never enter the tab panel.
+        // Continue alongside the key facts. The fade tail extends behind the
+        // analysis panel so its top edge cannot create a narrow horizontal band.
         for (const panel of card.querySelectorAll('.article-briefing > *')) {
             const rect = panel.getBoundingClientRect();
             if (rect.width <= 0 || rect.height <= 0) continue;
             if (panel.matches('.story-analysis-shell')) {
-                bottom = rect.top - 8;
+                bottom = rect.top + 100;
                 break;
             }
             bottom = Math.max(bottom, rect.bottom + 8);
@@ -123,8 +138,9 @@ export function installImageFocus(win) {
 
     function apply(img, state) {
         fitViewport(img);
-        if (!img.complete || !img.naturalWidth || !img.clientWidth || !img.clientHeight) return;
-        if (!state.palette && !state.paletteSampled && /^(\/public\/|data:|blob:)/.test(state.source || '')) {
+        const ready = img.complete && img.naturalWidth && img.clientWidth && img.clientHeight;
+        const isDefault = /^\/public\/default\.jpg(?:[?#]|$)/.test(state.source || '');
+        if (ready && !isDefault && !state.palette && !state.paletteSampled && /^(\/public\/|data:|blob:)/.test(state.source || '')) {
             state.paletteSampled = true;
             try {
                 const canvas = doc.createElement('canvas');
@@ -136,24 +152,30 @@ export function installImageFocus(win) {
         }
         const card = img.closest('.article-card');
         for (const name of ['primary', 'secondary']) {
-            const color = state.palette?.[name];
+            // The default illustration is not an article photo. Removing the
+            // sampled variables restores the stylesheet's neutral white base.
+            const color = isDefault ? null : state.palette?.[name];
             const value = Array.isArray(color) && color.length === 3 && color.every(n => Number.isFinite(n) && n >= 0 && n <= 255)
-                ? color.map(Math.round).join(' ') : '';
+                ? backdropColor(color).join(' ') : '';
             const property = `--thumbnail-${name}`;
             if (card && card.style.getPropertyValue(property) !== value) {
                 if (value) card.style.setProperty(property, value);
                 else card.style.removeProperty(property);
             }
         }
+        if (!ready) return;
         const target = parseFloat(win.getComputedStyle(img).getPropertyValue('--image-focus-target')) || 0.62;
         const scale = Math.max(img.clientWidth / img.naturalWidth, img.clientHeight / img.naturalHeight);
         const bounds = state.focus.bounds;
+        const analysis = card?.dataset.imageLayout === 'top' && card.querySelector('.story-analysis-shell');
+        const visibleHeight = analysis && analysis.getBoundingClientRect().height > 0
+            ? Math.min(img.clientHeight, analysis.getBoundingClientRect().top - img.getBoundingClientRect().top) : img.clientHeight;
         // A very large face in a portrait cannot fit a shallow cover crop.
         // In that case show the whole photo against the card background.
-        const contain = bounds && ((bounds.right - bounds.left) * img.naturalWidth * scale > img.clientWidth * 0.92
-            || (bounds.bottom - bounds.top) * img.naturalHeight * scale > img.clientHeight * 0.92);
+        const contain = card?.dataset.imageLayout !== 'standard' && bounds && ((bounds.right - bounds.left) * img.naturalWidth * scale > img.clientWidth * 0.92
+            || (bounds.bottom - bounds.top) * img.naturalHeight * scale > visibleHeight * 0.92);
         const position = contain ? { x: 100, y: 50 }
-            : coverPosition(img.naturalWidth, img.naturalHeight, img.clientWidth, img.clientHeight, state.focus, target);
+            : coverPosition(img.naturalWidth, img.naturalHeight, img.clientWidth, img.clientHeight, state.focus, target, visibleHeight);
         // A wide desktop cover crop can have zero horizontal overflow, making
         // object-position ineffective. Move that photo into the clear area;
         // any uncovered strip stays inside the fully transparent left mask.

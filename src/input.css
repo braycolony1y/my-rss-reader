@@ -6188,15 +6188,21 @@ html[data-image-focus] #scroll-container .article-card .article-card-image img.t
 /* Shared Top, Classic and normal-card atmosphere. Sampled thumbnail colors
  * replace the neutral fallback; the reading surface stays almost white. */
 #scroll-container .article-card.has-story-briefing[data-image-layout] {
-    --thumbnail-paper: color-mix(in srgb, white 96%, rgb(var(--thumbnail-primary, 255 255 255)));
+    --thumbnail-paper: color-mix(in srgb, white 86%, rgb(var(--thumbnail-primary, 255 255 255)));
+    --thumbnail-wash: color-mix(in srgb, white 42%, rgb(var(--thumbnail-primary, 255 255 255)));
+    --thumbnail-wash-secondary: color-mix(in srgb, white 42%, rgb(var(--thumbnail-secondary, 255 255 255)));
+    /* Let the card surface and image meet the rounded edge without a border gap. */
+    border: 0 !important;
     background:
-        linear-gradient(90deg, var(--thumbnail-paper) 0%,
-            color-mix(in srgb, var(--thumbnail-paper) 98%, transparent) 32%,
-            color-mix(in srgb, var(--thumbnail-paper) 94%, transparent) 44%,
-            color-mix(in srgb, var(--thumbnail-paper) 84%, transparent) 54%,
-            color-mix(in srgb, var(--thumbnail-paper) 40%, transparent) 65%, transparent 80%),
-        linear-gradient(155deg, rgb(var(--thumbnail-primary, 255 255 255)),
-            rgb(var(--thumbnail-secondary, 255 255 255))) !important;
+        linear-gradient(90deg, var(--thumbnail-paper) 0%, var(--thumbnail-paper) 24%,
+            color-mix(in srgb, var(--thumbnail-paper) 96%, transparent) 36%,
+            color-mix(in srgb, var(--thumbnail-paper) 86%, transparent) 46%,
+            color-mix(in srgb, var(--thumbnail-paper) 67%, transparent) 56%,
+            color-mix(in srgb, var(--thumbnail-paper) 40%, transparent) 66%,
+            color-mix(in srgb, var(--thumbnail-paper) 17%, transparent) 76%,
+            color-mix(in srgb, var(--thumbnail-paper) 4%, transparent) 86%, transparent 96%),
+        linear-gradient(145deg, var(--thumbnail-wash), var(--thumbnail-wash-secondary)) !important;
+    background-clip: padding-box !important;
 }
 
 /* Leave the top and right clear, as in the reference. Only the text-facing
@@ -6207,19 +6213,37 @@ html[data-image-focus] #scroll-container .article-card .article-card-image img.t
     border: 0 !important;
     box-shadow: none !important;
     background: none !important;
-    --heading-photo-mask:
-        radial-gradient(ellipse 86% 94% at 100% 14%,
-            #000 0%, #000 48%, rgba(0,0,0,.94) 58%,
-            rgba(0,0,0,.60) 72%, rgba(0,0,0,.20) 85%, transparent 100%),
-        linear-gradient(90deg, transparent 0%, transparent 26%,
-            rgba(0,0,0,.15) 36%, rgba(0,0,0,.55) 48%, #000 65%),
-        linear-gradient(180deg, #000 0%, #000 var(--photo-bottom-solid, 55%),
-            rgba(0,0,0,.90) var(--photo-bottom-soft, 68%),
-            rgba(0,0,0,.50) var(--photo-bottom-fade, 82%), transparent 100%);
+    --heading-photo-mask: linear-gradient(90deg, transparent 0%, transparent 26%,
+        rgba(0,0,0,.01) 31%, rgba(0,0,0,.04) 36%,
+        rgba(0,0,0,.10) 41%, rgba(0,0,0,.21) 46%,
+        rgba(0,0,0,.37) 51%, rgba(0,0,0,.56) 56%,
+        rgba(0,0,0,.74) 61%, rgba(0,0,0,.88) 66%,
+        rgba(0,0,0,.96) 71%, rgba(0,0,0,.995) 76%, #000 81%);
     -webkit-mask-image: var(--heading-photo-mask) !important;
     mask-image: var(--heading-photo-mask) !important;
     -webkit-mask-composite: source-in !important;
     mask-composite: intersect !important;
+}
+
+/* Normal and Classic photos reach the card bottom without a tinted strip.
+ * Top photos have room for a long tail behind the unchanged analysis panel. */
+#scroll-container .article-card.has-story-briefing[data-image-layout="top"] .article-card-image {
+    -webkit-mask-image: var(--heading-photo-mask), linear-gradient(180deg,
+        #000 0%, #000 calc(100% - 140px),
+        rgba(0,0,0,.99) calc(100% - 120px),
+        rgba(0,0,0,.90) calc(100% - 100px),
+        rgba(0,0,0,.68) calc(100% - 80px),
+        rgba(0,0,0,.37) calc(100% - 60px),
+        rgba(0,0,0,.13) calc(100% - 40px),
+        rgba(0,0,0,.02) calc(100% - 20px), transparent 100%) !important;
+    mask-image: var(--heading-photo-mask), linear-gradient(180deg,
+        #000 0%, #000 calc(100% - 140px),
+        rgba(0,0,0,.99) calc(100% - 120px),
+        rgba(0,0,0,.90) calc(100% - 100px),
+        rgba(0,0,0,.68) calc(100% - 80px),
+        rgba(0,0,0,.37) calc(100% - 60px),
+        rgba(0,0,0,.13) calc(100% - 40px),
+        rgba(0,0,0,.02) calc(100% - 20px), transparent 100%) !important;
 }
 
 #scroll-container .article-card.has-story-briefing[data-image-layout]::before {
@@ -6249,14 +6273,6 @@ html[data-image-focus] #scroll-container .article-card .article-card-image img.t
 #scroll-container .article-card.has-story-briefing[data-image-layout] .article-card-heading::before {
     content: none !important;
     display: none !important;
-}
-
-/* Short Classic/normal cards need a clear photo through most of their height.
- * Preserve the curved left feather; dissolve only near the bottom edge. */
-#scroll-container .article-card.has-story-briefing[data-image-layout="standard"] .article-card-image {
-    --photo-bottom-solid: 82%;
-    --photo-bottom-soft: 89%;
-    --photo-bottom-fade: 95%;
 }
 
 /* Read status still dims the text, but must not wash out the photo itself.

@@ -5,10 +5,48 @@ import os from 'node:os';
 import path from 'node:path';
 import sharp from 'sharp';
 import { JSDOM } from 'jsdom';
-import { coverPosition, installImageFocus } from '../public/image-focus.js';
+import { coverPosition, installImageFocus, backdropColor } from '../public/image-focus.js';
 import { selectFace, detectImageFocus, selectImagePalette } from '../src/images/focal-detector.js';
 import { createFocalCache, publicImageUrl, readImageBytes } from '../src/images/focal-cache.js';
 import { registerMediaRoutes, downloadFocalImage } from '../src/routes/media-routes.js';
+
+test('card backdrops temper vivid colors and gently lift only darker tints', () => {
+    const luminance = rgb => rgb[0] * .2126 + rgb[1] * .7152 + rgb[2] * .0722;
+    for (const color of [[255, 255, 0], [250, 132, 18]]) {
+        const softened = backdropColor(color);
+        assert.ok(Math.max(...softened) - Math.min(...softened) <= 65);
+        assert.ok(luminance(softened) >= luminance(color) - 1);
+        assert.ok(luminance(softened) - luminance(color) < 5);
+    }
+    for (const color of [[24, 36, 61], [43, 45, 29], [60, 58, 75], [125, 100, 75]]) {
+        const softened = backdropColor(color);
+        assert.ok(luminance(softened) > luminance(color));
+        assert.ok(luminance(softened) - luminance(color) <= 35, 'dark tints receive a modest lift');
+        assert.ok(Math.max(...softened) < 160, 'keep visible color, far below white');
+        for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) {
+            if (color[i] > color[j]) assert.ok(softened[i] > softened[j], 'preserve warm/cool channel ordering');
+        }
+    }
+    for (const color of [[180, 205, 220], [220, 210, 190], [255, 255, 255]]) {
+        assert.deepEqual(backdropColor(color), color, 'already-light backgrounds stay unchanged');
+    }
+});
+
+test('AVIF alpha metadata does not distort RGB colors during focal analysis', async () => {
+    const bytes = await sharp({ create: { width: 800, height: 600, channels: 4,
+        background: { r: 230, g: 140, b: 60, alpha: 1 } } }).avif({ lossless: true }).toBuffer();
+    const { palette } = await detectImageFocus(bytes);
+    assert.deepEqual(palette.primary, [230, 140, 60]);
+    assert.deepEqual(palette.secondary, [230, 140, 60]);
+});
+
+test('a Top photo fade tail does not pull the subject behind the analysis panel', () => {
+    const focus = { x: .7, y: .6, bounds: { left: .6, right: .8, top: .48, bottom: .72 } };
+    const position = coverPosition(1000, 1200, 500, 400, focus, .66, 280);
+    const top = (400 - 600) * position.y / 100;
+    assert.ok(top + focus.bounds.top * 600 >= 0);
+    assert.ok(top + focus.bounds.bottom * 600 <= 280);
+});
 
 test('responsive cover crops keep a right-side face in view without exposing empty space', () => {
     const focus = { x: 0.88, y: 0.38, bounds: { left: 0.81, right: 0.95, top: 0.25, bottom: 0.51 } };
@@ -80,16 +118,52 @@ test('dark, muted backgrounds beat a smaller bright face or white collar', () =>
     }
 });
 
-test('local fallback thumbnails get their own palette without remote analysis', () => {
+test('background palette ignores central shirts and keeps neutral walls neutral', () => {
+    for (const background of [[194, 128, 82], [170, 170, 170], [245, 245, 245]]) {
+        for (const shirt of [[255, 255, 255], [220, 25, 45], [20, 70, 220]]) {
+            const pixels = Buffer.alloc(80 * 60 * 3);
+            for (let y = 0; y < 60; y++) for (let x = 0; x < 80; x++) {
+                const subject = x >= 18 && x <= 61 || y >= 25;
+                pixels.set(subject ? shirt : background, (y * 80 + x) * 3);
+            }
+            assert.deepEqual(selectImagePalette(pixels, 80, 60), { primary: background, secondary: background });
+        }
+    }
+});
+
+test('background palette excludes off-center faces and their clothing at both edges', () => {
+    const background = [188, 125, 84];
+    const faces = [{ left: .02, top: .08, right: .12, bottom: .25 },
+        { left: .85, top: .2, right: .95, bottom: .4 }];
+    const pixels = Buffer.alloc(100 * 100 * 3);
+    for (let y = 0; y < 100; y++) for (let x = 0; x < 100; x++) {
+        const face = (x <= 12 && y >= 8 && y <= 25) || (x >= 85 && x <= 95 && y >= 20 && y <= 40);
+        const shirt = (x <= 22 && y > 25) || (x >= 75 && y > 40);
+        pixels.set(face ? [230, 174, 146] : shirt ? [15, 60, 230] : background, (y * 100 + x) * 3);
+    }
+    assert.deepEqual(selectImagePalette(pixels, 100, 100, 3, faces), { primary: background, secondary: background });
+});
+
+test('fully obscured or transparent backgrounds use a neutral fallback', () => {
+    const pixels = Buffer.alloc(40 * 40 * 4);
+    assert.deepEqual(selectImagePalette(pixels, 40, 40, 4).primary, [244, 251, 252]);
+    pixels.fill(230);
+    assert.deepEqual(selectImagePalette(pixels, 40, 40, 4,
+        [{ left: 0, top: 0, right: 1, bottom: 1 }]).primary, [244, 251, 252]);
+});
+
+test('default thumbnails clear existing tints without sampling the navy illustration', () => {
     const dom = new JSDOM('<div class="article-card"><div class="article-card-image"><img class="thumbnail-img" src="/public/default.jpg"></div></div>', { url: 'https://reader.example.com' });
     const win = dom.window, img = win.document.querySelector('img');
     Object.defineProperties(img, { complete: { get: () => true }, naturalWidth: { get: () => 816 }, naturalHeight: { get: () => 544 }, clientWidth: { get: () => 420 }, clientHeight: { get: () => 220 } });
-    const pixels = new Uint8ClampedArray(48 * 48 * 4);
-    for (let i = 0; i < pixels.length; i += 4) pixels.set([24, 36, 61, 255], i);
-    win.HTMLCanvasElement.prototype.getContext = () => ({ drawImage() {}, getImageData: () => ({ data: pixels }) });
+    const card = img.closest('.article-card');
+    card.style.setProperty('--thumbnail-primary', '24 36 61');
+    card.style.setProperty('--thumbnail-secondary', '24 36 61');
+    win.HTMLCanvasElement.prototype.getContext = () => assert.fail('default image must not be sampled');
     win.fetch = () => assert.fail('local images must not need remote analysis');
     const stop = installImageFocus(win);
-    assert.equal(img.closest('.article-card').style.getPropertyValue('--thumbnail-primary'), '24 36 61');
+    assert.equal(card.style.getPropertyValue('--thumbnail-primary'), '');
+    assert.equal(card.style.getPropertyValue('--thumbnail-secondary'), '');
     assert.equal(img.dataset.focusState, 'ready');
     stop(); dom.window.close();
 });
@@ -140,16 +214,24 @@ test('card palette changes with its thumbnail and stale image responses cannot r
     const result = primary => ({ ok: true, json: async () => ({ x: .8, y: .4, palette: { primary, secondary: primary } }) });
     responses[1](result([45, 110, 195]));
     await flush();
-    assert.equal(card.style.getPropertyValue('--thumbnail-primary'), '45 110 195');
+    assert.equal(card.style.getPropertyValue('--thumbnail-primary'), backdropColor([45, 110, 195]).join(' '));
     responses[0](result([80, 140, 50]));
     await flush();
-    assert.equal(card.style.getPropertyValue('--thumbnail-primary'), '45 110 195');
+    assert.equal(card.style.getPropertyValue('--thumbnail-primary'), backdropColor([45, 110, 195]).join(' '));
     img.src = 'https://example.com/orange.jpg';
     await flush();
     assert.equal(card.style.getPropertyValue('--thumbnail-primary'), '');
     responses[2](result([230, 145, 55]));
     await flush();
-    assert.equal(card.style.getPropertyValue('--thumbnail-secondary'), '230 145 55');
+    assert.equal(card.style.getPropertyValue('--thumbnail-secondary'), backdropColor([230, 145, 55]).join(' '));
+    img.src = 'https://example.com/pending.jpg';
+    await flush();
+    img.src = '/public/default.jpg?v=2';
+    await flush();
+    responses[3](result([24, 36, 61]));
+    await flush();
+    assert.equal(card.style.getPropertyValue('--thumbnail-primary'), '', 'a late response must not recolor the default image');
+    assert.equal(card.style.getPropertyValue('--thumbnail-secondary'), '');
     stop(); dom.window.close();
 });
 

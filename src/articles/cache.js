@@ -1,4 +1,5 @@
 import { CONTENT_RETENTION_MS, deletionTime, archiveExpiry } from './retention.js';
+import { getArticleThumbnail } from './thumbnail.js';
 import { canonicalIdentity } from '../board/thread-model.js';
 import { normalizeStoredPostTimes } from './source-time.js';
 import { normalizeArticleSourceUrl } from '../article-source-state.js';
@@ -183,7 +184,7 @@ export function createArticleCache({
             const existing = cardImages.get(filename);
             if (existing?.fingerprint === fingerprint) return existing.image;
             const cached = await readLastKnownCachedArticle(url);
-            const image = cached?.result?.image || null;
+            const image = getArticleThumbnail(url, cached?.result);
             // Deleted snapshots need a fresh retention check on every lookup.
             if (cached && !cached.result.sourceDeleted) {
                 cardImages.delete(filename);

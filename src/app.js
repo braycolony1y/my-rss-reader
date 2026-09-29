@@ -109,13 +109,6 @@ export async function createApplication({ isMainModule = false } = {}) {
         CF_PROXY_BASE: config.CF_PROXY_BASE
     });
 
-    const images = createArticleImages({
-        getLastKnownCachedArticle: cache.getLastKnownCachedArticle,
-        fetchWithCookies: readers.fetchWithCookies,
-        fetchViaOpenCli: readers.fetchViaOpenCli,
-        cacheArticleResult: cache.cacheArticleResult,
-        CF_PROXY_BASE: config.CF_PROXY_BASE
-    });
 
     const parser = createArticleParser({
         updateArticleFetchProgress: progress.updateArticleFetchProgress,
@@ -132,6 +125,13 @@ export async function createApplication({ isMainModule = false } = {}) {
         fetchArticleHtmlByStrategy: readers.fetchArticleHtmlByStrategy,
         parseArticleHtmlContent: parser.parseArticleHtmlContent,
         getArticleFetchPolicy: policy.getArticleFetchPolicy
+    });
+
+    const images = createArticleImages({
+        getLastKnownCachedArticle: cache.getLastKnownCachedArticle,
+        getArticleFetchPolicy: policy.getArticleFetchPolicy,
+        fetchParsedArticleByStrategy: pipeline.fetchParsedArticleByStrategy,
+        cacheArticleResult: cache.cacheArticleResult
     });
 
     const boardCache = createBoardCache({
