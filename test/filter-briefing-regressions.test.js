@@ -1,3 +1,4 @@
+import { readReaderClientSource } from './helpers/reader-source.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -8,7 +9,7 @@ import { createStoryBriefings, REQUIRED_ANALYSIS_REVIEW } from '../src/articles/
 import { runGlobalAiTask, setGlobalAiReadingMode } from '../src/ai/global-ai-scheduler.js';
 import { registerContentFilterRoutes } from '../src/routes/content-filter-routes.js';
 
-const script = readFileSync(new URL('../script.js', import.meta.url), 'utf8');
+const script = readReaderClientSource();
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
 const response = keywords => ({ ok: true, json: async () => ({ keywords }) });
 function reader(t) {
@@ -20,6 +21,19 @@ function reader(t) {
     app.fetchData = async () => {};
     return { app, window: dom.window };
 }
+
+test('collapsing one story panel preserves other panels and selecting a tab reopens it', t => {
+    const { app } = reader(t);
+    const first = { clusterId: 'first', link: 'https://reader.test/first' };
+    const second = { link: 'https://reader.test/second' };
+    assert.equal(app.storyPanelIsExpanded(first), true);
+    app.toggleStoryPanel(first);
+    assert.equal(app.storyPanelIsExpanded(first), false);
+    assert.equal(app.storyPanelIsExpanded(second), true);
+    app.toggleStoryAnalysis(first, 'What changed');
+    assert.equal(app.storyPanelIsExpanded(first), true);
+    assert.equal(app.storyAnalysisOpen.first, 'What changed');
+});
 
 test('first filter modal opening hydrates from the startup request without reopening', async t => {
     const { app, window } = reader(t);

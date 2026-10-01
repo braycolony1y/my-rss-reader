@@ -1,3 +1,4 @@
+import { readReaderClientSource, readReaderHtml } from './reader-source.js';
 import fs from 'node:fs/promises';
 import http from 'node:http';
 import path from 'node:path';
@@ -5,8 +6,8 @@ import {fileURLToPath} from 'node:url';
 import assert from 'node:assert/strict';
 import puppeteer from 'puppeteer-core';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
-const script=await fs.readFile(path.join(root,'script.js'),'utf8');
-let html=(await fs.readFile(path.join(root,'index.html'),'utf8')).replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,'');
+const script=await readReaderClientSource();
+let html=(await readReaderHtml()).replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,'');
 const labels=['Why it matters','What changed','Timeline','What to watch','Market impact','Who is affected','What to do','Background / Context','Upgrade compatibility'];
 const base={link:'https://example.invalid/story',title:'Synthetic example: vendor fixes router vulnerability',feedTitle:'Synthetic source',image:'/public/default.jpg',feedIcon:'/public/default.jpg',content:'Source excerpt.',pubDate:new Date().toISOString(),isCluster:true,sourceCount:1,relatedArticles:[],clusterId:'top',topStory:{rank:1,isTop:true,feed:'tech_world',timeline:[{id:'one',date:'2026-09-12T10:00:00Z',text:'Initial report',sources:[]},{id:'two',date:'2026-09-13T10:00:00Z',text:'Patch released',sources:[]}]},briefing:{status:'ready',analysisStatus:'evaluated',analysisVersion:2,analysisReview:labels.map(label=>({label,useful:true,reason:'Useful fixture section'})),sections:[{label:'What happened',text:'A fictional vendor fixed a router vulnerability. Users should install the update.'},...labels.map(label=>({label,text:`${label}: supported fixture analysis.`,citations:[]}))]}};
 const fixtureScript=`const originalApp=rssApp;rssApp=()=>{const app=originalApp();Object.assign(app,{theme:'glass-light',isLoggedIn:true,selectedFilterType:'smart',selectedFilterValue:'tech',smartTabMode:'top',isLoadingArticles:false,articles:${JSON.stringify([base,{...base,clusterId:'more',link:'https://example.invalid/more',topStory:{...base.topStory,rank:2,isTop:false}}])}});app.initApp=function(){};app.fetchData=async function(){};return app;};`;

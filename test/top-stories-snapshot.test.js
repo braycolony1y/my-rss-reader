@@ -1,3 +1,4 @@
+import { readReaderClientSource } from './helpers/reader-source.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -140,7 +141,7 @@ test('source reconciliation ranks the durable clusters with fresh raw articles d
 });
 test('client boot retains cached Top cards while fetching, then installs the authoritative ordering atomically; Classic keeps its merge behavior',async()=>{
  const vm=await import('node:vm');
- const source=await fs.readFile(new URL('../script.js',import.meta.url),'utf8');
+ const source=await readReaderClientSource();
  const method=source.slice(source.indexOf('async fetchData('),source.indexOf('async loadMore()'));
  for(const isTop of [true,false]){
   let release;const gate=new Promise(r=>release=r);

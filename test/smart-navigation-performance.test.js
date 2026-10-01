@@ -1,3 +1,4 @@
+import { readReaderClientSource } from './helpers/reader-source.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -13,11 +14,30 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
 function reader(t) {
     const dom = new JSDOM('<body></body>', {url:'https://reader.test/#smart/news_global',runScripts:'outside-only',pretendToBeVisual:true});
     dom.window.fetch = async () => ({ok:true,json:async()=>({})});
-    dom.window.eval(readFileSync(new URL('../script.js', import.meta.url),'utf8'));
+    dom.window.eval(readReaderClientSource());
     t.after(()=>dom.window.close());
     const app=dom.window.rssApp(); app.fetchData=async()=>{}; app.syncUserPreferenceDebounced=()=>{};
     return {app,window:dom.window};
 }
+
+test('Top polling continues after a reading session expires without replacing visible cards', async t => {
+    const {app, window} = reader(t);
+    app.selectedFilterType = 'smart';
+    app.smartTabMode = 'top';
+    app.selectedFilterValue = 'news_global';
+    app.smartViewToken = 'expired';
+    app.articles = [{clusterId: 'visible'}];
+    let callback;
+    window.setTimeout = fn => { callback = fn; return 1; };
+    window.clearTimeout = () => {};
+    window.fetch = async () => ({ok: true, json: async () => ({viewReset: true})});
+    app.scheduleBriefingRefresh();
+    const first = callback;
+    await first();
+    assert.equal(app.topUpdatesAvailable, true);
+    assert.equal(app.articles[0].clusterId, 'visible');
+    assert.notEqual(callback, first, 'arms another poll after the expired token response');
+});
 
 test('Tech regions have independent URLs, restore on navigation, and retain region across sections', async t => {
     const {app,window}=reader(t);

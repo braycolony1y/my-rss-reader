@@ -1,11 +1,12 @@
+import { readReaderClientSource, readReaderHtml } from './helpers/reader-source.js';
 import { readServerSource } from './helpers/server-source.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const server = readServerSource();
-const script = readFileSync(new URL('../script.js', import.meta.url), 'utf8');
-const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+const script = readReaderClientSource();
+const html = readReaderHtml();
 
 test('a non-empty source method selection is a strict allowlist', () => {
     const policyBlock = server.slice(

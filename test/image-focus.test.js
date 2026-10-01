@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import sharp from 'sharp';
 import { JSDOM } from 'jsdom';
+import { extractLiquidTint, tintProperties } from '../public/liquid-tint.js';
 import { coverPosition, installImageFocus, backdropColor } from '../public/image-focus.js';
 import { selectFace, detectImageFocus, selectImagePalette } from '../src/images/focal-detector.js';
 import { createFocalCache, publicImageUrl, readImageBytes } from '../src/images/focal-cache.js';
@@ -77,7 +78,12 @@ test('largest confident face wins over a small face or low-confidence detection'
 
 test('bundled detector runs locally and uses centre for a uniform image', async () => {
     const bytes = await sharp({ create: { width: 120, height: 90, channels: 3, background: '#808080' } }).png().toBuffer();
-    assert.deepEqual(await detectImageFocus(bytes), { x: 0.5, y: 0.5, type: 'center', confidence: 0,
+    const { tint, blend, ...result } = await detectImageFocus(bytes);
+    assert.equal(tint.h1, 250);
+    assert.match(blend.ambientImage, /^data:image\/webp;base64,/);
+    assert.equal((await sharp(Buffer.from(blend.ambientImage.split(',')[1], 'base64')).metadata()).width, 96);
+    assert.equal((await sharp(Buffer.from(blend.meltImage.split(',')[1], 'base64')).metadata()).width, 320);
+    assert.deepEqual(result, { x: 0.5, y: 0.5, type: 'center', confidence: 0,
         palette: { primary: [128, 128, 128], secondary: [128, 128, 128] } });
     await assert.rejects(detectImageFocus(Buffer.from('not an image')));
 });
@@ -211,13 +217,15 @@ test('card palette changes with its thumbnail and stale image responses cannot r
     const flush = () => new Promise(resolve => setTimeout(resolve, 0));
     img.src = 'https://example.com/blue.jpg';
     await flush();
-    const result = primary => ({ ok: true, json: async () => ({ x: .8, y: .4, palette: { primary, secondary: primary } }) });
+    const result = primary => ({ ok: true, json: async () => ({ x: .8, y: .4, palette: { primary, secondary: primary }, tint: extractLiquidTint(primary, 1, 1, 3) }) });
     responses[1](result([45, 110, 195]));
     await flush();
     assert.equal(card.style.getPropertyValue('--thumbnail-primary'), backdropColor([45, 110, 195]).join(' '));
+    assert.equal(card.style.getPropertyValue('--tint-a'), tintProperties(extractLiquidTint([45, 110, 195], 1, 1, 3))['--tint-a']);
     responses[0](result([80, 140, 50]));
     await flush();
     assert.equal(card.style.getPropertyValue('--thumbnail-primary'), backdropColor([45, 110, 195]).join(' '));
+    assert.equal(card.style.getPropertyValue('--tint-a'), tintProperties(extractLiquidTint([45, 110, 195], 1, 1, 3))['--tint-a']);
     img.src = 'https://example.com/orange.jpg';
     await flush();
     assert.equal(card.style.getPropertyValue('--thumbnail-primary'), '');
@@ -232,6 +240,7 @@ test('card palette changes with its thumbnail and stale image responses cannot r
     await flush();
     assert.equal(card.style.getPropertyValue('--thumbnail-primary'), '', 'a late response must not recolor the default image');
     assert.equal(card.style.getPropertyValue('--thumbnail-secondary'), '');
+    assert.equal(card.style.getPropertyValue('--tint-a'), tintProperties(null)['--tint-a']);
     stop(); dom.window.close();
 });
 

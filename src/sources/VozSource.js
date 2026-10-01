@@ -1,4 +1,5 @@
 import { renderVozPost } from '../articles/voz-post-renderer.js';
+import { load } from 'cheerio';
 import { absoluteTimestamp } from '../articles/source-time.js';
 import { hasVozDeletedThreadMarker, getVozThreadPageNumber } from '../voz-thread-state.js';
 
@@ -92,6 +93,25 @@ export function transformVozRedditEmbeds(markup) {
 }
 
 export default class VozSource {
+
+    cleanCachedArticleContent(content, result = {}) {
+        const page = Number(result.pagination?.currentPage);
+        if (!Number.isSafeInteger(page) || page < 1) return content;
+        const $ = load(content, null, false);
+        let changed = false;
+        $('.voz-post').each((ordinal, element) => {
+            const post = $(element);
+            const index = post.attr('data-post-index');
+            const permanentId = post.attr('data-absolute-post-id');
+            if (!permanentId || index !== permanentId) return;
+            const position = String((page - 1) * 20 + ordinal + 1);
+            if (index === position) return;
+            post.attr('data-post-index', position).attr('id', 'voz-post-' + position);
+            post.find('.voz-post-index').first().text('#' + position);
+            changed = true;
+        });
+        return changed ? $.html() : content;
+    }
 
     async getBestImage(targetUrl, fetchFn, rssFallback, utils) {
         if (rssFallback && !utils.isInvalidImage(rssFallback)) {
@@ -572,7 +592,8 @@ export default class VozSource {
                 bbContent = artHtml;
             }
 
-            const postNumberMatch = artHtml.match(/#(\d+)\s*<\/a>/i) || artHtml.match(/>#(\d+)</i) || artHtml.match(/post-(\d+)/i);
+            // Permanent post IDs are global identifiers, not thread positions.
+            const postNumberMatch = artHtml.match(/#(\d+)\s*<\/a>/i) || artHtml.match(/>#(\d+)</i);
             let postNumber = extractedPostNumber || (postNumberMatch ? postNumberMatch[1] : (idx + 1 + ((currentPage - 1) * 20)));
 
             const absolutePostIdMatch = artHtml.match(/data-content=["']post-(\d+)["']/i) || artHtml.match(/id=["']js-post-(\d+)["']/i);

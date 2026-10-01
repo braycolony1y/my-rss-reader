@@ -1,15 +1,16 @@
-import fs from 'fs/promises';
+import { createReaderAssetRenderer } from '../ui/reader-assets.js';
 
 export function registerPageRoutes({
     app,
 } = {}) {
+    const renderer = createReaderAssetRenderer();
     // ============================================================================
     // CRON SCHEDULER & HTML SERVING
     // ============================================================================
 
     app.get('/script.js', async (req, res) => {
         try {
-            const js = await fs.readFile('./script.js', 'utf8');
+            const js = await renderer.script();
             res.setHeader('Content-Type', 'application/javascript');
             res.setHeader('Cache-Control', 'no-cache, must-revalidate');
             res.send(js);
@@ -20,7 +21,7 @@ export function registerPageRoutes({
 
     app.get('/', async (req, res) => {
         try {
-            const html = await fs.readFile('./index.html', 'utf8');
+            const html = await renderer.html();
             // The document contains critical inline component styles and the
             // versioned asset URLs, so it must revalidate instead of serving a
             // day-old shell after a UI deployment.

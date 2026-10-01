@@ -1,4 +1,6 @@
 import sharp from 'sharp';
+import { extractLiquidTint } from '../../public/liquid-tint.js';
+import { buildCardBlendAssets } from './card-blend/assets.js';
 import * as ort from 'onnxruntime-node';
 import { fileURLToPath } from 'node:url';
 
@@ -56,6 +58,9 @@ export async function detectImageFocus(buffer) {
     // not a raw-input option to carry forward: doing so treats the last RGB
     // channel as alpha and turns orange AVIF scenes into saturated yellow.
     const decoded = sharp(data, { raw: { width: info.width, height: info.height, channels: info.channels } });
+    const tintPixels = await decoded.clone().resize(64, 64, { fit: 'fill' }).raw().toBuffer();
+    const tint = extractLiquidTint(tintPixels, 64, 64, 3);
+    const blend = await buildCardBlendAssets(buffer);
     const rgb = await decoded.clone().resize(320, 240, { fit: 'fill' }).raw().toBuffer();
     const plane = 320 * 240;
     const input = new Float32Array(plane * 3);
@@ -67,10 +72,10 @@ export async function detectImageFocus(buffer) {
     const face = selectFace(output.scores.data, output.boxes.data);
     const bounds = faceCandidates(output.scores.data, output.boxes.data).map(face => face.bounds);
     const palette = selectImagePalette(rgb, 320, 240, 3, bounds);
-    if (face) return { ...face, palette };
+    if (face) return { ...face, palette, tint, blend };
 
     const stats = await decoded.clone().stats();
-    if (stats.entropy < 0.1) return { x: 0.5, y: 0.5, type: 'center', confidence: 0, palette };
+    if (stats.entropy < 0.1) return { x: 0.5, y: 0.5, type: 'center', confidence: 0, palette, tint, blend };
     // libvips attention uses luminance, saturation and skin tones. A square
     // source is required so attention can search in both axes, not only the
     // dimension trimmed by a normal landscape/portrait cover crop.
@@ -78,5 +83,5 @@ export async function detectImageFocus(buffer) {
     const { info: crop } = await sharp(square).resize(64, 128, { fit: 'cover', position: sharp.strategy.attention, withoutEnlargement: true })
         .toBuffer({ resolveWithObject: true });
     return { x: clamp((crop.attentionX ?? 64) / 128),
-        y: clamp((crop.attentionY ?? 64) / 128), type: 'saliency', confidence: 0, palette };
+        y: clamp((crop.attentionY ?? 64) / 128), type: 'saliency', confidence: 0, palette, tint, blend };
 }

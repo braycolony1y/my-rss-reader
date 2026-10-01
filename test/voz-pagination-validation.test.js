@@ -20,6 +20,23 @@ const payload = (page, count = 1) => ({
     pagination: { currentPage: page, pages: [{ page, isCurrent: true }], nextUrl: null }
 });
 
+test('VOZ permanent post IDs never become thread positions and old cached positions are repaired', () => {
+    const source = new VozSource();
+    const result = {};
+    const html = `<link rel="canonical" href="${base}/page-7177"><article class="message--post" data-content="post-43879958"><div class="bbWrapper">A reply</div></article>`;
+    const content = source.parseArticleHtmlContent(html, `${base}/page-7177`, result, { extractBalancedElementByClass, escapeHtml: value => String(value) });
+    assert.match(content, /data-post-index="143521"/);
+    assert.match(content, /data-absolute-post-id="43879958"/);
+    const cached = `<div class="voz-post" id="voz-post-43879958" data-post-index="43879958" data-absolute-post-id="43879958"><a class="voz-post-index" href="https://voz.vn/p/43879958">#43879958</a><div class="voz-post-body">Saved reply</div></div>`;
+    const cleaned = source.cleanCachedArticleContent(cached, { pagination: { currentPage: 7177 } });
+    assert.match(cleaned, /id="voz-post-143521"/);
+    assert.match(cleaned, /data-post-index="143521"/);
+    assert.match(cleaned, /data-absolute-post-id="43879958"/);
+    assert.match(cleaned, />#143521<\/a>/);
+    assert.match(cleaned, /Saved reply/);
+    assert.equal(source.cleanCachedArticleContent(cleaned, { pagination: { currentPage: 7177 } }), cleaned);
+});
+
 test('requested VOZ pages are validated for path, query and page-one URLs but allow post redirects', () => {
     for (const url of [`${base}/page-3`, `${base}/page-3/#post-1`, `${base}/?page=3`]) {
         assert.equal(isMismatchedVozThreadPage(url, payload(2)), true);

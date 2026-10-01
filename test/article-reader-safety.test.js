@@ -1,11 +1,12 @@
+import { readReaderClientSource, readReaderHtml } from './helpers/reader-source.js';
 import { readServerSource } from './helpers/server-source.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 const server = readServerSource();
-const script = fs.readFileSync(new URL('../script.js', import.meta.url), 'utf8');
-const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+const script = readReaderClientSource();
+const html = readReaderHtml();
 
 test('cache clearing stays available except for confirmed deleted-source snapshots', () => {
     const routeStart = server.indexOf("app.post('/api/clear-article-cache'");

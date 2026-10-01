@@ -122,3 +122,22 @@ test('whole-process pressure keeps cards available and retries ranking when work
     assert.notEqual((await snapshots.revalidate()).signature,'old');
     assert.ok(f.writes.includes('topStoriesPublished'));
 });
+
+test('ranking uses a smaller bounded worker when the default reservation cannot fit', async t => {
+    const f = fixture();
+    const reservations = [];
+    const snapshots = createTopStoriesSnapshots({
+        db: f.db, now: () => time,
+        memoryUsage: () => ({heapUsed: 700 * MB}),
+        workerHeadroom: reserveMB => {
+            reservations.push(reserveMB);
+            return reserveMB <= 1024;
+        },
+        report: () => {}
+    });
+    t.after(() => snapshots.dispose());
+    assert.equal((await snapshots.revalidate()).articles[0].link, article('new').link);
+    assert.ok(reservations.includes(1280), 'tries the normal worker budget first');
+    assert.ok(reservations.includes(1024), 'fits a 768 MiB heap plus a 256 MiB reserve');
+    assert.deepEqual(f.writes, ['topStoriesState', 'topStoriesPublished']);
+});

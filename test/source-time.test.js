@@ -1,3 +1,4 @@
+import { readReaderHtml } from './helpers/reader-source.js';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -43,7 +44,7 @@ test('normal source time exposes exact date independently of live publisher acce
 });
 
 test('cache chip occupies the existing metadata row with no standalone card row',()=>{
-    const $=load(readFileSync(new URL('../index.html',import.meta.url),'utf8'));
+    const $=load(readReaderHtml());
     assert.equal($('.cache-status-chip').parents('.article-metadata').length,1);
     assert.equal($('.cache-card-status').length,0);
 });

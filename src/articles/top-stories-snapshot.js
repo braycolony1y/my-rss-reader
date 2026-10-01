@@ -88,7 +88,7 @@ const rawStateJson = async db => {
 const rankInWorker = input => new Promise((resolve, reject) => {
     const worker = new Worker(new URL('./top-stories-worker.js', import.meta.url), {
         workerData: input,
-        ...boundedWorkerOptions(Math.max(256, Math.min(1536, Number(process.env.TOP_STORIES_WORKER_HEAP_MB) || 1024)))
+        ...boundedWorkerOptions(input.workerHeapMB)
     });
     worker.once('message', result => result.error ? reject(new Error(result.error)) : resolve(result));
     worker.once('error', reject);
@@ -367,7 +367,17 @@ const migrated={policy:POLICY,articles,createdAt:now(),signature:'legacy',cluste
         // The worker parses it in its isolated heap.
         let statesJson = await rawStateJson(db);
 
-        if (serializedWorker && !workerHeadroom()) {
+        // Size the bounded worker to the available headroom instead of waiting
+        // forever for the default 1.25 GiB reservation. Keep 256 MiB beyond its
+        // old-space limit for young space, native allocations and publication.
+        let workerHeapMB = Math.max(256, Math.min(1536, Number(process.env.TOP_STORIES_WORKER_HEAP_MB) || 1024));
+        const minimumHeapMB = Math.min(workerHeapMB, 512);
+        if (serializedWorker) {
+            while (workerHeapMB > minimumHeapMB && !workerHeadroom(workerHeapMB + 256)) {
+                workerHeapMB = Math.max(minimumHeapMB, workerHeapMB - 256);
+            }
+        }
+        if (serializedWorker && !workerHeadroom(workerHeapMB + 256)) {
             retryAt = now() + 30000;
             report('[TOP STORIES] Waiting for process memory headroom; retaining current ranking.');
             return current;
@@ -375,7 +385,7 @@ const migrated={policy:POLICY,articles,createdAt:now(),signature:'legacy',cluste
 
         const result = await compute({
             ...(serializedWorker
-                ? { publicationJson, rawJson, progressiveVersion: progressiveActive ? progressiveVersion : null, progressiveRevision }
+                ? { publicationJson, rawJson, progressiveVersion: progressiveActive ? progressiveVersion : null, progressiveRevision, workerHeapMB }
                 : { candidates }),
             sources,
             statesJson,

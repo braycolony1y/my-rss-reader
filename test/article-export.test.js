@@ -1,9 +1,10 @@
+import { readReaderClientSource } from './helpers/reader-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { JSDOM } from 'jsdom';
 
-const script = readFileSync(new URL('../script.js', import.meta.url), 'utf8');
+const script = readReaderClientSource();
 const threadUrl = 'https://voz.vn/t/example.123';
 const imageUrl = 'https://publisher.example/photo.jpg';
 const proxyUrl = '/api/proxy-image?url=' + encodeURIComponent(imageUrl);

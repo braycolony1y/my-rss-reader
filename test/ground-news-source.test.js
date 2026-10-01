@@ -1,3 +1,4 @@
+import { readReaderClientSource } from './helpers/reader-source.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -176,7 +177,7 @@ test('perspectives and publisher filters work through a stopped overlay click an
     try {
         const { document } = dom.window;
         document.querySelector('#overlay').addEventListener('click', e => e.stopPropagation());
-        const script = readFileSync(new URL('../script.js', import.meta.url), 'utf8');
+        const script = readReaderClientSource();
         dom.window.fetch = async () => ({ok: true, json: async () => ({})});
         dom.window.eval(script.slice(script.indexOf('// Capture runs before the reader overlay')));
         for (const group of ['left', 'center', 'right', 'all']) {

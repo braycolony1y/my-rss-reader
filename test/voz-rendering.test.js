@@ -1,3 +1,4 @@
+import { readReaderClientSource, readReaderHtml } from './helpers/reader-source.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -62,8 +63,8 @@ test('cached XenForo Reddit blocks are upgraded without retaining the giant logo
 });
 
 test('article reader hydrates X embeds and contains horizontal gestures', () => {
-    const script = readFileSync(new URL('../script.js', import.meta.url), 'utf8');
-    const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+    const script = readReaderClientSource();
+    const html = readReaderHtml();
 
     assert.match(script, /hydrateTwitterEmbeds\(root = document\)[\s\S]*twttr\.widgets\.createTweet/);
     assert.match(script, /tweetFrame\.setAttribute\('scrolling', 'no'\)/);

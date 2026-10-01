@@ -1,4 +1,5 @@
-import { selectImagePalette } from './image-palette.js?v=7';
+import { fitCardImageViewport, visiblePhotoHeight } from './card-image-layout.js?v=2';
+import { applyImageColors } from './card-blend/legacy-color.js?v=1';
 
 const clamp = (value, low = 0, high = 1) => Math.max(low, Math.min(high, value));
 const center = { x: 0.5, y: 0.5 };
@@ -47,7 +48,7 @@ export function coverPosition(imageWidth, imageHeight, boxWidth, boxHeight, focu
 export function installImageFocus(win) {
     const doc = win.document;
     const selector = '.article-card-image img.thumbnail-img';
-    const storageKey = 'rss-image-focus-v7';
+    const storageKey = 'rss-image-focus-v11';
     const states = new Map();
     const cache = new Map();
     const saved = new Map();
@@ -72,7 +73,7 @@ export function installImageFocus(win) {
             active++;
             const controller = new win.AbortController();
             const timer = win.setTimeout(() => controller.abort(), 30_000);
-            win.fetch(`/api/image-focus?v=7&src=${encodeURIComponent(source)}`, { signal: controller.signal })
+            win.fetch(`/api/image-focus?v=11&src=${encodeURIComponent(source)}`, { signal: controller.signal })
                 .then(response => response.ok ? response.json() : null)
                 .then(result => {
                     if (!result || result.retry) cache.delete(source);
@@ -111,68 +112,20 @@ export function installImageFocus(win) {
         return rect.bottom > top && rect.top < bottom && rect.right > 0 && rect.left < win.innerWidth;
     }
 
-    function fitViewport(img) {
-        const card = img.closest('.article-card');
-        const viewport = img.parentElement;
-        const heading = card?.querySelector('.article-card-heading');
-        if (card?.dataset.imageLayout !== 'top' || !heading) {
-            viewport.style.removeProperty('--image-focus-height');
-            return;
-        }
-        const cardRect = card.getBoundingClientRect();
-        let bottom = heading.getBoundingClientRect().bottom + 8;
-        // Continue alongside the key facts. The fade tail extends behind the
-        // analysis panel so its top edge cannot create a narrow horizontal band.
-        for (const panel of card.querySelectorAll('.article-briefing > *')) {
-            const rect = panel.getBoundingClientRect();
-            if (rect.width <= 0 || rect.height <= 0) continue;
-            if (panel.matches('.story-analysis-shell')) {
-                bottom = rect.top + 100;
-                break;
-            }
-            bottom = Math.max(bottom, rect.bottom + 8);
-        }
-        const height = `${Math.max(1, Math.min(card.clientHeight, bottom - cardRect.top)).toFixed(2)}px`;
-        if (viewport.style.getPropertyValue('--image-focus-height') !== height) viewport.style.setProperty('--image-focus-height', height);
-    }
-
     function apply(img, state) {
-        fitViewport(img);
+        fitCardImageViewport(img);
         const ready = img.complete && img.naturalWidth && img.clientWidth && img.clientHeight;
         const isDefault = /^\/public\/default\.jpg(?:[?#]|$)/.test(state.source || '');
-        if (ready && !isDefault && !state.palette && !state.paletteSampled && /^(\/public\/|data:|blob:)/.test(state.source || '')) {
-            state.paletteSampled = true;
-            try {
-                const canvas = doc.createElement('canvas');
-                canvas.width = canvas.height = 48;
-                const context = canvas.getContext('2d', { willReadFrequently: true });
-                context.drawImage(img, 0, 0, 48, 48);
-                state.palette = selectImagePalette(context.getImageData(0, 0, 48, 48).data, 48, 48, 4);
-            } catch { /* A failed/tainted image keeps the neutral fallback. */ }
-        }
         const card = img.closest('.article-card');
-        for (const name of ['primary', 'secondary']) {
-            // The default illustration is not an article photo. Removing the
-            // sampled variables restores the stylesheet's neutral white base.
-            const color = isDefault ? null : state.palette?.[name];
-            const value = Array.isArray(color) && color.length === 3 && color.every(n => Number.isFinite(n) && n >= 0 && n <= 255)
-                ? backdropColor(color).join(' ') : '';
-            const property = `--thumbnail-${name}`;
-            if (card && card.style.getPropertyValue(property) !== value) {
-                if (value) card.style.setProperty(property, value);
-                else card.style.removeProperty(property);
-            }
-        }
+        applyImageColors(img, state, { doc, ready, isDefault, backdropColor });
         if (!ready) return;
         const target = parseFloat(win.getComputedStyle(img).getPropertyValue('--image-focus-target')) || 0.62;
         const scale = Math.max(img.clientWidth / img.naturalWidth, img.clientHeight / img.naturalHeight);
         const bounds = state.focus.bounds;
-        const analysis = card?.dataset.imageLayout === 'top' && card.querySelector('.story-analysis-shell');
-        const visibleHeight = analysis && analysis.getBoundingClientRect().height > 0
-            ? Math.min(img.clientHeight, analysis.getBoundingClientRect().top - img.getBoundingClientRect().top) : img.clientHeight;
+        const visibleHeight = visiblePhotoHeight(img);
         // A very large face in a portrait cannot fit a shallow cover crop.
         // In that case show the whole photo against the card background.
-        const contain = card?.dataset.imageLayout !== 'standard' && bounds && ((bounds.right - bounds.left) * img.naturalWidth * scale > img.clientWidth * 0.92
+        const contain = !card?.closest('.theme-glass-light') && card?.dataset.imageLayout !== 'standard' && bounds && ((bounds.right - bounds.left) * img.naturalWidth * scale > img.clientWidth * 0.92
             || (bounds.bottom - bounds.top) * img.naturalHeight * scale > visibleHeight * 0.92);
         const position = contain ? { x: 100, y: 50 }
             : coverPosition(img.naturalWidth, img.naturalHeight, img.clientWidth, img.clientHeight, state.focus, target, visibleHeight);
@@ -189,6 +142,10 @@ export function installImageFocus(win) {
         img.style.setProperty('--image-focus-fit', contain ? 'contain' : 'cover');
         img.style.setProperty('--image-focus-x', `${position.x.toFixed(3)}%`);
         img.style.setProperty('--image-focus-y', `${position.y.toFixed(3)}%`);
+        for (const name of ['--image-focus-fit', '--image-focus-x', '--image-focus-y']) {
+            const value = img.style.getPropertyValue(name);
+            if (img.closest('.article-card-image').style.getPropertyValue(name) !== value) img.closest('.article-card-image').style.setProperty(name, value);
+        }
         if (state.settled) {
             img.dataset.focusState = 'ready';
             state.shown = true;
@@ -201,7 +158,7 @@ export function installImageFocus(win) {
         const source = sourceOf(img);
         if (state.source !== source) {
             win.clearTimeout(state.timer);
-            Object.assign(state, { source, focus: saved.get(source) || center, palette: saved.get(source)?.palette, paletteSampled: false, settled: saved.has(source), requested: false, shown: false, deferred: null, timer: null });
+            Object.assign(state, { source, focus: saved.get(source) || center, palette: saved.get(source)?.palette, tint: saved.get(source)?.tint, blend: saved.get(source)?.blend, paletteSampled: false, settled: saved.has(source), requested: false, shown: false, deferred: null, timer: null });
             img.dataset.focusState = 'pending';
         }
         if (state.deferred && !onScreen(img)) {
@@ -233,10 +190,12 @@ export function installImageFocus(win) {
             if (stopped || !img.isConnected || states.get(img) !== state || state.source !== source || sourceOf(img) !== source) return;
             win.clearTimeout(state.timer);
             state.palette = focus.palette;
+            state.tint = focus.tint;
+            state.blend = focus.blend;
             if (state.shown && onScreen(img)) state.deferred = focus;
             else state.focus = focus;
             state.settled = true;
-            apply(img, state);
+            update(img);
         });
     }
 
@@ -257,7 +216,7 @@ export function installImageFocus(win) {
     function watch(img) {
         if (states.has(img) || !img.matches?.(selector)) return;
         const card = img.closest('.article-card');
-        const observed = [img, card, card?.querySelector('.article-card-heading'), card?.querySelector('.article-briefing')].filter(Boolean);
+        const observed = [img, card, card?.querySelector('.article-card-header'), card?.querySelector('.article-card-heading')].filter(Boolean);
         states.set(img, { focus: center, near: !nearby, requested: false, observed });
         observed.forEach(el => resize?.observe(el));
         nearby?.observe(img);
@@ -270,7 +229,7 @@ export function installImageFocus(win) {
         node.querySelectorAll(selector).forEach(watch);
     }
     const onLoad = event => { if (event.target.matches?.(selector)) { watch(event.target); update(event.target); } };
-    const onResize = () => { for (const img of states.keys()) update(img); };
+    const onResize = () => { for (const [img,state] of states) { update(img); } };
     const mutations = new win.MutationObserver(records => {
         const affected = new Set();
         for (const record of records) {
@@ -305,7 +264,7 @@ export function installImageFocus(win) {
         mutations.disconnect(); resize?.disconnect(); nearby?.disconnect(); visibility?.disconnect();
         doc.removeEventListener('load', onLoad, true); win.removeEventListener('resize', onResize);
         for (const state of states.values()) win.clearTimeout(state.timer);
-        states.clear(); cache.clear();
+        states.clear(); cache.clear(); 
         queue.splice(0).forEach(job => job.resolve(center));
         delete doc.documentElement.dataset.imageFocus;
     };

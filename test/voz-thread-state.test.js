@@ -1,3 +1,4 @@
+import { readReaderClientSource } from './helpers/reader-source.js';
 import { readServerSource } from './helpers/server-source.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -149,7 +150,7 @@ test('server keeps the old cache until a validated replacement and short-circuit
 });
 
 test('VOZ background polling carries feed policy instead of silently enabling Jina', () => {
-    const script = readFileSync(new URL('../script.js', import.meta.url), 'utf8');
+    const script = readReaderClientSource();
     assert.match(script, /checkVozNewPostsInBackground\(\s*activeVozUrl,\s*activeFeedUrl\s*\)/);
     assert.match(script, /fetchThreadPage\(\s*currentLiveUrl,\s*feedUrl,\s*false,\s*true/);
     assert.match(script, /params\.set\('bypassCache', 'true'\)/);

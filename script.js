@@ -144,11 +144,11 @@
                 },
                 smartRegion: 'global',
                 topUpdatesAvailable: false,
-                storyAnalysisOpen: {},
+                ...ArticlePanels.createState(),
                 storyCoverageOpen: {},
                 async refreshTopStories() {
                     this.smartViewToken = '';
-                    this.storyAnalysisOpen = {};
+                    this.resetStoryPanels();
                     this.topUpdatesAvailable = false;
                     await this.fetchData();
                 },
@@ -769,18 +769,6 @@
                     };
                 },
 
-                toggleStoryAnalysis(article, label) {
-                    const id =
-                        article.clusterId ||
-                        article.link;
-
-                    // Tabs always keep one section selected, matching the
-                    // reference design rather than collapsing on second tap.
-                    this.storyAnalysisOpen = {
-                        ...this.storyAnalysisOpen,
-                        [id]: label
-                    };
-                },
                 nextStoryImage(event, article) {
                     if (!this.usesTopStories) { event.target.src = '/public/default.jpg'; return; }
                     const candidates = [...new Set([article.image, ...(article.imageCandidates || []), article.feedIcon, '/public/default.jpg'].filter(Boolean))];
@@ -844,7 +832,11 @@
                             if (!response.ok) throw new Error('Briefing refresh unavailable');
                             const latest = await response.json();
                             if (!this.usesTopStories || this.selectedFilterValue !== tab || this.smartViewToken !== token) return;
-                            if (latest.viewReset) { this.topUpdatesAvailable = true; return; }
+                            if (latest.viewReset) {
+                                this.topUpdatesAvailable = true;
+                                this.scheduleBriefingRefresh(attempt + 1);
+                                return;
+                            }
                             this.rankingPending = latest.rankingPending;
                             this.topUpdatesAvailable = latest.updatesAvailable === true;
                             const byId = new Map((latest.articles || []).map(s => [s.clusterId || s.link, s]));
@@ -4494,7 +4486,7 @@
                     const threadMatch = url.match(/threads\/[^\/.]+\.(\d+)/i) || url.match(/\b(\d{5,8})\b/);
                     const threadId = threadMatch ? threadMatch[1] : url;
                     const prefKey = 'voz_last_read_post_' + threadId;
-                    const lastReadRaw = localStorage.getItem(prefKey) || this.userPreferences[prefKey]; // VOZ_CURRENT_POSITION_LOCAL_FIRST_V5
+                    const lastReadRaw = this.vozReadingPositionRaw(prefKey);
                     
                     let lastRead = null;
                     let lastReadAbsId = null;
@@ -4663,6 +4655,42 @@
                         const saveData = absId ? JSON.stringify({ index, absId, page: this.overlayPagination?.currentPage || Math.ceil(Number(index) / 20) }) : index;
                         this.syncUserPreferenceDebounced('voz_last_read_post_' + threadId, saveData);
                     });
+                },
+
+                vozReadingPositionRaw(prefKey) {
+                    let local;
+                    try { local = localStorage.getItem(prefKey); } catch (_) {}
+                    const originalLocal = local;
+                    const shared = this.userPreferences[prefKey];
+                    const parse = raw => {
+                        try { return typeof raw === 'string' && raw.startsWith('{') ? JSON.parse(raw) : null; } catch (_) { return null; }
+                    };
+                    const sharedPosition = parse(shared);
+                    const sharedPage = Number(sharedPosition?.page);
+                    // Upgrade legacy plain-number records to the shared record
+                    // that stores a page and permanent ID together. Structured
+                    // device positions continue to take precedence.
+                    if (local && !parse(local) && sharedPosition?.absId
+                        && Number.isSafeInteger(sharedPage) && sharedPage > 0) local = shared;
+                    let raw = local || shared;
+                    const position = parse(raw);
+                    if (position?.absId && String(position.index) === String(position.absId)) {
+                        const page = Number(position.page);
+                        const derivedPage = Math.ceil(Number(position.index) / 20);
+                        if (Number.isSafeInteger(page) && page > 0 && page !== derivedPage) {
+                            // Keep the permanent ID for the exact in-page jump.
+                            position.index = String((page - 1) * 20 + 1);
+                        } else {
+                            // The old page was calculated from a global ID;
+                            // resume through the permanent post redirect instead.
+                            delete position.page;
+                        }
+                        raw = JSON.stringify(position);
+                    }
+                    if (raw && raw !== originalLocal) {
+                        try { localStorage.setItem(prefKey, raw); } catch (_) {}
+                    }
+                    return raw;
                 },
 
                 vozThreadPageNumberFromUrl(url = '') {
@@ -6156,21 +6184,25 @@
 
                 async openArticleFromRoute(articleUrl) {
                     if (!articleUrl) return;
-                    const targetIdentity = this.articleIdentity(articleUrl);
-                    if (this.articleOverlayOpen && this.articleIdentity(this.overlayArticle) === targetIdentity) return;
+                    const targetUrl = this.articleRouteUrl(articleUrl);
+                    if (this.articleOverlayOpen && this.articleRouteUrl(this.overlayArticle) === targetUrl) return;
 
                     const previous = this.articleOverlayStack[this.articleOverlayStack.length - 1];
-                    if (previous && this.articleIdentity(previous.overlayArticle) === targetIdentity) {
+                    if (previous && this.articleRouteUrl(previous.overlayArticle) === targetUrl) {
                         this.articleOverlayStack.pop();
                         this.restoreArticleOverlay(previous, false);
                         return;
                     }
 
-                    const article = this.findArticleByRouteUrl(articleUrl) || {
-                        link: articleUrl,
-                        originalLink: articleUrl,
+                    // Thread identity finds metadata, but the route determines
+                    // the exact page/post, including on a fresh device.
+                    const article = {
                         title: '',
-                        feedCategory: this.selectedFilterType === 'category' ? this.selectedFilterValue : ''
+                        feedCategory: this.selectedFilterType === 'category' ? this.selectedFilterValue : '',
+                        ...this.findArticleByRouteUrl(articleUrl),
+                        link: targetUrl,
+                        originalLink: targetUrl,
+                        resolvedLink: targetUrl
                     };
                     await this.openArticleOverlay(article, {
                         stack: this.articleOverlayOpen,
@@ -6481,7 +6513,7 @@
                         const threadMatch = targetUrl.match(/threads\/[^\/.]+\.(\d+)/i) || targetUrl.match(/\b(\d{5,8})\b/);
                         const threadId = threadMatch ? threadMatch[1] : targetUrl;
                         const prefKey = 'voz_last_read_post_' + threadId;
-                        const lastReadRaw = localStorage.getItem(prefKey) || this.userPreferences[prefKey]; // VOZ_CURRENT_POSITION_LOCAL_FIRST_V5
+                        const lastReadRaw = this.vozReadingPositionRaw(prefKey);
                         
                         let lastRead = null;
                         let lastReadAbsId = null;
@@ -6491,7 +6523,8 @@
                                     const parsed = JSON.parse(lastReadRaw);
                                     lastRead = parsed.index;
                                     lastReadAbsId = parsed.absId;
-                                    resumePage = Number(parsed.page) || Math.ceil(Number(parsed.index) / 20);
+                                    resumePage = Number(parsed.page) || (String(parsed.index) !== String(parsed.absId)
+                                        ? Math.ceil(Number(parsed.index) / 20) : null);
                                 } catch(e) {}
                             } else {
                                 lastRead = lastReadRaw;
@@ -6534,7 +6567,8 @@
                                     baseThreadUrl + '/post-' + lastReadAbsId;
                             }
                         } else if (lastRead && Number(lastRead) > 1) {
-                            const targetPage = Math.ceil(Number(lastRead) / 20);
+                            const targetPage = Number.isSafeInteger(resumePage) && resumePage > 0
+                                ? resumePage : Math.ceil(Number(lastRead) / 20);
                             if (targetPage > 1) {
                                 targetUrl = this.vozThreadPageUrlFrom(targetUrl, targetPage);
                             }

@@ -1,3 +1,4 @@
+import { readReaderClientSource, readReaderHtml } from './helpers/reader-source.js';
 import { JSDOM } from 'jsdom';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -12,7 +13,7 @@ import vm from 'node:vm';
 import { webcrypto } from 'node:crypto';
 
 function createReaderApp(hash = '#category/Forum') {
-    const code = readFileSync(new URL('../script.js', import.meta.url), 'utf8');
+    const code = readReaderClientSource();
     const storage = { getItem: () => null, setItem: () => {} };
     const location = { hash, pathname: '/', search: '' };
     const historyCalls = [];
@@ -302,7 +303,7 @@ test('Board removal and folder selection recognize unread, post, and renamed thr
 });
 
 test('Board uses the header selector without a second folder toolbar',()=>{
-    const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
+    const html=readReaderHtml();
     assert.doesNotMatch(html,/class="cache-glass board-tools"|aria-label="Board folders"/);
     assert.match(html,/x-show="isOnBoard\(boardModalArticle\)"/);
     assert.match(html,/class="cache-settings-button"/);
@@ -603,6 +604,75 @@ test('explicit thread page links take precedence over the saved reading position
     await app.openArticleOverlay({ link: url }, { updateHistory: false });
     assert.equal(requests.find(r => r.pathname === '/api/article-content').searchParams.get('url'), url);
     assert.equal(app.vozInitialThreadLoad, false);
+});
+
+test('shared VOZ routes preserve the requested page and post while retaining feed metadata', async () => {
+    const { app, context } = createReaderApp();
+    const base = 'https://voz.vn/t/example.123456';
+    const feedUrl = 'https://voz.vn/f/kinh-te-luat.92/index.rss';
+    app.articles = [{ link: base, resolvedLink: base, title: 'Stocks', feedUrl }];
+    app.userPreferences = { voz_last_read_post_123456: JSON.stringify({ index: '43201120', absId: '43201120', page: 2160056 }) };
+    const requests = [];
+    context.fetch = async value => {
+        requests.push(new URL(value, 'http://localhost'));
+        return { ok: true, json: async () => ({ content: 'Requested page' }) };
+    };
+    for (const method of ['releaseArticleReaderSession', 'hideTooltip', 'stopArticleSpeech', 'markAsReadExplicit', 'setArticleCopyState', 'prefetchNextAfter', 'applyOverlayArticleData']) app[method] = () => {};
+    app.cacheMember = () => false;
+    for (const suffix of ['/page-7177', '/?page=7176', '/post-43880088']) {
+        const url = base + suffix;
+        requests.length = 0;
+        await app.openArticleFromRoute(url);
+        const request = requests.find(r => r.pathname === '/api/article-content');
+        assert.equal(request.searchParams.get('url'), url);
+        assert.equal(request.searchParams.get('feedUrl'), feedUrl);
+        assert.equal(app.overlayArticle.title, 'Stocks');
+    }
+});
+
+test('old saved VOZ post IDs without a page resume through the permanent post link', async () => {
+    const { app, context } = createReaderApp();
+    const base = 'https://voz.vn/t/example.123456';
+    const requests = [];
+    context.fetch = async value => { requests.push(new URL(value, 'http://localhost')); return { ok: true, json: async () => ({ content: 'Saved post' }) }; };
+    for (const method of ['releaseArticleReaderSession', 'hideTooltip', 'stopArticleSpeech', 'markAsReadExplicit', 'setArticleCopyState', 'prefetchNextAfter', 'applyOverlayArticleData']) app[method] = () => {};
+    app.cacheMember = () => false;
+    app.userPreferences = { voz_last_read_post_123456: JSON.stringify({ index: '43201120', absId: '43201120' }) };
+    await app.openArticleOverlay({ link: base }, { updateHistory: false });
+    assert.equal(requests.find(r => r.pathname === '/api/article-content').searchParams.get('url'), base + '/post-43201120');
+});
+
+test('thread cards repair an iPhone legacy post ID using the shared saved page', async () => {
+    const { app, context } = createReaderApp();
+    const key = 'voz_last_read_post_1188208';
+    const storage = new Map([[key, '43201120']]);
+    context.localStorage.getItem = name => storage.get(name) || null;
+    context.localStorage.setItem = (name, value) => storage.set(name, value);
+    app.userPreferences = { [key]: JSON.stringify({ index: '43880088', absId: '43880088', page: 7177 }) };
+    const requests = [];
+    context.fetch = async value => { requests.push(new URL(value, 'http://localhost')); return { ok: true, json: async () => ({ content: 'Saved page' }) }; };
+    for (const method of ['releaseArticleReaderSession', 'hideTooltip', 'stopArticleSpeech', 'markAsReadExplicit', 'setArticleCopyState', 'prefetchNextAfter', 'applyOverlayArticleData']) app[method] = () => {};
+    app.cacheMember = () => false;
+    await app.openArticleOverlay({ link: 'https://voz.vn/t/example.1188208/unread' }, { updateHistory: false });
+    assert.equal(requests.find(r => r.pathname === '/api/article-content').searchParams.get('url'), 'https://voz.vn/t/example.1188208/page-7177');
+    assert.equal(JSON.parse(storage.get(key)).page, 7177);
+    assert.equal(JSON.parse(storage.get(key)).absId, '43880088');
+    assert.equal(JSON.parse(storage.get(key)).index, '143521');
+});
+
+test('corrupt derived pages resume by permanent post while valid device positions stay local', () => {
+    const { app, context } = createReaderApp();
+    const key = 'voz_last_read_post_1188208';
+    const storage = new Map([[key, JSON.stringify({ index: '43201120', absId: '43201120', page: 2160056 })]]);
+    context.localStorage.getItem = name => storage.get(name) || null;
+    context.localStorage.setItem = (name, value) => storage.set(name, value);
+    const repaired = JSON.parse(app.vozReadingPositionRaw(key));
+    assert.equal(repaired.page, undefined);
+    assert.equal(repaired.absId, '43201120');
+    const valid = JSON.stringify({ index: '143549', absId: '43885000', page: 7178 });
+    storage.set(key, valid);
+    app.userPreferences = { [key]: JSON.stringify({ index: '143521', absId: '43880088', page: 7177 }) };
+    assert.equal(app.vozReadingPositionRaw(key), valid);
 });
 
 test('thread read-ahead fetches just the next two pages independently of the article queue', async () => {

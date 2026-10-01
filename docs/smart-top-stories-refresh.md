@@ -117,6 +117,22 @@ Compute/persistence failures retry after 30 seconds. The legacy
 apply only to the object-based custom compute path. The worker's own
 `TOP_STORIES_WORKER_HEAP_MB` limit remains in force.
 
+Ranking also adapts its worker heap to process headroom, starting at the
+configured limit (1024 MiB by default) and reducing it in 256 MiB steps down to
+512 MiB, or the configured limit if smaller. Each attempt reserves another
+256 MiB for overhead. This avoids indefinitely deferring behind the default
+1280 MiB reservation when a smaller bounded worker fits. Insufficient headroom
+still retains the published cards and retries; worker failures do the same.
+Browser polling continues after a reading token expires or memory maintenance
+evicts it, keeping the “New updates available” control visible without replacing
+the reader's current ordering.
+
+The October 1 recovery fix was checked against the current 17,010-card dataset
+using a 768 MiB ranking worker and an in-memory persistence stub: all cards
+published successfully in about 245 seconds, without writing live data. All 85
+test files passed (the HTTP integration test required a separate run with local
+networking enabled). The service was restarted and `/health` returned `ok`.
+
 The input signature hashes the existing JSON strings, so fresh raw articles
 invalidate Top even within a reranking time bucket. Progressive publications must
 match both version and revision. Split stories receive unique IDs before editorial

@@ -1,0 +1,12 @@
+{
+  "h_ref": 150.57513146400447,
+  "c_ref": 0.051028325700772995,
+  "edgeL": 0.6137666022132005,
+  "k": 0.5724667955735991,
+  "ambientImage": "tanks-ambient.webp",
+  "meltImage": "tanks-melt.webp",
+  "assetBytes": {
+    "ambient": 176,
+    "melt": 644
+  }
+}

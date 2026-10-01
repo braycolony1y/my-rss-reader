@@ -1,10 +1,11 @@
+import { readReaderClientSource, readReaderHtml } from './helpers/reader-source.js';
 import { readServerSource } from './helpers/server-source.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-const script = readFileSync(new URL('../script.js', import.meta.url), 'utf8');
-const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+const script = readReaderClientSource();
+const html = readReaderHtml();
 
 test('mobile and desktop sidebar buttons use the shared toggle', () => {
     assert.match(script, /toggleSidebar\(\)\s*\{[\s\S]*this\.mobileSidebarOpen = !this\.mobileSidebarOpen;[\s\S]*this\.sidebarExpanded = !this\.sidebarExpanded;/);

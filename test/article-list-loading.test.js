@@ -1,9 +1,10 @@
+import { readReaderClientSource } from './helpers/reader-source.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {JSDOM} from 'jsdom';
 
-const script = readFileSync(new URL('../script.js', import.meta.url), 'utf8');
+const script = readReaderClientSource();
 
 test('switching feeds cancels the obsolete download and keeps only the newest article list', async t => {
     const dom = new JSDOM('<body></body>', {url: 'https://reader.test/', runScripts: 'outside-only'});
