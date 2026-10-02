@@ -1,5 +1,6 @@
 import { fitCardImageViewport, visiblePhotoHeight } from './card-image-layout.js?v=2';
 import { applyImageColors } from './card-blend/legacy-color.js?v=1';
+import { applyTopStoryImage } from './top-story-card/blend/runtime.js?v=20261003_organic_1';
 
 const clamp = (value, low = 0, high = 1) => Math.max(low, Math.min(high, value));
 const center = { x: 0.5, y: 0.5 };
@@ -48,7 +49,7 @@ export function coverPosition(imageWidth, imageHeight, boxWidth, boxHeight, focu
 export function installImageFocus(win) {
     const doc = win.document;
     const selector = '.article-card-image img.thumbnail-img';
-    const storageKey = 'rss-image-focus-v11';
+    const storageKey = 'rss-image-focus-v12';
     const states = new Map();
     const cache = new Map();
     const saved = new Map();
@@ -73,7 +74,7 @@ export function installImageFocus(win) {
             active++;
             const controller = new win.AbortController();
             const timer = win.setTimeout(() => controller.abort(), 30_000);
-            win.fetch(`/api/image-focus?v=11&src=${encodeURIComponent(source)}`, { signal: controller.signal })
+            win.fetch(`/api/image-focus?v=12&src=${encodeURIComponent(source)}`, { signal: controller.signal })
                 .then(response => response.ok ? response.json() : null)
                 .then(result => {
                     if (!result || result.retry) cache.delete(source);
@@ -117,6 +118,7 @@ export function installImageFocus(win) {
         const ready = img.complete && img.naturalWidth && img.clientWidth && img.clientHeight;
         const isDefault = /^\/public\/default\.jpg(?:[?#]|$)/.test(state.source || '');
         const card = img.closest('.article-card');
+        if (applyTopStoryImage(img, state, { ready, isDefault })) return;
         applyImageColors(img, state, { doc, ready, isDefault, backdropColor });
         if (!ready) return;
         const target = parseFloat(win.getComputedStyle(img).getPropertyValue('--image-focus-target')) || 0.62;

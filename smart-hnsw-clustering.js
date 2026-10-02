@@ -4,7 +4,7 @@ import {
   classifyE5Match,
   isPairWithinComparisonScope,
   MatchDecision
-} from './smart-news.js';
+} from './src/smart/clustering/similarity.js';
 
 const { HierarchicalNSW } = hnswlib;
 

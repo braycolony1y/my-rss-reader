@@ -1,0 +1,154 @@
+
+        .hide-scrollbar::-webkit-scrollbar,
+        .hide-scrollbars::-webkit-scrollbar,
+        .scrollbar-hide::-webkit-scrollbar {
+            display: none !important;
+        }
+
+        .hide-scrollbar,
+        .hide-scrollbars,
+        .scrollbar-hide {
+            -ms-overflow-style: none !important;
+            scrollbar-width: none !important;
+        }
+
+        [x-cloak] {
+            display: none !important;
+        }
+
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(128, 128, 128, 0.3);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+
+        /* Keep scrolling content on the normal paint path.  A previous
+           version used content-visibility/filters/transforms here; on
+           WebKit that can briefly expose a stale layer from another card. */
+        .drag-over {
+            border-top: 2px solid #4facfe !important;
+            padding-top: 6px;
+        }
+
+        /* Mobile performance: do not virtualise cards with content-visibility.
+           Alpine owns these nodes and WebKit can paint a recycled snapshot for
+           one frame while a nested scroller is moving. */
+        @media (max-width: 767px) {
+            * {
+                -webkit-tap-highlight-color: transparent;
+            }
+        }
+
+        #scroll-container,
+        #overlay-scroll-container {
+            min-height: 0;
+            overscroll-behavior: contain;
+            scrollbar-gutter: stable;
+        }
+
+        /* Article overlays only scroll vertically. This also stops a touch or
+           trackpad swipe over an embedded post from dragging the whole reader
+           sideways. */
+        #overlay-scroll-container {
+            width: 100%;
+            overflow-x: hidden;
+            overscroll-behavior-x: none;
+            touch-action: pan-y pinch-zoom;
+        }
+
+        #overlay-scroll-container > * {
+            min-width: 0;
+        }
+
+        .article-rendered-content,
+        .voz-post,
+        .voz-post-body {
+            min-width: 0;
+            max-width: 100%;
+        }
+
+        /* Isolate the reader without forcing a permanent GPU transform. */
+        .article-overlay-root {
+            isolation: isolate;
+        }
+
+        .article-overlay-panel {
+            min-height: 0;
+            transform: none;
+            filter: none;
+            will-change: auto;
+        }
+
+        .article-overlay-backdrop {
+            background: rgba(11, 16, 30, 0.82);
+            transition: opacity 0.15s ease;
+        }
+
+        /* Hide scrollbar for Chrome, Safari and Opera */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none !important;
+        }
+
+        /* Hide scrollbar for IE, Edge and Firefox */
+        .no-scrollbar {
+            -ms-overflow-style: none !important;
+            /* IE and Edge */
+            scrollbar-width: none !important;
+            /* Firefox */
+        }
+
+        /* Desktop sizing overrides for the modal panel */
+        @media (min-width: 768px) {
+            .article-overlay-panel {
+                height: 100dvh !important;
+                max-height: 100dvh !important;
+                max-width: 860px !important;
+                width: 90% !important;
+                border-radius: 0 !important;
+            }
+        }
+
+        /* Hide scrollbar for Chrome, Safari and Opera */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+
+        /* Hide scrollbar for IE, Edge and Firefox */
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            /* IE and Edge */
+            scrollbar-width: none;
+            /* Firefox */
+        }
+
+        /* Desktop sizing overrides for the modal panel */
+        @media (min-width: 768px) {
+            .article-overlay-panel {
+                height: 100dvh !important;
+                max-height: 100dvh !important;
+                max-width: 860px !important;
+                width: 90% !important;
+                border-radius: 0 !important;
+            }
+        }
+
+        /* Avoid mask/filter compositing on the feed cards while they move. */
+
+        #scroll-container [class*="backdrop-blur"],
+        #overlay-scroll-container [class*="backdrop-blur"] {
+            -webkit-backdrop-filter: none !important;
+            backdrop-filter: none !important;
+        }
+

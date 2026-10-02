@@ -22,13 +22,14 @@
                         <div class="card-ambient" aria-hidden="true"></div>
                         <div class="article-card-header">
                         <span class="story-rank" x-show="usesTopStories && article.topStory?.isTop" x-text="'#' + article.topStory?.rank"></span>
+                        
                         <!-- Background Image with Gradient Overlay -->
                         <div class="article-card-image absolute inset-y-0 right-0 w-[55%] md:w-[50%] z-0">
                             <img class="thumbnail-soft" alt="" aria-hidden="true" loading="lazy" decoding="async">
                             <div class="thumbnail-plate">
                             <img :src="proxyImageUrl(article.image || '/public/default.jpg')"
                                 @error="nextStoryImage($event, article)" loading="lazy" decoding="async"
-                                referrerpolicy="no-referrer" class="thumbnail-img w-full h-full object-cover">
+                                :alt="stripHtml(article.title)" referrerpolicy="no-referrer" class="thumbnail-img w-full h-full object-cover">
                             </div>
                         </div>
 
@@ -166,7 +167,7 @@
 
                         </div>
 
-                        <div class="article-entity-row" x-show="article.entity?.name || (typeof article.entity === 'string' && article.entity)">
+                        <div class="article-entity-row" x-show="theme === 'glass-light' && (article.entity?.name || (typeof article.entity === 'string' && article.entity))">
                             <span class="article-entity-chip" x-text="article.entity?.name || article.entity || ''"></span>
                         </div>
                         </div>
@@ -260,7 +261,8 @@
                                         <span
                                             class="story-key-fact-icon"
                                             aria-hidden="true">
-                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 19V11M10 19V5M16 19V8M22 19H2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                                            <span x-show="theme !== 'glass-light'" x-text="fact.icon"></span>
+                                            <svg x-show="theme === 'glass-light'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 19V11M10 19V5M16 19V8M22 19H2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
                                         </span>
 
                                         <span class="story-key-fact-copy">

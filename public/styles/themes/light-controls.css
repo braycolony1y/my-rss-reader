@@ -1,0 +1,290 @@
+        /* Clean up separators and heavy UI */
+        .theme-glass-light .border-white\/10 {
+            border-color: rgba(128, 128, 128, 0.1) !important;
+        }
+
+        /* Typography overrides for reading */
+        .theme-glass-light .text-white:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)),
+.theme-glass-light .text-gray-200:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) {
+            color: #1d1d1f !important;
+        }
+
+        .theme-glass-light .text-gray-300:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) {
+            color: #424245 !important;
+        }
+
+        .theme-glass-light .text-gray-400:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) {
+            color: #86868b !important;
+        }
+
+        /* Sidebar & Widget overrides for Light Mode */
+        .theme-glass-light .bg-gradient-to-br.from-emerald-500\/\[0\.09\] {
+            background: #f8fafc !important;
+            /* slate-50 */
+            border: 1px solid rgba(0, 0, 0, 0.05) !important;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05) !important;
+        }
+
+        .theme-glass-light .bg-\[\#080F19\]\/80,
+        .theme-glass-light .bg-\[\#0B101E\]\/90 {
+            background-color: #f1f5f9 !important;
+            /* slate-100 */
+            border: 1px solid rgba(0, 0, 0, 0.05) !important;
+        }
+
+        /* Add Feed Widget Overrides for Light Mode */
+        .theme-glass-light .bg-\[\#1A2230\] {
+            background-color: rgba(255, 255, 255, 0.4) !important;
+            border-color: rgba(255, 255, 255, 0.6) !important;
+            backdrop-filter: blur(24px) saturate(190%) !important;
+            -webkit-backdrop-filter: blur(24px) saturate(190%) !important;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.8) !important;
+        }
+
+        .theme-glass-light .bg-\[\#2A1D1A\] {
+            background-color: rgba(243, 123, 61, 0.15) !important;
+        }
+
+        .theme-glass-light .bg-\[\#20C997\] {
+            background-color: #10b981 !important;
+            /* emerald-500 */
+            color: #ffffff !important;
+        }
+
+        .theme-glass-light .mix-blend-screen {
+            mix-blend-mode: multiply !important;
+            opacity: 0.1 !important;
+            filter: grayscale(1) !important;
+        }
+
+        /* Add Feed Widget Overrides for Light Mode */
+        .theme-glass-light .bg-\[\#1A2230\] {
+            background-color: rgba(255, 255, 255, 0.4) !important;
+            border-color: rgba(255, 255, 255, 0.6) !important;
+            backdrop-filter: blur(24px) saturate(190%) !important;
+            -webkit-backdrop-filter: blur(24px) saturate(190%) !important;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.8) !important;
+        }
+
+        .theme-glass-light .bg-\[\#2A1D1A\] {
+            background-color: rgba(243, 123, 61, 0.15) !important;
+        }
+
+        .theme-glass-light .bg-\[\#20C997\] {
+            background-color: #10b981 !important;
+            /* emerald-500 */
+            color: #ffffff !important;
+        }
+
+        .theme-glass-light .mix-blend-screen {
+            mix-blend-mode: multiply !important;
+            opacity: 0.1 !important;
+            filter: grayscale(1) !important;
+        }
+
+        .theme-glass-light .bg-\[\#2a2a2a\] {
+            background: linear-gradient(to right, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.98)) !important;
+            backdrop-filter: blur(12px) !important;
+            -webkit-backdrop-filter: blur(12px) !important;
+            box-shadow: -8px 0 16px rgba(255, 255, 255, 0.9) !important;
+        }
+
+        .theme-glass-light .border-t-\[\#333\] {
+            border-top-color: rgba(0, 0, 0, 0.1) !important;
+        }
+
+        .theme-glass-light .hover\:bg-white\/5:hover {
+            background-color: rgba(0, 0, 0, 0.05) !important;
+            color: #1d1d1f !important;
+        }
+
+        .theme-glass-light .hover\:text-white:hover {
+            color: #1d1d1f !important;
+        }
+
+        .theme-glass-light .bg-teal-900\/40,
+        .theme-glass-light .bg-orange-900\/40,
+        .theme-glass-light .bg-blue-900\/40 {
+            background-color: rgba(0, 0, 0, 0.06) !important;
+            box-shadow: none !important;
+        }
+
+        /* Neon color removal for Light Mode ONLY */
+        .theme-glass-light .text-emerald-400:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)),
+.theme-glass-light .text-teal-400:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) {
+            color: #34C759 !important;
+        }
+
+        .theme-glass-light .text-orange-400:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)),
+.theme-glass-light .text-amber-300:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) {
+            color: #FF9500 !important;
+        }
+
+        .theme-glass-light .text-blue-400:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)),
+.theme-glass-light .text-cyan-400:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) {
+            color: #007AFF !important;
+        }
+
+        .theme-glass-light a.bg-emerald-600,
+        .theme-glass-light button.bg-emerald-600 {
+            background-color: #34C759 !important;
+            color: #ffffff !important;
+            border: none !important;
+        }
+
+        .theme-glass-light input[type="text"] {
+            border-radius: 20px !important;
+        }
+
+        .theme-glass-light button,
+        .theme-glass-light a {
+            color: inherit;
+        }
+
+        /* Override text colors globally for light mode */
+        .theme-glass-light .text-\[\#d4d4d4\]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)),
+.theme-glass-light .text-gray-200:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)),
+.theme-glass-light .text-white:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)),
+.theme-glass-light .text-gray-400:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)),
+.theme-glass-light .text-gray-300:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) {
+            color: #2d3748 !important;
+        }
+
+        .theme-glass-light .text-gray-500:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) {
+            color: #4a5568 !important;
+        }
+
+        /* Except for primary colored buttons */
+        .theme-glass-light button.bg-\[\#2a6049\],
+        .theme-glass-light button.bg-\[\#1e293b\],
+        .theme-glass-light button.bg-emerald-600,
+        .theme-glass-light button.bg-blue-600,
+        .theme-glass-light a.bg-emerald-600 {
+            color: #ffffff !important;
+        }
+
+        /* Also restore white text for buttons with .text-white inside those backgrounds */
+        .theme-glass-light button.bg-\[\#2a6049\] .text-white,
+        .theme-glass-light button.bg-\[\#1e293b\] .text-white,
+        .theme-glass-light button.bg-emerald-600 .text-white,
+        .theme-glass-light button.bg-blue-600 .text-white,
+        .theme-glass-light a.bg-emerald-600 .text-white {
+            color: #ffffff !important;
+        }
+
+        /* Fix hover states */
+        .theme-glass-light .hover\:text-white:hover {
+            color: #1a202c !important;
+        }
+
+        .theme-glass-light .hover\:bg-white\/10:hover,
+        .theme-glass-light .hover\:bg-white\/\[0\.06\]:hover {
+            background-color: rgba(0, 0, 0, 0.05) !important;
+        }
+
+        .theme-glass-light .bg-white\/\[0\.03\] {
+            background-color: rgba(0, 0, 0, 0.02) !important;
+        }
+
+        /* Fix border colors */
+        .theme-glass-light .border-white\/10,
+        .theme-glass-light .border-white\/5,
+        .theme-glass-light .border-white\/\[0\.07\],
+        .theme-glass-light .border-white\/\[0\.08\] {
+            border-color: rgba(0, 0, 0, 0.1) !important;
+        }
+
+        .theme-glass-light .hover\:border-white\/20:hover {
+            border-color: rgba(0, 0, 0, 0.2) !important;
+        }
+
+        /* Fix placeholder */
+        .theme-glass-light input::placeholder,
+        .theme-glass-light textarea::placeholder {
+            color: #718096 !important;
+        }
+
+        .theme-glass-light .text-white\/20 {
+            color: rgba(0, 0, 0, 0.2) !important;
+        }
+
+        /* Highlight colors for light mode */
+        .theme-glass-light .text-emerald-400:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)),
+.theme-glass-light .text-emerald-300:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) {
+            color: #059669 !important;
+        }
+
+        .theme-glass-light .bg-emerald-500\/20 {
+            background-color: rgba(5, 150, 105, 0.15) !important;
+        }
+
+        .theme-glass-light .border-emerald-500\/30 {
+            border-color: rgba(5, 150, 105, 0.3) !important;
+        }
+
+        .theme-glass-light .text-amber-300,
+        .theme-glass-light .text-amber-200 {
+            color: #d97706 !important;
+        }
+
+        .theme-glass-light .border-amber-400\/30 {
+            border-color: rgba(217, 119, 6, 0.3) !important;
+        }
+
+        .theme-glass-light .text-teal-400,
+        .theme-glass-light .text-teal-300 {
+            color: #0f766e !important;
+        }
+
+        .theme-glass-light .bg-teal-900\/40,
+        .theme-glass-light .bg-teal-900\/70 {
+            background-color: rgba(13, 148, 136, 0.15) !important;
+        }
+
+        .theme-glass-light .text-blue-400:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)),
+.theme-glass-light .text-blue-300:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) {
+            color: #2563eb !important;
+        }
+
+        .theme-glass-light .bg-blue-900\/40 {
+            background-color: rgba(37, 99, 235, 0.15) !important;
+        }
+
+        .theme-glass-light .border-blue-500\/30 {
+            border-color: rgba(37, 99, 235, 0.3) !important;
+        }
+
+        .theme-glass-light .text-orange-400:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)),
+.theme-glass-light .text-orange-300:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) {
+            color: #ea580c !important;
+        }
+
+        .theme-glass-light .text-red-400,
+        .theme-glass-light .text-red-300 {
+            color: #dc2626 !important;
+        }
+
+        .theme-glass-light .bg-orange-900\/40 {
+            background-color: rgba(234, 88, 12, 0.15) !important;
+        }
+
+        .theme-glass-light .border-orange-500\/30 {
+            border-color: rgba(234, 88, 12, 0.3) !important;
+        }
+
+        /* Scrollbar styles for light mode */
+        .theme-glass-light::-webkit-scrollbar-track,
+        .theme-glass-light *::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.05);
+        }
+
+        .theme-glass-light::-webkit-scrollbar-thumb,
+        .theme-glass-light *::-webkit-scrollbar-thumb {
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        .theme-glass-light::-webkit-scrollbar-thumb:hover,
+        .theme-glass-light *::-webkit-scrollbar-thumb:hover {
+            background: rgba(0, 0, 0, 0.3);
+        }
+

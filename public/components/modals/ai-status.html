@@ -1,0 +1,635 @@
+    <!-- AI provider status -->
+    <div x-show="geminiStatusOpen" x-cloak @keydown.escape.window="closeGeminiStatus()"
+        class="ai-status-overlay fixed inset-0 bg-[#0B101E]/90 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
+        <div class="ai-status-modal bg-[#111827] rounded-2xl max-w-5xl w-full border border-white/10 shadow-2xl overflow-hidden"
+            @click.outside="closeGeminiStatus()">
+            <div class="ai-status-header flex items-start justify-between gap-4 px-6 py-5 border-b border-white/10">
+                <div>
+                    <h2 class="ai-status-title text-xl font-bold text-white flex items-center gap-2">
+                        <svg class="w-5 h-5 text-violet-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M12 3l1.7 4.3L18 9l-4.3 1.7L12 15l-1.7-4.3L6 9l4.3-1.7L12 3zm6 11l.9 2.1L21 17l-2.1.9L18 20l-.9-2.1L15 17l2.1-.9L18 14z">
+                            </path>
+                        </svg>
+                        AI usage &amp; providers
+                    </h2>
+                    <p class="ai-status-subtitle text-sm text-gray-500 mt-1">Detailed 24-hour activity, API keys, clustering, fallbacks, and live progress.
+                    </p>
+                </div>
+                <button @click="closeGeminiStatus()" class="ai-status-close text-gray-500 hover:text-white transition p-1"><svg
+                        class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12">
+                        </path>
+                    </svg></button>
+            </div>
+            <div class="ai-status-body p-6 max-h-[70vh] overflow-y-auto">
+                <div x-show="geminiStatusLoading && !geminiKeyStatus" class="ai-status-muted py-12 text-center text-sm text-gray-400">Checking the key
+                    without making a billed generation request…</div>
+                <div x-show="geminiStatusError"
+                    class="ai-status-error-card mb-4 rounded-xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-300"
+                    x-text="geminiStatusError"></div>
+                <div x-show="geminiKeyStatus" class="space-y-4">
+                    <!-- Clustering Model Selection -->
+                    <div class="ai-status-card rounded-2xl border border-white/[0.07] bg-[#0B101E]/60 p-4">
+                        <div class="ai-status-card-title text-[11px] uppercase tracking-wider font-bold text-gray-500 mb-3">Clustering Model</div>
+                        <div class="space-y-2">
+                            <template x-for="m in ['gemini-3.5-flash-lite', 'gemini-3.8-flash']" :key="m">
+                                <label class="flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-2.5 cursor-pointer hover:bg-white/[0.05] transition">
+                                    <input type="radio" name="clusteringModel" :value="m" x-model="clusteringModel" @change="saveClusteringModel()" class="text-violet-500 bg-[#0B101E] border-white/20 focus:ring-violet-500/50 h-4 w-4">
+                                    <span class="text-sm font-semibold text-white" x-text="m"></span>
+                                </label>
+                            </template>
+                        </div>
+                    </div>
+
+                    <div id="gemini-add-key" class="ai-status-card ai-key-add-card rounded-2xl border border-white/[0.07] bg-[#0B101E]/60 p-4">
+                        <div class="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                                <div class="ai-status-card-title text-[11px] uppercase tracking-wider font-bold text-gray-500">Add Gemini API key</div>
+                                <p class="ai-status-muted mt-1 text-xs leading-relaxed text-gray-500">
+                                    The key is checked using Google's non-billed token counter, saved only in the private server key file, and made active immediately. It is excluded from GitHub backups.
+                                </p>
+                            </div>
+                            <span class="ai-status-mask rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-bold text-gray-400"
+                                x-text="(geminiKeyStatus?.keyCount || 0) + ' configured'"></span>
+                        </div>
+                        <form @submit.prevent="addGeminiKey()" class="mt-3 flex flex-col gap-2 sm:flex-row">
+                            <div class="relative min-w-0 flex-1">
+                                <input x-model="newGeminiKey" :type="newGeminiKeyVisible ? 'text' : 'password'"
+                                    autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="text"
+                                    placeholder="Paste a new Gemini API key"
+                                    class="ai-key-input w-full rounded-xl border border-white/10 bg-black/10 px-3 py-2.5 pr-10 text-sm text-white outline-none transition placeholder:text-gray-600 focus:border-violet-400/50 focus:ring-2 focus:ring-violet-400/15">
+                                <button type="button" @click="newGeminiKeyVisible = !newGeminiKeyVisible"
+                                    class="ai-status-secondary-button absolute inset-y-0 right-1 flex w-9 items-center justify-center rounded-lg text-gray-500 hover:text-white"
+                                    :aria-label="newGeminiKeyVisible ? 'Hide API key' : 'Show API key'">
+                                    <svg x-show="!newGeminiKeyVisible" class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0zm6 0c-1.5 4-4.5 6-9 6s-7.5-2-9-6c1.5-4 4.5-6 9-6s7.5 2 9 6z"></path>
+                                    </svg>
+                                    <svg x-show="newGeminiKeyVisible" class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3l18 18M10.6 10.7a2 2 0 002.7 2.7M9.9 4.2A10 10 0 0112 4c4.5 0 7.5 2.7 9 8a12 12 0 01-2 3.4M6.2 6.2C4.7 7.3 3.6 9.2 3 12c1.5 5.3 4.5 8 9 8a10 10 0 004.1-.8"></path>
+                                    </svg>
+                                </button>
+                            </div>
+                            <button type="submit" :disabled="addingGeminiKey || !newGeminiKey.trim()"
+                                class="ai-status-primary-button shrink-0 rounded-xl bg-violet-400 px-4 py-2.5 text-sm font-bold text-[#120b21] transition hover:bg-violet-300 disabled:opacity-50"
+                                x-text="addingGeminiKey ? 'Validating…' : 'Validate & add'"></button>
+                        </form>
+                        <div x-show="addGeminiKeyError" class="ai-status-error-card mt-3 rounded-xl border border-red-400/20 bg-red-500/[0.07] px-3 py-2 text-xs text-red-200" x-text="addGeminiKeyError"></div>
+                        <div x-show="addGeminiKeyMessage" class="ai-key-success mt-3 rounded-xl border border-emerald-400/20 bg-emerald-500/[0.07] px-3 py-2 text-xs text-emerald-200" x-text="addGeminiKeyMessage"></div>
+                    </div>
+
+                    <div class="ai-status-card rounded-2xl border border-white/[0.07] bg-[#0B101E]/60 p-4">
+                        <div class="flex items-center justify-between gap-3 mb-3">
+                            <div>
+                                <div class="ai-status-card-title text-[11px] uppercase tracking-wider font-bold text-gray-500">Smart clustering priority</div>
+                                <div class="ai-status-muted text-xs text-gray-500 mt-1">Antigravity CLI runs first. Gemini Web uses your signed-in 3.8 Flash subscription in Temporary Chat with 2 browser slots, followed by Gemini API and local fallback.</div>
+                            </div>
+                            <span class="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-emerald-300"
+                                x-text="geminiKeyStatus?.lastSmartRun?.providerOrder?.[0]?.startsWith('antigravity') ? 'Antigravity first' : 'Gemini backup'"></span>
+                        </div>
+                        <div class="space-y-2">
+                            <template x-for="(providerId, idx) in (geminiKeyStatus?.lastSmartRun?.providerOrder || ['antigravity-low', 'antigravity-medium', 'antigravity-high', 'gemini-web', 'gemini-flash', 'local-qwen'])" :key="providerId">
+                                <div class="ai-status-provider-row flex items-start gap-3 rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-2.5">
+                                    <span class="ai-status-provider-rank flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-violet-400/10 text-xs font-black text-violet-300" x-text="idx + 1"></span>
+                                    <div class="min-w-0 flex-1 space-y-1">
+                                        <div class="flex justify-between items-center">
+                                            <div class="ai-status-value text-sm font-semibold text-white" x-text="providerId.startsWith('antigravity') ? 'Antigravity CLI' : (providerId === 'gemini-web' ? 'Gemini Web' : (providerId === 'local-qwen' ? 'Local Qwen' : 'Gemini API'))"></div>
+                                            <span class="text-[10px] font-bold uppercase tracking-wide" 
+                                                  :class="idx === 0 ? 'text-emerald-300' : 'text-gray-500'" 
+                                                  x-text="idx === 0 ? 'Primary' : 'Backup'"></span>
+                                        </div>
+                                        <div class="ai-status-muted truncate text-xs text-gray-500" 
+                                             x-text="providerId.startsWith('antigravity') ? ('gemini-3.8-flash-' + providerId.replace('antigravity-', '') + ' · CLI') : providerId === 'gemini-web' ? '3.8 Flash · Temporary Chat · 2 slots' : providerId === 'local-qwen' ? (geminiKeyStatus?.lastSmartRun?.localModel || 'qwen3.5:2b') : (providerId === 'gemini-flash-lite' ? 'gemini-3.5-flash-lite · minimal thinking' : 'gemini-3.8-flash')"></div>
+                                        
+                                        <!-- Health stats -->
+                                        <div class="mt-2 text-[11px] text-gray-400 space-y-0.5"
+                                            x-data="{ healthKey: geminiKeyStatus?.providerHealth?.[providerId] ? providerId : (providerId.startsWith('antigravity') ? 'antigravity' : (providerId.startsWith('local') ? 'ollama' : 'gemini')) }">
+                                            <div class="flex gap-2">
+                                                <span class="font-medium text-gray-300">Status:</span>
+                                                <span :class="{
+                                                    'text-emerald-400': (geminiKeyStatus?.providerHealth?.[healthKey]?.state || geminiKeyStatus?.providerHealth?.[healthKey]?.status || 'healthy') === 'healthy',
+                                                    'text-amber-300': (geminiKeyStatus?.providerHealth?.[healthKey]?.state || geminiKeyStatus?.providerHealth?.[healthKey]?.status) === 'cooldown',
+                                                    'text-amber-400': (geminiKeyStatus?.providerHealth?.[healthKey]?.state || geminiKeyStatus?.providerHealth?.[healthKey]?.status) === 'degraded',
+                                                    'text-orange-400': (geminiKeyStatus?.providerHealth?.[healthKey]?.state || geminiKeyStatus?.providerHealth?.[healthKey]?.status) === 'failing',
+                                                    'text-red-400': (geminiKeyStatus?.providerHealth?.[healthKey]?.state || geminiKeyStatus?.providerHealth?.[healthKey]?.status) === 'dead'
+                                                }" x-text="(geminiKeyStatus?.providerHealth?.[healthKey]?.state || geminiKeyStatus?.providerHealth?.[healthKey]?.status || 'healthy').toUpperCase()"></span>
+                                            </div>
+                                            <div x-show="geminiKeyStatus?.providerHealth?.[healthKey]?.lastSuccess">
+                                                <span class="font-medium text-gray-300">Last Success:</span> 
+                                                <span x-text="geminiKeyStatus?.providerHealth?.[healthKey]?.lastSuccess ? new Date(geminiKeyStatus.providerHealth[healthKey].lastSuccess).toLocaleString() : ''"></span>
+                                            </div>
+                                            <div
+                                                x-show="geminiKeyStatus?.providerHealth?.[healthKey]?.cooldownUntil && Date.parse(geminiKeyStatus?.providerHealth?.[healthKey]?.cooldownUntil) > Date.now()">
+                                                <span class="font-medium text-gray-300">Available again:</span>
+                                                <span class="text-amber-300"
+                                                    x-text="geminiKeyStatus?.providerHealth?.[healthKey]?.cooldownUntil ? new Date(geminiKeyStatus.providerHealth[healthKey].cooldownUntil).toLocaleString() : ''"></span>
+                                                <div class="mt-0.5 text-amber-400/80"
+                                                    x-text="geminiKeyStatus?.providerHealth?.[healthKey]?.cooldownReason || geminiKeyStatus?.providerHealth?.[healthKey]?.cooldownCode || ''"></div>
+                                            </div>
+                                            <div x-show="geminiKeyStatus?.providerHealth?.[healthKey]?.lastErrorAt">
+                                                <span class="font-medium text-gray-300">Last Error:</span> 
+                                                <span class="text-red-300" x-text="geminiKeyStatus?.providerHealth?.[healthKey]?.lastErrorAt ? new Date(geminiKeyStatus.providerHealth[healthKey].lastErrorAt).toLocaleString() : ''"></span>
+                                                <div class="text-red-400/80 mt-0.5 truncate" x-text="geminiKeyStatus?.providerHealth?.[healthKey]?.lastError || ''"></div>
+                                            </div>
+                                            <div x-show="geminiKeyStatus?.providerHealth?.[healthKey]?.consecutiveErrors > 0">
+                                                <span class="font-medium text-gray-300">Consecutive Errors:</span> 
+                                                <span class="text-red-300" x-text="geminiKeyStatus?.providerHealth?.[healthKey]?.consecutiveErrors || 0"></span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+
+                    <div x-show="geminiKeyStatus?.lastSmartRun?.state === 'refreshing' || geminiKeyStatus?.lastSmartRun?.progress?.active"
+                        class="ai-status-card rounded-2xl border border-violet-400/20 bg-violet-500/[0.06] p-4">
+                        <div class="flex items-start gap-3">
+                            <svg class="mt-0.5 h-5 w-5 shrink-0 animate-spin text-violet-300" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                            </svg>
+                            <div class="min-w-0 flex-1">
+                                <div class="flex flex-wrap items-center justify-between gap-2">
+                                    <div class="ai-status-value text-sm font-bold text-white">Smart refresh in progress</div>
+                                    <div x-show="geminiKeyStatus?.lastSmartRun?.progress?.total" class="ai-status-muted text-xs text-gray-500">
+                                        <span x-text="geminiKeyStatus?.lastSmartRun?.progress?.current || 0"></span>/<span x-text="geminiKeyStatus?.lastSmartRun?.progress?.total || 0"></span>
+                                        <span x-show="Number.isFinite(Number(geminiKeyStatus?.lastSmartRun?.progress?.remaining))">
+                                            · <span x-text="geminiKeyStatus?.lastSmartRun?.progress?.remaining || 0"></span> remaining
+                                        </span>
+                                    </div>
+                                </div>
+                                <p class="ai-status-muted mt-1 text-xs leading-relaxed text-gray-400" x-text="geminiKeyStatus?.lastSmartRun?.progress?.message || 'Preparing Smart refresh…'"></p>
+                                <div class="ai-status-muted mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-gray-500">
+                                    <span x-show="geminiKeyStatus?.lastSmartRun?.progress?.model || geminiKeyStatus?.lastSmartRun?.progress?.providerId">Provider: <strong class="ai-status-value" x-text="geminiKeyStatus?.lastSmartRun?.progress?.model || geminiKeyStatus?.lastSmartRun?.progress?.providerId"></strong></span>
+                                    <span x-show="geminiKeyStatus?.lastSmartRun?.progress?.providerTotal">Provider step: <strong class="ai-status-value" x-text="(geminiKeyStatus?.lastSmartRun?.progress?.providerIndex || geminiKeyStatus?.lastSmartRun?.progress?.providerAttempt || 0) + '/' + geminiKeyStatus?.lastSmartRun?.progress?.providerTotal"></strong></span>
+                                    <span x-show="geminiKeyStatus?.lastSmartRun?.progress?.category">Section: <strong class="ai-status-value" x-text="geminiKeyStatus?.lastSmartRun?.progress?.category?.replace('_', ' ')"></strong></span>
+                                    <span x-show="geminiKeyStatus?.lastSmartRun?.progress?.batch">Batch: <strong class="ai-status-value" x-text="geminiKeyStatus?.lastSmartRun?.progress?.batch + '/' + geminiKeyStatus?.lastSmartRun?.progress?.categoryBatches"></strong></span>
+                                    <span x-show="geminiKeyStatus?.lastSmartRun?.progress?.articleCount">Articles: <strong class="ai-status-value" x-text="geminiKeyStatus?.lastSmartRun?.progress?.articleCount"></strong></span>
+                                </div>
+                                <div class="ai-status-progress-track mt-3 h-2 overflow-hidden rounded-full bg-white/[0.07]">
+                                    <div class="ai-status-progress-fill h-full rounded-full bg-gradient-to-r from-violet-400 to-emerald-400 transition-all duration-500"
+                                        :style="'width: ' + Math.max(3, Math.min(100, Number(geminiKeyStatus?.lastSmartRun?.progress?.percent) || 0)) + '%'"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="ai-status-state rounded-2xl border p-4"
+                        :data-tone="geminiKeyStatus?.state === 'ready' ? 'ready' : ((geminiKeyStatus?.httpStatus === 429 || geminiKeyStatus?.state === 'all_keys_cooling_down') ? 'error' : 'warning')"
+                        :class="geminiKeyStatus?.state === 'ready' ? 'border-emerald-400/25 bg-emerald-500/[0.07]' : ((geminiKeyStatus?.httpStatus === 429 || geminiKeyStatus?.state === 'all_keys_cooling_down') ? 'border-red-400/30 bg-red-500/[0.08]' : 'border-amber-400/25 bg-amber-500/[0.06]')">
+                        <div class="flex items-center gap-3">
+                            <span class="ai-status-state-icon w-10 h-10 rounded-xl flex items-center justify-center"
+                                :class="geminiKeyStatus?.state === 'ready' ? 'bg-emerald-400/15 text-emerald-300' : ((geminiKeyStatus?.httpStatus === 429 || geminiKeyStatus?.state === 'all_keys_cooling_down') ? 'bg-red-400/15 text-red-300' : 'bg-amber-400/15 text-amber-300')">
+                                <svg x-show="geminiKeyStatus?.state === 'ready'" class="w-5 h-5" fill="none" stroke="currentColor"
+                                    viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M5 13l4 4L19 7"></path>
+                                </svg>
+                                <svg x-show="geminiKeyStatus?.state !== 'ready'" class="w-5 h-5" fill="none" stroke="currentColor"
+                                    viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4c-.77-1.33-2.69-1.33-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z">
+                                    </path>
+                                </svg>
+                            </span>
+                            <div class="min-w-0">
+                                <div class="ai-status-state-title font-bold flex flex-wrap items-center gap-2"
+                                    :class="geminiKeyStatus?.state === 'ready' ? 'text-emerald-200' : ((geminiKeyStatus?.httpStatus === 429 || geminiKeyStatus?.state === 'all_keys_cooling_down') ? 'text-red-200' : 'text-amber-200')">
+                                    <span x-text="geminiKeyStatus?.state === 'ready' ? 'Gemini API is ready' : (geminiKeyStatus?.state === 'quota_limited' ? 'Gemini quota is limited' : (geminiKeyStatus?.state === 'all_keys_cooling_down' ? 'All Gemini keys are cooling down' : (geminiKeyStatus?.configured ? 'Gemini key could not be validated' : 'Gemini key is not configured')))"></span>
+                                    <span x-show="geminiKeyStatus?.httpStatus"
+                                        class="ai-status-http-badge rounded-md border border-current/20 bg-black/20 px-2 py-0.5 text-[10px] font-black tracking-wide"
+                                        x-text="'HTTP ' + geminiKeyStatus?.httpStatus"></span>
+                                </div>
+                                <div class="ai-status-meta text-xs text-gray-500 mt-1">
+                                    <span x-text="geminiKeyStatus?.keyCount || 0"></span> keys · active key
+                                    <span x-text="geminiKeyStatus?.activeKey || 0"></span> · model
+                                    <span class="ai-status-value text-gray-300" x-text="geminiKeyStatus?.model"></span>
+                                </div>
+                                <div x-show="geminiKeyStatus?.testedKey" class="ai-status-meta text-xs text-gray-500 mt-1">
+                                    Validation tested <span class="ai-status-value font-bold text-gray-300" x-text="'Key ' + geminiKeyStatus?.testedKey"></span>
+                                </div>
+                            </div>
+                        </div>
+                        <p x-show="geminiKeyStatus?.error" class="ai-status-state-message text-xs mt-3"
+                            :class="geminiKeyStatus?.httpStatus === 429 ? 'text-red-200/90' : 'text-amber-200/80'"
+                            x-text="geminiKeyStatus?.error"></p>
+                        <p x-show="geminiKeyStatus?.state === 'ready'" class="ai-status-muted text-xs text-gray-500 mt-3">The validation uses token
+                            counting, which Google does not bill or count against inference quota.</p>
+                    </div>
+
+                    <div class="grid md:grid-cols-2 gap-3">
+                        <div class="ai-status-card rounded-xl border border-white/[0.07] bg-[#0B101E]/60 p-4">
+                            <div class="ai-status-card-title text-[11px] uppercase tracking-wider font-bold text-gray-500">Exact remaining
+                                limit</div>
+                            <div class="ai-status-value text-sm font-semibold text-white mt-2">Available in Google AI Studio</div>
+                            <p class="ai-status-muted text-xs leading-relaxed text-gray-500 mt-1"
+                                x-text="geminiKeyStatus?.exactRemainingExplanation"></p>
+                            <a :href="geminiKeyStatus?.usageUrl" target="_blank" rel="noopener noreferrer"
+                                class="ai-status-link inline-flex items-center gap-1.5 mt-3 text-xs font-bold text-violet-300 hover:text-violet-200 transition">
+                                Open Usage &amp; Rate Limits
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M14 5h5v5m0-5L10 14M5 7v12h12v-5"></path>
+                                </svg>
+                            </a>
+                        </div>
+                        <div class="ai-status-card rounded-xl border border-white/[0.07] bg-[#0B101E]/60 p-4">
+                            <div class="ai-status-card-title text-[11px] uppercase tracking-wider font-bold text-gray-500" x-text="geminiKeyStatus?.lastSmartRun?.state === 'refreshing' ? 'Current Smart refresh' : 'Last Smart refresh'">
+                            </div>
+                            <div class="ai-status-value text-sm font-semibold text-white mt-2"
+                                x-text="geminiKeyStatus?.lastSmartRun?.state === 'refreshing' ? 'AI review is running' : (geminiKeyStatus?.lastSmartRun?.localUsed ? ('Local ' + (geminiKeyStatus?.lastSmartRun?.localModel || 'Qwen') + ' was used') : (geminiKeyStatus?.lastSmartRun?.geminiUsed ? 'Gemini was used' : 'No AI provider was used'))">
+                            </div>
+                            <div x-show="geminiKeyStatus?.lastSmartRun?.httpStatus" class="mt-2">
+                                <span class="ai-status-http-badge inline-flex rounded-md border border-red-400/20 bg-red-500/10 px-2 py-1 text-[10px] font-black tracking-wide text-red-300"
+                                    x-text="'HTTP ' + geminiKeyStatus?.lastSmartRun?.httpStatus"></span>
+                            </div>
+                            <div x-show="geminiKeyStatus?.lastSmartRun?.state !== 'refreshing'" class="ai-status-muted text-xs text-gray-500 mt-1"><span
+                                    x-text="geminiKeyStatus?.lastSmartRun?.reviewedArticleCount || 0"></span> articles
+                                reviewed by AI</div>
+                            <div x-show="geminiKeyStatus?.lastSmartRun?.state !== 'refreshing'" class="ai-status-muted text-xs text-gray-500 mt-1"><span
+                                    x-text="geminiKeyStatus?.lastSmartRun?.eligibleArticleCount || 0"></span> articles
+                                eligible</div>
+                            <div x-show="geminiKeyStatus?.lastSmartRun?.state !== 'refreshing' && geminiKeyStatus?.lastSmartRun?.completedAt" class="ai-status-muted text-xs text-gray-600 mt-2"
+                                x-text="formatVietnamDateTime(geminiKeyStatus?.lastSmartRun?.completedAt)"></div>
+                        </div>
+                    </div>
+                    <div x-show="geminiKeyStatus?.lastSmartRun?.state !== 'refreshing' && geminiKeyStatus?.lastSmartRun?.reason"
+                        class="ai-status-reason rounded-xl border border-white/[0.06] px-4 py-3 text-xs text-gray-400"
+                        x-text="geminiKeyStatus?.lastSmartRun?.reason"></div>
+                    <div x-show="geminiKeyStatus?.lastSmartRun?.state !== 'refreshing' && geminiKeyStatus?.lastSmartRun?.error"
+                        class="ai-status-error-card rounded-xl border border-red-400/20 bg-red-500/[0.07] px-4 py-3 text-xs text-red-200/90">
+                        <div class="font-bold mb-1">Last AI error</div>
+                        <div x-text="geminiKeyStatus?.lastSmartRun?.error"></div>
+                    </div>
+                    <div x-show="geminiKeyStatus?.lastSmartRun?.state !== 'refreshing' && geminiKeyStatus?.lastSmartRun?.keyErrors?.length"
+                        class="ai-status-errors-card rounded-xl border border-red-400/20 bg-red-500/[0.05] px-4 py-3 text-xs text-red-100/90">
+                        <div class="font-bold mb-2">Errors by AI provider and key</div>
+                        <div class="space-y-2">
+                            <template x-for="(event, index) in geminiKeyStatus?.lastSmartRun?.keyErrors || []" :key="index">
+                                <div class="ai-status-error-row rounded-lg border border-white/[0.06] bg-black/10 px-3 py-2">
+                                    <div class="flex flex-wrap items-center gap-2 font-bold">
+                                        <span x-text="event.provider === 'Local AI' ? ('Local AI · ' + (event.model || geminiKeyStatus?.lastSmartRun?.localModel || 'model')) : ((event.provider || 'Gemini') + ' key ' + event.key)"></span>
+                                        <span x-show="event.httpStatus" class="ai-status-http-badge rounded border border-red-300/20 px-1.5 py-0.5 text-[10px]"
+                                            x-text="'HTTP ' + event.httpStatus"></span>
+                                        <span x-show="event.category" class="ai-status-error-category font-normal text-gray-400" x-text="event.category"></span>
+                                    </div>
+                                    <div x-show="event.error" class="ai-status-error-detail mt-1 text-red-200/75" x-text="event.error"></div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+
+                    <!-- Detailed online AI activity -->
+                    <section class="ai-status-debug ai-status-usage mt-8 border-t border-white/10 pt-6">
+                        <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
+                            <div>
+                                <h3 class="text-sm font-black text-white">Online AI activity · last 24 hours</h3>
+                                <p class="ai-status-muted mt-1 text-xs text-gray-500">
+                                    Every recorded cloud request, failure, fallback decision, key, latency, token count, and HTTP status.
+                                </p>
+                            </div>
+                            <button @click="fetchOnlineAiUsage()" :disabled="onlineAiUsageLoading"
+                                class="ai-status-secondary-button inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-bold text-gray-300 transition hover:bg-white/[0.08] disabled:opacity-50">
+                                <svg class="h-3.5 w-3.5" :class="onlineAiUsageLoading ? 'animate-spin' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v6h6M20 20v-6h-6M5.5 15a7 7 0 0011.8 2.5L20 14M4 10l2.7-3.5A7 7 0 0118.5 9"></path>
+                                </svg>
+                                <span x-text="onlineAiUsageLoading ? 'Refreshing…' : 'Refresh log'"></span>
+                            </button>
+                        </div>
+
+                        <div x-show="onlineAiUsageError"
+                            class="mb-4 rounded-xl border border-amber-400/20 bg-amber-500/[0.07] px-4 py-3 text-xs leading-relaxed text-amber-200/90"
+                            x-text="onlineAiUsageError"></div>
+
+                        <div x-show="onlineAiUsageLoading && !onlineAiUsage" class="py-10 text-center text-sm text-gray-500">
+                            Reading the service journal…
+                        </div>
+
+                        <div x-show="onlineAiUsage" class="space-y-4">
+                            <div class="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+                                <div class="rounded-xl border border-white/[0.07] bg-black/10 p-3">
+                                    <div class="text-[10px] font-bold uppercase tracking-wider text-gray-500">Requests</div>
+                                    <div class="mt-1 text-xl font-black text-white" x-text="formatAiUsageNumber(onlineAiUsage?.summary?.totalRequests)"></div>
+                                </div>
+                                <div class="rounded-xl border border-emerald-400/15 bg-emerald-500/[0.05] p-3">
+                                    <div class="text-[10px] font-bold uppercase tracking-wider text-emerald-400/70">Success</div>
+                                    <div class="mt-1 text-xl font-black text-emerald-300" x-text="formatAiUsageNumber(onlineAiUsage?.summary?.successful)"></div>
+                                </div>
+                                <div class="rounded-xl border border-red-400/15 bg-red-500/[0.05] p-3">
+                                    <div class="text-[10px] font-bold uppercase tracking-wider text-red-400/70">Failed</div>
+                                    <div class="mt-1 text-xl font-black text-red-300" x-text="formatAiUsageNumber(onlineAiUsage?.summary?.failed)"></div>
+                                </div>
+                                <div class="rounded-xl border border-white/[0.07] bg-black/10 p-3">
+                                    <div class="text-[10px] font-bold uppercase tracking-wider text-gray-500">Success rate</div>
+                                    <div class="mt-1 text-xl font-black text-white" x-text="(onlineAiUsage?.summary?.successRate || 0) + '%'"></div>
+                                </div>
+                                <div class="rounded-xl border border-white/[0.07] bg-black/10 p-3">
+                                    <div class="text-[10px] font-bold uppercase tracking-wider text-gray-500">Tokens</div>
+                                    <div class="mt-1 text-xl font-black text-white" x-text="formatAiUsageNumber(onlineAiUsage?.summary?.totalTokens)"></div>
+                                    <div class="mt-1 text-[10px] text-gray-500">
+                                        <span x-text="formatAiUsageNumber(onlineAiUsage?.summary?.promptTokens)"></span> in ·
+                                        <span x-text="formatAiUsageNumber(onlineAiUsage?.summary?.outputTokens)"></span> out
+                                    </div>
+                                </div>
+                                <div class="rounded-xl border border-white/[0.07] bg-black/10 p-3">
+                                    <div class="text-[10px] font-bold uppercase tracking-wider text-gray-500">Avg / P95</div>
+                                    <div class="mt-1 text-sm font-black text-white" x-text="formatAiUsageDuration(onlineAiUsage?.summary?.averageDurationMs)"></div>
+                                    <div class="mt-1 text-[10px] text-gray-500" x-text="'P95 ' + formatAiUsageDuration(onlineAiUsage?.summary?.p95DurationMs)"></div>
+                                </div>
+                            </div>
+
+                            <div class="grid gap-3 lg:grid-cols-2">
+                                <div class="rounded-xl border border-white/[0.07] bg-black/10 p-3">
+                                    <div class="mb-2 text-[10px] font-bold uppercase tracking-wider text-gray-500">Requests by model</div>
+                                    <div class="space-y-2">
+                                        <template x-for="model in onlineAiUsage?.summary?.models || []" :key="model.name">
+                                            <div class="flex items-center justify-between gap-3 text-xs">
+                                                <span class="min-w-0 truncate font-semibold text-gray-300" x-text="model.name"></span>
+                                                <span class="shrink-0 text-gray-500">
+                                                    <strong class="text-white" x-text="formatAiUsageNumber(model.total)"></strong>
+                                                    · <span class="text-emerald-400" x-text="model.success + ' ok'"></span>
+                                                    · <span class="text-red-400" x-text="model.failed + ' failed'"></span>
+                                                </span>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
+                                <div class="rounded-xl border border-white/[0.07] bg-black/10 p-3">
+                                    <div class="mb-2 text-[10px] font-bold uppercase tracking-wider text-gray-500">Failure status codes</div>
+                                    <div class="flex flex-wrap gap-2">
+                                        <template x-for="status in onlineAiUsage?.summary?.httpStatuses || []" :key="status.name">
+                                            <span class="rounded-lg border border-red-400/15 bg-red-500/[0.06] px-2.5 py-1.5 text-xs font-bold text-red-200">
+                                                HTTP <span x-text="status.name"></span> · <span x-text="formatAiUsageNumber(status.total)"></span>
+                                            </span>
+                                        </template>
+                                        <span x-show="!(onlineAiUsage?.summary?.httpStatuses || []).length" class="text-xs text-gray-500">No HTTP failures recorded.</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="rounded-xl border border-white/[0.07] bg-black/10 p-3 text-[11px] leading-relaxed text-gray-500">
+                                <div class="flex flex-wrap gap-x-4 gap-y-1">
+                                    <span>Full-detail requests: <strong class="text-gray-300" x-text="formatAiUsageNumber(onlineAiUsage?.summary?.exactRequests)"></strong></span>
+                                    <span>Earlier text-log requests: <strong class="text-gray-300" x-text="formatAiUsageNumber(onlineAiUsage?.summary?.legacyRequests)"></strong></span>
+                                    <span>Blocked/diagnostic events: <strong class="text-gray-300" x-text="formatAiUsageNumber((onlineAiUsage?.summary?.blocked || 0) + (onlineAiUsage?.summary?.diagnostics || 0))"></strong></span>
+                                    <span>Source: <strong class="text-gray-300" x-text="onlineAiUsage?.source"></strong></span>
+                                </div>
+                                <p class="mt-1" x-text="onlineAiUsage?.coverage?.note"></p>
+                                <p class="mt-1" x-text="'Updated ' + formatVietnamDateTime(onlineAiUsage?.generatedAt)"></p>
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-2 lg:grid-cols-6">
+                                <select x-model="onlineAiUsageStatus" class="rounded-lg border border-white/10 bg-[#0B101E] px-2.5 py-2 text-xs text-gray-300">
+                                    <option value="all">All outcomes</option>
+                                    <template x-for="status in onlineAiUsage?.filters?.statuses || []" :key="status">
+                                        <option :value="status" x-text="status"></option>
+                                    </template>
+                                </select>
+                                <select x-model="onlineAiUsageProvider" class="rounded-lg border border-white/10 bg-[#0B101E] px-2.5 py-2 text-xs text-gray-300">
+                                    <option value="all">All providers</option>
+                                    <template x-for="provider in onlineAiUsage?.filters?.providers || []" :key="provider">
+                                        <option :value="provider" x-text="provider"></option>
+                                    </template>
+                                </select>
+                                <select x-model="onlineAiUsageOperation" class="rounded-lg border border-white/10 bg-[#0B101E] px-2.5 py-2 text-xs text-gray-300">
+                                    <option value="all">All operations</option>
+                                    <template x-for="operation in onlineAiUsage?.filters?.operations || []" :key="operation">
+                                        <option :value="operation" x-text="operation"></option>
+                                    </template>
+                                </select>
+                                <select x-model="onlineAiUsageModel" class="rounded-lg border border-white/10 bg-[#0B101E] px-2.5 py-2 text-xs text-gray-300">
+                                    <option value="all">All models</option>
+                                    <template x-for="model in onlineAiUsage?.filters?.models || []" :key="model">
+                                        <option :value="model" x-text="model"></option>
+                                    </template>
+                                </select>
+                                <select x-model.number="onlineAiUsageLimit" @change="onlineAiUsageOffset = 0; fetchOnlineAiUsage()" class="rounded-lg border border-white/10 bg-[#0B101E] px-2.5 py-2 text-xs text-gray-300">
+                                    <option :value="100">Newest 100</option>
+                                    <option :value="500">Newest 500</option>
+                                    <option :value="1000">Newest 1,000</option>
+                                    <option :value="2000">Newest 2,000</option>
+                                    <option :value="5000">Newest 5,000</option>
+                                </select>
+                                <input x-model.debounce.200ms="onlineAiUsageSearch" type="search" placeholder="Search details…"
+                                    class="col-span-2 rounded-lg border border-white/10 bg-[#0B101E] px-3 py-2 text-xs text-gray-200 placeholder:text-gray-600 lg:col-span-1">
+                            </div>
+
+                            <div class="flex flex-wrap items-center justify-between gap-3 text-[11px] text-gray-500">
+                                <div>
+                                    Showing <strong class="text-gray-300" x-text="formatAiUsageNumber(filteredOnlineAiUsageEvents().length)"></strong> matching events · records
+                                    <strong class="text-gray-300" x-text="formatAiUsageNumber(onlineAiUsage?.rangeStart)"></strong>–<strong class="text-gray-300" x-text="formatAiUsageNumber(onlineAiUsage?.rangeEnd)"></strong>
+                                    of <strong class="text-gray-300" x-text="formatAiUsageNumber(onlineAiUsage?.totalEvents)"></strong>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <button @click="changeOnlineAiUsagePage('newer')" :disabled="onlineAiUsageLoading || !onlineAiUsage?.hasNewer"
+                                        class="rounded-lg border border-white/10 px-2.5 py-1.5 font-bold text-gray-300 transition hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-30">← Newer</button>
+                                    <button @click="changeOnlineAiUsagePage('older')" :disabled="onlineAiUsageLoading || !onlineAiUsage?.hasOlder"
+                                        class="rounded-lg border border-white/10 px-2.5 py-1.5 font-bold text-gray-300 transition hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-30">Older →</button>
+                                </div>
+                            </div>
+
+                            <div class="max-h-[38rem] space-y-2 overflow-y-auto pr-1">
+                                <template x-for="event in filteredOnlineAiUsageEvents()" :key="event.id">
+                                    <article class="rounded-xl border border-white/[0.07] bg-[#0B101E]/70 p-3">
+                                        <div class="flex items-start gap-3">
+                                            <span class="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full"
+                                                :class="event.status === 'success' ? 'bg-emerald-400' : (event.status === 'failed' ? 'bg-red-400' : ((event.status === 'blocked' || event.status === 'cooldown') ? 'bg-amber-400' : 'bg-gray-500'))"></span>
+                                            <div class="min-w-0 flex-1">
+                                                <div class="flex flex-wrap items-start justify-between gap-2">
+                                                    <div>
+                                                        <div class="flex flex-wrap items-center gap-2">
+                                                            <span class="text-xs font-black uppercase tracking-wide"
+                                                                :class="event.status === 'success' ? 'text-emerald-300' : (event.status === 'failed' ? 'text-red-300' : 'text-amber-200')"
+                                                                x-text="event.status"></span>
+                                                            <span class="text-sm font-bold text-white" x-text="event.operation"></span>
+                                                            <span x-show="event.httpStatus" class="rounded border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-[10px] font-black text-gray-300" x-text="'HTTP ' + event.httpStatus"></span>
+                                                            <span class="ai-usage-format-badge rounded border border-white/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-gray-500"
+                                                                x-text="event.precision === 'exact' ? 'Full detail' : 'Earlier text log'"></span>
+                                                        </div>
+                                                        <div class="mt-1 text-[11px] text-gray-500">
+                                                            <span class="text-gray-300" x-text="event.provider"></span>
+                                                            <span x-show="event.providerId"> · <span x-text="event.providerId"></span></span>
+                                                            <span x-show="event.model"> · <span x-text="event.model"></span></span>
+                                                        </div>
+                                                    </div>
+                                                    <time class="shrink-0 text-[10px] text-gray-600" x-text="formatVietnamDateTime(event.timestamp)"></time>
+                                                </div>
+
+                                                <div class="mt-2 flex flex-wrap gap-1.5 text-[10px] text-gray-400">
+                                                    <span x-show="event.keyIndex" class="rounded-md bg-white/[0.04] px-2 py-1" x-text="'Key ' + event.keyIndex"></span>
+                                                    <span x-show="event.attempt" class="rounded-md bg-white/[0.04] px-2 py-1" x-text="'Attempt ' + event.attempt"></span>
+                                                    <span x-show="event.durationMs !== null" class="rounded-md bg-white/[0.04] px-2 py-1" x-text="formatAiUsageDuration(event.durationMs)"></span>
+                                                    <span x-show="event.totalTokens" class="rounded-md bg-white/[0.04] px-2 py-1" x-text="formatAiUsageNumber(event.totalTokens) + ' tokens (' + formatAiUsageNumber(event.promptTokens) + ' in / ' + formatAiUsageNumber(event.outputTokens) + ' out)' "></span>
+                                                    <span x-show="event.articleCount !== null" class="rounded-md bg-white/[0.04] px-2 py-1" x-text="event.articleCount + ' articles'"></span>
+                                                    <span x-show="event.errorCode && event.status !== 'cooldown'" class="rounded-md bg-red-500/[0.07] px-2 py-1 text-red-300/80" x-text="event.errorCode"></span>
+                                                    <span x-show="event.status === 'cooldown' && event.cooldownUntil"
+                                                        class="rounded-md bg-amber-500/[0.08] px-2 py-1 font-bold text-amber-300/90"
+                                                        x-text="(() => {
+                                                            const remaining = Math.max(0, Date.parse(event.cooldownUntil) - Date.now());
+                                                            if (remaining <= 0) return 'Available now';
+                                                            const totalSeconds = Math.ceil(remaining / 1000);
+                                                            const hours = Math.floor(totalSeconds / 3600);
+                                                            const minutes = Math.floor((totalSeconds % 3600) / 60);
+                                                            const seconds = totalSeconds % 60;
+                                                            return 'Available in ' +
+                                                                (hours ? hours + 'h ' : '') +
+                                                                (minutes || hours ? minutes + 'm ' : '') +
+                                                                seconds + 's';
+                                                        })()"></span>
+                                                    <span x-show="event.repairAttempted"
+                                                        class="rounded-md px-2 py-1"
+                                                        :class="event.repairSucceeded === true ? 'bg-emerald-500/[0.08] text-emerald-300/80' : (event.repairSucceeded === false ? 'bg-red-500/[0.07] text-red-300/80' : 'bg-amber-500/[0.08] text-amber-300/80')"
+                                                        x-text="event.repairSucceeded === true ? 'JSON repair succeeded' : (event.repairSucceeded === false ? 'JSON repair failed' : 'JSON repair attempted')"></span>
+                                                </div>
+
+                                                <div x-show="event.status !== 'cooldown' && (event.error || event.message)" class="mt-2 whitespace-normal break-words rounded-lg border border-red-400/10 bg-red-500/[0.04] px-3 py-2 text-[11px] leading-relaxed text-red-200/80" x-text="event.error || event.message"></div>
+
+                                                <div x-show="event.errorCode === 'INVALID_JSON' && event.source !== 'structured' && !event.rawResponse"
+                                                    class="mt-2 rounded-lg border border-amber-400/10 bg-amber-500/[0.04] px-3 py-2 text-[11px] leading-relaxed text-amber-200/80">
+                                                    Legacy diagnostic record · Raw provider output was not captured by this version.
+                                                </div>
+
+                                                <details x-show="event.groupId || event.source || event.parserReason || event.repairAttempted" class="mt-2 text-[10px] text-gray-500">
+                                                    <summary class="cursor-pointer select-none hover:text-gray-300">Technical details</summary>
+                                                    <div class="mt-1 space-y-0.5 border-l border-white/10 pl-2 font-mono break-all">
+                                                        <div x-show="event.groupId">Group: <span x-text="event.groupId"></span></div>
+                                                        <div x-show="event.parserReason">Parser reason: <span x-text="event.parserReason"></span></div>
+                                                        <div x-show="event.repairAttempted">Repair: <span x-text="event.repairSucceeded === true ? 'succeeded' : (event.repairSucceeded === false ? 'failed' : 'attempted')"></span></div>
+                                                        <div x-show="event.repairReason">Repair reason: <span x-text="event.repairReason"></span></div>
+                                                        <div>Log format: <span x-text="event.source === 'structured' ? 'Current detailed record' : 'Earlier text record'"></span></div>
+                                                        <div>Event ID: <span x-text="event.id"></span></div>
+                                                    </div>
+                                                </details>
+
+                                                <details x-show="event.rawResponse" class="mt-2 rounded-lg border border-white/[0.07] bg-black/10 p-2 text-[10px] text-gray-400">
+                                                    <summary class="cursor-pointer select-none font-semibold hover:text-gray-200">Raw provider output</summary>
+                                                    <div class="mt-2 flex flex-wrap items-center justify-between gap-2">
+                                                        <span x-show="event.rawResponseTruncated"
+                                                            x-text="'Showing first ' + formatAiUsageNumber(event.rawResponseShownLength || event.rawResponse?.length || 0) + ' of ' + formatAiUsageNumber(event.rawResponseLength || 0) + ' characters'"></span>
+                                                        <span x-show="!event.rawResponseTruncated && event.rawResponseLength"
+                                                            x-text="formatAiUsageNumber(event.rawResponseLength) + ' characters'"></span>
+                                                        <button type="button"
+                                                            class="rounded-md border border-white/10 bg-white/[0.04] px-2 py-1 font-semibold text-gray-300 hover:bg-white/[0.08]"
+                                                            @click.stop.prevent="copyOnlineAiDiagnostic(event.rawResponse, event.id + ':raw')"
+                                                            x-text="onlineAiUsageCopiedKey === event.id + ':raw' ? 'Copied' : 'Copy raw response'"></button>
+                                                    </div>
+                                                    <pre class="mt-2 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-md border border-white/[0.06] bg-black/20 p-2 font-mono text-[10px] leading-relaxed text-gray-300" x-text="event.rawResponse"></pre>
+                                                </details>
+
+                                                <details x-show="event.repairRawResponse" class="mt-2 rounded-lg border border-white/[0.07] bg-black/10 p-2 text-[10px] text-gray-400">
+                                                    <summary class="cursor-pointer select-none font-semibold hover:text-gray-200">Repair provider output</summary>
+                                                    <div class="mt-2 flex flex-wrap items-center justify-between gap-2">
+                                                        <span x-show="event.repairRawResponseTruncated"
+                                                            x-text="'Showing first ' + formatAiUsageNumber(event.repairRawResponseShownLength || event.repairRawResponse?.length || 0) + ' of ' + formatAiUsageNumber(event.repairRawResponseLength || 0) + ' characters'"></span>
+                                                        <span x-show="!event.repairRawResponseTruncated && event.repairRawResponseLength"
+                                                            x-text="formatAiUsageNumber(event.repairRawResponseLength) + ' characters'"></span>
+                                                        <button type="button"
+                                                            class="rounded-md border border-white/10 bg-white/[0.04] px-2 py-1 font-semibold text-gray-300 hover:bg-white/[0.08]"
+                                                            @click.stop.prevent="copyOnlineAiDiagnostic(event.repairRawResponse, event.id + ':repair')"
+                                                            x-text="onlineAiUsageCopiedKey === event.id + ':repair' ? 'Copied' : 'Copy repair response'"></button>
+                                                    </div>
+                                                    <pre class="mt-2 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-md border border-white/[0.06] bg-black/20 p-2 font-mono text-[10px] leading-relaxed text-gray-300" x-text="event.repairRawResponse"></pre>
+                                                </details>
+                                            </div>
+                                        </div>
+                                    </article>
+                                </template>
+                                <div x-show="!filteredOnlineAiUsageEvents().length" class="rounded-xl border border-dashed border-white/10 px-4 py-8 text-center text-xs text-gray-500">
+                                    No events match these filters.
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Background AI Debug Stats -->
+                    <div x-show="geminiDebugStats" class="ai-status-debug mt-8 border-t border-white/10 pt-6">
+                        <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-4">Background Summary
+                            Queue</h3>
+
+                        <div class="grid gap-3 mb-4">
+                            <div class="ai-status-card rounded-xl border border-white/[0.07] bg-[#0B101E]/60 p-4">
+                                <div class="text-[11px] uppercase tracking-wider font-bold text-gray-500">Queue Status
+                                </div>
+                                <div class="flex items-center gap-2 mt-2">
+                                    <span class="w-2 h-2 rounded-full"
+                                        :class="geminiDebugStats?.queue?.processing ? 'bg-emerald-400' : 'bg-gray-500'"></span>
+                                    <span class="ai-status-value text-sm font-semibold text-white"
+                                        x-text="geminiDebugStats?.queue?.processing ? 'Processing' : (geminiDebugStats?.queue?.paused ? 'Paused' : 'Idle')"></span>
+                                </div>
+                                <div class="ai-status-muted text-xs text-gray-400 mt-1"
+                                    x-show="geminiDebugStats?.queue?.processing && geminiDebugStats?.queue?.currentUrl">
+                                    Working on article</div>
+                                <div class="ai-status-muted text-xs text-gray-400 mt-1">Pending items: <span class="ai-status-value text-white"
+                                        x-text="geminiDebugStats?.queue?.queueLength || 0"></span></div>
+                                <div class="ai-status-muted text-xs text-gray-400 mt-1">Generated: <span class="text-emerald-400"
+                                        x-text="geminiDebugStats?.queue?.stats?.generated || 0"></span> <span
+                                        class="mx-1">·</span> Failed: <span class="text-red-400"
+                                        x-text="geminiDebugStats?.queue?.stats?.failed || 0"></span></div>
+                            </div>
+
+                            <div class="ai-status-card rounded-xl border border-white/[0.07] bg-[#0B101E]/60 p-4">
+                                <div class="text-[11px] uppercase tracking-wider font-bold text-gray-500">Gemini Key
+                                    Manager</div>
+                                <div class="ai-status-value text-sm font-semibold text-white mt-2 flex items-center gap-2">
+                                    Key <span x-text="(geminiDebugStats?.gemini?.activeKeyIndex || 0) + 1"></span> of
+                                    <span x-text="geminiDebugStats?.gemini?.totalKeys || 0"></span>
+                                    <span class="ai-status-mask px-2 py-0.5 rounded-full text-[10px] font-bold bg-white/10"
+                                        x-text="geminiDebugStats?.gemini?.activeKeyMasked"></span>
+                                </div>
+                                <div class="text-xs text-gray-400 mt-1">Auto-failovers: <span class="text-amber-400"
+                                        x-text="geminiDebugStats?.gemini?.autoSwitchCount || 0"></span></div>
+                            </div>
+
+                        </div>
+
+                        <div class="grid gap-4">
+                            <div class="space-y-2">
+                                <div class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Gemini Keys
+                                </div>
+                                <template x-for="key in geminiDebugStats?.gemini?.keys" :key="key.index">
+                                    <div
+                                        class="ai-status-key-row text-xs p-3 rounded-lg border border-white/[0.05] bg-white/[0.02]">
+                                        <div class="flex items-center justify-between gap-3">
+                                            <div class="flex items-center gap-3">
+                                                <div class="ai-status-key-label font-bold text-gray-300" x-text="key.label"></div>
+                                                <div class="px-2 py-0.5 rounded-full text-[10px] font-bold" :class="{
+                                                    'bg-emerald-400/10 text-emerald-400': key.status === 'Active',
+                                                    'bg-red-400/10 text-red-400': key.status === 'Error' || key.status === 'Rate Limited',
+                                                    'bg-gray-500/10 text-gray-400': key.status === 'Standby'
+                                                }" x-text="key.status"></div>
+                                            </div>
+                                            <div class="text-gray-500"><span x-text="key.requestsToday"></span> req(s)</div>
+                                        </div>
+                                        <div x-show="key.lastHttpStatus || key.lastError"
+                                            class="ai-status-key-error mt-2 border-t border-white/[0.06] pt-2 text-[11px] text-red-300/80">
+                                            <span x-show="key.lastHttpStatus" class="mr-1 font-black"
+                                                x-text="'HTTP ' + key.lastHttpStatus"></span>
+                                            <span x-text="key.lastError ? key.lastError.split('\n')[0] : ''"></span>
+                                            <div x-show="key.cooldownUntil" class="mt-1 text-gray-500">
+                                                Retry after <span x-text="formatVietnamDateTime(key.cooldownUntil)"></span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="ai-status-footer px-6 py-4 border-t border-white/10 bg-[#0B101E]/50 flex flex-wrap items-center justify-between gap-3">
+                <p class="ai-status-muted max-w-xl text-[11px] leading-relaxed text-gray-500">
+                    “Validate active key” sends a non-billed token-count request to Google. It checks authentication and model access; it does not generate content or consume inference quota.
+                </p>
+                <div class="flex items-center gap-3">
+                    <button @click="closeGeminiStatus()"
+                        class="ai-status-secondary-button px-4 py-2 text-sm text-gray-400 hover:text-white transition rounded-lg">Close</button>
+                    <button @click="fetchGeminiKeyStatus()" :disabled="geminiStatusLoading"
+                        title="Validate the active key with Google's non-billed token counter"
+                        class="ai-status-primary-button px-5 py-2.5 rounded-xl bg-violet-400 hover:bg-violet-300 text-[#120b21] text-sm font-bold transition disabled:opacity-50"
+                        x-text="geminiStatusLoading ? 'Validating…' : 'Validate active key'"></button>
+                </div>
+            </div>
+        </div>
+    </div>

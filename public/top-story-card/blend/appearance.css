@@ -1,0 +1,72 @@
+@import "./photo-envelope.css?v=20261003_organic_1";
+/* Registered photo, spatial color extension, material and readability planes.
+   The existing Alpine card owns all content and interactions. */
+.theme-glass-light #scroll-container .article-card[data-image-layout="top"][data-story-blend] {
+    contain: paint;
+    background: var(--field-neutral);
+    color: var(--ink);
+    border-color: color-mix(in oklab, var(--ink) 9%, transparent);
+    box-shadow: 0 12px 32px -18px color-mix(in oklab, var(--ink) 24%, transparent),
+        inset 0 1px 0 rgb(255 255 255 / .72);
+}
+.theme-glass-light #scroll-container .article-card[data-image-layout="top"][data-story-blend]:hover {
+    border-color: color-mix(in oklab, var(--ink) 15%, transparent);
+    box-shadow: 0 16px 36px -18px color-mix(in oklab, var(--ink) 28%, transparent),
+        inset 0 1px 0 rgb(255 255 255 / .85);
+}
+.theme-glass-light #scroll-container .article-card[data-image-layout="top"][data-story-blend]::before {
+    content: ''; position: absolute; inset: 0; z-index: -5; pointer-events: none;
+    background:
+        radial-gradient(ellipse 65% 62% at 18% 0%, var(--field-land), transparent 100%),
+        radial-gradient(ellipse 60% 66% at 58% 40%, color-mix(in oklab, var(--field-center) 72%, transparent), transparent 100%),
+        radial-gradient(ellipse 82% 72% at 84% 100%, var(--field-lower), transparent 100%),
+        linear-gradient(115deg, var(--field-neutral), color-mix(in oklab, var(--field-ocean) 80%, transparent));
+}
+.theme-glass-light #scroll-container .article-card[data-image-layout="top"][data-story-blend] .article-card-heading h2 { font-weight: 600; color: var(--ink); }
+.theme-glass-light #scroll-container .article-card[data-image-layout="top"][data-story-blend] .article-card-heading p { font-weight: 400; color: var(--ink-muted); }
+.theme-glass-light #scroll-container .article-card[data-image-layout="top"][data-story-blend].is-read .article-card-heading h2 { color: color-mix(in oklab, var(--ink) 80%, var(--ink-muted)); }
+.theme-glass-light #scroll-container .article-card[data-image-layout="top"][data-story-blend].is-read .article-card-heading p { color: color-mix(in oklab, var(--ink-muted) 95%, var(--ink-faint)); }
+.theme-glass-light #scroll-container .article-card[data-image-layout="top"][data-story-blend] :is(.story-freshness, .story-uncertainty) { color: var(--ink-muted); }
+.theme-glass-light #scroll-container .article-card[data-image-layout="top"][data-story-blend] .article-metadata,
+.theme-glass-light #scroll-container .article-card[data-image-layout="top"][data-story-blend] .article-metadata :is(.text-cyan-300, .text-emerald-400) { color: var(--ink-muted); }
+.theme-glass-light #scroll-container .article-card[data-image-layout="top"][data-story-blend] .article-metadata > :is(span:first-child, a) {
+    background: color-mix(in oklab, var(--field-neutral) 65%, transparent);
+    border-color: color-mix(in oklab, var(--ink) 7%, transparent); color: var(--ink);
+}
+.theme-glass-light #scroll-container .article-card[data-image-layout="top"][data-story-blend] .article-metadata > span[title] { background: none; border: 0; padding: 0; }
+.theme-glass-light #scroll-container .article-card[data-image-layout="top"][data-story-blend] .story-rank { background: color-mix(in oklab, var(--accent-text) 9%, var(--field-neutral)); color: var(--accent-text); }
+.theme-glass-light #scroll-container .article-card[data-image-layout="top"][data-story-blend] .story-coverage-orb {
+    border-color: white; box-shadow: inset 0 0 0 2px white, var(--avatar-shadow); color: var(--accent-text);
+}
+.theme-glass-light #scroll-container .article-card[data-image-layout="top"][data-story-blend] .story-coverage-orbs::before {
+    content: ''; position: absolute; inset: -18px; z-index: -1; pointer-events: none;
+    background: radial-gradient(ellipse, var(--avatar-zone-guard), transparent 70%);
+}
+.theme-glass-light #scroll-container .article-card[data-image-layout="top"][data-story-blend] .story-key-fact {
+    background: color-mix(in oklab, var(--field-neutral) 58%, transparent);
+    border-color: color-mix(in oklab, var(--ink) 8%, transparent);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / .55);
+}
+.theme-glass-light #scroll-container .article-card[data-image-layout="top"][data-story-blend] .story-analysis-shell {
+    background: color-mix(in oklab, var(--panel-tint) 65%, transparent); border-color: rgb(255 255 255 / .65);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / .7), 0 4px 12px rgb(25 50 65 / .025);
+    -webkit-backdrop-filter: blur(18px) saturate(105%); backdrop-filter: blur(18px) saturate(105%);
+}
+.theme-glass-light #scroll-container .article-card[data-image-layout="top"][data-story-blend] .story-analysis-tabs { border-bottom-color: color-mix(in oklab, var(--ink) 8%, transparent); }
+.theme-glass-light #scroll-container .article-card[data-image-layout="top"][data-story-blend] .story-analysis-tabs > button { color: var(--ink-muted); }
+.theme-glass-light #scroll-container .article-card[data-image-layout="top"][data-story-blend] .story-analysis-tabs > button.is-active { color: var(--accent-text); }
+.theme-glass-light #scroll-container .article-card[data-image-layout="top"][data-story-blend] .story-analysis-tabs > button.is-active::after { left: 18px; right: auto; width: 28px; height: 3px; bottom: 4px; background: var(--accent-text); }
+.theme-glass-light #scroll-container .article-card[data-image-layout="top"][data-story-blend] .story-analysis-tabs svg { stroke-width: 1.65; }
+.theme-glass-light #scroll-container .article-card[data-image-layout="top"][data-story-blend] .story-analysis-text { color: var(--ink-muted); }
+.theme-glass-light #scroll-container .article-card[data-image-layout="top"][data-story-blend] :is(.top-story-citations a, .story-coverage-expanded a, .story-analysis-section-label, .story-timeline-event time) { color: var(--accent-text); }
+.theme-glass-light #scroll-container .article-card[data-image-layout="top"][data-story-blend] .story-analysis-next { color: var(--accent-text); }
+.theme-glass-light #scroll-container .article-card[data-image-layout="top"] :is(button, a):focus-visible { outline: 2px solid var(--accent-text, var(--accent)); outline-offset: 3px; }
+@container (max-width: 639px) {
+    .theme-glass-light #scroll-container .article-card[data-image-layout="top"][data-story-blend] .story-coverage-orbs { top: calc(var(--hero-top) + 12px); }
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .theme-glass-light #scroll-container .article-card[data-image-layout="top"][data-story-blend] .story-analysis-shell { background: color-mix(in oklab, var(--panel-tint) 94%, var(--field-lower)); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .theme-glass-light #scroll-container .article-card[data-image-layout="top"] { transition: none; }
+}

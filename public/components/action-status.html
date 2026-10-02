@@ -1,0 +1,51 @@
+    <!-- Non-blocking action status -->
+    <div x-show="syncProgress.visible" x-transition.opacity x-cloak
+        class="fixed right-4 bottom-4 z-[110] w-[min(360px,calc(100vw-2rem))] rounded-2xl border border-white/40 dark:border-white/10 bg-gradient-to-br from-white/40 to-white/10 dark:from-black/50 dark:to-black/20 backdrop-blur-xl shadow-[0_8px_32px_rgba(0,0,0,0.2)] p-4">
+        <div class="flex items-start gap-3">
+            <div class="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+                :class="syncProgress.failed ? 'bg-red-500/30 text-red-700 dark:text-red-300' : syncProgress.done ? 'bg-emerald-500/30 text-emerald-700 dark:text-emerald-300' : 'bg-blue-500/30 text-blue-700 dark:text-blue-300'">
+                <svg x-show="!syncProgress.done" class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="9" stroke="currentColor" stroke-width="3"></circle>
+                    <path class="opacity-90" fill="currentColor" d="M12 3a9 9 0 00-9 9h3a6 6 0 016-6V3z"></path>
+                </svg>
+                <svg x-show="syncProgress.done && !syncProgress.failed" class="w-5 h-5" fill="none"
+                    stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                </svg>
+                <svg x-show="syncProgress.done && syncProgress.failed" class="w-5 h-5" fill="none" stroke="currentColor"
+                    viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12">
+                    </path>
+                </svg>
+            </div>
+            <div class="min-w-0 flex-1">
+                <div class="flex items-center justify-between gap-3">
+                    <p class="text-xs font-extrabold uppercase tracking-wider text-gray-900 dark:text-white">Refreshing
+                        feed</p>
+                    <span x-show="syncProgress.total"
+                        class="text-[11px] font-bold tabular-nums text-gray-900 dark:text-gray-100"
+                        x-text="syncProgress.current + '/' + syncProgress.total + (Number.isFinite(Number(syncProgress.remaining)) ? ' · ' + syncProgress.remaining + ' remaining' : '')"></span>
+                </div>
+                <p class="text-sm font-semibold text-gray-900 dark:text-gray-100 mt-1 leading-snug"
+                    x-text="syncProgress.message"></p>
+                <p x-show="syncProgress.providerTotal" class="mt-1 text-[11px] text-gray-600 dark:text-gray-400"
+                    x-text="'Provider ' + (syncProgress.providerIndex || syncProgress.providerAttempt || 0) + '/' + syncProgress.providerTotal + (syncProgress.model ? ' · ' + syncProgress.model : '')"></p>
+                <div x-show="!syncProgress.done"
+                    class="h-1.5 rounded-full bg-black/20 dark:bg-white/20 overflow-hidden mt-3">
+                    <div class="h-full bg-gradient-to-r from-blue-500 to-indigo-500 dark:from-blue-400 dark:to-indigo-400 transition-all duration-300"
+                        :class="syncProgress.total ? '' : 'w-1/3 animate-pulse'"
+                        :style="syncProgress.total ? 'width:' + Math.max(4, (syncProgress.current / syncProgress.total) * 100) + '%' : ''">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div x-show="markAllUndo" x-transition x-cloak
+        class="fixed left-4 bottom-4 z-[111] flex items-center gap-3 rounded-2xl border border-white/40 dark:border-white/10 bg-gradient-to-br from-white/40 to-white/10 dark:from-black/50 dark:to-black/20 backdrop-blur-xl shadow-[0_8px_32px_rgba(0,0,0,0.2)] px-4 py-3">
+        <span class="text-sm text-gray-700 dark:text-gray-300"><span class="font-semibold text-gray-900 dark:text-white"
+                x-text="markAllUndo ? markAllUndo.links.length : 0"></span> articles marked read</span>
+        <button @click="undoMarkAllRead()"
+            class="text-sm font-bold text-amber-600 dark:text-amber-400 hover:opacity-80 transition">Undo</button>
+    </div>
+

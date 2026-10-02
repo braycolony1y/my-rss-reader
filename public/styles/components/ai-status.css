@@ -1,0 +1,280 @@
+        /* AI status modal: readable Liquid Glass Light surface and state colors. */
+        .theme-glass-light .ai-status-overlay {
+            background:
+                radial-gradient(circle at 18% 12%, rgba(196, 181, 253, 0.22), transparent 38%),
+                radial-gradient(circle at 82% 86%, rgba(125, 211, 252, 0.2), transparent 42%),
+                rgba(226, 232, 240, 0.56) !important;
+            backdrop-filter: blur(30px) saturate(175%) !important;
+            -webkit-backdrop-filter: blur(30px) saturate(175%) !important;
+        }
+
+        .theme-glass-light .ai-status-modal {
+            color: #1e293b !important;
+            background: linear-gradient(145deg, rgba(255, 255, 255, 0.91), rgba(248, 250, 252, 0.74)) !important;
+            border: 1px solid rgba(255, 255, 255, 0.92) !important;
+            box-shadow:
+                0 32px 80px rgba(15, 23, 42, 0.18),
+                0 10px 28px rgba(15, 23, 42, 0.08),
+                inset 0 1px 0 rgba(255, 255, 255, 0.96) !important;
+            backdrop-filter: blur(46px) saturate(185%) !important;
+            -webkit-backdrop-filter: blur(46px) saturate(185%) !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-header,
+        .theme-glass-light .ai-status-modal .ai-status-footer {
+            background: rgba(255, 255, 255, 0.42) !important;
+            border-color: rgba(100, 116, 139, 0.18) !important;
+            box-shadow: none !important;
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-title {
+            color: #172033 !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-subtitle,
+        .theme-glass-light .ai-status-modal .ai-status-muted,
+        .theme-glass-light .ai-status-modal .ai-status-meta {
+            color: #526077 !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-close,
+        .theme-glass-light .ai-status-modal .ai-status-secondary-button {
+            color: #536176 !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-close:hover,
+        .theme-glass-light .ai-status-modal .ai-status-secondary-button:hover {
+            color: #111827 !important;
+            background: rgba(255, 255, 255, 0.55) !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-card,
+        .theme-glass-light .ai-status-modal .ai-status-key-row {
+            color: #334155 !important;
+            background: linear-gradient(145deg, rgba(255, 255, 255, 0.72), rgba(248, 250, 252, 0.52)) !important;
+            border-color: rgba(100, 116, 139, 0.2) !important;
+            box-shadow:
+                0 10px 30px rgba(15, 23, 42, 0.06),
+                inset 0 1px 0 rgba(255, 255, 255, 0.88) !important;
+            backdrop-filter: blur(18px) saturate(165%) !important;
+            -webkit-backdrop-filter: blur(18px) saturate(165%) !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-provider-row {
+            color: #334155 !important;
+            background: rgba(255, 255, 255, 0.58) !important;
+            border-color: rgba(100, 116, 139, 0.16) !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-provider-rank {
+            color: #6d28d9 !important;
+            background: rgba(139, 92, 246, 0.12) !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-progress-track {
+            background: rgba(100, 116, 139, 0.16) !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-progress-fill {
+            background: linear-gradient(90deg, #7c3aed, #14b8a6) !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-card-title {
+            color: #536176 !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-value,
+        .theme-glass-light .ai-status-modal .ai-status-key-label {
+            color: #202b3e !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-link {
+            color: #6d28d9 !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-link:hover {
+            color: #5b21b6 !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-state[data-tone="ready"] {
+            color: #065f46 !important;
+            background: linear-gradient(145deg, rgba(236, 253, 245, 0.9), rgba(209, 250, 229, 0.6)) !important;
+            border-color: rgba(16, 185, 129, 0.34) !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-state[data-tone="error"] {
+            color: #881337 !important;
+            background: linear-gradient(145deg, rgba(255, 241, 242, 0.94), rgba(255, 228, 230, 0.64)) !important;
+            border-color: rgba(244, 63, 94, 0.34) !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-state[data-tone="warning"] {
+            color: #854d0e !important;
+            background: linear-gradient(145deg, rgba(255, 251, 235, 0.94), rgba(254, 243, 199, 0.64)) !important;
+            border-color: rgba(245, 158, 11, 0.34) !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-state[data-tone="ready"] .ai-status-state-icon {
+            color: #047857 !important;
+            background: rgba(167, 243, 208, 0.62) !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-state[data-tone="error"] .ai-status-state-icon {
+            color: #be123c !important;
+            background: rgba(254, 205, 211, 0.7) !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-state[data-tone="warning"] .ai-status-state-icon {
+            color: #b45309 !important;
+            background: rgba(253, 230, 138, 0.66) !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-state-title,
+        .theme-glass-light .ai-status-modal .ai-status-state-message {
+            color: inherit !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-http-badge {
+            color: #be123c !important;
+            background: rgba(255, 255, 255, 0.68) !important;
+            border-color: rgba(225, 29, 72, 0.3) !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-reason {
+            color: #475569 !important;
+            background: rgba(255, 255, 255, 0.46) !important;
+            border-color: rgba(100, 116, 139, 0.18) !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-error-card,
+        .theme-glass-light .ai-status-modal .ai-status-errors-card {
+            color: #881337 !important;
+            background: linear-gradient(145deg, rgba(255, 241, 242, 0.93), rgba(255, 228, 230, 0.58)) !important;
+            border-color: rgba(244, 63, 94, 0.34) !important;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72) !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-error-row {
+            color: #881337 !important;
+            background: rgba(255, 255, 255, 0.68) !important;
+            border-color: rgba(244, 63, 94, 0.22) !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-error-category {
+            color: #475569 !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-error-detail,
+        .theme-glass-light .ai-status-modal .ai-status-key-error {
+            color: #9f1239 !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-debug {
+            border-color: rgba(100, 116, 139, 0.2) !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-key-error {
+            border-color: rgba(244, 63, 94, 0.2) !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-mask {
+            color: #475569 !important;
+            background: rgba(100, 116, 139, 0.1) !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-primary-button {
+            color: #ffffff !important;
+            background: linear-gradient(135deg, #8b5cf6, #a78bfa) !important;
+            border: 1px solid rgba(255, 255, 255, 0.6) !important;
+            box-shadow: 0 10px 24px rgba(124, 58, 237, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.36) !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-primary-button:hover {
+            background: linear-gradient(135deg, #7c3aed, #8b5cf6) !important;
+        }
+
+        /* The activity viewer contains dense operational data. Keep its light
+           mode opaque and high-contrast instead of inheriting pale dark-mode
+           utility colors through the glass surface. */
+        .theme-glass-light .ai-status-modal .ai-status-usage {
+            color: #1e293b !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-usage .rounded-xl,
+        .theme-glass-light .ai-status-modal .ai-status-usage article {
+            background-color: rgba(255, 255, 255, 0.86) !important;
+            background-image: none !important;
+            border-color: rgba(71, 85, 105, 0.24) !important;
+            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.055) !important;
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-usage [class*="text-white"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)),
+.theme-glass-light .ai-status-modal .ai-status-usage [class*="text-gray-200"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)),
+.theme-glass-light .ai-status-modal .ai-status-usage [class*="text-gray-300"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) {
+            color: #1e293b !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-usage [class*="text-gray-400"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)),
+.theme-glass-light .ai-status-modal .ai-status-usage [class*="text-gray-500"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)),
+.theme-glass-light .ai-status-modal .ai-status-usage [class*="text-gray-600"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) {
+            color: #526077 !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-usage [class*="text-red-"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) {
+            color: #b42334 !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-usage [class*="text-emerald-"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) {
+            color: #047857 !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-usage [class*="text-amber-"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) {
+            color: #92400e !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-usage [class*="bg-red-"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) {
+            background: #fff1f2 !important;
+            border-color: rgba(190, 18, 60, 0.24) !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-usage [class*="bg-emerald-"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) {
+            background: #ecfdf5 !important;
+            border-color: rgba(4, 120, 87, 0.22) !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-usage select,
+        .theme-glass-light .ai-status-modal .ai-status-usage input,
+        .theme-glass-light .ai-status-modal .ai-key-input {
+            color: #172033 !important;
+            background: rgba(255, 255, 255, 0.94) !important;
+            border-color: rgba(71, 85, 105, 0.3) !important;
+            box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.04) !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-usage input::placeholder,
+        .theme-glass-light .ai-status-modal .ai-key-input::placeholder {
+            color: #64748b !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-usage .ai-usage-format-badge {
+            color: #475569 !important;
+            background: #f1f5f9 !important;
+            border-color: #cbd5e1 !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-key-success {
+            color: #065f46 !important;
+            background: #ecfdf5 !important;
+            border-color: rgba(4, 120, 87, 0.24) !important;
+        }
+
+        .theme-glass-light .ai-status-modal .ai-status-usage .text-\[10px\],
+        .theme-glass-light .ai-status-modal .ai-status-usage .text-\[11px\] {
+            font-size: 0.75rem !important;
+            line-height: 1.15rem !important;
+        }
+

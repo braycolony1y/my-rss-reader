@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { detectImageFocus } from './focal-detector.js';
 
 export const CENTER_FOCUS = Object.freeze({ x: 0.5, y: 0.5, type: 'center', confidence: 0 });
-const VERSION = 11;
+const VERSION = 12;
 const MAX_BYTES = 8 * 1024 * 1024;
 
 export function publicImageUrl(value) {
@@ -76,7 +76,7 @@ export function createFocalCache({
             } catch { /* New image or incomplete cache entry. */ }
             try {
                 const buffer = await download(url);
-                const result = { ...await detect(buffer), version: VERSION };
+                const result = { ...await detect(buffer, { sourceUrl: url }), version: VERSION };
                 await mkdir(directory, { recursive: true });
                 const temporary = `${filename}.${process.pid}.tmp`;
                 await writeFile(temporary, JSON.stringify(result));

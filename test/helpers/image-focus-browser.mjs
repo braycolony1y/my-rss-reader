@@ -30,7 +30,7 @@ card.querySelector('h2').textContent = focus.title || 'Keeping the subject in vi
 card.querySelector('.article-card-heading p').textContent = focus.description || 'The same focal point adapts to this card’s width and height.';
 card.querySelector('.article-briefing').innerHTML = `<div class="story-key-facts"><div class="story-key-fact"><span class="story-key-fact-icon">▣</span><span class="story-key-fact-copy"><strong>Key fact</strong><span>The heading is the clear photo area.</span></span></div></div>
 <div class="story-analysis-shell"><div class="story-analysis-tabs"><button class="is-active">Why it matters</button><button>More analysis</button></div>
-<div class="story-analysis-body"><p>A tall analysis panel must not cover the face or enlarge the crop.</p><p style="min-height:200px">Additional analysis.</p></div></div>`;
+<div class="story-analysis-body"><p>A tall analysis panel must not cover the face or enlarge the crop.</p><p>Additional analysis.</p></div></div>`;
 const img = card.querySelector('.thumbnail-img');
 img.src = '/fixture-image.svg'; img.removeAttribute('loading');
 const cards = ['top', 'classic', 'standard'].map(mode => {

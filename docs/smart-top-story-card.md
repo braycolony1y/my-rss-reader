@@ -1,0 +1,17 @@
+# Smart Top Story editorial card
+
+The existing light Smart Top card is selected by `.theme-glass-light #scroll-container .article-card[data-image-layout="top"]`. Its Alpine component remains `public/components/article-card.html`; `src/ui/reader-assets.js` composes it into the reader. Metadata, ranking, citations, context, source coverage, tabs, next analysis, navigation, hover actions and read/save/board behavior retain their existing bindings. The thumbnail has a title-derived alternative description.
+
+`card.css` owns the shell and controls, `hierarchy.css` owns typography and layout, and `coverage.css` owns the publisher stack. `blend/appearance.css` owns the layered image/material paint. New contour and spatial palette logic lives in `blend/composition.js`. `blend/runtime.js` connects that module to the existing image-focus response and DOM. Legacy styles continue to exclude this light Top variant.
+
+The layers are independently tunable: a full-card low-resolution image color field, sampled spatial material tones, a registered blurred duplicate, the clear original thumbnail, and a shaped readability guard. The thumbnail keeps its configured source URL. Photographs retain their original pixels in the clear region; intentionally cropped artwork uses the existing cropped asset. The source thumbnail for the supplied ship story is 600×315; the separately supplied reference is 1200×630. Both show the same complete scene.
+
+The contour is a broad asymmetric SVG path with separate blur/detail masks and a source-edge envelope. Explicit mask coordinates prevent the Gaussian tail from clipping into a straight horizontal band. No extra raster asset or image-analysis request was added. The existing cached focus/palette route remains responsible for image analysis.
+
+`blend/fit.js` preserves the complete source aspect ratio with one uniform fit. Scenes without faces can use the available right region; faces retain text and avatar clearance. Desktop text uses 57% of the card, increasing to 59% at medium widths. Below the 640px container breakpoint, the header places metadata, full headline and deck before the photograph. The deck allows five lines; desktop retains three. Context and analysis follow. Multiple facts retain their grid; below 420px they stack. A single fact is a compact annotation on desktop and fills the available mobile row.
+
+The analysis panel uses a 65% derived material tint with `blur(18px) saturate(105%)`, a restrained outline and a short active-tab indicator. Its body retains the scrollable maximum for long analysis. Reduced-motion preferences disable the card transition. A more opaque panel fallback supports browsers without backdrop filtering. Missing images produce a neutral material without a broken photo area.
+
+See [inspection](story-card-redesign-inspection.md) for the original implementation and [rendered review](story-card-redesign-review.md) for current measurements, iterations and limitations.
+
+To reproduce the live reference-story review, run `node tools/experiments/story-card-review/live.mjs`. To compare the clear ship region against the original thumbnail, run `node tools/experiments/story-card-review/photo.mjs`. Both accept `READER_URL`, `CARD_OUTPUT` and `CHROMIUM_PATH`; the live review also accepts `CARD_WIDTHS` and `CARD_PASS`. The existing `/public/top-story-card/demo/` and `test/helpers/top-story-blend-browser.mjs` cover the six fixed image families.

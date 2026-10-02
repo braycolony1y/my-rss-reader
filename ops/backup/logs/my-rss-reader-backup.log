@@ -260,3 +260,8 @@
 [2026-10-01 05:00:11 +07] SUCCESS: website backup completed
 [2026-10-02 05:00:01 +07] Starting sanitized GitHub backup
 [2026-10-02 05:00:07 +07] Source and systemd snapshots prepared
+[2026-10-02 05:00:07 +07] Created backup commit: ecc8d11
+[2026-10-02 05:00:11 +07] Pushed sanitized snapshot to GitHub main
+[2026-10-02 05:00:11 +07] SUCCESS: website backup completed
+[2026-10-03 05:00:01 +07] Starting sanitized GitHub backup
+[2026-10-03 05:00:08 +07] Source and systemd snapshots prepared

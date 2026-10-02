@@ -1,35 +1,35 @@
-.theme-glass-light #scroll-container :is(.liquid-card,.article-card.has-story-briefing[data-image-layout]) .article-card-heading h2 { color: var(--ink) !important; }
-.theme-glass-light #scroll-container :is(.liquid-card,.article-card.has-story-briefing[data-image-layout]) .article-card-heading p { color: var(--ink-2) !important; }
-.theme-glass-light #scroll-container :is(.liquid-card,.article-card.has-story-briefing[data-image-layout]).is-read .article-card-heading h2 { color: oklch(.40 .02 var(--tint-hue)) !important; }
-.theme-glass-light #scroll-container :is(.liquid-card,.article-card.has-story-briefing[data-image-layout]).is-read .article-card-heading p { color: var(--ink-2) !important; }
-.theme-glass-light #scroll-container :is(.liquid-card,.article-card.has-story-briefing[data-image-layout]) .story-key-facts {
+.theme-glass-light #scroll-container :is(.liquid-card,.article-card:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)).has-story-briefing[data-image-layout]) .article-card-heading h2 { color: var(--ink) !important; }
+.theme-glass-light #scroll-container :is(.liquid-card,.article-card:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)).has-story-briefing[data-image-layout]) .article-card-heading p { color: var(--ink-2) !important; }
+.theme-glass-light #scroll-container :is(.liquid-card,.article-card:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)).has-story-briefing[data-image-layout]).is-read .article-card-heading h2 { color: oklch(.40 .02 var(--tint-hue)) !important; }
+.theme-glass-light #scroll-container :is(.liquid-card,.article-card:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)).has-story-briefing[data-image-layout]).is-read .article-card-heading p { color: var(--ink-2) !important; }
+.theme-glass-light #scroll-container :is(.liquid-card,.article-card:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)).has-story-briefing[data-image-layout]) .story-key-facts {
     display: grid !important; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px;
     width: auto; min-width: 0; max-width: none; overflow: visible; margin-bottom: 14px;
 }
-.theme-glass-light #scroll-container :is(.liquid-card,.article-card.has-story-briefing[data-image-layout]) .story-key-facts[style*="display: none"] { display: none !important; }
-.theme-glass-light #scroll-container :is(.liquid-card,.article-card.has-story-briefing[data-image-layout]) .story-key-fact {
+.theme-glass-light #scroll-container :is(.liquid-card,.article-card:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)).has-story-briefing[data-image-layout]) .story-key-facts[style*="display: none"] { display: none !important; }
+.theme-glass-light #scroll-container :is(.liquid-card,.article-card:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)).has-story-briefing[data-image-layout]) .story-key-fact {
     display: flex; align-items: center; gap: 12px; min-width: 0; max-width: none;
     border-radius: 16px; padding: 14px; background: oklch(1 0 0 / .6);
     border: 1px solid oklch(1 0 0 / .7); overflow: visible;
 }
-.theme-glass-light #scroll-container :is(.liquid-card,.article-card.has-story-briefing[data-image-layout]) .story-key-fact-copy { min-width: 0; overflow-wrap: anywhere; }
-.theme-glass-light #scroll-container :is(.liquid-card,.article-card.has-story-briefing[data-image-layout]) .story-key-fact-icon {
+.theme-glass-light #scroll-container :is(.liquid-card,.article-card:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)).has-story-briefing[data-image-layout]) .story-key-fact-copy { min-width: 0; overflow-wrap: anywhere; }
+.theme-glass-light #scroll-container :is(.liquid-card,.article-card:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)).has-story-briefing[data-image-layout]) .story-key-fact-icon {
     display: grid; place-items: center; flex: 0 0 36px; height: 36px;
     border-radius: 10px; background: oklch(.92 .045 var(--tint-hue) / .7); color: var(--accent);
 }
-.theme-glass-light #scroll-container :is(.liquid-card,.article-card.has-story-briefing[data-image-layout]) .story-key-fact-icon svg { width: 20px; height: 20px; }
-.theme-glass-light #scroll-container :is(.liquid-card,.article-card.has-story-briefing[data-image-layout]) .story-analysis-shell { background: oklch(1 0 0 / .55) !important; }
-.theme-glass-light #scroll-container :is(.liquid-card,.article-card.has-story-briefing[data-image-layout]) .story-analysis-tabs { background: oklch(1 0 0 / .35) !important; }
-.theme-glass-light #scroll-container :is(.liquid-card,.article-card.has-story-briefing[data-image-layout]) .story-analysis-tabs > button.is-active::after { background: var(--accent) !important; }
-.theme-glass-light #scroll-container :is(.liquid-card,.article-card.has-story-briefing[data-image-layout]) .story-analysis-body {
+.theme-glass-light #scroll-container :is(.liquid-card,.article-card:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)).has-story-briefing[data-image-layout]) .story-key-fact-icon svg { width: 20px; height: 20px; }
+.theme-glass-light #scroll-container :is(.liquid-card,.article-card:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)).has-story-briefing[data-image-layout]) .story-analysis-shell { background: oklch(1 0 0 / .55) !important; }
+.theme-glass-light #scroll-container :is(.liquid-card,.article-card:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)).has-story-briefing[data-image-layout]) .story-analysis-tabs { background: oklch(1 0 0 / .35) !important; }
+.theme-glass-light #scroll-container :is(.liquid-card,.article-card:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)).has-story-briefing[data-image-layout]) .story-analysis-tabs > button.is-active::after { background: var(--accent) !important; }
+.theme-glass-light #scroll-container :is(.liquid-card,.article-card:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)).has-story-briefing[data-image-layout]) .story-analysis-body {
     display: block !important; min-height: 0 !important; height: auto !important; padding: 16px 20px !important;
 }
-.theme-glass-light #scroll-container :is(.liquid-card,.article-card.has-story-briefing[data-image-layout]) .story-analysis-copy {
+.theme-glass-light #scroll-container :is(.liquid-card,.article-card:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)).has-story-briefing[data-image-layout]) .story-analysis-copy {
     display: grid !important; grid-template-columns: minmax(0,1fr) 24px; align-items: start !important;
     min-height: 0 !important; padding: 0 !important; gap: 12px;
 }
-.theme-glass-light #scroll-container :is(.liquid-card,.article-card.has-story-briefing[data-image-layout]) .story-analysis-next { align-self: center; color: var(--accent) !important; }
-.theme-glass-light #scroll-container :is(.liquid-card,.article-card.has-story-briefing[data-image-layout]) .story-analysis-text { min-width: 0; }
+.theme-glass-light #scroll-container :is(.liquid-card,.article-card:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)).has-story-briefing[data-image-layout]) .story-analysis-next { align-self: center; color: var(--accent) !important; }
+.theme-glass-light #scroll-container :is(.liquid-card,.article-card:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)).has-story-briefing[data-image-layout]) .story-analysis-text { min-width: 0; }
 @container(max-width:559px) {
-    .theme-glass-light #scroll-container :is(.liquid-card,.article-card.has-story-briefing[data-image-layout]) .story-key-facts { grid-template-columns: minmax(0,1fr); }
+    .theme-glass-light #scroll-container :is(.liquid-card,.article-card:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)).has-story-briefing[data-image-layout]) .story-key-facts { grid-template-columns: minmax(0,1fr); }
 }

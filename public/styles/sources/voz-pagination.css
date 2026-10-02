@@ -1,0 +1,52 @@
+        .voz-pagination-wrapper {
+            border-color: rgba(255, 255, 255, 0.1);
+        }
+
+        .voz-pagination-btn {
+            padding: 0.25rem 0.6rem;
+            min-width: 24px;
+            font-size: 0.75rem;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+            transition: all 0.2s ease;
+        }
+
+        .voz-pagination-btn--prev {
+            background-color: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #d1d5db;
+        }
+
+        .voz-pagination-btn--prev:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+
+        .voz-pagination-btn--next {
+            background-color: #059669;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            color: #fff;
+        }
+
+        .voz-pagination-btn--next:hover {
+            background-color: #047857;
+        }
+
+        .voz-pagination-btn--page {
+            background-color: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #d1d5db;
+        }
+
+        .voz-pagination-btn--page:hover {
+            background-color: rgba(255, 255, 255, 0.08);
+        }
+
+        .voz-pagination-btn--current {
+            background-color: #059669;
+            border: 1px solid #10b981;
+            color: #fff;
+            font-weight: 700;
+        }
+

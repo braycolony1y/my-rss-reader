@@ -1,0 +1,11 @@
+The requested component is the light Smart Top story, selected by `.theme-glass-light #scroll-container .article-card[data-image-layout="top"]`.
+
+DOM: `public/components/article-card.html`, composed into index by `src/ui/reader-assets.js`. Existing Alpine handlers own card navigation, metadata, source count, key facts, tabs, citations, next analysis, coverage and read/save/board actions.
+
+Rendering: article.image -> proxyImageUrl -> thumbnail-img -> public/image-focus.js -> /api/image-focus -> blend/runtime.js. The focus response includes sampled regional palette, focal bounds and baked hero/ambient assets. blend/fit.js uses a uniform contain fit and applies independent straight horizontal/bottom masks. appearance.css displays the baked soft image; the original is hidden after decode. Ambient is a stretched 48x32 source duplicate, blurred across the card. Overlay currently neutralizes much of its color.
+
+CSS ownership: card.css (shell/controls), hierarchy.css (type/spacing), coverage.css (publishers), blend/appearance.css (palette/image/material). Legacy card rules explicitly exclude this variant. Current 639px container breakpoint places the image above the text; 419px stacks two fact tiles. Shared card sizing watches resize, header, text and expanded panel geometry.
+
+Visual weaknesses: straight photo transition, horizontal lower fade, flattened cyan text plane/dark blue plane, conspicuous gray perimeter, excessive metadata capsules, oversized full-width single context fact, generic long tab underline, compressed summary/body spacing. Baseline real article 1000x490; photo only 444x233 because saliency fit constrains the scene as if it were a face. Actual original photograph is 1200x630, with land in left half and ship in right half.
+
+Plan: keep existing DOM/Alpine and fit registration. Add a dedicated composition module for curved alpha masks and exposure-safe spatial palette. Use original photo for the sharp layer, existing duplicate for registered soft transition, original low-resolution ambient for full-card color. Enlarge non-face scenes without crop, preserve face safety. Recompose mobile with text before photograph, then context and analysis. Verify production, multiple widths, keyboard/control behavior, dark/default image fallback and measured text contrast.

@@ -1,6 +1,7 @@
 import sharp from 'sharp';
 import { extractLiquidTint } from '../../public/liquid-tint.js';
 import { buildCardBlendAssets } from './card-blend/assets.js';
+import { analyzeThumbnail } from './top-story-blend/analyze.js';
 import * as ort from 'onnxruntime-node';
 import { fileURLToPath } from 'node:url';
 
@@ -49,7 +50,7 @@ export function selectFace(scores, boxes) {
     return face;
 }
 
-export async function detectImageFocus(buffer) {
+export async function detectImageFocus(buffer, { sourceUrl = '' } = {}) {
     // Decode only the first frame, honour EXIF orientation, and bound decompression.
     const image = sharp(buffer, { limitInputPixels: 40_000_000, animated: false }).rotate().removeAlpha().toColourspace('srgb');
     const { data, info } = await image.clone().resize({ width: 640, height: 640, fit: 'inside', withoutEnlargement: true })
@@ -61,6 +62,7 @@ export async function detectImageFocus(buffer) {
     const tintPixels = await decoded.clone().resize(64, 64, { fit: 'fill' }).raw().toBuffer();
     const tint = extractLiquidTint(tintPixels, 64, 64, 3);
     const blend = await buildCardBlendAssets(buffer);
+    blend.story = await analyzeThumbnail(buffer, { url: sourceUrl });
     const rgb = await decoded.clone().resize(320, 240, { fit: 'fill' }).raw().toBuffer();
     const plane = 320 * 240;
     const input = new Float32Array(plane * 3);

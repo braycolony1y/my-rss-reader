@@ -1,3 +1,4 @@
+import { verifyArticleCardStyleOwnership } from './helpers/article-card-style-contract.js';
 import { readReaderClientSource, readReaderHtml } from './helpers/reader-source.js';
 import { readServerSource } from './helpers/server-source.js';
 import test from 'node:test';
@@ -145,12 +146,8 @@ test('deleted-source warning is a dedicated subdued liquid-glass alert', () => {
     assert.doesNotMatch(server, /VOZ_DELETED_WARNING_BANNER|class="voz-warning"/);
 });
 
-test('article cards retain the original seamless image mask without an overlay seam', () => {
-    assert.match(html, /\.theme-glass-light \.article-card \{[\s\S]*transform: translateY\(-3px\) scale\(1\.005\);/);
-    assert.match(html, /\.article-card img\.thumbnail-img \{[\s\S]*-webkit-mask-image: linear-gradient\(to right,[\s\S]*transparent 0%,[\s\S]*rgba\(0, 0, 0, 1\) 35%\) !important;/);
-    assert.doesNotMatch(html, /article-card-media/);
-    assert.doesNotMatch(html, /\.article-card-media::after/);
-    assert.match(script, /url\.startsWith\('\/api\/og-image'\)[\s\S]*versioned\.searchParams\.set\('v', '32'\)/);
+test('article cards keep legacy styling isolated from the light Top Story module', () => {
+    verifyArticleCardStyleOwnership(html, script);
 });
 
 test('light article sections share one neutral parent surface between cards', () => {

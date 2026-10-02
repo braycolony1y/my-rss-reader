@@ -1,0 +1,89 @@
+        .theme-glass {
+            background: linear-gradient(135deg, #1f1f1f 0%, #0a0a0a 50%, #141414 100%) !important;
+            background-attachment: fixed !important;
+        }
+
+        /* Target all dark background variations for dark glass mode */
+        .theme-glass [class*="bg-[#111827]"],
+        .theme-glass [class*="bg-[#0B101E]"],
+        .theme-glass [class*="bg-[#121212]"],
+        .theme-glass [class*="bg-[#1e1e1e]"],
+        .theme-glass [class*="bg-[#1A2230]"],
+        .theme-glass [class*="bg-gray-800"] {
+            background: rgba(17, 24, 39, 0.4) !important;
+            backdrop-filter: blur(40px) saturate(200%);
+            -webkit-backdrop-filter: blur(40px) saturate(200%);
+            border: 1px solid rgba(255, 255, 255, 0.08) !important;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.05) !important;
+        }
+
+        .theme-glass .bg-\[\#2a2a2a\] {
+            background-color: rgba(255, 255, 255, 0.1) !important;
+            backdrop-filter: blur(8px) !important;
+        }
+
+        .theme-glass .border-t-\[\#333\] {
+            border-top-color: rgba(255, 255, 255, 0.1) !important;
+        }
+
+        /* Make the main container completely transparent so the body gradient shows through */
+        .theme-glass [class*="bg-[#0A0F1A]"] {
+            background: transparent !important;
+            backdrop-filter: none !important;
+            border: none !important;
+            box-shadow: none !important;
+        }
+
+        .theme-glass .text-\[\#d4d4d4\] {
+            color: #f3f4f6 !important;
+        }
+
+        .theme-glass .embedded-suggested-card {
+            background: rgba(17, 24, 39, 0.4) !important;
+            backdrop-filter: blur(40px) saturate(200%) !important;
+            -webkit-backdrop-filter: blur(40px) saturate(200%) !important;
+            border: 1px solid rgba(255, 255, 255, 0.08) !important;
+        }
+
+        .theme-glass .article-overlay-panel {
+            background: rgba(11, 16, 30, 0.75) !important;
+            backdrop-filter: blur(20px) !important;
+            -webkit-backdrop-filter: blur(20px) !important;
+        }
+
+        .theme-glass .article-overlay-backdrop {
+            background: rgba(11, 16, 30, 0.6) !important;
+            backdrop-filter: blur(12px) !important;
+            -webkit-backdrop-filter: blur(12px) !important;
+        }
+
+        .theme-glass .embedded-suggested-card {
+            background: rgba(17, 24, 39, 0.4) !important;
+            backdrop-filter: blur(40px) saturate(200%) !important;
+            -webkit-backdrop-filter: blur(40px) saturate(200%) !important;
+            border: 1px solid rgba(255, 255, 255, 0.08) !important;
+        }
+
+        .theme-glass .article-overlay-panel {
+            background: rgba(11, 16, 30, 0.75) !important;
+        }
+
+        .theme-glass .article-overlay-backdrop {
+            background: rgba(11, 16, 30, 0.6) !important;
+            backdrop-filter: blur(12px) !important;
+            -webkit-backdrop-filter: blur(12px) !important;
+        }
+
+        .theme-glass-light {
+            /* Common Liquid Glass variables */
+            --apple-blur: blur(24px);
+            --apple-saturate: saturate(190%);
+            background:
+                radial-gradient(circle at 10% 20%, rgba(94, 234, 212, 0.4), transparent 50%),
+                radial-gradient(circle at 90% 80%, rgba(125, 211, 252, 0.4), transparent 50%),
+                radial-gradient(circle at 50% 50%, rgba(148, 163, 184, 0.3), transparent 50%),
+                linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%) !important;
+            background-attachment: fixed !important;
+            color: #1d1d1f !important;
+        }
+

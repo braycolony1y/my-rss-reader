@@ -1,6 +1,7 @@
 import { readReaderClientSource, readReaderHtml } from './helpers/reader-source.js';
 import { readServerSource } from './helpers/server-source.js';
 import test from 'node:test';
+import { readSmartSource } from './helpers/smart-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
@@ -59,7 +60,7 @@ test('Smart News restores compact cards immediately and revalidates without blan
 });
 
 test('background user-state sync does not remove or reorder visible cards', () => {
-    const syncMethod = script.match(/async syncUserStatesInBackground\(\) \{([\s\S]*?)\n\s*\},\n\n\s*async syncNow/);
+    const syncMethod = script.match(/async syncUserStatesInBackground\(\) \{([\s\S]*?)\n {16}\},/);
     assert.ok(syncMethod);
     assert.doesNotMatch(syncMethod[1], /this\.articles\s*=\s*this\.articles\.filter/);
 });
@@ -72,7 +73,7 @@ test('article image shadows can feather beyond content while the overlay contain
 
 test('Smart News API bypasses the regular article database path', () => {
     const server = readServerSource();
-    const smartNews = readFileSync(new URL('../smart-news.js', import.meta.url), 'utf8');
+    const smartNews = readSmartSource();
     assert.match(server, /if \(filterType === 'smart'\) return await serveSmartData\(req, res\);/);
     assert.match(server, /get\('smartClusters', \{ type: 'json', shared: true \}\)/);
     assert.match(server, /timings\["smart-data"\][\s\S]{0,150}"Server-Timing"/);

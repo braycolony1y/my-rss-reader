@@ -8,6 +8,7 @@ export function updateBlendGeometry(card) {
     if(!viewport)return;
     const height=viewport.getBoundingClientRect().height;
     const header=card.querySelector('.article-card-header');
+    if(!header)return;
     const mobile=card.getBoundingClientRect().width<640;
     const full=[...card.querySelectorAll('.article-card-panel,.story-key-facts')].some(el=>el.getBoundingClientRect().height>1 && el.getBoundingClientRect().top>=header.getBoundingClientRect().bottom-1);
     const k=Number(card.style.getPropertyValue('--blend-k'))||0;

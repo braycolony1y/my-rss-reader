@@ -1,0 +1,5856 @@
+{
+  "exports": [
+    "EMBEDDING_CACHE_FILE",
+    "MatchDecision",
+    "attachBroaderStoryMetadata",
+    "buildCluster",
+    "buildComponentReviewUnits",
+    "buildEarlySmartClusters",
+    "buildEmbeddingText",
+    "buildPublicationClusterSnapshot",
+    "calculateHotness",
+    "canonicalSourceIdentity",
+    "classifyE5Match",
+    "cleanStoredCluster",
+    "clearEmbeddingCache",
+    "createSmartNewsEngine",
+    "dedupeGoogleNewsWrappers",
+    "detectEventConflicts",
+    "deterministicGroups",
+    "disposeEmbeddingModel",
+    "embeddingCacheKey",
+    "expandComponentReviewDecision",
+    "exportEmbeddingCache",
+    "getArticleId",
+    "getCachedVerificationDecision",
+    "getHotnessLabel",
+    "getSmartDestinationPartition",
+    "importEmbeddingCache",
+    "integrateIncrementalReviews",
+    "isAiRecoveryReviewCandidate",
+    "isExcludedFromSmart",
+    "isGenuinelyRelated",
+    "isPairWithinComparisonScope",
+    "loadEmbeddings",
+    "normalizeAntigravityClusteringOutput",
+    "normalizeArticle",
+    "prepareEmbeddings",
+    "prepareIncrementalReviewGroups",
+    "refineArticleCategory",
+    "runIncrementalHnswClustering",
+    "saveEmbeddings",
+    "scheduleMonthlySourceEvaluation",
+    "setCachedVerificationDecision",
+    "setClusteringModel",
+    "sourceFetchPolicyIdentity",
+    "stableId",
+    "startSmartSyncLoop",
+    "tokenOverlapCount",
+    "tokenSimilarity",
+    "updateBatchStopTokens",
+    "validateComponentReviewResult",
+    "validatePartitionResult",
+    "verificationCacheKey",
+    "verifyWithProviderChain"
+  ],
+  "articles": [
+    {
+      "articleKey": "https://vnexpress.net/metro-1",
+      "contentHash": "1493be58c1c3c4f96d5d265abd34fa0582524a00e26d9bc184841d3b287fd9b0",
+      "title": "Hà Nội khai trương tuyến tàu điện mới",
+      "link": "https://vnexpress.net/metro-1",
+      "pubDate": "2026-10-02T09:00:00.000+07:00",
+      "publicationTimeReliable": true,
+      "content": "Hà Nội chính thức khai trương tuyến tàu điện Cát Linh vào sáng nay.",
+      "image": "",
+      "feedTitle": "vnexpress.net",
+      "feedIcon": "https://www.google.com/s2/favicons?domain=vnexpress.net&sz=64",
+      "feedUrl": "https://vnexpress.net/rss.xml",
+      "feedCategory": "news_vietnam",
+      "smartCategory": "news_vietnam",
+      "language": "vi",
+      "region": "vietnam",
+      "domain": "vnexpress.net",
+      "sourceWeight": 1,
+      "hiddenSmartSource": false,
+      "_status": "NEW",
+      "_vec": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "_hnswId": 0
+    },
+    {
+      "articleKey": "https://tuoitre.vn/metro-2",
+      "contentHash": "d28842ce59cf4f23a035bf83ffdb6723f660311d653051d1372226265b2e84cd",
+      "title": "Hà Nội khai trương tuyến tàu điện mới",
+      "link": "https://tuoitre.vn/metro-2",
+      "pubDate": "2026-10-02T09:05:00.000+07:00",
+      "publicationTimeReliable": true,
+      "content": "Hà Nội chính thức khai trương tuyến tàu điện Cát Linh vào sáng nay.",
+      "image": "",
+      "feedTitle": "tuoitre.vn",
+      "feedIcon": "https://statictuoitre.mediacdn.vn/web_images/favicon.ico",
+      "feedUrl": "https://tuoitre.vn/rss.xml",
+      "feedCategory": "news_vietnam",
+      "smartCategory": "news_vietnam",
+      "language": "vi",
+      "region": "vietnam",
+      "domain": "tuoitre.vn",
+      "sourceWeight": 1,
+      "hiddenSmartSource": false,
+      "_status": "NEW",
+      "_vec": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "_hnswId": 1
+    },
+    {
+      "articleKey": "https://bbc.co.uk/world/deal",
+      "contentHash": "66ab0b76de593820f58e2a304b32a97fe3992b8795a9fca76258be1fb8b2f2c6",
+      "title": "Atlas announces acquisition of Nova for $5 billion",
+      "link": "https://bbc.co.uk/world/deal",
+      "pubDate": "2026-10-02T08:00:00.000+07:00",
+      "publicationTimeReliable": true,
+      "content": "Atlas signed an agreement to acquire Nova on Friday.",
+      "image": "",
+      "feedTitle": "bbc.co.uk",
+      "feedIcon": "https://www.google.com/s2/favicons?domain=bbc.co.uk&sz=64",
+      "feedUrl": "https://bbc.co.uk/rss.xml",
+      "feedCategory": "news_global",
+      "smartCategory": "news_global",
+      "language": "en",
+      "region": "foreign",
+      "domain": "bbc.co.uk",
+      "sourceWeight": 1,
+      "hiddenSmartSource": false,
+      "_status": "NEW",
+      "_vec": [
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "_hnswId": 2
+    },
+    {
+      "articleKey": "https://reuters.com/world/deal",
+      "contentHash": "4bd72d52f10d8612328fcb560ae4cbc3f75cf65e2e7ea28b856e7d0e21aa5b50",
+      "title": "Atlas announces acquisition of Nova for $5 billion",
+      "link": "https://reuters.com/world/deal",
+      "pubDate": "2026-10-02T08:10:00.000+07:00",
+      "publicationTimeReliable": true,
+      "content": "Atlas signed an agreement to acquire Nova on Friday.",
+      "image": "",
+      "feedTitle": "reuters.com",
+      "feedIcon": "https://www.google.com/s2/favicons?domain=reuters.com&sz=64",
+      "feedUrl": "https://reuters.com/rss.xml",
+      "feedCategory": "news_global",
+      "smartCategory": "news_global",
+      "language": "en",
+      "region": "foreign",
+      "domain": "reuters.com",
+      "sourceWeight": 1,
+      "hiddenSmartSource": false,
+      "_status": "NEW",
+      "_vec": [
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "_hnswId": 3
+    },
+    {
+      "articleKey": "https://apnews.com/deal-review",
+      "contentHash": "a3e19309fa87c2210bb1088bd71dd20d79b7c47fc673e76aebdcdb94027c4fc6",
+      "title": "Regulator opens antitrust review of Atlas Nova acquisition",
+      "link": "https://apnews.com/deal-review",
+      "pubDate": "2026-10-02T10:00:00.000+07:00",
+      "publicationTimeReliable": true,
+      "content": "The regulator launched a separate antitrust investigation into the Atlas Nova agreement.",
+      "image": "",
+      "feedTitle": "apnews.com",
+      "feedIcon": "https://www.google.com/s2/favicons?domain=apnews.com&sz=64",
+      "feedUrl": "https://apnews.com/rss.xml",
+      "feedCategory": "news_global",
+      "smartCategory": "news_global",
+      "language": "en",
+      "region": "foreign",
+      "domain": "apnews.com",
+      "sourceWeight": 1,
+      "hiddenSmartSource": false,
+      "_status": "NEW",
+      "_vec": [
+        0,
+        0.8999999761581421,
+        0.4358898997306824,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "_hnswId": 4
+    },
+    {
+      "articleKey": "https://cafef.vn/rate",
+      "contentHash": "bc233ae2c9c72693791b4fe71ebd941a1b5509a0abd10ecc941d1cbf91df00e3",
+      "title": "Ngân hàng Nhà nước giảm lãi suất điều hành",
+      "link": "https://cafef.vn/rate",
+      "pubDate": "2026-10-02T10:30:00.000+07:00",
+      "publicationTimeReliable": true,
+      "content": "Ngân hàng Nhà nước Việt Nam công bố giảm lãi suất điều hành để hỗ trợ nền kinh tế.",
+      "image": "",
+      "feedTitle": "cafef.vn",
+      "feedIcon": "https://www.google.com/s2/favicons?domain=cafef.vn&sz=64",
+      "feedUrl": "https://cafef.vn/rss.xml",
+      "feedCategory": "finance_vietnam",
+      "smartCategory": "finance_vietnam",
+      "language": "vi",
+      "region": "vietnam",
+      "domain": "cafef.vn",
+      "sourceWeight": 1,
+      "hiddenSmartSource": false,
+      "_status": "NEW",
+      "_vec": [
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0
+      ],
+      "_hnswId": 5
+    },
+    {
+      "articleKey": "https://ft.com/markets/rate",
+      "contentHash": "a3eaa7089718214dbab2b8ad80edbddedfc70e7d2870f2dcc41ba7f41557cfbd",
+      "title": "Federal Reserve announces emergency interest rate cut",
+      "link": "https://ft.com/markets/rate",
+      "pubDate": "2026-10-02T11:00:00.000+07:00",
+      "publicationTimeReliable": true,
+      "content": "The US central bank announced a new emergency rate cut on Friday.",
+      "image": "",
+      "feedTitle": "ft.com",
+      "feedIcon": "https://www.google.com/s2/favicons?domain=ft.com&sz=64",
+      "feedUrl": "https://ft.com/rss.xml",
+      "feedCategory": "finance_global",
+      "smartCategory": "finance_global",
+      "language": "en",
+      "region": "foreign",
+      "domain": "ft.com",
+      "sourceWeight": 1,
+      "hiddenSmartSource": false,
+      "_status": "NEW",
+      "_vec": [
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0
+      ],
+      "_hnswId": 6
+    },
+    {
+      "articleKey": "https://vneconomy.vn/rate-us",
+      "contentHash": "b6ee0ca923025a2fc297dbab2c9a4f9c7979cad2ca7a4f0b8f4da0614b43c3ba",
+      "title": "Cục Dự trữ Liên bang Mỹ công bố giảm lãi suất khẩn cấp",
+      "link": "https://vneconomy.vn/rate-us",
+      "pubDate": "2026-10-02T11:10:00.000+07:00",
+      "publicationTimeReliable": true,
+      "content": "Ngân hàng trung ương Mỹ công bố quyết định giảm lãi suất mới vào thứ Sáu.",
+      "image": "",
+      "feedTitle": "vneconomy.vn",
+      "feedIcon": "https://www.google.com/s2/favicons?domain=vneconomy.vn&sz=64",
+      "feedUrl": "https://vneconomy.vn/rss.xml",
+      "feedCategory": "finance_global",
+      "smartCategory": "finance_vietnam",
+      "language": "vi",
+      "region": "vietnam",
+      "domain": "vneconomy.vn",
+      "sourceWeight": 1,
+      "hiddenSmartSource": false,
+      "_status": "NEW",
+      "_vec": [
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0
+      ],
+      "_hnswId": 7
+    },
+    {
+      "articleKey": "https://tinhte.vn/ai",
+      "contentHash": "f9548774a46ed663fda91db49e6e81ee536c8f1c2ffd2a2f50aaf8f9e1bd41c0",
+      "title": "Việt Nam ra mắt chip trí tuệ nhân tạo mới",
+      "link": "https://tinhte.vn/ai",
+      "pubDate": "2026-10-02T12:00:00.000+07:00",
+      "publicationTimeReliable": true,
+      "content": "Các kỹ sư tại Việt Nam ra mắt chip AI dành cho máy chủ và phần mềm.",
+      "image": "",
+      "feedTitle": "tinhte.vn",
+      "feedIcon": "https://www.google.com/s2/favicons?domain=tinhte.vn&sz=64",
+      "feedUrl": "https://tinhte.vn/rss.xml",
+      "feedCategory": "tech",
+      "smartCategory": "tech",
+      "language": "vi",
+      "region": "",
+      "domain": "tinhte.vn",
+      "sourceWeight": 1,
+      "hiddenSmartSource": false,
+      "_status": "NEW",
+      "_vec": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0
+      ],
+      "_hnswId": 8
+    },
+    {
+      "articleKey": "https://techradar.com/chip",
+      "contentHash": "b780443d4c28864254ddd65dd9f67145b03f024e6bff647a2b7ef55dbbdfe57f",
+      "title": "Acme launches new artificial intelligence chip",
+      "link": "https://techradar.com/chip",
+      "pubDate": "2026-10-02T12:10:00.000+07:00",
+      "publicationTimeReliable": true,
+      "content": "Acme unveiled its new AI processor for data centers and software developers.",
+      "image": "",
+      "feedTitle": "techradar.com",
+      "feedIcon": "https://www.google.com/s2/favicons?domain=techradar.com&sz=64",
+      "feedUrl": "https://techradar.com/rss.xml",
+      "feedCategory": "tech",
+      "smartCategory": "tech",
+      "language": "en",
+      "region": "",
+      "domain": "techradar.com",
+      "sourceWeight": 1,
+      "hiddenSmartSource": false,
+      "_status": "NEW",
+      "_vec": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0
+      ],
+      "_hnswId": 9
+    },
+    {
+      "articleKey": "https://theverge.com/chip-rumor",
+      "contentHash": "2fe05cc01d5180ba23a9a051255649eca499e0fedc95231082a46f0eff6cfb11",
+      "title": "Acme AI chip launch raises questions about shipment date",
+      "link": "https://theverge.com/chip-rumor",
+      "pubDate": "2026-10-02T13:00:00.000+07:00",
+      "publicationTimeReliable": true,
+      "content": "Analysts discussed potential future shipments of Acme processors after the launch.",
+      "image": "",
+      "feedTitle": "theverge.com",
+      "feedIcon": "https://www.google.com/s2/favicons?domain=theverge.com&sz=64",
+      "feedUrl": "https://theverge.com/rss.xml",
+      "feedCategory": "tech",
+      "smartCategory": "tech",
+      "language": "en",
+      "region": "",
+      "domain": "theverge.com",
+      "sourceWeight": 1,
+      "hiddenSmartSource": false,
+      "_status": "NEW",
+      "_vec": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.8999999761581421,
+        0.4358898997306824
+      ],
+      "_hnswId": 10
+    },
+    {
+      "articleKey": "https://bbc.co.uk/world/ambiguous",
+      "contentHash": "72156e2a084ed12bf5082834adb11d6f704e32f3ded6a097eec57ce0ca3f44bc",
+      "title": "Atlas Nova merger agreement faces shareholder questions",
+      "link": "https://bbc.co.uk/world/ambiguous",
+      "pubDate": "2026-10-02T12:30:00.000+07:00",
+      "publicationTimeReliable": true,
+      "content": "Shareholders discussed the acquisition agreement but no vote was announced.",
+      "image": "",
+      "feedTitle": "bbc.co.uk",
+      "feedIcon": "https://www.google.com/s2/favicons?domain=bbc.co.uk&sz=64",
+      "feedUrl": "https://bbc.co.uk/rss.xml",
+      "feedCategory": "news_global",
+      "smartCategory": "news_global",
+      "language": "en",
+      "region": "foreign",
+      "domain": "bbc.co.uk",
+      "sourceWeight": 1,
+      "hiddenSmartSource": false,
+      "_status": "NEW",
+      "_vec": [
+        0,
+        0.8899999856948853,
+        0.4559605121612549,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "_hnswId": 11
+    },
+    {
+      "articleKey": "https://vnexpress.net/crime",
+      "contentHash": "126ee925ed942cd2c11b89b09004092a8409f6a561557458cbb5b76c67038c91",
+      "title": "Công an bắt nhóm lừa đảo qua mạng chiếm đoạt tài sản",
+      "link": "https://vnexpress.net/crime",
+      "pubDate": "2026-10-02T10:30:00.000+07:00",
+      "publicationTimeReliable": true,
+      "content": "Công an Việt Nam điều tra đường dây tội phạm lừa đảo qua mạng.",
+      "image": "",
+      "feedTitle": "vnexpress.net",
+      "feedIcon": "https://www.google.com/s2/favicons?domain=vnexpress.net&sz=64",
+      "feedUrl": "https://vnexpress.net/rss.xml",
+      "feedCategory": "tech",
+      "smartCategory": "news_vietnam",
+      "language": "vi",
+      "region": "vietnam",
+      "domain": "vnexpress.net",
+      "sourceWeight": 1,
+      "hiddenSmartSource": false,
+      "_status": "NEW",
+      "_vec": [
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "_hnswId": 12
+    },
+    {
+      "articleKey": "https://example.test/unknown-date",
+      "contentHash": "e287ac1e0e1a3e1266d6f22eeb967e4bcaf98a23313f11674d44614fc899582d",
+      "title": "An undated article remains isolated",
+      "link": "https://example.test/unknown-date",
+      "pubDate": "2026-09-29T03:00:00.000+07:00",
+      "rawPubDate": "not-a-date",
+      "publicationTimeReliable": false,
+      "content": "No reliable publication date is available.",
+      "image": "",
+      "feedTitle": "example.test",
+      "feedIcon": "https://www.google.com/s2/favicons?domain=example.test&sz=64",
+      "feedUrl": "https://example.test/rss.xml",
+      "feedCategory": "news_global",
+      "smartCategory": "news_global",
+      "language": "en",
+      "region": "foreign",
+      "domain": "example.test",
+      "sourceWeight": 1,
+      "hiddenSmartSource": false,
+      "_status": "NEW",
+      "_vec": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "_hnswId": 13
+    }
+  ],
+  "identity": [
+    {
+      "articleId": "a_mj5883",
+      "embeddingText": "query: Hà Nội khai trương tuyến tàu điện mới. Hà Nội chính thức khai trương tuyến tàu điện Cát Linh vào sáng nay.",
+      "embeddingKey": "054d02100941f7c443e6aa6ec9490401d3ba43dcf9714d9d1bfe938bb1ca7b5b",
+      "verificationKey": "5980bce66ea88862baf3b645750111ecb841a753fa77e211f028daa53925b3a4",
+      "partition": "news_vietnam"
+    },
+    {
+      "articleId": "a_1tqric1",
+      "embeddingText": "query: Hà Nội khai trương tuyến tàu điện mới. Hà Nội chính thức khai trương tuyến tàu điện Cát Linh vào sáng nay.",
+      "embeddingKey": "054d02100941f7c443e6aa6ec9490401d3ba43dcf9714d9d1bfe938bb1ca7b5b",
+      "verificationKey": "c89b5e9e14ee884eb1b93631a08303604af954cbc1bff960749e6ef5ad197aff",
+      "partition": "news_vietnam"
+    },
+    {
+      "articleId": "a_15htl51",
+      "embeddingText": "query: Atlas announces acquisition of Nova for $5 billion. Atlas signed an agreement to acquire Nova on Friday.",
+      "embeddingKey": "d76524a4cb0616a8e57837d4793e07995c47785a3f8f60dd3a8d48c0afed01b2",
+      "verificationKey": "c936d150c5e90593b111cec892a0b444a74a5435d32d84cd0c671dbfc8282620",
+      "partition": "news_global"
+    },
+    {
+      "articleId": "a_132pafx",
+      "embeddingText": "query: Atlas announces acquisition of Nova for $5 billion. Atlas signed an agreement to acquire Nova on Friday.",
+      "embeddingKey": "d76524a4cb0616a8e57837d4793e07995c47785a3f8f60dd3a8d48c0afed01b2",
+      "verificationKey": "19b7a28a7f3f3278b972aadb31d38ee1c0eea7f2ab1e6cc304f250ab00eeb841",
+      "partition": "news_global"
+    },
+    {
+      "articleId": "a_sf2a91",
+      "embeddingText": "query: Regulator opens antitrust review of Atlas Nova acquisition. The regulator launched a separate antitrust investigation into the Atlas Nova agreement.",
+      "embeddingKey": "10d7d9d3b4afd0c162d79eeb82897a3d471dd68741ddf806174b89976fa972cf",
+      "verificationKey": "7da627ff75274736d2d9ff49f70a21a52e9032c5a7847f872e76f3a8c17e6c38",
+      "partition": "news_global"
+    },
+    {
+      "articleId": "a_szpr5q",
+      "embeddingText": "query: Ngân hàng Nhà nước giảm lãi suất điều hành. Ngân hàng Nhà nước Việt Nam công bố giảm lãi suất điều hành để hỗ trợ nền kinh tế.",
+      "embeddingKey": "02f64d1518694a9b7e3991bc14836234774620290a9bbc19aca4d4466c3ba32f",
+      "verificationKey": "041b03bd6036ad33e3877fcbaac1131fb115586a183c3aa922af3f88d92cedbc",
+      "partition": "finance_vietnam"
+    },
+    {
+      "articleId": "a_1xpf2g8",
+      "embeddingText": "query: Federal Reserve announces emergency interest rate cut. The US central bank announced a new emergency rate cut on Friday.",
+      "embeddingKey": "2860a08bd8bb07604064558f1adc9575ac75b4f517b45f67df012a0f63988f0c",
+      "verificationKey": "125227b7d75c17bd611370a49ff48d9033235b595779dfbc8b9a236b5c621f47",
+      "partition": "finance_global"
+    },
+    {
+      "articleId": "a_ocod9m",
+      "embeddingText": "query: Cục Dự trữ Liên bang Mỹ công bố giảm lãi suất khẩn cấp. Ngân hàng trung ương Mỹ công bố quyết định giảm lãi suất mới vào thứ Sáu.",
+      "embeddingKey": "5454bcd2bfc8863fbbfdb812f683e526ea193dbe4dfc473a50ff8d9d63e145b6",
+      "verificationKey": "fcb9d6c40e032458232f4fd144b8758b7889cbf16d483a6aaee72e5896fc7376",
+      "partition": "finance_vietnam"
+    },
+    {
+      "articleId": "a_1r01np",
+      "embeddingText": "query: Việt Nam ra mắt chip trí tuệ nhân tạo mới. Các kỹ sư tại Việt Nam ra mắt chip AI dành cho máy chủ và phần mềm.",
+      "embeddingKey": "2c546d7373ac1effccb8600b2023771a6567fb098dbfc8576c0c37830335752f",
+      "verificationKey": "fe56b01511351dfd6f2d0982baf4c640eb5b302736008f4c36f84ac0caf96086",
+      "partition": "tech_vietnam"
+    },
+    {
+      "articleId": "a_1hnx0xk",
+      "embeddingText": "query: Acme launches new artificial intelligence chip. Acme unveiled its new AI processor for data centers and software developers.",
+      "embeddingKey": "3202f1b7ee7ed442e447b9daf7f7fb7da631afc22267402c999d43ff04f7ae7e",
+      "verificationKey": "72b8b6c0c32473194359c3f99a1400aa130a647bd081e38491710babfd53ecec",
+      "partition": "tech_global"
+    },
+    {
+      "articleId": "a_1qll8vg",
+      "embeddingText": "query: Acme AI chip launch raises questions about shipment date. Analysts discussed potential future shipments of Acme processors after the launch.",
+      "embeddingKey": "d545cb5a230ddd829853de9e5b202d3b2a2aa977b514bd2fd5cf3058df47ab79",
+      "verificationKey": "b2135599f0667c56baffe8e9b9f898d5e2a68528dc594d0ccb69c9da96a96a5c",
+      "partition": "tech_global"
+    },
+    {
+      "articleId": "a_4mepop",
+      "embeddingText": "query: Atlas Nova merger agreement faces shareholder questions. Shareholders discussed the acquisition agreement but no vote was announced.",
+      "embeddingKey": "c2410f053a9a1e09e9615acaff026542477c07ed380f0b562289282d92b2d38a",
+      "verificationKey": "9f905f382a03999314bc478e90cbab54bcff41eb04c880c3cf6423c946c262e1",
+      "partition": "news_global"
+    },
+    {
+      "articleId": "a_1v6ft1u",
+      "embeddingText": "query: Công an bắt nhóm lừa đảo qua mạng chiếm đoạt tài sản. Công an Việt Nam điều tra đường dây tội phạm lừa đảo qua mạng.",
+      "embeddingKey": "af8a7cbfca8b1bda1aa78cc03ed3d4179a20a53902bc360e04798ccc19ea7e6e",
+      "verificationKey": "2b402469b16b040cf693575cc18edc0e52dff32f6340bcb8602f66fcb18a0ce6",
+      "partition": "news_vietnam"
+    },
+    {
+      "articleId": "a_btnx62",
+      "embeddingText": "query: An undated article remains isolated. No reliable publication date is available.",
+      "embeddingKey": "b90a5311516e0743c696dabae0a6e70b2f87438906edcede73f7133e2d7c4e4b",
+      "verificationKey": "f0222474eac3f729062c8f8585248f64bd7ac28f14f6492df3cd23f3a8ddac6d",
+      "partition": "news_global"
+    }
+  ],
+  "pairDecisions": [
+    {
+      "i": 0,
+      "j": 1,
+      "scope": true,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "auto_merge",
+        "conflicts": {
+          "hasHardConflict": false,
+          "hasSoftConflict": false,
+          "reasons": []
+        },
+        "evidence": {
+          "score": 5,
+          "crossLanguage": false,
+          "titleOverlap": 5,
+          "titleSimilarity": 1,
+          "sharedNumbers": 0,
+          "sharedActions": 0
+        }
+      },
+      "recovery": true,
+      "tokenSimilarity": 1,
+      "tokenOverlap": 5
+    },
+    {
+      "i": 0,
+      "j": 2,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": {
+          "reason": "cross_language_partition_barrier"
+        }
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 0,
+      "j": 3,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": {
+          "reason": "cross_language_partition_barrier"
+        }
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 0,
+      "j": 4,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": {
+          "reason": "cross_language_partition_barrier"
+        }
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 0,
+      "j": 5,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": null
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 0,
+      "j": 6,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": {
+          "reason": "cross_language_partition_barrier"
+        }
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 0,
+      "j": 7,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": null
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 0,
+      "j": 8,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": null
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 0,
+      "j": 9,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": {
+          "reason": "cross_language_partition_barrier"
+        }
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 0,
+      "j": 10,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": {
+          "reason": "cross_language_partition_barrier"
+        }
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 0,
+      "j": 11,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": {
+          "reason": "cross_language_partition_barrier"
+        }
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 0,
+      "j": 12,
+      "scope": true,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": null
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 0,
+      "j": 13,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": true,
+        "hasSoftConflict": false,
+        "reasons": [
+          "Publication times are more than 72 hours apart"
+        ]
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": {
+          "reason": "cross_language_partition_barrier"
+        }
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 1,
+      "j": 2,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": {
+          "reason": "cross_language_partition_barrier"
+        }
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 1,
+      "j": 3,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": {
+          "reason": "cross_language_partition_barrier"
+        }
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 1,
+      "j": 4,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": {
+          "reason": "cross_language_partition_barrier"
+        }
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 1,
+      "j": 5,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": null
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 1,
+      "j": 6,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": {
+          "reason": "cross_language_partition_barrier"
+        }
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 1,
+      "j": 7,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": null
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 1,
+      "j": 8,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": null
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 1,
+      "j": 9,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": {
+          "reason": "cross_language_partition_barrier"
+        }
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 1,
+      "j": 10,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": {
+          "reason": "cross_language_partition_barrier"
+        }
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 1,
+      "j": 11,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": {
+          "reason": "cross_language_partition_barrier"
+        }
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 1,
+      "j": 12,
+      "scope": true,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": null
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 1,
+      "j": 13,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": true,
+        "hasSoftConflict": false,
+        "reasons": [
+          "Publication times are more than 72 hours apart"
+        ]
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": {
+          "reason": "cross_language_partition_barrier"
+        }
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 2,
+      "j": 3,
+      "scope": true,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "auto_merge",
+        "conflicts": {
+          "hasHardConflict": false,
+          "hasSoftConflict": false,
+          "reasons": []
+        },
+        "evidence": {
+          "score": 6,
+          "crossLanguage": false,
+          "titleOverlap": 3,
+          "titleSimilarity": 1,
+          "sharedNumbers": 1,
+          "sharedActions": 1
+        }
+      },
+      "recovery": true,
+      "tokenSimilarity": 1,
+      "tokenOverlap": 3
+    },
+    {
+      "i": 2,
+      "j": 4,
+      "scope": true,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "review",
+        "conflicts": {
+          "hasHardConflict": false,
+          "hasSoftConflict": false,
+          "reasons": []
+        },
+        "evidence": {
+          "score": 5,
+          "crossLanguage": false,
+          "titleOverlap": 3,
+          "titleSimilarity": 0.82,
+          "sharedNumbers": 0,
+          "sharedActions": 1
+        }
+      },
+      "recovery": true,
+      "tokenSimilarity": 0.82,
+      "tokenOverlap": 3
+    },
+    {
+      "i": 2,
+      "j": 5,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": {
+          "reason": "cross_language_partition_barrier"
+        }
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 2,
+      "j": 6,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": null
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 2,
+      "j": 7,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": {
+          "reason": "cross_language_partition_barrier"
+        }
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 2,
+      "j": 8,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": {
+          "reason": "cross_language_partition_barrier"
+        }
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 2,
+      "j": 9,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": null
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 2,
+      "j": 10,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": null
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 2,
+      "j": 11,
+      "scope": true,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "review",
+        "conflicts": {
+          "hasHardConflict": false,
+          "hasSoftConflict": false,
+          "reasons": []
+        },
+        "evidence": {
+          "score": 4,
+          "crossLanguage": false,
+          "titleOverlap": 2,
+          "titleSimilarity": 0.5466666666666666,
+          "sharedNumbers": 0,
+          "sharedActions": 1
+        }
+      },
+      "recovery": true,
+      "tokenSimilarity": 0.5466666666666666,
+      "tokenOverlap": 2
+    },
+    {
+      "i": 2,
+      "j": 12,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": {
+          "reason": "cross_language_partition_barrier"
+        }
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 2,
+      "j": 13,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": true,
+        "hasSoftConflict": false,
+        "reasons": [
+          "Publication times are more than 72 hours apart"
+        ]
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": null
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 3,
+      "j": 4,
+      "scope": true,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "review",
+        "conflicts": {
+          "hasHardConflict": false,
+          "hasSoftConflict": false,
+          "reasons": []
+        },
+        "evidence": {
+          "score": 5,
+          "crossLanguage": false,
+          "titleOverlap": 3,
+          "titleSimilarity": 0.82,
+          "sharedNumbers": 0,
+          "sharedActions": 1
+        }
+      },
+      "recovery": true,
+      "tokenSimilarity": 0.82,
+      "tokenOverlap": 3
+    },
+    {
+      "i": 3,
+      "j": 5,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": {
+          "reason": "cross_language_partition_barrier"
+        }
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 3,
+      "j": 6,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": null
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 3,
+      "j": 7,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": {
+          "reason": "cross_language_partition_barrier"
+        }
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 3,
+      "j": 8,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": {
+          "reason": "cross_language_partition_barrier"
+        }
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 3,
+      "j": 9,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": null
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 3,
+      "j": 10,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": null
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 3,
+      "j": 11,
+      "scope": true,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "review",
+        "conflicts": {
+          "hasHardConflict": false,
+          "hasSoftConflict": false,
+          "reasons": []
+        },
+        "evidence": {
+          "score": 4,
+          "crossLanguage": false,
+          "titleOverlap": 2,
+          "titleSimilarity": 0.5466666666666666,
+          "sharedNumbers": 0,
+          "sharedActions": 1
+        }
+      },
+      "recovery": true,
+      "tokenSimilarity": 0.5466666666666666,
+      "tokenOverlap": 2
+    },
+    {
+      "i": 3,
+      "j": 12,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": {
+          "reason": "cross_language_partition_barrier"
+        }
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 3,
+      "j": 13,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": true,
+        "hasSoftConflict": false,
+        "reasons": [
+          "Publication times are more than 72 hours apart"
+        ]
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": null
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 4,
+      "j": 5,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": {
+          "reason": "cross_language_partition_barrier"
+        }
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 4,
+      "j": 6,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": null
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 4,
+      "j": 7,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": {
+          "reason": "cross_language_partition_barrier"
+        }
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 4,
+      "j": 8,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": {
+          "reason": "cross_language_partition_barrier"
+        }
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 4,
+      "j": 9,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": null
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 4,
+      "j": 10,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": null
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 4,
+      "j": 11,
+      "scope": true,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "auto_merge",
+        "conflicts": {
+          "hasHardConflict": false,
+          "hasSoftConflict": false,
+          "reasons": []
+        },
+        "evidence": {
+          "score": 2,
+          "crossLanguage": false,
+          "titleOverlap": 2,
+          "titleSimilarity": 0.23428571428571426,
+          "sharedNumbers": 0,
+          "sharedActions": 1
+        }
+      },
+      "recovery": true,
+      "tokenSimilarity": 0.23428571428571426,
+      "tokenOverlap": 2
+    },
+    {
+      "i": 4,
+      "j": 12,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": {
+          "reason": "cross_language_partition_barrier"
+        }
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 4,
+      "j": 13,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": true,
+        "hasSoftConflict": false,
+        "reasons": [
+          "Publication times are more than 72 hours apart"
+        ]
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": null
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 5,
+      "j": 6,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": {
+          "reason": "cross_language_partition_barrier"
+        }
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 5,
+      "j": 7,
+      "scope": true,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": null
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 5,
+      "j": 8,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": null
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 5,
+      "j": 9,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": {
+          "reason": "cross_language_partition_barrier"
+        }
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 5,
+      "j": 10,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": {
+          "reason": "cross_language_partition_barrier"
+        }
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 5,
+      "j": 11,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": {
+          "reason": "cross_language_partition_barrier"
+        }
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 5,
+      "j": 12,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": null
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 5,
+      "j": 13,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": true,
+        "hasSoftConflict": false,
+        "reasons": [
+          "Publication times are more than 72 hours apart"
+        ]
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": {
+          "reason": "cross_language_partition_barrier"
+        }
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 6,
+      "j": 7,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": {
+          "reason": "cross_language_partition_barrier"
+        }
+      },
+      "recovery": true,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 6,
+      "j": 8,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": {
+          "reason": "cross_language_partition_barrier"
+        }
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 6,
+      "j": 9,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": null
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 6,
+      "j": 10,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": null
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 6,
+      "j": 11,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": null
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 6,
+      "j": 12,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": {
+          "reason": "cross_language_partition_barrier"
+        }
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 6,
+      "j": 13,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": true,
+        "hasSoftConflict": false,
+        "reasons": [
+          "Publication times are more than 72 hours apart"
+        ]
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": null
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 7,
+      "j": 8,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": null
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 7,
+      "j": 9,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": {
+          "reason": "cross_language_partition_barrier"
+        }
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 7,
+      "j": 10,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": {
+          "reason": "cross_language_partition_barrier"
+        }
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 7,
+      "j": 11,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": {
+          "reason": "cross_language_partition_barrier"
+        }
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 7,
+      "j": 12,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": null
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 7,
+      "j": 13,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": true,
+        "hasSoftConflict": false,
+        "reasons": [
+          "Publication times are more than 72 hours apart"
+        ]
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": {
+          "reason": "cross_language_partition_barrier"
+        }
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 8,
+      "j": 9,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": {
+          "reason": "cross_language_partition_barrier"
+        }
+      },
+      "recovery": false,
+      "tokenSimilarity": 0.164,
+      "tokenOverlap": 1
+    },
+    {
+      "i": 8,
+      "j": 10,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": {
+          "reason": "cross_language_partition_barrier"
+        }
+      },
+      "recovery": false,
+      "tokenSimilarity": 0.164,
+      "tokenOverlap": 1
+    },
+    {
+      "i": 8,
+      "j": 11,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": {
+          "reason": "cross_language_partition_barrier"
+        }
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 8,
+      "j": 12,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": null
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 8,
+      "j": 13,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": true,
+        "hasSoftConflict": false,
+        "reasons": [
+          "Publication times are more than 72 hours apart"
+        ]
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": {
+          "reason": "cross_language_partition_barrier"
+        }
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 9,
+      "j": 10,
+      "scope": true,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": {
+          "hasHardConflict": false,
+          "hasSoftConflict": false,
+          "reasons": []
+        },
+        "evidence": {
+          "score": 2,
+          "crossLanguage": false,
+          "titleOverlap": 2,
+          "titleSimilarity": 0.328,
+          "sharedNumbers": 0,
+          "sharedActions": 0
+        }
+      },
+      "recovery": true,
+      "tokenSimilarity": 0.328,
+      "tokenOverlap": 2
+    },
+    {
+      "i": 9,
+      "j": 11,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": null
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 9,
+      "j": 12,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": {
+          "reason": "cross_language_partition_barrier"
+        }
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 9,
+      "j": 13,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": true,
+        "hasSoftConflict": false,
+        "reasons": [
+          "Publication times are more than 72 hours apart"
+        ]
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": null
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 10,
+      "j": 11,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": null
+      },
+      "recovery": false,
+      "tokenSimilarity": 0.11714285714285713,
+      "tokenOverlap": 1
+    },
+    {
+      "i": 10,
+      "j": 12,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": {
+          "reason": "cross_language_partition_barrier"
+        }
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 10,
+      "j": 13,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": true,
+        "hasSoftConflict": false,
+        "reasons": [
+          "Publication times are more than 72 hours apart"
+        ]
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": null
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 11,
+      "j": 12,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": false,
+        "hasSoftConflict": false,
+        "reasons": []
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": {
+          "reason": "cross_language_partition_barrier"
+        }
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 11,
+      "j": 13,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": true,
+        "hasSoftConflict": false,
+        "reasons": [
+          "Publication times are more than 72 hours apart"
+        ]
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": null
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    },
+    {
+      "i": 12,
+      "j": 13,
+      "scope": false,
+      "conflicts": {
+        "hasHardConflict": true,
+        "hasSoftConflict": false,
+        "reasons": [
+          "Publication times are more than 72 hours apart"
+        ]
+      },
+      "decision": {
+        "decision": "reject",
+        "conflicts": null,
+        "evidence": {
+          "reason": "cross_language_partition_barrier"
+        }
+      },
+      "recovery": false,
+      "tokenSimilarity": 0,
+      "tokenOverlap": 0
+    }
+  ],
+  "dates": [
+    {
+      "articleKey": "https://example.test/date",
+      "contentHash": "1c0996ff7066ee439f93e24288558cb13858ccfc08574d4d2793ef9687409506",
+      "title": "Thời sự & Markets",
+      "link": "https://example.test/date",
+      "pubDate": "2026-10-02T09:05:00.000+07:00",
+      "publicationTimeReliable": true,
+      "content": "Thông tin Việt Nam",
+      "image": "",
+      "feedTitle": "example.test",
+      "feedIcon": "https://www.google.com/s2/favicons?domain=example.test&sz=64",
+      "feedUrl": "",
+      "feedCategory": "news_vietnam",
+      "smartCategory": "finance_vietnam",
+      "language": "vi",
+      "region": "vietnam",
+      "domain": "example.test",
+      "sourceWeight": 1,
+      "hiddenSmartSource": false
+    },
+    {
+      "articleKey": "https://example.test/date",
+      "contentHash": "6bed258b97fdbb9fa009cc6d843adc7c439f081cc215bf08a280a4ec41a92c54",
+      "title": "Thời sự & Markets",
+      "link": "https://example.test/date",
+      "pubDate": "2026-10-02T09:00:00.000+07:00",
+      "publicationTimeReliable": true,
+      "content": "Thông tin Việt Nam",
+      "image": "",
+      "feedTitle": "example.test",
+      "feedIcon": "https://www.google.com/s2/favicons?domain=example.test&sz=64",
+      "feedUrl": "",
+      "feedCategory": "news_vietnam",
+      "smartCategory": "finance_vietnam",
+      "language": "vi",
+      "region": "vietnam",
+      "domain": "example.test",
+      "sourceWeight": 1,
+      "hiddenSmartSource": false
+    },
+    {
+      "articleKey": "https://example.test/date",
+      "contentHash": "b58eb0684725695da38319cb3a962924e1b2cb84c5e0912b3310afd8369f28b9",
+      "title": "Thời sự & Markets",
+      "link": "https://example.test/date",
+      "pubDate": "2026-10-02T10:30:00.000+07:00",
+      "publicationTimeReliable": true,
+      "content": "Thông tin Việt Nam",
+      "image": "",
+      "feedTitle": "example.test",
+      "feedIcon": "https://www.google.com/s2/favicons?domain=example.test&sz=64",
+      "feedUrl": "",
+      "feedCategory": "news_vietnam",
+      "smartCategory": "finance_vietnam",
+      "language": "vi",
+      "region": "vietnam",
+      "domain": "example.test",
+      "sourceWeight": 1,
+      "hiddenSmartSource": false
+    },
+    {
+      "articleKey": "https://example.test/date",
+      "contentHash": "575dec4e5376116ab82df32b2a99bb6a2cd84be20e810ffb611d9e3c9092283c",
+      "title": "Thời sự & Markets",
+      "link": "https://example.test/date",
+      "pubDate": "2026-10-02T12:00:00.000+07:00",
+      "publicationTimeReliable": true,
+      "content": "Thông tin Việt Nam",
+      "image": "",
+      "feedTitle": "example.test",
+      "feedIcon": "https://www.google.com/s2/favicons?domain=example.test&sz=64",
+      "feedUrl": "",
+      "feedCategory": "news_vietnam",
+      "smartCategory": "finance_vietnam",
+      "language": "vi",
+      "region": "vietnam",
+      "domain": "example.test",
+      "sourceWeight": 1,
+      "hiddenSmartSource": false
+    },
+    {
+      "articleKey": "https://example.test/date",
+      "contentHash": "6bed258b97fdbb9fa009cc6d843adc7c439f081cc215bf08a280a4ec41a92c54",
+      "title": "Thời sự & Markets",
+      "link": "https://example.test/date",
+      "pubDate": "2026-10-02T09:00:00.000+07:00",
+      "publicationTimeReliable": true,
+      "content": "Thông tin Việt Nam",
+      "image": "",
+      "feedTitle": "example.test",
+      "feedIcon": "https://www.google.com/s2/favicons?domain=example.test&sz=64",
+      "feedUrl": "",
+      "feedCategory": "news_vietnam",
+      "smartCategory": "finance_vietnam",
+      "language": "vi",
+      "region": "vietnam",
+      "domain": "example.test",
+      "sourceWeight": 1,
+      "hiddenSmartSource": false
+    },
+    {
+      "articleKey": "https://example.test/date",
+      "contentHash": "6bed258b97fdbb9fa009cc6d843adc7c439f081cc215bf08a280a4ec41a92c54",
+      "title": "Thời sự & Markets",
+      "link": "https://example.test/date",
+      "pubDate": "2026-10-02T09:00:00.000+07:00",
+      "publicationTimeReliable": true,
+      "content": "Thông tin Việt Nam",
+      "image": "",
+      "feedTitle": "example.test",
+      "feedIcon": "https://www.google.com/s2/favicons?domain=example.test&sz=64",
+      "feedUrl": "",
+      "feedCategory": "news_vietnam",
+      "smartCategory": "finance_vietnam",
+      "language": "vi",
+      "region": "vietnam",
+      "domain": "example.test",
+      "sourceWeight": 1,
+      "hiddenSmartSource": false
+    },
+    {
+      "articleKey": "https://example.test/date",
+      "contentHash": "aa73143cf234c5a3eda54b309a6c0b79aa1e5adcd688743b5ab9d0fd6f5749d5",
+      "title": "Thời sự & Markets",
+      "link": "https://example.test/date",
+      "pubDate": "2026-02-10T00:00:00.000+07:00",
+      "publicationTimeReliable": true,
+      "content": "Thông tin Việt Nam",
+      "image": "",
+      "feedTitle": "example.test",
+      "feedIcon": "https://www.google.com/s2/favicons?domain=example.test&sz=64",
+      "feedUrl": "",
+      "feedCategory": "news_vietnam",
+      "smartCategory": "finance_vietnam",
+      "language": "vi",
+      "region": "vietnam",
+      "domain": "example.test",
+      "sourceWeight": 1,
+      "hiddenSmartSource": false
+    },
+    {
+      "articleKey": "https://example.test/date",
+      "contentHash": "aabf6f82ae73b6dc254993dad666460896dcab1e49f4a287dbad6058b65b985c",
+      "title": "Thời sự & Markets",
+      "link": "https://example.test/date",
+      "pubDate": "2026-09-29T03:00:00.000+07:00",
+      "rawPubDate": "31/02/2026",
+      "publicationTimeReliable": false,
+      "content": "Thông tin Việt Nam",
+      "image": "",
+      "feedTitle": "example.test",
+      "feedIcon": "https://www.google.com/s2/favicons?domain=example.test&sz=64",
+      "feedUrl": "",
+      "feedCategory": "news_vietnam",
+      "smartCategory": "finance_vietnam",
+      "language": "vi",
+      "region": "vietnam",
+      "domain": "example.test",
+      "sourceWeight": 1,
+      "hiddenSmartSource": false
+    },
+    {
+      "articleKey": "https://example.test/date",
+      "contentHash": "aabf6f82ae73b6dc254993dad666460896dcab1e49f4a287dbad6058b65b985c",
+      "title": "Thời sự & Markets",
+      "link": "https://example.test/date",
+      "pubDate": "2026-09-29T03:00:00.000+07:00",
+      "rawPubDate": "not-a-date",
+      "publicationTimeReliable": false,
+      "content": "Thông tin Việt Nam",
+      "image": "",
+      "feedTitle": "example.test",
+      "feedIcon": "https://www.google.com/s2/favicons?domain=example.test&sz=64",
+      "feedUrl": "",
+      "feedCategory": "news_vietnam",
+      "smartCategory": "finance_vietnam",
+      "language": "vi",
+      "region": "vietnam",
+      "domain": "example.test",
+      "sourceWeight": 1,
+      "hiddenSmartSource": false
+    },
+    {
+      "articleKey": "https://example.test/date",
+      "contentHash": "aabf6f82ae73b6dc254993dad666460896dcab1e49f4a287dbad6058b65b985c",
+      "title": "Thời sự & Markets",
+      "link": "https://example.test/date",
+      "pubDate": "2026-09-29T03:00:00.000+07:00",
+      "rawPubDate": "",
+      "publicationTimeReliable": false,
+      "content": "Thông tin Việt Nam",
+      "image": "",
+      "feedTitle": "example.test",
+      "feedIcon": "https://www.google.com/s2/favicons?domain=example.test&sz=64",
+      "feedUrl": "",
+      "feedCategory": "news_vietnam",
+      "smartCategory": "finance_vietnam",
+      "language": "vi",
+      "region": "vietnam",
+      "domain": "example.test",
+      "sourceWeight": 1,
+      "hiddenSmartSource": false
+    }
+  ],
+  "sources": [
+    {
+      "identity": "ft.com",
+      "excluded": false
+    },
+    {
+      "identity": "ft.com",
+      "excluded": false
+    },
+    {
+      "identity": "voz.vn",
+      "excluded": true
+    },
+    {
+      "identity": "investing.com",
+      "excluded": false
+    }
+  ],
+  "deterministic": {
+    "autoMergedClusters": [
+      {
+        "id": "g_i8lbj9",
+        "articles": [
+          {
+            "articleKey": "https://tuoitre.vn/metro-2",
+            "contentHash": "d28842ce59cf4f23a035bf83ffdb6723f660311d653051d1372226265b2e84cd",
+            "title": "Hà Nội khai trương tuyến tàu điện mới",
+            "link": "https://tuoitre.vn/metro-2",
+            "pubDate": "2026-10-02T09:05:00.000+07:00",
+            "publicationTimeReliable": true,
+            "content": "Hà Nội chính thức khai trương tuyến tàu điện Cát Linh vào sáng nay.",
+            "image": "",
+            "feedTitle": "tuoitre.vn",
+            "feedIcon": "https://statictuoitre.mediacdn.vn/web_images/favicon.ico",
+            "feedUrl": "https://tuoitre.vn/rss.xml",
+            "feedCategory": "news_vietnam",
+            "smartCategory": "news_vietnam",
+            "language": "vi",
+            "region": "vietnam",
+            "domain": "tuoitre.vn",
+            "sourceWeight": 1,
+            "hiddenSmartSource": false,
+            "_status": "NEW",
+            "_vec": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "_hnswId": 1
+          },
+          {
+            "articleKey": "https://vnexpress.net/metro-1",
+            "contentHash": "1493be58c1c3c4f96d5d265abd34fa0582524a00e26d9bc184841d3b287fd9b0",
+            "title": "Hà Nội khai trương tuyến tàu điện mới",
+            "link": "https://vnexpress.net/metro-1",
+            "pubDate": "2026-10-02T09:00:00.000+07:00",
+            "publicationTimeReliable": true,
+            "content": "Hà Nội chính thức khai trương tuyến tàu điện Cát Linh vào sáng nay.",
+            "image": "",
+            "feedTitle": "vnexpress.net",
+            "feedIcon": "https://www.google.com/s2/favicons?domain=vnexpress.net&sz=64",
+            "feedUrl": "https://vnexpress.net/rss.xml",
+            "feedCategory": "news_vietnam",
+            "smartCategory": "news_vietnam",
+            "language": "vi",
+            "region": "vietnam",
+            "domain": "vnexpress.net",
+            "sourceWeight": 1,
+            "hiddenSmartSource": false,
+            "_status": "NEW",
+            "_vec": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "_hnswId": 0
+          }
+        ],
+        "earliestDate": 1790906400000,
+        "latestDate": 1790906700000
+      },
+      {
+        "id": "g_ppp3n0",
+        "articles": [
+          {
+            "articleKey": "https://cafef.vn/rate",
+            "contentHash": "bc233ae2c9c72693791b4fe71ebd941a1b5509a0abd10ecc941d1cbf91df00e3",
+            "title": "Ngân hàng Nhà nước giảm lãi suất điều hành",
+            "link": "https://cafef.vn/rate",
+            "pubDate": "2026-10-02T10:30:00.000+07:00",
+            "publicationTimeReliable": true,
+            "content": "Ngân hàng Nhà nước Việt Nam công bố giảm lãi suất điều hành để hỗ trợ nền kinh tế.",
+            "image": "",
+            "feedTitle": "cafef.vn",
+            "feedIcon": "https://www.google.com/s2/favicons?domain=cafef.vn&sz=64",
+            "feedUrl": "https://cafef.vn/rss.xml",
+            "feedCategory": "finance_vietnam",
+            "smartCategory": "finance_vietnam",
+            "language": "vi",
+            "region": "vietnam",
+            "domain": "cafef.vn",
+            "sourceWeight": 1,
+            "hiddenSmartSource": false,
+            "_status": "NEW",
+            "_vec": [
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0
+            ],
+            "_hnswId": 5
+          }
+        ],
+        "earliestDate": 1790911800000,
+        "latestDate": 1790911800000
+      },
+      {
+        "id": "g_1sbo7wn",
+        "articles": [
+          {
+            "articleKey": "https://ft.com/markets/rate",
+            "contentHash": "a3eaa7089718214dbab2b8ad80edbddedfc70e7d2870f2dcc41ba7f41557cfbd",
+            "title": "Federal Reserve announces emergency interest rate cut",
+            "link": "https://ft.com/markets/rate",
+            "pubDate": "2026-10-02T11:00:00.000+07:00",
+            "publicationTimeReliable": true,
+            "content": "The US central bank announced a new emergency rate cut on Friday.",
+            "image": "",
+            "feedTitle": "ft.com",
+            "feedIcon": "https://www.google.com/s2/favicons?domain=ft.com&sz=64",
+            "feedUrl": "https://ft.com/rss.xml",
+            "feedCategory": "finance_global",
+            "smartCategory": "finance_global",
+            "language": "en",
+            "region": "foreign",
+            "domain": "ft.com",
+            "sourceWeight": 1,
+            "hiddenSmartSource": false,
+            "_status": "NEW",
+            "_vec": [
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0
+            ],
+            "_hnswId": 6
+          }
+        ],
+        "earliestDate": 1790913600000,
+        "latestDate": 1790913600000
+      },
+      {
+        "id": "g_1fj00o2",
+        "articles": [
+          {
+            "articleKey": "https://vneconomy.vn/rate-us",
+            "contentHash": "b6ee0ca923025a2fc297dbab2c9a4f9c7979cad2ca7a4f0b8f4da0614b43c3ba",
+            "title": "Cục Dự trữ Liên bang Mỹ công bố giảm lãi suất khẩn cấp",
+            "link": "https://vneconomy.vn/rate-us",
+            "pubDate": "2026-10-02T11:10:00.000+07:00",
+            "publicationTimeReliable": true,
+            "content": "Ngân hàng trung ương Mỹ công bố quyết định giảm lãi suất mới vào thứ Sáu.",
+            "image": "",
+            "feedTitle": "vneconomy.vn",
+            "feedIcon": "https://www.google.com/s2/favicons?domain=vneconomy.vn&sz=64",
+            "feedUrl": "https://vneconomy.vn/rss.xml",
+            "feedCategory": "finance_global",
+            "smartCategory": "finance_vietnam",
+            "language": "vi",
+            "region": "vietnam",
+            "domain": "vneconomy.vn",
+            "sourceWeight": 1,
+            "hiddenSmartSource": false,
+            "_status": "NEW",
+            "_vec": [
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0
+            ],
+            "_hnswId": 7
+          }
+        ],
+        "earliestDate": 1790914200000,
+        "latestDate": 1790914200000
+      },
+      {
+        "id": "g_bz60h3",
+        "articles": [
+          {
+            "articleKey": "https://tinhte.vn/ai",
+            "contentHash": "f9548774a46ed663fda91db49e6e81ee536c8f1c2ffd2a2f50aaf8f9e1bd41c0",
+            "title": "Việt Nam ra mắt chip trí tuệ nhân tạo mới",
+            "link": "https://tinhte.vn/ai",
+            "pubDate": "2026-10-02T12:00:00.000+07:00",
+            "publicationTimeReliable": true,
+            "content": "Các kỹ sư tại Việt Nam ra mắt chip AI dành cho máy chủ và phần mềm.",
+            "image": "",
+            "feedTitle": "tinhte.vn",
+            "feedIcon": "https://www.google.com/s2/favicons?domain=tinhte.vn&sz=64",
+            "feedUrl": "https://tinhte.vn/rss.xml",
+            "feedCategory": "tech",
+            "smartCategory": "tech",
+            "language": "vi",
+            "region": "",
+            "domain": "tinhte.vn",
+            "sourceWeight": 1,
+            "hiddenSmartSource": false,
+            "_status": "NEW",
+            "_vec": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0
+            ],
+            "_hnswId": 8
+          }
+        ],
+        "earliestDate": 1790917200000,
+        "latestDate": 1790917200000
+      },
+      {
+        "id": "g_1xmempc",
+        "articles": [
+          {
+            "articleKey": "https://vnexpress.net/crime",
+            "contentHash": "126ee925ed942cd2c11b89b09004092a8409f6a561557458cbb5b76c67038c91",
+            "title": "Công an bắt nhóm lừa đảo qua mạng chiếm đoạt tài sản",
+            "link": "https://vnexpress.net/crime",
+            "pubDate": "2026-10-02T10:30:00.000+07:00",
+            "publicationTimeReliable": true,
+            "content": "Công an Việt Nam điều tra đường dây tội phạm lừa đảo qua mạng.",
+            "image": "",
+            "feedTitle": "vnexpress.net",
+            "feedIcon": "https://www.google.com/s2/favicons?domain=vnexpress.net&sz=64",
+            "feedUrl": "https://vnexpress.net/rss.xml",
+            "feedCategory": "tech",
+            "smartCategory": "news_vietnam",
+            "language": "vi",
+            "region": "vietnam",
+            "domain": "vnexpress.net",
+            "sourceWeight": 1,
+            "hiddenSmartSource": false,
+            "_status": "NEW",
+            "_vec": [
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "_hnswId": 12
+          }
+        ],
+        "earliestDate": 1790911800000,
+        "latestDate": 1790911800000
+      },
+      {
+        "id": "g_mkvzc5",
+        "articles": [
+          {
+            "articleKey": "https://example.test/unknown-date",
+            "contentHash": "e287ac1e0e1a3e1266d6f22eeb967e4bcaf98a23313f11674d44614fc899582d",
+            "title": "An undated article remains isolated",
+            "link": "https://example.test/unknown-date",
+            "pubDate": "2026-09-29T03:00:00.000+07:00",
+            "rawPubDate": "not-a-date",
+            "publicationTimeReliable": false,
+            "content": "No reliable publication date is available.",
+            "image": "",
+            "feedTitle": "example.test",
+            "feedIcon": "https://www.google.com/s2/favicons?domain=example.test&sz=64",
+            "feedUrl": "https://example.test/rss.xml",
+            "feedCategory": "news_global",
+            "smartCategory": "news_global",
+            "language": "en",
+            "region": "foreign",
+            "domain": "example.test",
+            "sourceWeight": 1,
+            "hiddenSmartSource": false,
+            "_status": "NEW",
+            "_vec": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            "_hnswId": 13
+          }
+        ],
+        "earliestDate": 1790625600000,
+        "latestDate": 1790625600000
+      }
+    ],
+    "ambiguousGroups": [
+      {
+        "id": "review_1od6hz5",
+        "articles": [
+          {
+            "articleKey": "https://reuters.com/world/deal",
+            "contentHash": "4bd72d52f10d8612328fcb560ae4cbc3f75cf65e2e7ea28b856e7d0e21aa5b50",
+            "title": "Atlas announces acquisition of Nova for $5 billion",
+            "link": "https://reuters.com/world/deal",
+            "pubDate": "2026-10-02T08:10:00.000+07:00",
+            "publicationTimeReliable": true,
+            "content": "Atlas signed an agreement to acquire Nova on Friday.",
+            "image": "",
+            "feedTitle": "reuters.com",
+            "feedIcon": "https://www.google.com/s2/favicons?domain=reuters.com&sz=64",
+            "feedUrl": "https://reuters.com/rss.xml",
+            "feedCategory": "news_global",
+            "smartCategory": "news_global",
+            "language": "en",
+            "region": "foreign",
+            "domain": "reuters.com",
+            "sourceWeight": 1,
+            "hiddenSmartSource": false,
+            "_status": "NEW",
+            "_vec": [
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "_hnswId": 3
+          },
+          {
+            "articleKey": "https://bbc.co.uk/world/deal",
+            "contentHash": "66ab0b76de593820f58e2a304b32a97fe3992b8795a9fca76258be1fb8b2f2c6",
+            "title": "Atlas announces acquisition of Nova for $5 billion",
+            "link": "https://bbc.co.uk/world/deal",
+            "pubDate": "2026-10-02T08:00:00.000+07:00",
+            "publicationTimeReliable": true,
+            "content": "Atlas signed an agreement to acquire Nova on Friday.",
+            "image": "",
+            "feedTitle": "bbc.co.uk",
+            "feedIcon": "https://www.google.com/s2/favicons?domain=bbc.co.uk&sz=64",
+            "feedUrl": "https://bbc.co.uk/rss.xml",
+            "feedCategory": "news_global",
+            "smartCategory": "news_global",
+            "language": "en",
+            "region": "foreign",
+            "domain": "bbc.co.uk",
+            "sourceWeight": 1,
+            "hiddenSmartSource": false,
+            "_status": "NEW",
+            "_vec": [
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "_hnswId": 2
+          },
+          {
+            "articleKey": "https://bbc.co.uk/world/ambiguous",
+            "contentHash": "72156e2a084ed12bf5082834adb11d6f704e32f3ded6a097eec57ce0ca3f44bc",
+            "title": "Atlas Nova merger agreement faces shareholder questions",
+            "link": "https://bbc.co.uk/world/ambiguous",
+            "pubDate": "2026-10-02T12:30:00.000+07:00",
+            "publicationTimeReliable": true,
+            "content": "Shareholders discussed the acquisition agreement but no vote was announced.",
+            "image": "",
+            "feedTitle": "bbc.co.uk",
+            "feedIcon": "https://www.google.com/s2/favicons?domain=bbc.co.uk&sz=64",
+            "feedUrl": "https://bbc.co.uk/rss.xml",
+            "feedCategory": "news_global",
+            "smartCategory": "news_global",
+            "language": "en",
+            "region": "foreign",
+            "domain": "bbc.co.uk",
+            "sourceWeight": 1,
+            "hiddenSmartSource": false,
+            "_status": "NEW",
+            "_vec": [
+              0,
+              0.8899999856948853,
+              0.4559605121612549,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "_hnswId": 11
+          },
+          {
+            "articleKey": "https://apnews.com/deal-review",
+            "contentHash": "a3e19309fa87c2210bb1088bd71dd20d79b7c47fc673e76aebdcdb94027c4fc6",
+            "title": "Regulator opens antitrust review of Atlas Nova acquisition",
+            "link": "https://apnews.com/deal-review",
+            "pubDate": "2026-10-02T10:00:00.000+07:00",
+            "publicationTimeReliable": true,
+            "content": "The regulator launched a separate antitrust investigation into the Atlas Nova agreement.",
+            "image": "",
+            "feedTitle": "apnews.com",
+            "feedIcon": "https://www.google.com/s2/favicons?domain=apnews.com&sz=64",
+            "feedUrl": "https://apnews.com/rss.xml",
+            "feedCategory": "news_global",
+            "smartCategory": "news_global",
+            "language": "en",
+            "region": "foreign",
+            "domain": "apnews.com",
+            "sourceWeight": 1,
+            "hiddenSmartSource": false,
+            "_status": "NEW",
+            "_vec": [
+              0,
+              0.8999999761581421,
+              0.4358898997306824,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "_hnswId": 4
+          }
+        ],
+        "deterministicComponents": [
+          [
+            "a_132pafx",
+            "a_15htl51"
+          ],
+          [
+            "a_4mepop",
+            "a_sf2a91"
+          ]
+        ]
+      },
+      {
+        "id": "review_1cd2ffm",
+        "articles": [
+          {
+            "articleKey": "https://techradar.com/chip",
+            "contentHash": "b780443d4c28864254ddd65dd9f67145b03f024e6bff647a2b7ef55dbbdfe57f",
+            "title": "Acme launches new artificial intelligence chip",
+            "link": "https://techradar.com/chip",
+            "pubDate": "2026-10-02T12:10:00.000+07:00",
+            "publicationTimeReliable": true,
+            "content": "Acme unveiled its new AI processor for data centers and software developers.",
+            "image": "",
+            "feedTitle": "techradar.com",
+            "feedIcon": "https://www.google.com/s2/favicons?domain=techradar.com&sz=64",
+            "feedUrl": "https://techradar.com/rss.xml",
+            "feedCategory": "tech",
+            "smartCategory": "tech",
+            "language": "en",
+            "region": "",
+            "domain": "techradar.com",
+            "sourceWeight": 1,
+            "hiddenSmartSource": false,
+            "_status": "NEW",
+            "_vec": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0
+            ],
+            "_hnswId": 9
+          },
+          {
+            "articleKey": "https://theverge.com/chip-rumor",
+            "contentHash": "2fe05cc01d5180ba23a9a051255649eca499e0fedc95231082a46f0eff6cfb11",
+            "title": "Acme AI chip launch raises questions about shipment date",
+            "link": "https://theverge.com/chip-rumor",
+            "pubDate": "2026-10-02T13:00:00.000+07:00",
+            "publicationTimeReliable": true,
+            "content": "Analysts discussed potential future shipments of Acme processors after the launch.",
+            "image": "",
+            "feedTitle": "theverge.com",
+            "feedIcon": "https://www.google.com/s2/favicons?domain=theverge.com&sz=64",
+            "feedUrl": "https://theverge.com/rss.xml",
+            "feedCategory": "tech",
+            "smartCategory": "tech",
+            "language": "en",
+            "region": "",
+            "domain": "theverge.com",
+            "sourceWeight": 1,
+            "hiddenSmartSource": false,
+            "_status": "NEW",
+            "_vec": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0.8999999761581421,
+              0.4358898997306824
+            ],
+            "_hnswId": 10
+          }
+        ],
+        "deterministicComponents": [
+          [
+            "a_1hnx0xk"
+          ],
+          [
+            "a_1qll8vg"
+          ]
+        ]
+      }
+    ]
+  },
+  "incremental": {
+    "autoMergedClusters": [
+      {
+        "id": "cluster_69b428a897acdf30139d7178cbccb820",
+        "established": false,
+        "clusterId": "cluster_69b428a897acdf30139d7178cbccb820",
+        "articles": [
+          {
+            "articleKey": "https://vnexpress.net/metro-1",
+            "contentHash": "1493be58c1c3c4f96d5d265abd34fa0582524a00e26d9bc184841d3b287fd9b0",
+            "title": "Hà Nội khai trương tuyến tàu điện mới",
+            "link": "https://vnexpress.net/metro-1",
+            "pubDate": "2026-10-02T09:00:00.000+07:00",
+            "publicationTimeReliable": true,
+            "content": "Hà Nội chính thức khai trương tuyến tàu điện Cát Linh vào sáng nay.",
+            "image": "",
+            "feedTitle": "vnexpress.net",
+            "feedIcon": "https://www.google.com/s2/favicons?domain=vnexpress.net&sz=64",
+            "feedUrl": "https://vnexpress.net/rss.xml",
+            "feedCategory": "news_vietnam",
+            "smartCategory": "news_vietnam",
+            "language": "vi",
+            "region": "vietnam",
+            "domain": "vnexpress.net",
+            "sourceWeight": 1,
+            "hiddenSmartSource": false,
+            "_status": "NEW",
+            "_vec": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "_hnswId": 0
+          },
+          {
+            "articleKey": "https://tuoitre.vn/metro-2",
+            "contentHash": "d28842ce59cf4f23a035bf83ffdb6723f660311d653051d1372226265b2e84cd",
+            "title": "Hà Nội khai trương tuyến tàu điện mới",
+            "link": "https://tuoitre.vn/metro-2",
+            "pubDate": "2026-10-02T09:05:00.000+07:00",
+            "publicationTimeReliable": true,
+            "content": "Hà Nội chính thức khai trương tuyến tàu điện Cát Linh vào sáng nay.",
+            "image": "",
+            "feedTitle": "tuoitre.vn",
+            "feedIcon": "https://statictuoitre.mediacdn.vn/web_images/favicon.ico",
+            "feedUrl": "https://tuoitre.vn/rss.xml",
+            "feedCategory": "news_vietnam",
+            "smartCategory": "news_vietnam",
+            "language": "vi",
+            "region": "vietnam",
+            "domain": "tuoitre.vn",
+            "sourceWeight": 1,
+            "hiddenSmartSource": false,
+            "_status": "NEW",
+            "_vec": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "_hnswId": 1
+          }
+        ],
+        "verified": false,
+        "verification": {
+          "method": "e5_auto_merge",
+          "reason": "Exact cosine, event rules, and component representative consistency passed"
+        }
+      },
+      {
+        "id": "cluster_dddfaa457b985bc25b9dffae3b5dd851",
+        "established": false,
+        "clusterId": "cluster_dddfaa457b985bc25b9dffae3b5dd851",
+        "articles": [
+          {
+            "articleKey": "https://bbc.co.uk/world/deal",
+            "contentHash": "66ab0b76de593820f58e2a304b32a97fe3992b8795a9fca76258be1fb8b2f2c6",
+            "title": "Atlas announces acquisition of Nova for $5 billion",
+            "link": "https://bbc.co.uk/world/deal",
+            "pubDate": "2026-10-02T08:00:00.000+07:00",
+            "publicationTimeReliable": true,
+            "content": "Atlas signed an agreement to acquire Nova on Friday.",
+            "image": "",
+            "feedTitle": "bbc.co.uk",
+            "feedIcon": "https://www.google.com/s2/favicons?domain=bbc.co.uk&sz=64",
+            "feedUrl": "https://bbc.co.uk/rss.xml",
+            "feedCategory": "news_global",
+            "smartCategory": "news_global",
+            "language": "en",
+            "region": "foreign",
+            "domain": "bbc.co.uk",
+            "sourceWeight": 1,
+            "hiddenSmartSource": false,
+            "_status": "NEW",
+            "_vec": [
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "_hnswId": 2
+          },
+          {
+            "articleKey": "https://reuters.com/world/deal",
+            "contentHash": "4bd72d52f10d8612328fcb560ae4cbc3f75cf65e2e7ea28b856e7d0e21aa5b50",
+            "title": "Atlas announces acquisition of Nova for $5 billion",
+            "link": "https://reuters.com/world/deal",
+            "pubDate": "2026-10-02T08:10:00.000+07:00",
+            "publicationTimeReliable": true,
+            "content": "Atlas signed an agreement to acquire Nova on Friday.",
+            "image": "",
+            "feedTitle": "reuters.com",
+            "feedIcon": "https://www.google.com/s2/favicons?domain=reuters.com&sz=64",
+            "feedUrl": "https://reuters.com/rss.xml",
+            "feedCategory": "news_global",
+            "smartCategory": "news_global",
+            "language": "en",
+            "region": "foreign",
+            "domain": "reuters.com",
+            "sourceWeight": 1,
+            "hiddenSmartSource": false,
+            "_status": "NEW",
+            "_vec": [
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "_hnswId": 3
+          }
+        ],
+        "verified": false,
+        "verification": {
+          "method": "e5_auto_merge",
+          "reason": "Exact cosine, event rules, and component representative consistency passed"
+        }
+      },
+      {
+        "id": "cluster_d21955808cb229e0c396a67bfb58429b",
+        "established": false,
+        "clusterId": "cluster_d21955808cb229e0c396a67bfb58429b",
+        "articles": [
+          {
+            "articleKey": "https://apnews.com/deal-review",
+            "contentHash": "a3e19309fa87c2210bb1088bd71dd20d79b7c47fc673e76aebdcdb94027c4fc6",
+            "title": "Regulator opens antitrust review of Atlas Nova acquisition",
+            "link": "https://apnews.com/deal-review",
+            "pubDate": "2026-10-02T10:00:00.000+07:00",
+            "publicationTimeReliable": true,
+            "content": "The regulator launched a separate antitrust investigation into the Atlas Nova agreement.",
+            "image": "",
+            "feedTitle": "apnews.com",
+            "feedIcon": "https://www.google.com/s2/favicons?domain=apnews.com&sz=64",
+            "feedUrl": "https://apnews.com/rss.xml",
+            "feedCategory": "news_global",
+            "smartCategory": "news_global",
+            "language": "en",
+            "region": "foreign",
+            "domain": "apnews.com",
+            "sourceWeight": 1,
+            "hiddenSmartSource": false,
+            "_status": "NEW",
+            "_vec": [
+              0,
+              0.8999999761581421,
+              0.4358898997306824,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "_hnswId": 4
+          },
+          {
+            "articleKey": "https://bbc.co.uk/world/ambiguous",
+            "contentHash": "72156e2a084ed12bf5082834adb11d6f704e32f3ded6a097eec57ce0ca3f44bc",
+            "title": "Atlas Nova merger agreement faces shareholder questions",
+            "link": "https://bbc.co.uk/world/ambiguous",
+            "pubDate": "2026-10-02T12:30:00.000+07:00",
+            "publicationTimeReliable": true,
+            "content": "Shareholders discussed the acquisition agreement but no vote was announced.",
+            "image": "",
+            "feedTitle": "bbc.co.uk",
+            "feedIcon": "https://www.google.com/s2/favicons?domain=bbc.co.uk&sz=64",
+            "feedUrl": "https://bbc.co.uk/rss.xml",
+            "feedCategory": "news_global",
+            "smartCategory": "news_global",
+            "language": "en",
+            "region": "foreign",
+            "domain": "bbc.co.uk",
+            "sourceWeight": 1,
+            "hiddenSmartSource": false,
+            "_status": "NEW",
+            "_vec": [
+              0,
+              0.8899999856948853,
+              0.4559605121612549,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "_hnswId": 11
+          }
+        ],
+        "verified": false,
+        "verification": {
+          "method": "e5_auto_merge",
+          "reason": "Exact cosine, event rules, and component representative consistency passed"
+        }
+      },
+      {
+        "id": "cluster_0eeb3dd42d7852cb8a125bf4171b574b",
+        "established": false,
+        "clusterId": "cluster_0eeb3dd42d7852cb8a125bf4171b574b",
+        "articles": [
+          {
+            "articleKey": "https://cafef.vn/rate",
+            "contentHash": "bc233ae2c9c72693791b4fe71ebd941a1b5509a0abd10ecc941d1cbf91df00e3",
+            "title": "Ngân hàng Nhà nước giảm lãi suất điều hành",
+            "link": "https://cafef.vn/rate",
+            "pubDate": "2026-10-02T10:30:00.000+07:00",
+            "publicationTimeReliable": true,
+            "content": "Ngân hàng Nhà nước Việt Nam công bố giảm lãi suất điều hành để hỗ trợ nền kinh tế.",
+            "image": "",
+            "feedTitle": "cafef.vn",
+            "feedIcon": "https://www.google.com/s2/favicons?domain=cafef.vn&sz=64",
+            "feedUrl": "https://cafef.vn/rss.xml",
+            "feedCategory": "finance_vietnam",
+            "smartCategory": "finance_vietnam",
+            "language": "vi",
+            "region": "vietnam",
+            "domain": "cafef.vn",
+            "sourceWeight": 1,
+            "hiddenSmartSource": false,
+            "_status": "NEW",
+            "_vec": [
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0
+            ],
+            "_hnswId": 5
+          }
+        ],
+        "verified": true,
+        "verification": {
+          "method": "kept_separate",
+          "reason": "Single article cluster"
+        }
+      },
+      {
+        "id": "cluster_c1be4b6279a2ec3f699344f954826917",
+        "established": false,
+        "clusterId": "cluster_c1be4b6279a2ec3f699344f954826917",
+        "articles": [
+          {
+            "articleKey": "https://ft.com/markets/rate",
+            "contentHash": "a3eaa7089718214dbab2b8ad80edbddedfc70e7d2870f2dcc41ba7f41557cfbd",
+            "title": "Federal Reserve announces emergency interest rate cut",
+            "link": "https://ft.com/markets/rate",
+            "pubDate": "2026-10-02T11:00:00.000+07:00",
+            "publicationTimeReliable": true,
+            "content": "The US central bank announced a new emergency rate cut on Friday.",
+            "image": "",
+            "feedTitle": "ft.com",
+            "feedIcon": "https://www.google.com/s2/favicons?domain=ft.com&sz=64",
+            "feedUrl": "https://ft.com/rss.xml",
+            "feedCategory": "finance_global",
+            "smartCategory": "finance_global",
+            "language": "en",
+            "region": "foreign",
+            "domain": "ft.com",
+            "sourceWeight": 1,
+            "hiddenSmartSource": false,
+            "_status": "NEW",
+            "_vec": [
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0
+            ],
+            "_hnswId": 6
+          }
+        ],
+        "verified": true,
+        "verification": {
+          "method": "kept_separate",
+          "reason": "Single article cluster"
+        }
+      },
+      {
+        "id": "cluster_d72dadeb67e886186fa468c379ffbbc5",
+        "established": false,
+        "clusterId": "cluster_d72dadeb67e886186fa468c379ffbbc5",
+        "articles": [
+          {
+            "articleKey": "https://vneconomy.vn/rate-us",
+            "contentHash": "b6ee0ca923025a2fc297dbab2c9a4f9c7979cad2ca7a4f0b8f4da0614b43c3ba",
+            "title": "Cục Dự trữ Liên bang Mỹ công bố giảm lãi suất khẩn cấp",
+            "link": "https://vneconomy.vn/rate-us",
+            "pubDate": "2026-10-02T11:10:00.000+07:00",
+            "publicationTimeReliable": true,
+            "content": "Ngân hàng trung ương Mỹ công bố quyết định giảm lãi suất mới vào thứ Sáu.",
+            "image": "",
+            "feedTitle": "vneconomy.vn",
+            "feedIcon": "https://www.google.com/s2/favicons?domain=vneconomy.vn&sz=64",
+            "feedUrl": "https://vneconomy.vn/rss.xml",
+            "feedCategory": "finance_global",
+            "smartCategory": "finance_vietnam",
+            "language": "vi",
+            "region": "vietnam",
+            "domain": "vneconomy.vn",
+            "sourceWeight": 1,
+            "hiddenSmartSource": false,
+            "_status": "NEW",
+            "_vec": [
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0
+            ],
+            "_hnswId": 7
+          }
+        ],
+        "verified": true,
+        "verification": {
+          "method": "kept_separate",
+          "reason": "Single article cluster"
+        }
+      },
+      {
+        "id": "cluster_c98ed433f5949194ea61dd9b1957b449",
+        "established": false,
+        "clusterId": "cluster_c98ed433f5949194ea61dd9b1957b449",
+        "articles": [
+          {
+            "articleKey": "https://tinhte.vn/ai",
+            "contentHash": "f9548774a46ed663fda91db49e6e81ee536c8f1c2ffd2a2f50aaf8f9e1bd41c0",
+            "title": "Việt Nam ra mắt chip trí tuệ nhân tạo mới",
+            "link": "https://tinhte.vn/ai",
+            "pubDate": "2026-10-02T12:00:00.000+07:00",
+            "publicationTimeReliable": true,
+            "content": "Các kỹ sư tại Việt Nam ra mắt chip AI dành cho máy chủ và phần mềm.",
+            "image": "",
+            "feedTitle": "tinhte.vn",
+            "feedIcon": "https://www.google.com/s2/favicons?domain=tinhte.vn&sz=64",
+            "feedUrl": "https://tinhte.vn/rss.xml",
+            "feedCategory": "tech",
+            "smartCategory": "tech",
+            "language": "vi",
+            "region": "",
+            "domain": "tinhte.vn",
+            "sourceWeight": 1,
+            "hiddenSmartSource": false,
+            "_status": "NEW",
+            "_vec": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0
+            ],
+            "_hnswId": 8
+          }
+        ],
+        "verified": true,
+        "verification": {
+          "method": "kept_separate",
+          "reason": "Single article cluster"
+        }
+      },
+      {
+        "id": "cluster_41fa21276489e3d54915244e8cd469fe",
+        "established": false,
+        "clusterId": "cluster_41fa21276489e3d54915244e8cd469fe",
+        "articles": [
+          {
+            "articleKey": "https://techradar.com/chip",
+            "contentHash": "b780443d4c28864254ddd65dd9f67145b03f024e6bff647a2b7ef55dbbdfe57f",
+            "title": "Acme launches new artificial intelligence chip",
+            "link": "https://techradar.com/chip",
+            "pubDate": "2026-10-02T12:10:00.000+07:00",
+            "publicationTimeReliable": true,
+            "content": "Acme unveiled its new AI processor for data centers and software developers.",
+            "image": "",
+            "feedTitle": "techradar.com",
+            "feedIcon": "https://www.google.com/s2/favicons?domain=techradar.com&sz=64",
+            "feedUrl": "https://techradar.com/rss.xml",
+            "feedCategory": "tech",
+            "smartCategory": "tech",
+            "language": "en",
+            "region": "",
+            "domain": "techradar.com",
+            "sourceWeight": 1,
+            "hiddenSmartSource": false,
+            "_status": "NEW",
+            "_vec": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0
+            ],
+            "_hnswId": 9
+          }
+        ],
+        "verified": true,
+        "verification": {
+          "method": "kept_separate",
+          "reason": "Single article cluster"
+        }
+      },
+      {
+        "id": "cluster_5c219ec6845bdadd3360ef58c5b689b5",
+        "established": false,
+        "clusterId": "cluster_5c219ec6845bdadd3360ef58c5b689b5",
+        "articles": [
+          {
+            "articleKey": "https://theverge.com/chip-rumor",
+            "contentHash": "2fe05cc01d5180ba23a9a051255649eca499e0fedc95231082a46f0eff6cfb11",
+            "title": "Acme AI chip launch raises questions about shipment date",
+            "link": "https://theverge.com/chip-rumor",
+            "pubDate": "2026-10-02T13:00:00.000+07:00",
+            "publicationTimeReliable": true,
+            "content": "Analysts discussed potential future shipments of Acme processors after the launch.",
+            "image": "",
+            "feedTitle": "theverge.com",
+            "feedIcon": "https://www.google.com/s2/favicons?domain=theverge.com&sz=64",
+            "feedUrl": "https://theverge.com/rss.xml",
+            "feedCategory": "tech",
+            "smartCategory": "tech",
+            "language": "en",
+            "region": "",
+            "domain": "theverge.com",
+            "sourceWeight": 1,
+            "hiddenSmartSource": false,
+            "_status": "NEW",
+            "_vec": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0.8999999761581421,
+              0.4358898997306824
+            ],
+            "_hnswId": 10
+          }
+        ],
+        "verified": true,
+        "verification": {
+          "method": "kept_separate",
+          "reason": "Single article cluster"
+        }
+      },
+      {
+        "id": "cluster_548430e1257f7ae2526a57c143add1ac",
+        "established": false,
+        "clusterId": "cluster_548430e1257f7ae2526a57c143add1ac",
+        "articles": [
+          {
+            "articleKey": "https://vnexpress.net/crime",
+            "contentHash": "126ee925ed942cd2c11b89b09004092a8409f6a561557458cbb5b76c67038c91",
+            "title": "Công an bắt nhóm lừa đảo qua mạng chiếm đoạt tài sản",
+            "link": "https://vnexpress.net/crime",
+            "pubDate": "2026-10-02T10:30:00.000+07:00",
+            "publicationTimeReliable": true,
+            "content": "Công an Việt Nam điều tra đường dây tội phạm lừa đảo qua mạng.",
+            "image": "",
+            "feedTitle": "vnexpress.net",
+            "feedIcon": "https://www.google.com/s2/favicons?domain=vnexpress.net&sz=64",
+            "feedUrl": "https://vnexpress.net/rss.xml",
+            "feedCategory": "tech",
+            "smartCategory": "news_vietnam",
+            "language": "vi",
+            "region": "vietnam",
+            "domain": "vnexpress.net",
+            "sourceWeight": 1,
+            "hiddenSmartSource": false,
+            "_status": "NEW",
+            "_vec": [
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "_hnswId": 12
+          }
+        ],
+        "verified": true,
+        "verification": {
+          "method": "kept_separate",
+          "reason": "Single article cluster"
+        }
+      },
+      {
+        "id": "cluster_ecadbeaa12121f3a6974e4072648b0d5",
+        "established": false,
+        "clusterId": "cluster_ecadbeaa12121f3a6974e4072648b0d5",
+        "articles": [
+          {
+            "articleKey": "https://example.test/unknown-date",
+            "contentHash": "e287ac1e0e1a3e1266d6f22eeb967e4bcaf98a23313f11674d44614fc899582d",
+            "title": "An undated article remains isolated",
+            "link": "https://example.test/unknown-date",
+            "pubDate": "2026-09-29T03:00:00.000+07:00",
+            "rawPubDate": "not-a-date",
+            "publicationTimeReliable": false,
+            "content": "No reliable publication date is available.",
+            "image": "",
+            "feedTitle": "example.test",
+            "feedIcon": "https://www.google.com/s2/favicons?domain=example.test&sz=64",
+            "feedUrl": "https://example.test/rss.xml",
+            "feedCategory": "news_global",
+            "smartCategory": "news_global",
+            "language": "en",
+            "region": "foreign",
+            "domain": "example.test",
+            "sourceWeight": 1,
+            "hiddenSmartSource": false,
+            "_status": "NEW",
+            "_vec": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            "_hnswId": 13
+          }
+        ],
+        "verified": true,
+        "verification": {
+          "method": "kept_separate",
+          "reason": "Single article cluster"
+        }
+      }
+    ],
+    "ambiguousGroups": [
+      {
+        "id": "review_414e42de6a15a4e87d31b910064a8f2f",
+        "articles": [
+          {
+            "articleKey": "https://bbc.co.uk/world/deal",
+            "contentHash": "66ab0b76de593820f58e2a304b32a97fe3992b8795a9fca76258be1fb8b2f2c6",
+            "title": "Atlas announces acquisition of Nova for $5 billion",
+            "link": "https://bbc.co.uk/world/deal",
+            "pubDate": "2026-10-02T08:00:00.000+07:00",
+            "publicationTimeReliable": true,
+            "content": "Atlas signed an agreement to acquire Nova on Friday.",
+            "image": "",
+            "feedTitle": "bbc.co.uk",
+            "feedIcon": "https://www.google.com/s2/favicons?domain=bbc.co.uk&sz=64",
+            "feedUrl": "https://bbc.co.uk/rss.xml",
+            "feedCategory": "news_global",
+            "smartCategory": "news_global",
+            "language": "en",
+            "region": "foreign",
+            "domain": "bbc.co.uk",
+            "sourceWeight": 1,
+            "hiddenSmartSource": false,
+            "_status": "NEW",
+            "_vec": [
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "_hnswId": 2
+          },
+          {
+            "articleKey": "https://apnews.com/deal-review",
+            "contentHash": "a3e19309fa87c2210bb1088bd71dd20d79b7c47fc673e76aebdcdb94027c4fc6",
+            "title": "Regulator opens antitrust review of Atlas Nova acquisition",
+            "link": "https://apnews.com/deal-review",
+            "pubDate": "2026-10-02T10:00:00.000+07:00",
+            "publicationTimeReliable": true,
+            "content": "The regulator launched a separate antitrust investigation into the Atlas Nova agreement.",
+            "image": "",
+            "feedTitle": "apnews.com",
+            "feedIcon": "https://www.google.com/s2/favicons?domain=apnews.com&sz=64",
+            "feedUrl": "https://apnews.com/rss.xml",
+            "feedCategory": "news_global",
+            "smartCategory": "news_global",
+            "language": "en",
+            "region": "foreign",
+            "domain": "apnews.com",
+            "sourceWeight": 1,
+            "hiddenSmartSource": false,
+            "_status": "NEW",
+            "_vec": [
+              0,
+              0.8999999761581421,
+              0.4358898997306824,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "_hnswId": 4
+          },
+          {
+            "articleKey": "https://reuters.com/world/deal",
+            "contentHash": "4bd72d52f10d8612328fcb560ae4cbc3f75cf65e2e7ea28b856e7d0e21aa5b50",
+            "title": "Atlas announces acquisition of Nova for $5 billion",
+            "link": "https://reuters.com/world/deal",
+            "pubDate": "2026-10-02T08:10:00.000+07:00",
+            "publicationTimeReliable": true,
+            "content": "Atlas signed an agreement to acquire Nova on Friday.",
+            "image": "",
+            "feedTitle": "reuters.com",
+            "feedIcon": "https://www.google.com/s2/favicons?domain=reuters.com&sz=64",
+            "feedUrl": "https://reuters.com/rss.xml",
+            "feedCategory": "news_global",
+            "smartCategory": "news_global",
+            "language": "en",
+            "region": "foreign",
+            "domain": "reuters.com",
+            "sourceWeight": 1,
+            "hiddenSmartSource": false,
+            "_status": "NEW",
+            "_vec": [
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "_hnswId": 3
+          },
+          {
+            "articleKey": "https://bbc.co.uk/world/ambiguous",
+            "contentHash": "72156e2a084ed12bf5082834adb11d6f704e32f3ded6a097eec57ce0ca3f44bc",
+            "title": "Atlas Nova merger agreement faces shareholder questions",
+            "link": "https://bbc.co.uk/world/ambiguous",
+            "pubDate": "2026-10-02T12:30:00.000+07:00",
+            "publicationTimeReliable": true,
+            "content": "Shareholders discussed the acquisition agreement but no vote was announced.",
+            "image": "",
+            "feedTitle": "bbc.co.uk",
+            "feedIcon": "https://www.google.com/s2/favicons?domain=bbc.co.uk&sz=64",
+            "feedUrl": "https://bbc.co.uk/rss.xml",
+            "feedCategory": "news_global",
+            "smartCategory": "news_global",
+            "language": "en",
+            "region": "foreign",
+            "domain": "bbc.co.uk",
+            "sourceWeight": 1,
+            "hiddenSmartSource": false,
+            "_status": "NEW",
+            "_vec": [
+              0,
+              0.8899999856948853,
+              0.4559605121612549,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "_hnswId": 11
+          }
+        ],
+        "verified": false,
+        "verification": {
+          "method": "review_pending",
+          "reason": "Uncertain semantic event match requires review"
+        }
+      }
+    ],
+    "metrics": {
+      "existingMembershipsReused": 0,
+      "affectedClustersReconsidered": 11,
+      "deterministicMatches": 6,
+      "deterministicNonMatches": 8
+    }
+  },
+  "reviewGroups": [
+    {
+      "id": "g_1od6hz5",
+      "articles": [
+        {
+          "articleKey": "https://bbc.co.uk/world/deal",
+          "contentHash": "66ab0b76de593820f58e2a304b32a97fe3992b8795a9fca76258be1fb8b2f2c6",
+          "title": "Atlas announces acquisition of Nova for $5 billion",
+          "link": "https://bbc.co.uk/world/deal",
+          "pubDate": "2026-10-02T08:00:00.000+07:00",
+          "publicationTimeReliable": true,
+          "content": "Atlas signed an agreement to acquire Nova on Friday.",
+          "image": "",
+          "feedTitle": "bbc.co.uk",
+          "feedIcon": "https://www.google.com/s2/favicons?domain=bbc.co.uk&sz=64",
+          "feedUrl": "https://bbc.co.uk/rss.xml",
+          "feedCategory": "news_global",
+          "smartCategory": "news_global",
+          "language": "en",
+          "region": "foreign",
+          "domain": "bbc.co.uk",
+          "sourceWeight": 1,
+          "hiddenSmartSource": false,
+          "_status": "NEW",
+          "_vec": [
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "_hnswId": 2
+        },
+        {
+          "articleKey": "https://reuters.com/world/deal",
+          "contentHash": "4bd72d52f10d8612328fcb560ae4cbc3f75cf65e2e7ea28b856e7d0e21aa5b50",
+          "title": "Atlas announces acquisition of Nova for $5 billion",
+          "link": "https://reuters.com/world/deal",
+          "pubDate": "2026-10-02T08:10:00.000+07:00",
+          "publicationTimeReliable": true,
+          "content": "Atlas signed an agreement to acquire Nova on Friday.",
+          "image": "",
+          "feedTitle": "reuters.com",
+          "feedIcon": "https://www.google.com/s2/favicons?domain=reuters.com&sz=64",
+          "feedUrl": "https://reuters.com/rss.xml",
+          "feedCategory": "news_global",
+          "smartCategory": "news_global",
+          "language": "en",
+          "region": "foreign",
+          "domain": "reuters.com",
+          "sourceWeight": 1,
+          "hiddenSmartSource": false,
+          "_status": "NEW",
+          "_vec": [
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "_hnswId": 3
+        },
+        {
+          "articleKey": "https://apnews.com/deal-review",
+          "contentHash": "a3e19309fa87c2210bb1088bd71dd20d79b7c47fc673e76aebdcdb94027c4fc6",
+          "title": "Regulator opens antitrust review of Atlas Nova acquisition",
+          "link": "https://apnews.com/deal-review",
+          "pubDate": "2026-10-02T10:00:00.000+07:00",
+          "publicationTimeReliable": true,
+          "content": "The regulator launched a separate antitrust investigation into the Atlas Nova agreement.",
+          "image": "",
+          "feedTitle": "apnews.com",
+          "feedIcon": "https://www.google.com/s2/favicons?domain=apnews.com&sz=64",
+          "feedUrl": "https://apnews.com/rss.xml",
+          "feedCategory": "news_global",
+          "smartCategory": "news_global",
+          "language": "en",
+          "region": "foreign",
+          "domain": "apnews.com",
+          "sourceWeight": 1,
+          "hiddenSmartSource": false,
+          "_status": "NEW",
+          "_vec": [
+            0,
+            0.8999999761581421,
+            0.4358898997306824,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "_hnswId": 4
+        },
+        {
+          "articleKey": "https://bbc.co.uk/world/ambiguous",
+          "contentHash": "72156e2a084ed12bf5082834adb11d6f704e32f3ded6a097eec57ce0ca3f44bc",
+          "title": "Atlas Nova merger agreement faces shareholder questions",
+          "link": "https://bbc.co.uk/world/ambiguous",
+          "pubDate": "2026-10-02T12:30:00.000+07:00",
+          "publicationTimeReliable": true,
+          "content": "Shareholders discussed the acquisition agreement but no vote was announced.",
+          "image": "",
+          "feedTitle": "bbc.co.uk",
+          "feedIcon": "https://www.google.com/s2/favicons?domain=bbc.co.uk&sz=64",
+          "feedUrl": "https://bbc.co.uk/rss.xml",
+          "feedCategory": "news_global",
+          "smartCategory": "news_global",
+          "language": "en",
+          "region": "foreign",
+          "domain": "bbc.co.uk",
+          "sourceWeight": 1,
+          "hiddenSmartSource": false,
+          "_status": "NEW",
+          "_vec": [
+            0,
+            0.8899999856948853,
+            0.4559605121612549,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "_hnswId": 11
+        }
+      ],
+      "verified": false,
+      "verification": {
+        "method": "review_pending",
+        "reason": "Uncertain semantic event match requires review"
+      },
+      "fullRepartition": true,
+      "deferredComponents": [
+        [
+          {
+            "articleKey": "https://reuters.com/world/deal",
+            "contentHash": "4bd72d52f10d8612328fcb560ae4cbc3f75cf65e2e7ea28b856e7d0e21aa5b50",
+            "title": "Atlas announces acquisition of Nova for $5 billion",
+            "link": "https://reuters.com/world/deal",
+            "pubDate": "2026-10-02T08:10:00.000+07:00",
+            "publicationTimeReliable": true,
+            "content": "Atlas signed an agreement to acquire Nova on Friday.",
+            "image": "",
+            "feedTitle": "reuters.com",
+            "feedIcon": "https://www.google.com/s2/favicons?domain=reuters.com&sz=64",
+            "feedUrl": "https://reuters.com/rss.xml",
+            "feedCategory": "news_global",
+            "smartCategory": "news_global",
+            "language": "en",
+            "region": "foreign",
+            "domain": "reuters.com",
+            "sourceWeight": 1,
+            "hiddenSmartSource": false,
+            "_status": "NEW",
+            "_vec": [
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "_hnswId": 3
+          },
+          {
+            "articleKey": "https://bbc.co.uk/world/deal",
+            "contentHash": "66ab0b76de593820f58e2a304b32a97fe3992b8795a9fca76258be1fb8b2f2c6",
+            "title": "Atlas announces acquisition of Nova for $5 billion",
+            "link": "https://bbc.co.uk/world/deal",
+            "pubDate": "2026-10-02T08:00:00.000+07:00",
+            "publicationTimeReliable": true,
+            "content": "Atlas signed an agreement to acquire Nova on Friday.",
+            "image": "",
+            "feedTitle": "bbc.co.uk",
+            "feedIcon": "https://www.google.com/s2/favicons?domain=bbc.co.uk&sz=64",
+            "feedUrl": "https://bbc.co.uk/rss.xml",
+            "feedCategory": "news_global",
+            "smartCategory": "news_global",
+            "language": "en",
+            "region": "foreign",
+            "domain": "bbc.co.uk",
+            "sourceWeight": 1,
+            "hiddenSmartSource": false,
+            "_status": "NEW",
+            "_vec": [
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "_hnswId": 2
+          }
+        ],
+        [
+          {
+            "articleKey": "https://bbc.co.uk/world/ambiguous",
+            "contentHash": "72156e2a084ed12bf5082834adb11d6f704e32f3ded6a097eec57ce0ca3f44bc",
+            "title": "Atlas Nova merger agreement faces shareholder questions",
+            "link": "https://bbc.co.uk/world/ambiguous",
+            "pubDate": "2026-10-02T12:30:00.000+07:00",
+            "publicationTimeReliable": true,
+            "content": "Shareholders discussed the acquisition agreement but no vote was announced.",
+            "image": "",
+            "feedTitle": "bbc.co.uk",
+            "feedIcon": "https://www.google.com/s2/favicons?domain=bbc.co.uk&sz=64",
+            "feedUrl": "https://bbc.co.uk/rss.xml",
+            "feedCategory": "news_global",
+            "smartCategory": "news_global",
+            "language": "en",
+            "region": "foreign",
+            "domain": "bbc.co.uk",
+            "sourceWeight": 1,
+            "hiddenSmartSource": false,
+            "_status": "NEW",
+            "_vec": [
+              0,
+              0.8899999856948853,
+              0.4559605121612549,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "_hnswId": 11
+          },
+          {
+            "articleKey": "https://apnews.com/deal-review",
+            "contentHash": "a3e19309fa87c2210bb1088bd71dd20d79b7c47fc673e76aebdcdb94027c4fc6",
+            "title": "Regulator opens antitrust review of Atlas Nova acquisition",
+            "link": "https://apnews.com/deal-review",
+            "pubDate": "2026-10-02T10:00:00.000+07:00",
+            "publicationTimeReliable": true,
+            "content": "The regulator launched a separate antitrust investigation into the Atlas Nova agreement.",
+            "image": "",
+            "feedTitle": "apnews.com",
+            "feedIcon": "https://www.google.com/s2/favicons?domain=apnews.com&sz=64",
+            "feedUrl": "https://apnews.com/rss.xml",
+            "feedCategory": "news_global",
+            "smartCategory": "news_global",
+            "language": "en",
+            "region": "foreign",
+            "domain": "apnews.com",
+            "sourceWeight": 1,
+            "hiddenSmartSource": false,
+            "_status": "NEW",
+            "_vec": [
+              0,
+              0.8999999761581421,
+              0.4358898997306824,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "_hnswId": 4
+          }
+        ]
+      ],
+      "reviewUniverse": [
+        {
+          "articleKey": "https://bbc.co.uk/world/deal",
+          "contentHash": "66ab0b76de593820f58e2a304b32a97fe3992b8795a9fca76258be1fb8b2f2c6",
+          "title": "Atlas announces acquisition of Nova for $5 billion",
+          "link": "https://bbc.co.uk/world/deal",
+          "pubDate": "2026-10-02T08:00:00.000+07:00",
+          "publicationTimeReliable": true,
+          "content": "Atlas signed an agreement to acquire Nova on Friday.",
+          "image": "",
+          "feedTitle": "bbc.co.uk",
+          "feedIcon": "https://www.google.com/s2/favicons?domain=bbc.co.uk&sz=64",
+          "feedUrl": "https://bbc.co.uk/rss.xml",
+          "feedCategory": "news_global",
+          "smartCategory": "news_global",
+          "language": "en",
+          "region": "foreign",
+          "domain": "bbc.co.uk",
+          "sourceWeight": 1,
+          "hiddenSmartSource": false,
+          "_status": "NEW",
+          "_vec": [
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "_hnswId": 2
+        },
+        {
+          "articleKey": "https://apnews.com/deal-review",
+          "contentHash": "a3e19309fa87c2210bb1088bd71dd20d79b7c47fc673e76aebdcdb94027c4fc6",
+          "title": "Regulator opens antitrust review of Atlas Nova acquisition",
+          "link": "https://apnews.com/deal-review",
+          "pubDate": "2026-10-02T10:00:00.000+07:00",
+          "publicationTimeReliable": true,
+          "content": "The regulator launched a separate antitrust investigation into the Atlas Nova agreement.",
+          "image": "",
+          "feedTitle": "apnews.com",
+          "feedIcon": "https://www.google.com/s2/favicons?domain=apnews.com&sz=64",
+          "feedUrl": "https://apnews.com/rss.xml",
+          "feedCategory": "news_global",
+          "smartCategory": "news_global",
+          "language": "en",
+          "region": "foreign",
+          "domain": "apnews.com",
+          "sourceWeight": 1,
+          "hiddenSmartSource": false,
+          "_status": "NEW",
+          "_vec": [
+            0,
+            0.8999999761581421,
+            0.4358898997306824,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "_hnswId": 4
+        },
+        {
+          "articleKey": "https://reuters.com/world/deal",
+          "contentHash": "4bd72d52f10d8612328fcb560ae4cbc3f75cf65e2e7ea28b856e7d0e21aa5b50",
+          "title": "Atlas announces acquisition of Nova for $5 billion",
+          "link": "https://reuters.com/world/deal",
+          "pubDate": "2026-10-02T08:10:00.000+07:00",
+          "publicationTimeReliable": true,
+          "content": "Atlas signed an agreement to acquire Nova on Friday.",
+          "image": "",
+          "feedTitle": "reuters.com",
+          "feedIcon": "https://www.google.com/s2/favicons?domain=reuters.com&sz=64",
+          "feedUrl": "https://reuters.com/rss.xml",
+          "feedCategory": "news_global",
+          "smartCategory": "news_global",
+          "language": "en",
+          "region": "foreign",
+          "domain": "reuters.com",
+          "sourceWeight": 1,
+          "hiddenSmartSource": false,
+          "_status": "NEW",
+          "_vec": [
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "_hnswId": 3
+        },
+        {
+          "articleKey": "https://bbc.co.uk/world/ambiguous",
+          "contentHash": "72156e2a084ed12bf5082834adb11d6f704e32f3ded6a097eec57ce0ca3f44bc",
+          "title": "Atlas Nova merger agreement faces shareholder questions",
+          "link": "https://bbc.co.uk/world/ambiguous",
+          "pubDate": "2026-10-02T12:30:00.000+07:00",
+          "publicationTimeReliable": true,
+          "content": "Shareholders discussed the acquisition agreement but no vote was announced.",
+          "image": "",
+          "feedTitle": "bbc.co.uk",
+          "feedIcon": "https://www.google.com/s2/favicons?domain=bbc.co.uk&sz=64",
+          "feedUrl": "https://bbc.co.uk/rss.xml",
+          "feedCategory": "news_global",
+          "smartCategory": "news_global",
+          "language": "en",
+          "region": "foreign",
+          "domain": "bbc.co.uk",
+          "sourceWeight": 1,
+          "hiddenSmartSource": false,
+          "_status": "NEW",
+          "_vec": [
+            0,
+            0.8899999856948853,
+            0.4559605121612549,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "_hnswId": 11
+        }
+      ]
+    }
+  ],
+  "snapshot": {
+    "clusters": [
+      {
+        "articleKey": "https://ft.com/markets/rate",
+        "contentHash": "a3eaa7089718214dbab2b8ad80edbddedfc70e7d2870f2dcc41ba7f41557cfbd",
+        "title": "Federal Reserve announces emergency interest rate cut",
+        "link": "https://ft.com/markets/rate",
+        "pubDate": "2026-10-02T11:00:00.000+07:00",
+        "publicationTimeReliable": true,
+        "content": "The US central bank announced a new emergency rate cut on Friday.",
+        "image": "",
+        "feedTitle": "ft.com",
+        "feedIcon": "https://www.google.com/s2/favicons?domain=ft.com&sz=64",
+        "feedUrl": "https://ft.com/rss.xml",
+        "feedCategory": "finance_global",
+        "smartCategory": "finance_global",
+        "language": "en",
+        "region": "foreign",
+        "domain": "ft.com",
+        "sourceWeight": 1,
+        "hiddenSmartSource": false,
+        "_status": "NEW",
+        "_hnswId": 6,
+        "isCluster": true,
+        "clusterId": "1xpf2g8",
+        "clusterCount": 1,
+        "sourceCount": 1,
+        "sources": [
+          "ft.com"
+        ],
+        "hotness": 8,
+        "aiClustered": false,
+        "verification": {
+          "method": "kept_separate",
+          "reason": "Single article cluster"
+        },
+        "relatedArticles": []
+      },
+      {
+        "articleKey": "https://vneconomy.vn/rate-us",
+        "contentHash": "b6ee0ca923025a2fc297dbab2c9a4f9c7979cad2ca7a4f0b8f4da0614b43c3ba",
+        "title": "Cục Dự trữ Liên bang Mỹ công bố giảm lãi suất khẩn cấp",
+        "link": "https://vneconomy.vn/rate-us",
+        "pubDate": "2026-10-02T11:10:00.000+07:00",
+        "publicationTimeReliable": true,
+        "content": "Ngân hàng trung ương Mỹ công bố quyết định giảm lãi suất mới vào thứ Sáu.",
+        "image": "",
+        "feedTitle": "vneconomy.vn",
+        "feedIcon": "https://www.google.com/s2/favicons?domain=vneconomy.vn&sz=64",
+        "feedUrl": "https://vneconomy.vn/rss.xml",
+        "feedCategory": "finance_vietnam",
+        "smartCategory": "finance_vietnam",
+        "language": "vi",
+        "region": "vietnam",
+        "domain": "vneconomy.vn",
+        "sourceWeight": 1,
+        "hiddenSmartSource": false,
+        "_status": "NEW",
+        "_hnswId": 7,
+        "isCluster": true,
+        "clusterId": "ocod9m",
+        "clusterCount": 1,
+        "sourceCount": 1,
+        "sources": [
+          "vneconomy.vn"
+        ],
+        "hotness": 6.9,
+        "aiClustered": false,
+        "verification": {
+          "method": "kept_separate",
+          "reason": "Single article cluster"
+        },
+        "relatedArticles": []
+      },
+      {
+        "articleKey": "https://cafef.vn/rate",
+        "contentHash": "bc233ae2c9c72693791b4fe71ebd941a1b5509a0abd10ecc941d1cbf91df00e3",
+        "title": "Ngân hàng Nhà nước giảm lãi suất điều hành",
+        "link": "https://cafef.vn/rate",
+        "pubDate": "2026-10-02T10:30:00.000+07:00",
+        "publicationTimeReliable": true,
+        "content": "Ngân hàng Nhà nước Việt Nam công bố giảm lãi suất điều hành để hỗ trợ nền kinh tế.",
+        "image": "",
+        "feedTitle": "cafef.vn",
+        "feedIcon": "https://www.google.com/s2/favicons?domain=cafef.vn&sz=64",
+        "feedUrl": "https://cafef.vn/rss.xml",
+        "feedCategory": "finance_vietnam",
+        "smartCategory": "finance_vietnam",
+        "language": "vi",
+        "region": "vietnam",
+        "domain": "cafef.vn",
+        "sourceWeight": 1,
+        "hiddenSmartSource": false,
+        "_status": "NEW",
+        "_hnswId": 5,
+        "isCluster": true,
+        "clusterId": "szpr5q",
+        "clusterCount": 1,
+        "sourceCount": 1,
+        "sources": [
+          "cafef.vn"
+        ],
+        "hotness": 6.4,
+        "aiClustered": false,
+        "verification": {
+          "method": "kept_separate",
+          "reason": "Single article cluster"
+        },
+        "relatedArticles": []
+      },
+      {
+        "articleKey": "https://reuters.com/world/deal",
+        "contentHash": "4bd72d52f10d8612328fcb560ae4cbc3f75cf65e2e7ea28b856e7d0e21aa5b50",
+        "title": "Atlas announces acquisition of Nova for $5 billion",
+        "link": "https://reuters.com/world/deal",
+        "pubDate": "2026-10-02T08:10:00.000+07:00",
+        "publicationTimeReliable": true,
+        "content": "Atlas signed an agreement to acquire Nova on Friday.",
+        "image": "",
+        "feedTitle": "reuters.com",
+        "feedIcon": "https://www.google.com/s2/favicons?domain=reuters.com&sz=64",
+        "feedUrl": "https://reuters.com/rss.xml",
+        "feedCategory": "news_global",
+        "smartCategory": "news_global",
+        "language": "en",
+        "region": "foreign",
+        "domain": "reuters.com",
+        "sourceWeight": 1,
+        "hiddenSmartSource": false,
+        "_status": "NEW",
+        "_hnswId": 3,
+        "isCluster": true,
+        "clusterId": "132pafx",
+        "clusterCount": 1,
+        "sourceCount": 1,
+        "sources": [
+          "reuters.com"
+        ],
+        "hotness": 6.4,
+        "aiClustered": false,
+        "verification": {
+          "method": "deferred",
+          "reason": "fixture_conservative_partition"
+        },
+        "relatedArticles": []
+      },
+      {
+        "articleKey": "https://bbc.co.uk/world/deal",
+        "contentHash": "66ab0b76de593820f58e2a304b32a97fe3992b8795a9fca76258be1fb8b2f2c6",
+        "title": "Atlas announces acquisition of Nova for $5 billion",
+        "link": "https://bbc.co.uk/world/deal",
+        "pubDate": "2026-10-02T08:00:00.000+07:00",
+        "publicationTimeReliable": true,
+        "content": "Atlas signed an agreement to acquire Nova on Friday.",
+        "image": "",
+        "feedTitle": "bbc.co.uk",
+        "feedIcon": "https://www.google.com/s2/favicons?domain=bbc.co.uk&sz=64",
+        "feedUrl": "https://bbc.co.uk/rss.xml",
+        "feedCategory": "news_global",
+        "smartCategory": "news_global",
+        "language": "en",
+        "region": "foreign",
+        "domain": "bbc.co.uk",
+        "sourceWeight": 1,
+        "hiddenSmartSource": false,
+        "_status": "NEW",
+        "_hnswId": 2,
+        "isCluster": true,
+        "clusterId": "15htl51",
+        "clusterCount": 1,
+        "sourceCount": 1,
+        "sources": [
+          "bbc.co.uk"
+        ],
+        "hotness": 6.4,
+        "aiClustered": false,
+        "verification": {
+          "method": "deferred",
+          "reason": "fixture_conservative_partition"
+        },
+        "relatedArticles": [],
+        "broaderStory": {
+          "id": "story_nssd9r",
+          "relationship": "related_development",
+          "events": [
+            {
+              "clusterId": "15htl51",
+              "title": "Atlas announces acquisition of Nova for $5 billion",
+              "date": "2026-10-02T08:00:00.000+07:00",
+              "sourceCount": 1,
+              "sources": [
+                {
+                  "link": "https://bbc.co.uk/world/deal",
+                  "name": "bbc.co.uk"
+                }
+              ]
+            },
+            {
+              "clusterId": "sf2a91",
+              "title": "Regulator opens antitrust review of Atlas Nova acquisition",
+              "date": "2026-10-02T10:00:00.000+07:00",
+              "sourceCount": 1,
+              "sources": [
+                {
+                  "link": "https://apnews.com/deal-review",
+                  "name": "apnews.com"
+                }
+              ]
+            }
+          ],
+          "edges": [
+            {
+              "leftClusterId": "15htl51",
+              "rightClusterId": "sf2a91",
+              "confidence": 0.97,
+              "providerId": null,
+              "model": null,
+              "reviewGroupId": null,
+              "verifiedAt": null
+            }
+          ]
+        }
+      },
+      {
+        "articleKey": "https://theverge.com/chip-rumor",
+        "contentHash": "2fe05cc01d5180ba23a9a051255649eca499e0fedc95231082a46f0eff6cfb11",
+        "title": "Acme AI chip launch raises questions about shipment date",
+        "link": "https://theverge.com/chip-rumor",
+        "pubDate": "2026-10-02T13:00:00.000+07:00",
+        "publicationTimeReliable": true,
+        "content": "Analysts discussed potential future shipments of Acme processors after the launch.",
+        "image": "",
+        "feedTitle": "theverge.com",
+        "feedIcon": "https://www.google.com/s2/favicons?domain=theverge.com&sz=64",
+        "feedUrl": "https://theverge.com/rss.xml",
+        "feedCategory": "tech",
+        "smartCategory": "tech",
+        "language": "en",
+        "region": "",
+        "domain": "theverge.com",
+        "sourceWeight": 1,
+        "hiddenSmartSource": false,
+        "_status": "NEW",
+        "_hnswId": 10,
+        "isCluster": true,
+        "clusterId": "1qll8vg",
+        "clusterCount": 1,
+        "sourceCount": 1,
+        "sources": [
+          "theverge.com"
+        ],
+        "hotness": 6.1,
+        "aiClustered": false,
+        "verification": {
+          "method": "kept_separate",
+          "reason": "Single article cluster"
+        },
+        "relatedArticles": []
+      },
+      {
+        "articleKey": "https://techradar.com/chip",
+        "contentHash": "b780443d4c28864254ddd65dd9f67145b03f024e6bff647a2b7ef55dbbdfe57f",
+        "title": "Acme launches new artificial intelligence chip",
+        "link": "https://techradar.com/chip",
+        "pubDate": "2026-10-02T12:10:00.000+07:00",
+        "publicationTimeReliable": true,
+        "content": "Acme unveiled its new AI processor for data centers and software developers.",
+        "image": "",
+        "feedTitle": "techradar.com",
+        "feedIcon": "https://www.google.com/s2/favicons?domain=techradar.com&sz=64",
+        "feedUrl": "https://techradar.com/rss.xml",
+        "feedCategory": "tech",
+        "smartCategory": "tech",
+        "language": "en",
+        "region": "",
+        "domain": "techradar.com",
+        "sourceWeight": 1,
+        "hiddenSmartSource": false,
+        "_status": "NEW",
+        "_hnswId": 9,
+        "isCluster": true,
+        "clusterId": "1hnx0xk",
+        "clusterCount": 1,
+        "sourceCount": 1,
+        "sources": [
+          "techradar.com"
+        ],
+        "hotness": 6,
+        "aiClustered": false,
+        "verification": {
+          "method": "kept_separate",
+          "reason": "Single article cluster"
+        },
+        "relatedArticles": []
+      },
+      {
+        "articleKey": "https://bbc.co.uk/world/ambiguous",
+        "contentHash": "72156e2a084ed12bf5082834adb11d6f704e32f3ded6a097eec57ce0ca3f44bc",
+        "title": "Atlas Nova merger agreement faces shareholder questions",
+        "link": "https://bbc.co.uk/world/ambiguous",
+        "pubDate": "2026-10-02T12:30:00.000+07:00",
+        "publicationTimeReliable": true,
+        "content": "Shareholders discussed the acquisition agreement but no vote was announced.",
+        "image": "",
+        "feedTitle": "bbc.co.uk",
+        "feedIcon": "https://www.google.com/s2/favicons?domain=bbc.co.uk&sz=64",
+        "feedUrl": "https://bbc.co.uk/rss.xml",
+        "feedCategory": "news_global",
+        "smartCategory": "news_global",
+        "language": "en",
+        "region": "foreign",
+        "domain": "bbc.co.uk",
+        "sourceWeight": 1,
+        "hiddenSmartSource": false,
+        "_status": "NEW",
+        "_hnswId": 11,
+        "isCluster": true,
+        "clusterId": "4mepop",
+        "clusterCount": 1,
+        "sourceCount": 1,
+        "sources": [
+          "bbc.co.uk"
+        ],
+        "hotness": 5.6,
+        "aiClustered": false,
+        "verification": {
+          "method": "deferred",
+          "reason": "fixture_conservative_partition"
+        },
+        "relatedArticles": []
+      },
+      {
+        "articleKey": "https://tinhte.vn/ai",
+        "contentHash": "f9548774a46ed663fda91db49e6e81ee536c8f1c2ffd2a2f50aaf8f9e1bd41c0",
+        "title": "Việt Nam ra mắt chip trí tuệ nhân tạo mới",
+        "link": "https://tinhte.vn/ai",
+        "pubDate": "2026-10-02T12:00:00.000+07:00",
+        "publicationTimeReliable": true,
+        "content": "Các kỹ sư tại Việt Nam ra mắt chip AI dành cho máy chủ và phần mềm.",
+        "image": "",
+        "feedTitle": "tinhte.vn",
+        "feedIcon": "https://www.google.com/s2/favicons?domain=tinhte.vn&sz=64",
+        "feedUrl": "https://tinhte.vn/rss.xml",
+        "feedCategory": "tech",
+        "smartCategory": "tech",
+        "language": "vi",
+        "region": "",
+        "domain": "tinhte.vn",
+        "sourceWeight": 1,
+        "hiddenSmartSource": false,
+        "_status": "NEW",
+        "_hnswId": 8,
+        "isCluster": true,
+        "clusterId": "1r01np",
+        "clusterCount": 1,
+        "sourceCount": 1,
+        "sources": [
+          "tinhte.vn"
+        ],
+        "hotness": 5.5,
+        "aiClustered": false,
+        "verification": {
+          "method": "kept_separate",
+          "reason": "Single article cluster"
+        },
+        "relatedArticles": []
+      },
+      {
+        "articleKey": "https://vnexpress.net/crime",
+        "contentHash": "126ee925ed942cd2c11b89b09004092a8409f6a561557458cbb5b76c67038c91",
+        "title": "Công an bắt nhóm lừa đảo qua mạng chiếm đoạt tài sản",
+        "link": "https://vnexpress.net/crime",
+        "pubDate": "2026-10-02T10:30:00.000+07:00",
+        "publicationTimeReliable": true,
+        "content": "Công an Việt Nam điều tra đường dây tội phạm lừa đảo qua mạng.",
+        "image": "",
+        "feedTitle": "vnexpress.net",
+        "feedIcon": "https://www.google.com/s2/favicons?domain=vnexpress.net&sz=64",
+        "feedUrl": "https://vnexpress.net/rss.xml",
+        "feedCategory": "news_vietnam",
+        "smartCategory": "news_vietnam",
+        "language": "vi",
+        "region": "vietnam",
+        "domain": "vnexpress.net",
+        "sourceWeight": 1,
+        "hiddenSmartSource": false,
+        "_status": "NEW",
+        "_hnswId": 12,
+        "isCluster": true,
+        "clusterId": "1v6ft1u",
+        "clusterCount": 1,
+        "sourceCount": 1,
+        "sources": [
+          "vnexpress.net"
+        ],
+        "hotness": 5.2,
+        "aiClustered": false,
+        "verification": {
+          "method": "kept_separate",
+          "reason": "Single article cluster"
+        },
+        "relatedArticles": []
+      },
+      {
+        "articleKey": "https://tuoitre.vn/metro-2",
+        "contentHash": "d28842ce59cf4f23a035bf83ffdb6723f660311d653051d1372226265b2e84cd",
+        "title": "Hà Nội khai trương tuyến tàu điện mới",
+        "link": "https://tuoitre.vn/metro-2",
+        "pubDate": "2026-10-02T09:05:00.000+07:00",
+        "publicationTimeReliable": true,
+        "content": "Hà Nội chính thức khai trương tuyến tàu điện Cát Linh vào sáng nay.",
+        "image": "",
+        "feedTitle": "tuoitre.vn",
+        "feedIcon": "https://statictuoitre.mediacdn.vn/web_images/favicon.ico",
+        "feedUrl": "https://tuoitre.vn/rss.xml",
+        "feedCategory": "news_vietnam",
+        "smartCategory": "news_vietnam",
+        "language": "vi",
+        "region": "vietnam",
+        "domain": "tuoitre.vn",
+        "sourceWeight": 1,
+        "hiddenSmartSource": false,
+        "_status": "NEW",
+        "_hnswId": 1,
+        "isCluster": true,
+        "clusterId": "rbh13d",
+        "clusterCount": 2,
+        "sourceCount": 2,
+        "sources": [
+          "tuoitre.vn",
+          "vnexpress.net"
+        ],
+        "hotness": 5,
+        "aiClustered": false,
+        "verification": {
+          "method": "e5_auto_merge",
+          "reason": "Exact cosine, event rules, and component representative consistency passed"
+        },
+        "relatedArticles": [
+          {
+            "title": "Hà Nội khai trương tuyến tàu điện mới",
+            "link": "https://vnexpress.net/metro-1",
+            "pubDate": "2026-10-02T09:00:00.000+07:00",
+            "publicationTimeReliable": true,
+            "feedTitle": "vnexpress.net",
+            "feedIcon": "https://www.google.com/s2/favicons?domain=vnexpress.net&sz=64",
+            "feedUrl": "https://vnexpress.net/rss.xml",
+            "image": "",
+            "sourceWeight": 1,
+            "region": "vietnam",
+            "language": "vi",
+            "domain": "vnexpress.net",
+            "smartCategory": "news_vietnam",
+            "feedCategory": "news_vietnam",
+            "content": "Hà Nội chính thức khai trương tuyến tàu điện Cát Linh vào sáng nay.",
+            "editorialAssessment": {
+              "relevance": 0.8,
+              "impact": 0.7,
+              "novelty": 0.8,
+              "confidence": 0.9,
+              "exclude": false,
+              "destination": "news_vietnam",
+              "reason": "Fixture assessment"
+            }
+          }
+        ]
+      },
+      {
+        "articleKey": "https://apnews.com/deal-review",
+        "contentHash": "a3e19309fa87c2210bb1088bd71dd20d79b7c47fc673e76aebdcdb94027c4fc6",
+        "title": "Regulator opens antitrust review of Atlas Nova acquisition",
+        "link": "https://apnews.com/deal-review",
+        "pubDate": "2026-10-02T10:00:00.000+07:00",
+        "publicationTimeReliable": true,
+        "content": "The regulator launched a separate antitrust investigation into the Atlas Nova agreement.",
+        "image": "",
+        "feedTitle": "apnews.com",
+        "feedIcon": "https://www.google.com/s2/favicons?domain=apnews.com&sz=64",
+        "feedUrl": "https://apnews.com/rss.xml",
+        "feedCategory": "news_global",
+        "smartCategory": "news_global",
+        "language": "en",
+        "region": "foreign",
+        "domain": "apnews.com",
+        "sourceWeight": 1,
+        "hiddenSmartSource": false,
+        "_status": "NEW",
+        "_hnswId": 4,
+        "isCluster": true,
+        "clusterId": "sf2a91",
+        "clusterCount": 1,
+        "sourceCount": 1,
+        "sources": [
+          "apnews.com"
+        ],
+        "hotness": 4.6,
+        "aiClustered": false,
+        "verification": {
+          "method": "deferred",
+          "reason": "fixture_conservative_partition"
+        },
+        "relatedArticles": [],
+        "broaderStory": {
+          "id": "story_nssd9r",
+          "relationship": "related_development",
+          "events": [
+            {
+              "clusterId": "15htl51",
+              "title": "Atlas announces acquisition of Nova for $5 billion",
+              "date": "2026-10-02T08:00:00.000+07:00",
+              "sourceCount": 1,
+              "sources": [
+                {
+                  "link": "https://bbc.co.uk/world/deal",
+                  "name": "bbc.co.uk"
+                }
+              ]
+            },
+            {
+              "clusterId": "sf2a91",
+              "title": "Regulator opens antitrust review of Atlas Nova acquisition",
+              "date": "2026-10-02T10:00:00.000+07:00",
+              "sourceCount": 1,
+              "sources": [
+                {
+                  "link": "https://apnews.com/deal-review",
+                  "name": "apnews.com"
+                }
+              ]
+            }
+          ],
+          "edges": [
+            {
+              "leftClusterId": "15htl51",
+              "rightClusterId": "sf2a91",
+              "confidence": 0.97,
+              "providerId": null,
+              "model": null,
+              "reviewGroupId": null,
+              "verifiedAt": null
+            }
+          ]
+        }
+      },
+      {
+        "articleKey": "https://example.test/unknown-date",
+        "contentHash": "e287ac1e0e1a3e1266d6f22eeb967e4bcaf98a23313f11674d44614fc899582d",
+        "title": "An undated article remains isolated",
+        "link": "https://example.test/unknown-date",
+        "pubDate": "2026-09-29T03:00:00.000+07:00",
+        "rawPubDate": "not-a-date",
+        "publicationTimeReliable": false,
+        "content": "No reliable publication date is available.",
+        "image": "",
+        "feedTitle": "example.test",
+        "feedIcon": "https://www.google.com/s2/favicons?domain=example.test&sz=64",
+        "feedUrl": "https://example.test/rss.xml",
+        "feedCategory": "news_global",
+        "smartCategory": "news_global",
+        "language": "en",
+        "region": "foreign",
+        "domain": "example.test",
+        "sourceWeight": 1,
+        "hiddenSmartSource": false,
+        "_status": "NEW",
+        "_hnswId": 13,
+        "isCluster": true,
+        "clusterId": "btnx62",
+        "clusterCount": 1,
+        "sourceCount": 1,
+        "sources": [
+          "example.test"
+        ],
+        "hotness": 1.7,
+        "aiClustered": false,
+        "verification": {
+          "method": "kept_separate",
+          "reason": "Single article cluster"
+        },
+        "relatedArticles": []
+      }
+    ],
+    "currentLinks": [
+      "https://vnexpress.net/metro-1",
+      "https://tuoitre.vn/metro-2",
+      "https://bbc.co.uk/world/deal",
+      "https://reuters.com/world/deal",
+      "https://apnews.com/deal-review",
+      "https://cafef.vn/rate",
+      "https://ft.com/markets/rate",
+      "https://vneconomy.vn/rate-us",
+      "https://tinhte.vn/ai",
+      "https://techradar.com/chip",
+      "https://theverge.com/chip-rumor",
+      "https://bbc.co.uk/world/ambiguous",
+      "https://vnexpress.net/crime",
+      "https://example.test/unknown-date"
+    ],
+    "storyRelationships": [
+      {
+        "type": "related_development",
+        "confidence": 0.97,
+        "leftArticleIds": [
+          "a_15htl51"
+        ],
+        "rightArticleIds": [
+          "a_sf2a91"
+        ]
+      }
+    ]
+  },
+  "verification": {
+    "key": "5a55e41d711f43efa80ba3bdc3e7774ebe0d661412d2ab45e2259ab6ca9b5c7b",
+    "validation": {
+      "valid": false,
+      "reason": "wrong_root_type"
+    },
+    "cached": {
+      "clusters": [
+        {
+          "articleIds": [
+            "a_mj5883",
+            "a_1tqric1"
+          ]
+        }
+      ],
+      "uncertain": false,
+      "providerId": "fixture",
+      "model": "fixture"
+    },
+    "invalid": {
+      "valid": false,
+      "reason": "wrong_article_count"
+    }
+  },
+  "embeddingProgress": {
+    "phase": "embeddings",
+    "embeddingsReused": 14,
+    "embeddingsGenerated": 0
+  },
+  "embeddingCacheDigest": "ed6b37d6f7f9bcf48a1966882c77f2af5ad80f820d3db07fc6622e66e34b9fdd",
+  "editorial": [
+    {
+      "cacheKey": "80ac46f823739f887df393fe8a0d7af3",
+      "destination": "news_vietnam",
+      "assessment": {
+        "relevance": 0.8,
+        "impact": 0.7,
+        "novelty": 0.8,
+        "confidence": 0.9,
+        "exclude": false,
+        "destination": "news_vietnam",
+        "reason": "Fixture assessment"
+      },
+      "cluster": {
+        "articleKey": "https://vnexpress.net/crime",
+        "contentHash": "126ee925ed942cd2c11b89b09004092a8409f6a561557458cbb5b76c67038c91",
+        "title": "Công an bắt nhóm lừa đảo qua mạng chiếm đoạt tài sản",
+        "link": "https://vnexpress.net/crime",
+        "pubDate": "2026-10-02T10:30:00.000+07:00",
+        "publicationTimeReliable": true,
+        "content": "Công an Việt Nam điều tra đường dây tội phạm lừa đảo qua mạng.",
+        "image": "",
+        "feedTitle": "vnexpress.net",
+        "feedIcon": "https://www.google.com/s2/favicons?domain=vnexpress.net&sz=64",
+        "feedUrl": "https://vnexpress.net/rss.xml",
+        "feedCategory": "news_vietnam",
+        "smartCategory": "news_vietnam",
+        "language": "vi",
+        "region": "vietnam",
+        "domain": "vnexpress.net",
+        "sourceWeight": 1,
+        "hiddenSmartSource": false,
+        "_status": "NEW",
+        "_hnswId": 12,
+        "isCluster": true,
+        "clusterId": "1v6ft1u",
+        "clusterCount": 1,
+        "sourceCount": 1,
+        "sources": [
+          "vnexpress.net"
+        ],
+        "hotness": 5.2,
+        "aiClustered": false,
+        "verification": {
+          "method": "kept_separate",
+          "reason": "Single article cluster"
+        },
+        "relatedArticles": [],
+        "editorialAssessment": {
+          "relevance": 0.8,
+          "impact": 0.7,
+          "novelty": 0.8,
+          "confidence": 0.9,
+          "exclude": false,
+          "destination": "news_vietnam",
+          "reason": "Fixture assessment"
+        }
+      }
+    },
+    {
+      "cacheKey": "def64b0748f55a9d8b1b08ba6f94b55a",
+      "destination": "news_vietnam",
+      "assessment": {
+        "relevance": 0.8,
+        "impact": 0.7,
+        "novelty": 0.8,
+        "confidence": 0.9,
+        "exclude": false,
+        "destination": "news_vietnam",
+        "reason": "Fixture assessment"
+      },
+      "cluster": {
+        "articleKey": "https://tuoitre.vn/metro-2",
+        "contentHash": "d28842ce59cf4f23a035bf83ffdb6723f660311d653051d1372226265b2e84cd",
+        "title": "Hà Nội khai trương tuyến tàu điện mới",
+        "link": "https://tuoitre.vn/metro-2",
+        "pubDate": "2026-10-02T09:05:00.000+07:00",
+        "publicationTimeReliable": true,
+        "content": "Hà Nội chính thức khai trương tuyến tàu điện Cát Linh vào sáng nay.",
+        "image": "",
+        "feedTitle": "tuoitre.vn",
+        "feedIcon": "https://statictuoitre.mediacdn.vn/web_images/favicon.ico",
+        "feedUrl": "https://tuoitre.vn/rss.xml",
+        "feedCategory": "news_vietnam",
+        "smartCategory": "news_vietnam",
+        "language": "vi",
+        "region": "vietnam",
+        "domain": "tuoitre.vn",
+        "sourceWeight": 1,
+        "hiddenSmartSource": false,
+        "_status": "NEW",
+        "_hnswId": 1,
+        "isCluster": true,
+        "clusterId": "rbh13d",
+        "clusterCount": 2,
+        "sourceCount": 2,
+        "sources": [
+          "tuoitre.vn",
+          "vnexpress.net"
+        ],
+        "hotness": 5,
+        "aiClustered": false,
+        "verification": {
+          "method": "e5_auto_merge",
+          "reason": "Exact cosine, event rules, and component representative consistency passed"
+        },
+        "relatedArticles": [
+          {
+            "title": "Hà Nội khai trương tuyến tàu điện mới",
+            "link": "https://vnexpress.net/metro-1",
+            "pubDate": "2026-10-02T09:00:00.000+07:00",
+            "publicationTimeReliable": true,
+            "feedTitle": "vnexpress.net",
+            "feedIcon": "https://www.google.com/s2/favicons?domain=vnexpress.net&sz=64",
+            "feedUrl": "https://vnexpress.net/rss.xml",
+            "image": "",
+            "sourceWeight": 1,
+            "region": "vietnam",
+            "language": "vi",
+            "domain": "vnexpress.net",
+            "smartCategory": "news_vietnam",
+            "feedCategory": "news_vietnam",
+            "content": "Hà Nội chính thức khai trương tuyến tàu điện Cát Linh vào sáng nay.",
+            "editorialAssessment": {
+              "relevance": 0.8,
+              "impact": 0.7,
+              "novelty": 0.8,
+              "confidence": 0.9,
+              "exclude": false,
+              "destination": "news_vietnam",
+              "reason": "Fixture assessment"
+            }
+          }
+        ],
+        "editorialAssessment": {
+          "relevance": 0.8,
+          "impact": 0.7,
+          "novelty": 0.8,
+          "confidence": 0.9,
+          "exclude": false,
+          "destination": "news_vietnam",
+          "reason": "Fixture assessment"
+        }
+      }
+    },
+    {
+      "cacheKey": "39f58282002c3de6a11e7e1c70b2349a",
+      "destination": "news_global",
+      "assessment": {
+        "relevance": 0.8,
+        "impact": 0.7,
+        "novelty": 0.8,
+        "confidence": 0.9,
+        "exclude": false,
+        "destination": "news_global",
+        "reason": "Fixture assessment"
+      },
+      "cluster": {
+        "articleKey": "https://bbc.co.uk/world/ambiguous",
+        "contentHash": "72156e2a084ed12bf5082834adb11d6f704e32f3ded6a097eec57ce0ca3f44bc",
+        "title": "Atlas Nova merger agreement faces shareholder questions",
+        "link": "https://bbc.co.uk/world/ambiguous",
+        "pubDate": "2026-10-02T12:30:00.000+07:00",
+        "publicationTimeReliable": true,
+        "content": "Shareholders discussed the acquisition agreement but no vote was announced.",
+        "image": "",
+        "feedTitle": "bbc.co.uk",
+        "feedIcon": "https://www.google.com/s2/favicons?domain=bbc.co.uk&sz=64",
+        "feedUrl": "https://bbc.co.uk/rss.xml",
+        "feedCategory": "news_global",
+        "smartCategory": "news_global",
+        "language": "en",
+        "region": "foreign",
+        "domain": "bbc.co.uk",
+        "sourceWeight": 1,
+        "hiddenSmartSource": false,
+        "_status": "NEW",
+        "_hnswId": 11,
+        "isCluster": true,
+        "clusterId": "4mepop",
+        "clusterCount": 1,
+        "sourceCount": 1,
+        "sources": [
+          "bbc.co.uk"
+        ],
+        "hotness": 5.6,
+        "aiClustered": false,
+        "verification": {
+          "method": "deferred",
+          "reason": "fixture_conservative_partition"
+        },
+        "relatedArticles": [],
+        "editorialAssessment": {
+          "relevance": 0.8,
+          "impact": 0.7,
+          "novelty": 0.8,
+          "confidence": 0.9,
+          "exclude": false,
+          "destination": "news_global",
+          "reason": "Fixture assessment"
+        }
+      }
+    },
+    {
+      "cacheKey": "1bd6f32e9c4ecf27dfbab50d1ef6f82c",
+      "destination": "news_global",
+      "assessment": {
+        "relevance": 0.8,
+        "impact": 0.7,
+        "novelty": 0.8,
+        "confidence": 0.9,
+        "exclude": false,
+        "destination": "news_global",
+        "reason": "Fixture assessment"
+      },
+      "cluster": {
+        "articleKey": "https://apnews.com/deal-review",
+        "contentHash": "a3e19309fa87c2210bb1088bd71dd20d79b7c47fc673e76aebdcdb94027c4fc6",
+        "title": "Regulator opens antitrust review of Atlas Nova acquisition",
+        "link": "https://apnews.com/deal-review",
+        "pubDate": "2026-10-02T10:00:00.000+07:00",
+        "publicationTimeReliable": true,
+        "content": "The regulator launched a separate antitrust investigation into the Atlas Nova agreement.",
+        "image": "",
+        "feedTitle": "apnews.com",
+        "feedIcon": "https://www.google.com/s2/favicons?domain=apnews.com&sz=64",
+        "feedUrl": "https://apnews.com/rss.xml",
+        "feedCategory": "news_global",
+        "smartCategory": "news_global",
+        "language": "en",
+        "region": "foreign",
+        "domain": "apnews.com",
+        "sourceWeight": 1,
+        "hiddenSmartSource": false,
+        "_status": "NEW",
+        "_hnswId": 4,
+        "isCluster": true,
+        "clusterId": "sf2a91",
+        "clusterCount": 1,
+        "sourceCount": 1,
+        "sources": [
+          "apnews.com"
+        ],
+        "hotness": 4.6,
+        "aiClustered": false,
+        "verification": {
+          "method": "deferred",
+          "reason": "fixture_conservative_partition"
+        },
+        "relatedArticles": [],
+        "broaderStory": {
+          "id": "story_nssd9r",
+          "relationship": "related_development",
+          "events": [
+            {
+              "clusterId": "15htl51",
+              "title": "Atlas announces acquisition of Nova for $5 billion",
+              "date": "2026-10-02T08:00:00.000+07:00",
+              "sourceCount": 1,
+              "sources": [
+                {
+                  "link": "https://bbc.co.uk/world/deal",
+                  "name": "bbc.co.uk"
+                }
+              ]
+            },
+            {
+              "clusterId": "sf2a91",
+              "title": "Regulator opens antitrust review of Atlas Nova acquisition",
+              "date": "2026-10-02T10:00:00.000+07:00",
+              "sourceCount": 1,
+              "sources": [
+                {
+                  "link": "https://apnews.com/deal-review",
+                  "name": "apnews.com"
+                }
+              ]
+            }
+          ],
+          "edges": [
+            {
+              "leftClusterId": "15htl51",
+              "rightClusterId": "sf2a91",
+              "confidence": 0.97,
+              "providerId": null,
+              "model": null,
+              "reviewGroupId": null,
+              "verifiedAt": null
+            }
+          ]
+        },
+        "editorialAssessment": {
+          "relevance": 0.8,
+          "impact": 0.7,
+          "novelty": 0.8,
+          "confidence": 0.9,
+          "exclude": false,
+          "destination": "news_global",
+          "reason": "Fixture assessment"
+        }
+      }
+    },
+    {
+      "cacheKey": "6639a271991da3f33940c8ba8ce5a0aa",
+      "destination": "news_global",
+      "assessment": {
+        "relevance": 0.8,
+        "impact": 0.7,
+        "novelty": 0.8,
+        "confidence": 0.9,
+        "exclude": false,
+        "destination": "news_global",
+        "reason": "Fixture assessment"
+      },
+      "cluster": {
+        "articleKey": "https://reuters.com/world/deal",
+        "contentHash": "4bd72d52f10d8612328fcb560ae4cbc3f75cf65e2e7ea28b856e7d0e21aa5b50",
+        "title": "Atlas announces acquisition of Nova for $5 billion",
+        "link": "https://reuters.com/world/deal",
+        "pubDate": "2026-10-02T08:10:00.000+07:00",
+        "publicationTimeReliable": true,
+        "content": "Atlas signed an agreement to acquire Nova on Friday.",
+        "image": "",
+        "feedTitle": "reuters.com",
+        "feedIcon": "https://www.google.com/s2/favicons?domain=reuters.com&sz=64",
+        "feedUrl": "https://reuters.com/rss.xml",
+        "feedCategory": "news_global",
+        "smartCategory": "news_global",
+        "language": "en",
+        "region": "foreign",
+        "domain": "reuters.com",
+        "sourceWeight": 1,
+        "hiddenSmartSource": false,
+        "_status": "NEW",
+        "_hnswId": 3,
+        "isCluster": true,
+        "clusterId": "132pafx",
+        "clusterCount": 1,
+        "sourceCount": 1,
+        "sources": [
+          "reuters.com"
+        ],
+        "hotness": 6.4,
+        "aiClustered": false,
+        "verification": {
+          "method": "deferred",
+          "reason": "fixture_conservative_partition"
+        },
+        "relatedArticles": [],
+        "editorialAssessment": {
+          "relevance": 0.8,
+          "impact": 0.7,
+          "novelty": 0.8,
+          "confidence": 0.9,
+          "exclude": false,
+          "destination": "news_global",
+          "reason": "Fixture assessment"
+        }
+      }
+    },
+    {
+      "cacheKey": "ef8635f1b8604d0bf56afbf8db5db3a5",
+      "destination": "news_global",
+      "assessment": {
+        "relevance": 0.8,
+        "impact": 0.7,
+        "novelty": 0.8,
+        "confidence": 0.9,
+        "exclude": false,
+        "destination": "news_global",
+        "reason": "Fixture assessment"
+      },
+      "cluster": {
+        "articleKey": "https://bbc.co.uk/world/deal",
+        "contentHash": "66ab0b76de593820f58e2a304b32a97fe3992b8795a9fca76258be1fb8b2f2c6",
+        "title": "Atlas announces acquisition of Nova for $5 billion",
+        "link": "https://bbc.co.uk/world/deal",
+        "pubDate": "2026-10-02T08:00:00.000+07:00",
+        "publicationTimeReliable": true,
+        "content": "Atlas signed an agreement to acquire Nova on Friday.",
+        "image": "",
+        "feedTitle": "bbc.co.uk",
+        "feedIcon": "https://www.google.com/s2/favicons?domain=bbc.co.uk&sz=64",
+        "feedUrl": "https://bbc.co.uk/rss.xml",
+        "feedCategory": "news_global",
+        "smartCategory": "news_global",
+        "language": "en",
+        "region": "foreign",
+        "domain": "bbc.co.uk",
+        "sourceWeight": 1,
+        "hiddenSmartSource": false,
+        "_status": "NEW",
+        "_hnswId": 2,
+        "isCluster": true,
+        "clusterId": "15htl51",
+        "clusterCount": 1,
+        "sourceCount": 1,
+        "sources": [
+          "bbc.co.uk"
+        ],
+        "hotness": 6.4,
+        "aiClustered": false,
+        "verification": {
+          "method": "deferred",
+          "reason": "fixture_conservative_partition"
+        },
+        "relatedArticles": [],
+        "broaderStory": {
+          "id": "story_nssd9r",
+          "relationship": "related_development",
+          "events": [
+            {
+              "clusterId": "15htl51",
+              "title": "Atlas announces acquisition of Nova for $5 billion",
+              "date": "2026-10-02T08:00:00.000+07:00",
+              "sourceCount": 1,
+              "sources": [
+                {
+                  "link": "https://bbc.co.uk/world/deal",
+                  "name": "bbc.co.uk"
+                }
+              ]
+            },
+            {
+              "clusterId": "sf2a91",
+              "title": "Regulator opens antitrust review of Atlas Nova acquisition",
+              "date": "2026-10-02T10:00:00.000+07:00",
+              "sourceCount": 1,
+              "sources": [
+                {
+                  "link": "https://apnews.com/deal-review",
+                  "name": "apnews.com"
+                }
+              ]
+            }
+          ],
+          "edges": [
+            {
+              "leftClusterId": "15htl51",
+              "rightClusterId": "sf2a91",
+              "confidence": 0.97,
+              "providerId": null,
+              "model": null,
+              "reviewGroupId": null,
+              "verifiedAt": null
+            }
+          ]
+        },
+        "editorialAssessment": {
+          "relevance": 0.8,
+          "impact": 0.7,
+          "novelty": 0.8,
+          "confidence": 0.9,
+          "exclude": false,
+          "destination": "news_global",
+          "reason": "Fixture assessment"
+        }
+      }
+    },
+    {
+      "cacheKey": "018a640c354db1bb5abc350ec9c2b53c",
+      "destination": "news_global",
+      "assessment": {
+        "relevance": 0.8,
+        "impact": 0.7,
+        "novelty": 0.8,
+        "confidence": 0.9,
+        "exclude": false,
+        "destination": "news_global",
+        "reason": "Fixture assessment"
+      },
+      "cluster": {
+        "articleKey": "https://example.test/unknown-date",
+        "contentHash": "e287ac1e0e1a3e1266d6f22eeb967e4bcaf98a23313f11674d44614fc899582d",
+        "title": "An undated article remains isolated",
+        "link": "https://example.test/unknown-date",
+        "pubDate": "2026-09-29T03:00:00.000+07:00",
+        "rawPubDate": "not-a-date",
+        "publicationTimeReliable": false,
+        "content": "No reliable publication date is available.",
+        "image": "",
+        "feedTitle": "example.test",
+        "feedIcon": "https://www.google.com/s2/favicons?domain=example.test&sz=64",
+        "feedUrl": "https://example.test/rss.xml",
+        "feedCategory": "news_global",
+        "smartCategory": "news_global",
+        "language": "en",
+        "region": "foreign",
+        "domain": "example.test",
+        "sourceWeight": 1,
+        "hiddenSmartSource": false,
+        "_status": "NEW",
+        "_hnswId": 13,
+        "isCluster": true,
+        "clusterId": "btnx62",
+        "clusterCount": 1,
+        "sourceCount": 1,
+        "sources": [
+          "example.test"
+        ],
+        "hotness": 1.7,
+        "aiClustered": false,
+        "verification": {
+          "method": "kept_separate",
+          "reason": "Single article cluster"
+        },
+        "relatedArticles": [],
+        "editorialAssessment": {
+          "relevance": 0.8,
+          "impact": 0.7,
+          "novelty": 0.8,
+          "confidence": 0.9,
+          "exclude": false,
+          "destination": "news_global",
+          "reason": "Fixture assessment"
+        }
+      }
+    },
+    {
+      "cacheKey": "5e6ade39aaea743887c34261863d7269",
+      "destination": "finance_vietnam",
+      "assessment": {
+        "relevance": 0.8,
+        "impact": 0.7,
+        "novelty": 0.8,
+        "confidence": 0.9,
+        "exclude": false,
+        "destination": "finance_vietnam",
+        "reason": "Fixture assessment"
+      },
+      "cluster": {
+        "articleKey": "https://vneconomy.vn/rate-us",
+        "contentHash": "b6ee0ca923025a2fc297dbab2c9a4f9c7979cad2ca7a4f0b8f4da0614b43c3ba",
+        "title": "Cục Dự trữ Liên bang Mỹ công bố giảm lãi suất khẩn cấp",
+        "link": "https://vneconomy.vn/rate-us",
+        "pubDate": "2026-10-02T11:10:00.000+07:00",
+        "publicationTimeReliable": true,
+        "content": "Ngân hàng trung ương Mỹ công bố quyết định giảm lãi suất mới vào thứ Sáu.",
+        "image": "",
+        "feedTitle": "vneconomy.vn",
+        "feedIcon": "https://www.google.com/s2/favicons?domain=vneconomy.vn&sz=64",
+        "feedUrl": "https://vneconomy.vn/rss.xml",
+        "feedCategory": "finance_vietnam",
+        "smartCategory": "finance_vietnam",
+        "language": "vi",
+        "region": "vietnam",
+        "domain": "vneconomy.vn",
+        "sourceWeight": 1,
+        "hiddenSmartSource": false,
+        "_status": "NEW",
+        "_hnswId": 7,
+        "isCluster": true,
+        "clusterId": "ocod9m",
+        "clusterCount": 1,
+        "sourceCount": 1,
+        "sources": [
+          "vneconomy.vn"
+        ],
+        "hotness": 6.9,
+        "aiClustered": false,
+        "verification": {
+          "method": "kept_separate",
+          "reason": "Single article cluster"
+        },
+        "relatedArticles": [],
+        "editorialAssessment": {
+          "relevance": 0.8,
+          "impact": 0.7,
+          "novelty": 0.8,
+          "confidence": 0.9,
+          "exclude": false,
+          "destination": "finance_vietnam",
+          "reason": "Fixture assessment"
+        }
+      }
+    },
+    {
+      "cacheKey": "19eea1cc3270befb8aeb7b75b8752251",
+      "destination": "finance_vietnam",
+      "assessment": {
+        "relevance": 0.8,
+        "impact": 0.7,
+        "novelty": 0.8,
+        "confidence": 0.9,
+        "exclude": false,
+        "destination": "finance_vietnam",
+        "reason": "Fixture assessment"
+      },
+      "cluster": {
+        "articleKey": "https://cafef.vn/rate",
+        "contentHash": "bc233ae2c9c72693791b4fe71ebd941a1b5509a0abd10ecc941d1cbf91df00e3",
+        "title": "Ngân hàng Nhà nước giảm lãi suất điều hành",
+        "link": "https://cafef.vn/rate",
+        "pubDate": "2026-10-02T10:30:00.000+07:00",
+        "publicationTimeReliable": true,
+        "content": "Ngân hàng Nhà nước Việt Nam công bố giảm lãi suất điều hành để hỗ trợ nền kinh tế.",
+        "image": "",
+        "feedTitle": "cafef.vn",
+        "feedIcon": "https://www.google.com/s2/favicons?domain=cafef.vn&sz=64",
+        "feedUrl": "https://cafef.vn/rss.xml",
+        "feedCategory": "finance_vietnam",
+        "smartCategory": "finance_vietnam",
+        "language": "vi",
+        "region": "vietnam",
+        "domain": "cafef.vn",
+        "sourceWeight": 1,
+        "hiddenSmartSource": false,
+        "_status": "NEW",
+        "_hnswId": 5,
+        "isCluster": true,
+        "clusterId": "szpr5q",
+        "clusterCount": 1,
+        "sourceCount": 1,
+        "sources": [
+          "cafef.vn"
+        ],
+        "hotness": 6.4,
+        "aiClustered": false,
+        "verification": {
+          "method": "kept_separate",
+          "reason": "Single article cluster"
+        },
+        "relatedArticles": [],
+        "editorialAssessment": {
+          "relevance": 0.8,
+          "impact": 0.7,
+          "novelty": 0.8,
+          "confidence": 0.9,
+          "exclude": false,
+          "destination": "finance_vietnam",
+          "reason": "Fixture assessment"
+        }
+      }
+    },
+    {
+      "cacheKey": "4a32bc6f4a58dbdc7d2cebea16c90ad1",
+      "destination": "finance_global",
+      "assessment": {
+        "relevance": 0.8,
+        "impact": 0.7,
+        "novelty": 0.8,
+        "confidence": 0.9,
+        "exclude": false,
+        "destination": "finance_global",
+        "reason": "Fixture assessment"
+      },
+      "cluster": {
+        "articleKey": "https://ft.com/markets/rate",
+        "contentHash": "a3eaa7089718214dbab2b8ad80edbddedfc70e7d2870f2dcc41ba7f41557cfbd",
+        "title": "Federal Reserve announces emergency interest rate cut",
+        "link": "https://ft.com/markets/rate",
+        "pubDate": "2026-10-02T11:00:00.000+07:00",
+        "publicationTimeReliable": true,
+        "content": "The US central bank announced a new emergency rate cut on Friday.",
+        "image": "",
+        "feedTitle": "ft.com",
+        "feedIcon": "https://www.google.com/s2/favicons?domain=ft.com&sz=64",
+        "feedUrl": "https://ft.com/rss.xml",
+        "feedCategory": "finance_global",
+        "smartCategory": "finance_global",
+        "language": "en",
+        "region": "foreign",
+        "domain": "ft.com",
+        "sourceWeight": 1,
+        "hiddenSmartSource": false,
+        "_status": "NEW",
+        "_hnswId": 6,
+        "isCluster": true,
+        "clusterId": "1xpf2g8",
+        "clusterCount": 1,
+        "sourceCount": 1,
+        "sources": [
+          "ft.com"
+        ],
+        "hotness": 8,
+        "aiClustered": false,
+        "verification": {
+          "method": "kept_separate",
+          "reason": "Single article cluster"
+        },
+        "relatedArticles": [],
+        "editorialAssessment": {
+          "relevance": 0.8,
+          "impact": 0.7,
+          "novelty": 0.8,
+          "confidence": 0.9,
+          "exclude": false,
+          "destination": "finance_global",
+          "reason": "Fixture assessment"
+        }
+      }
+    },
+    {
+      "cacheKey": "4f380ca4a0256d42ce8c7fe70b1a65bb",
+      "destination": "tech_vietnam",
+      "assessment": {
+        "relevance": 0.8,
+        "impact": 0.7,
+        "novelty": 0.8,
+        "confidence": 0.9,
+        "exclude": false,
+        "destination": "tech_vietnam",
+        "reason": "Fixture assessment"
+      },
+      "cluster": {
+        "articleKey": "https://tinhte.vn/ai",
+        "contentHash": "f9548774a46ed663fda91db49e6e81ee536c8f1c2ffd2a2f50aaf8f9e1bd41c0",
+        "title": "Việt Nam ra mắt chip trí tuệ nhân tạo mới",
+        "link": "https://tinhte.vn/ai",
+        "pubDate": "2026-10-02T12:00:00.000+07:00",
+        "publicationTimeReliable": true,
+        "content": "Các kỹ sư tại Việt Nam ra mắt chip AI dành cho máy chủ và phần mềm.",
+        "image": "",
+        "feedTitle": "tinhte.vn",
+        "feedIcon": "https://www.google.com/s2/favicons?domain=tinhte.vn&sz=64",
+        "feedUrl": "https://tinhte.vn/rss.xml",
+        "feedCategory": "tech",
+        "smartCategory": "tech",
+        "language": "vi",
+        "region": "",
+        "domain": "tinhte.vn",
+        "sourceWeight": 1,
+        "hiddenSmartSource": false,
+        "_status": "NEW",
+        "_hnswId": 8,
+        "isCluster": true,
+        "clusterId": "1r01np",
+        "clusterCount": 1,
+        "sourceCount": 1,
+        "sources": [
+          "tinhte.vn"
+        ],
+        "hotness": 5.5,
+        "aiClustered": false,
+        "verification": {
+          "method": "kept_separate",
+          "reason": "Single article cluster"
+        },
+        "relatedArticles": [],
+        "editorialAssessment": {
+          "relevance": 0.8,
+          "impact": 0.7,
+          "novelty": 0.8,
+          "confidence": 0.9,
+          "exclude": false,
+          "destination": "tech_vietnam",
+          "reason": "Fixture assessment"
+        }
+      }
+    },
+    {
+      "cacheKey": "28a57890c436c242be433a401934f54e",
+      "destination": "tech_global",
+      "assessment": {
+        "relevance": 0.8,
+        "impact": 0.7,
+        "novelty": 0.8,
+        "confidence": 0.9,
+        "exclude": false,
+        "destination": "tech_global",
+        "reason": "Fixture assessment"
+      },
+      "cluster": {
+        "articleKey": "https://theverge.com/chip-rumor",
+        "contentHash": "2fe05cc01d5180ba23a9a051255649eca499e0fedc95231082a46f0eff6cfb11",
+        "title": "Acme AI chip launch raises questions about shipment date",
+        "link": "https://theverge.com/chip-rumor",
+        "pubDate": "2026-10-02T13:00:00.000+07:00",
+        "publicationTimeReliable": true,
+        "content": "Analysts discussed potential future shipments of Acme processors after the launch.",
+        "image": "",
+        "feedTitle": "theverge.com",
+        "feedIcon": "https://www.google.com/s2/favicons?domain=theverge.com&sz=64",
+        "feedUrl": "https://theverge.com/rss.xml",
+        "feedCategory": "tech",
+        "smartCategory": "tech",
+        "language": "en",
+        "region": "",
+        "domain": "theverge.com",
+        "sourceWeight": 1,
+        "hiddenSmartSource": false,
+        "_status": "NEW",
+        "_hnswId": 10,
+        "isCluster": true,
+        "clusterId": "1qll8vg",
+        "clusterCount": 1,
+        "sourceCount": 1,
+        "sources": [
+          "theverge.com"
+        ],
+        "hotness": 6.1,
+        "aiClustered": false,
+        "verification": {
+          "method": "kept_separate",
+          "reason": "Single article cluster"
+        },
+        "relatedArticles": [],
+        "editorialAssessment": {
+          "relevance": 0.8,
+          "impact": 0.7,
+          "novelty": 0.8,
+          "confidence": 0.9,
+          "exclude": false,
+          "destination": "tech_global",
+          "reason": "Fixture assessment"
+        }
+      }
+    },
+    {
+      "cacheKey": "840e79af058cfd758b65111751d3e8c4",
+      "destination": "tech_global",
+      "assessment": {
+        "relevance": 0.8,
+        "impact": 0.7,
+        "novelty": 0.8,
+        "confidence": 0.9,
+        "exclude": false,
+        "destination": "tech_global",
+        "reason": "Fixture assessment"
+      },
+      "cluster": {
+        "articleKey": "https://techradar.com/chip",
+        "contentHash": "b780443d4c28864254ddd65dd9f67145b03f024e6bff647a2b7ef55dbbdfe57f",
+        "title": "Acme launches new artificial intelligence chip",
+        "link": "https://techradar.com/chip",
+        "pubDate": "2026-10-02T12:10:00.000+07:00",
+        "publicationTimeReliable": true,
+        "content": "Acme unveiled its new AI processor for data centers and software developers.",
+        "image": "",
+        "feedTitle": "techradar.com",
+        "feedIcon": "https://www.google.com/s2/favicons?domain=techradar.com&sz=64",
+        "feedUrl": "https://techradar.com/rss.xml",
+        "feedCategory": "tech",
+        "smartCategory": "tech",
+        "language": "en",
+        "region": "",
+        "domain": "techradar.com",
+        "sourceWeight": 1,
+        "hiddenSmartSource": false,
+        "_status": "NEW",
+        "_hnswId": 9,
+        "isCluster": true,
+        "clusterId": "1hnx0xk",
+        "clusterCount": 1,
+        "sourceCount": 1,
+        "sources": [
+          "techradar.com"
+        ],
+        "hotness": 6,
+        "aiClustered": false,
+        "verification": {
+          "method": "kept_separate",
+          "reason": "Single article cluster"
+        },
+        "relatedArticles": [],
+        "editorialAssessment": {
+          "relevance": 0.8,
+          "impact": 0.7,
+          "novelty": 0.8,
+          "confidence": 0.9,
+          "exclude": false,
+          "destination": "tech_global",
+          "reason": "Fixture assessment"
+        }
+      }
+    }
+  ]
+}

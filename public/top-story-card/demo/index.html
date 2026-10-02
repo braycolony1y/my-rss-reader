@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Adaptive story card preview</title>
+    <link rel="stylesheet" href="/public/styles.css?v=20261002_smart_card_1">
+    <link rel="stylesheet" href="/public/top-story-card/card.css?v=20261003_organic_1">
+    <link rel="stylesheet" href="/public/top-story-card/blend/appearance.css?v=20261003_organic_1">
+    <link rel="stylesheet" href="./page.css">
+    <script type="module" src="./page.js?v=20261003_organic_1"></script>
+</head>
+<body class="theme-glass-light">
+    <header class="review-controls">
+        <strong>Adaptive story cards</strong>
+        <label>Card width <select id="width"><option>340</option><option>560</option><option selected>740</option></select></label>
+        <label>Page theme <select id="theme"><option value="light">Light</option><option value="dark">Dark</option></select></label>
+        <label><input type="checkbox" id="debug"> Debug</label>
+        <p>The same captured card structure, with six reader thumbnails. Article data in this preview is a fixed snapshot.</p>
+    </header>
+    <main id="scroll-container" class="review-grid" aria-label="Six thumbnail examples"></main>
+</body>
+</html>

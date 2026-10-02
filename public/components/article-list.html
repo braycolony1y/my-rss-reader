@@ -1,0 +1,105 @@
+
+
+        <div class="flex-1 min-h-0 overscroll-contain"
+            :class="(showAddFeedModal || editModalOpen || debugModalOpen || articleOverlayOpen) ? 'overflow-hidden' : 'overflow-y-auto'"
+            id="scroll-container"
+            data-smart-viewport-priority="SMART_VIEWPORT_DOM_V1"
+            :data-smart-top="usesTopStories ? '1' : '0'"
+            :data-smart-view="smartViewToken || ''"
+            :data-smart-filter="selectedFilterValue || ''"
+            :data-smart-region="smartRegion || ''"
+            :data-smart-current-page="currentPage || 1"
+            @scroll.passive="hideTooltip()"
+            @scroll.passive.debounce.100ms="!isMobile && handleScroll($event)">
+            <div class="max-w-4xl mx-auto py-8 px-2 md:px-8">
+
+
+
+                <div x-show="searchQuery && displayedArticles.length > 0" class="mb-4 text-gray-400 text-sm px-4">
+                    Found <span x-text="displayedArticles.length" class="text-white font-bold"></span> results for
+                    "<span x-text="searchQuery" class="text-white"></span>"
+                </div>
+
+                <div
+                    x-show="selectedFilterType === 'smart' && ((usesTopStories && topUpdatesAvailable) || topStoryError)"
+                    class="mb-4 px-2 md:px-0">
+                    <button
+                        type="button"
+                        x-show="usesTopStories && topUpdatesAvailable"
+                        class="story-update-notice"
+                        @click="refreshTopStories()">
+                        New updates available
+                    </button>
+                    <p
+                        role="alert"
+                        x-show="topStoryError"
+                        x-text="topStoryError">
+                    </p>
+                </div>
+
+                <!-- reader:article-card-component -->
+
+                <div x-show="isLoadingArticles && displayedArticles.length === 0" class="text-center py-20 px-4">
+                    <div class="inline-flex items-center justify-center w-16 h-16 rounded-full mb-4 transition"
+                        :class="theme === 'glass-light' ? 'bg-emerald-500/10 text-emerald-600' : 'bg-[#172033] text-emerald-400'">
+                        <svg class="w-7 h-7 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="9" stroke="currentColor" stroke-width="3">
+                            </circle>
+                            <path class="opacity-90" fill="currentColor" d="M12 3a9 9 0 00-9 9h3a6 6 0 016-6V3z"></path>
+                        </svg>
+                    </div>
+                    <h3 class="text-xl font-bold transition"
+                        :class="theme === 'glass-light' ? 'text-gray-900' : 'text-gray-200'"
+                        x-text="'Loading ' + (headerTitle || 'articles') + '…'"></h3>
+                    <p class="mt-2 transition" :class="theme === 'glass-light' ? 'text-gray-600' : 'text-gray-500'"
+                        x-text="loadingArticleStatus || (selectedFilterType === 'smart' ? 'Fetching ' + (headerTitle || 'Smart briefing') + ' from pre-clustered database (grouped automatically every 30 mins)…' : 'Fetching latest articles from database…')">
+                    </p>
+                </div>
+
+                <div x-show="displayedArticles.length === 0 && topStories.length === 0 && !isLoadingArticles" class="text-center py-20 px-4">
+                    <div class="inline-flex items-center justify-center w-16 h-16 rounded-full mb-4 transition"
+                        :class="theme === 'glass-light' ? 'bg-black/5 text-gray-500' : 'bg-[#222] text-gray-500'">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7">
+                            </path>
+                        </svg>
+                    </div>
+                    <h3 class="text-xl font-bold transition"
+                        :class="theme === 'glass-light' ? 'text-gray-900' : 'text-gray-200'"
+                        x-text="searchQuery ? 'No matching results found.' : 'No articles here.'"></h3>
+                    <p class="mt-2 transition" :class="theme === 'glass-light' ? 'text-gray-600' : 'text-gray-500'"
+                        x-show="!searchQuery">Try syncing or selecting a different category.</p>
+                </div>
+
+                <!-- Desktop: Load More button (infinite scroll also triggers this) -->
+                <div class="w-full flex justify-center py-8" x-show="displayedArticles.length > 0 && !isMobile">
+                    <template x-if="hasMore">
+                        <button @click="loadMore()" :disabled="isLoadingMore"
+                            class="px-6 py-3 bg-[#2a6049] hover:bg-[#23533f] text-white font-semibold rounded-lg shadow-md transition-all disabled:opacity-50">
+                            <span x-show="!isLoadingMore">Load More Articles</span>
+                            <span x-show="isLoadingMore">Loading...</span>
+                        </button>
+                    </template>
+                    <template x-if="!hasMore && articles.length > 0">
+                        <p class="text-gray-500 text-sm italic">You've reached the end of your feed!</p>
+                    </template>
+                </div>
+
+                <!-- Mobile: Pagination controls -->
+                <div class="w-full flex items-center justify-center gap-3 py-6 px-4"
+                    x-show="displayedArticles.length > 0 && isMobile">
+                    <button @click="goToPage(currentPage - 1)" :disabled="currentPage <= 1 || isLoadingMore"
+                        class="px-4 py-2.5 bg-[#1e293b] text-white font-semibold rounded-xl border border-white/10 transition disabled:opacity-30 disabled:cursor-not-allowed active:scale-95">
+                        ← Prev
+                    </button>
+                    <span class="text-gray-400 text-sm font-medium tabular-nums min-w-[80px] text-center">
+                        Page <span x-text="currentPage" class="text-white font-bold"></span>
+                    </span>
+                    <button @click="goToPage(currentPage + 1)" :disabled="!hasMore || isLoadingMore"
+                        class="px-4 py-2.5 bg-[#2a6049] hover:bg-[#23533f] text-white font-semibold rounded-xl border border-emerald-500/20 transition disabled:opacity-30 disabled:cursor-not-allowed active:scale-95">
+                        Next →
+                    </button>
+                </div>
+
+            </div>
+        </div>

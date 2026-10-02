@@ -1,0 +1,26 @@
+{
+  "now": "2026-10-02T08:00:00.000Z",
+  "articles": [
+    {"link":"https://vnexpress.net/metro-1","title":"Hà Nội khai trương tuyến tàu điện mới","content":"Hà Nội chính thức khai trương tuyến tàu điện Cát Linh vào sáng nay.","pubDate":"02/10/2026 09:00","language":"vi","feedCategory":"news_vietnam","vector":[1,0,0,0,0,0,0,0]},
+    {"link":"https://tuoitre.vn/metro-2","title":"Hà Nội khai trương tuyến tàu điện mới","content":"Hà Nội chính thức khai trương tuyến tàu điện Cát Linh vào sáng nay.","pubDate":"2026-10-02T02:05:00Z","language":"vi","feedCategory":"news_vietnam","vector":[1,0,0,0,0,0,0,0]},
+    {"link":"https://bbc.co.uk/world/deal","title":"Atlas announces acquisition of Nova for $5 billion","content":"Atlas signed an agreement to acquire Nova on Friday.","pubDate":"2026-10-02T01:00:00Z","language":"en","feedCategory":"news_global","vector":[0,1,0,0,0,0,0,0]},
+    {"link":"https://reuters.com/world/deal","title":"Atlas announces acquisition of Nova for $5 billion","content":"Atlas signed an agreement to acquire Nova on Friday.","pubDate":"2026-10-02T01:10:00+00:00","language":"en","feedCategory":"news_global","vector":[0,1,0,0,0,0,0,0]},
+    {"link":"https://apnews.com/deal-review","title":"Regulator opens antitrust review of Atlas Nova acquisition","content":"The regulator launched a separate antitrust investigation into the Atlas Nova agreement.","pubDate":"2026-10-02T03:00:00Z","language":"en","feedCategory":"news_global","vector":[0,0.9,0.4358899,0,0,0,0,0]},
+    {"link":"https://cafef.vn/rate","title":"Ngân hàng Nhà nước giảm lãi suất điều hành","content":"Ngân hàng Nhà nước Việt Nam công bố giảm lãi suất điều hành để hỗ trợ nền kinh tế.","pubDate":"02-10-2026 10:30","language":"vi","feedCategory":"finance_vietnam","vector":[0,0,0,1,0,0,0,0]},
+    {"link":"https://ft.com/markets/rate","title":"Federal Reserve announces emergency interest rate cut","content":"The US central bank announced a new emergency rate cut on Friday.","pubDate":"2026-10-02T04:00:00Z","language":"en","feedCategory":"finance_global","vector":[0,0,0,0,1,0,0,0]},
+    {"link":"https://vneconomy.vn/rate-us","title":"Cục Dự trữ Liên bang Mỹ công bố giảm lãi suất khẩn cấp","content":"Ngân hàng trung ương Mỹ công bố quyết định giảm lãi suất mới vào thứ Sáu.","pubDate":"2026-10-02T04:10:00Z","language":"vi","feedCategory":"finance_global","vector":[0,0,0,0,1,0,0,0]},
+    {"link":"https://tinhte.vn/ai","title":"Việt Nam ra mắt chip trí tuệ nhân tạo mới","content":"Các kỹ sư tại Việt Nam ra mắt chip AI dành cho máy chủ và phần mềm.","pubDate":"2026-10-02T12:00:00+07:00","language":"vi","feedCategory":"tech","vector":[0,0,0,0,0,1,0,0]},
+    {"link":"https://techradar.com/chip","title":"Acme launches new artificial intelligence chip","content":"Acme unveiled its new AI processor for data centers and software developers.","pubDate":"2026-10-02T05:10:00Z","language":"en","feedCategory":"tech","vector":[0,0,0,0,0,0,1,0]},
+    {"link":"https://theverge.com/chip-rumor","title":"Acme AI chip launch raises questions about shipment date","content":"Analysts discussed potential future shipments of Acme processors after the launch.","pubDate":"2026-10-02T06:00:00Z","language":"en","feedCategory":"tech","vector":[0,0,0,0,0,0,0.9,0.4358899]},
+    {"link":"https://bbc.co.uk/world/ambiguous","title":"Atlas Nova merger agreement faces shareholder questions","content":"Shareholders discussed the acquisition agreement but no vote was announced.","pubDate":"2026-10-02T05:30:00Z","language":"en","feedCategory":"news_global","vector":[0,0.89,0.4559605,0,0,0,0,0]},
+    {"link":"https://vnexpress.net/crime","title":"Công an bắt nhóm lừa đảo qua mạng chiếm đoạt tài sản","content":"Công an Việt Nam điều tra đường dây tội phạm lừa đảo qua mạng.","pubDate":"2026-10-02T03:30:00Z","language":"vi","feedCategory":"tech","vector":[0,0,1,0,0,0,0,0]},
+    {"link":"https://example.test/unknown-date","title":"An undated article remains isolated","content":"No reliable publication date is available.","pubDate":"not-a-date","language":"en","feedCategory":"news_global","vector":[0,0,0,0,0,0,0,1]}
+  ],
+  "dates": ["2026-10-02T02:05:00Z","02/10/2026 09:00","02-10-2026 10:30","2026-10-02T12:00:00+07:00",1790906400,1790906400000,"10/02/2026","31/02/2026","not-a-date",null],
+  "sources": [
+    {"title":"FT World","domain":"news.google.com","category":"news_global","region":"foreign","url":"https://news.google.com/rss/search?q=site%3Aft.com+world","fetchMethods":["opencli","direct","invalid","opencli"]},
+    {"title":"FT Markets","domain":"www.ft.com","category":"finance_global","url":"https://www.ft.com/markets?format=rss","fetchMethods":[]},
+    {"title":"Excluded VOZ","category":"tech","url":"https://voz.vn/f/phan-mem.13/index.rss"},
+    {"title":"Investing tech","category":"tech","domain":"investing.com","url":"https://www.investing.com/rss/news_25.rss"}
+  ]
+}

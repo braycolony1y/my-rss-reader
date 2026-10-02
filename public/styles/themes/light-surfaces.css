@@ -1,0 +1,63 @@
+        /* Unified Liquid Glass Overrides (Light Only) */
+        .theme-glass-light [class*="bg-[#111827]"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)),
+.theme-glass-light [class*="bg-[#0B101E]"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)),
+.theme-glass-light [class*="bg-[#121212]"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)),
+.theme-glass-light [class*="bg-[#1e1e1e]"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)),
+.theme-glass-light [class*="bg-[#080F19]"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)),
+.theme-glass-light [class*="bg-gray-800"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) {
+            background: rgba(255, 255, 255, 0.65) !important;
+            backdrop-filter: var(--apple-blur) var(--apple-saturate) !important;
+            -webkit-backdrop-filter: var(--apple-blur) var(--apple-saturate) !important;
+            border: 1px solid rgba(255, 255, 255, 0.8) !important;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05) !important;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.8) !important;
+            transition: all 0.3s ease !important;
+        }
+
+        /* Light mode hover effect for article cards */
+
+        /* Premium seamless image mask for all modes */
+
+        .theme-glass-light [class*="bg-[#0A0F1A]"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) {
+            background: transparent !important;
+            backdrop-filter: none !important;
+            border: none !important;
+            box-shadow: none !important;
+        }
+
+        .theme-glass-light .article-overlay-backdrop {
+            background: rgba(255, 255, 255, 0.15) !important;
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+        }
+
+        .theme-glass-light .article-overlay-panel {
+            background: #f7f7f7 !important;
+            background-image: none !important;
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+            border: 1px solid rgba(255, 255, 255, 0.8) !important;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.1) !important;
+        }
+
+        /* Keep the surface between article sections neutral. The transparent
+           scroller previously exposed different cyan areas of the page-wide
+           liquid-glass gradient between otherwise white VOZ cards. */
+        .theme-glass-light #overlay-scroll-container,
+        .theme-glass-light .article-rendered-content {
+            background-color: #f7f7f7 !important;
+            background-image: none !important;
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+        }
+
+        /* Prevent modal header from stacking a second glass layer */
+        .theme-glass-light .article-overlay-panel>div.bg-\[\#0B101E\] {
+            background: transparent !important;
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+            border: none !important;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05) !important;
+            box-shadow: none !important;
+        }
+

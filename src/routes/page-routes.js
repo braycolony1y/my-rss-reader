@@ -22,8 +22,8 @@ export function registerPageRoutes({
     app.get('/', async (req, res) => {
         try {
             const html = await renderer.html();
-            // The document contains critical inline component styles and the
-            // versioned asset URLs, so it must revalidate instead of serving a
+            // The document composes feature partials and versioned asset
+            // URLs, so it must revalidate instead of serving a
             // day-old shell after a UI deployment.
             res.setHeader('Cache-Control', 'no-cache, must-revalidate');
             res.send(html);

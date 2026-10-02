@@ -1,0 +1,181 @@
+        /* READ STATE (Safe for Safari compositing) */
+
+        /* Override embedded blocks for Light Mode */
+        .theme-glass-light .styled-rel-card {
+            background-image: none !important;
+            background-color: transparent !important;
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+            border: 1px solid rgba(255, 255, 255, 0.3) !important;
+        }
+
+        .theme-glass-light .styled-rel-card .text-gray-900:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)),
+.theme-glass-light .styled-rel-card .dark\:text-gray-100:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) {
+            color: #1e293b !important;
+            /* slate-800 */
+        }
+
+        .theme-glass-light .styled-rel-card .text-blue-600:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)),
+.theme-glass-light .styled-rel-card .dark\:text-blue-400:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) {
+            color: #2563eb !important;
+            /* blue-600 */
+        }
+
+        .theme-glass-light .voz-post {
+            background-color: #ffffff !important;
+            border: 1px solid rgba(0, 0, 0, 0.08) !important;
+            box-shadow:
+                0 1px 2px rgba(15, 23, 42, 0.05),
+                0 2px 8px -7px rgba(15, 23, 42, 0.35) !important;
+            color: #334155 !important;
+        }
+
+        .theme-glass-light .voz-post .voz-post-likes {
+            background: rgba(0, 0, 0, 0.02) !important;
+            border-top: 1px solid rgba(0, 0, 0, 0.06) !important;
+        }
+
+        .theme-glass-light .voz-post .bbCodeBlock--unfurl {
+            background-color: rgba(255, 255, 255, 0.6) !important;
+            backdrop-filter: blur(16px) saturate(180%) !important;
+            -webkit-backdrop-filter: blur(16px) saturate(180%) !important;
+            border: 1px solid rgba(0, 0, 0, 0.08) !important;
+            border-radius: 12px !important;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.1), inset 0 1px 1px rgba(255, 255, 255, 1) !important;
+            margin: 0.5em 0 !important;
+        }
+
+        .theme-glass-light .voz-post .bbCodeBlock--unfurl:hover {
+            background-color: rgba(255, 255, 255, 0.8) !important;
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15), inset 0 1px 1px rgba(255, 255, 255, 1) !important;
+        }
+
+        .theme-glass-light .voz-post .bbCodeBlock--unfurl .contentRow-header {
+            color: #0f172a !important;
+            /* slate-900 */
+        }
+
+        .theme-glass-light .voz-post .bbCodeBlock--unfurl .contentRow-snippet,
+        .theme-glass-light .voz-post .js-unfurl-desc {
+            color: #334155 !important;
+            /* slate-700 for better contrast */
+        }
+
+        .theme-glass-light .voz-post .bbCodeBlock--unfurl .contentRow-minor {
+            color: #475569 !important;
+            /* slate-600 */
+        }
+
+        .theme-glass-light .voz-pagination-wrapper {
+            border-color: rgba(0, 0, 0, 0.05);
+        }
+
+        .theme-glass-light .voz-pagination-btn {
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03), inset 0 1px 1px rgba(255, 255, 255, 0.8);
+        }
+
+        .theme-glass-light .voz-pagination-btn--prev,
+        .theme-glass-light .voz-pagination-btn--page {
+            background-color: rgba(255, 255, 255, 0.6);
+            backdrop-filter: blur(12px) saturate(180%);
+            -webkit-backdrop-filter: blur(12px) saturate(180%);
+            border: 1px solid rgba(255, 255, 255, 0.8);
+            color: #475569;
+        }
+
+        .theme-glass-light .voz-pagination-btn--prev:hover,
+        .theme-glass-light .voz-pagination-btn--page:hover {
+            background-color: rgba(255, 255, 255, 0.85);
+            color: #0f172a;
+        }
+
+        .theme-glass-light .voz-pagination-btn--current,
+        .theme-glass-light .voz-pagination-btn--next {
+            background: linear-gradient(135deg, #34d399, #10b981);
+            border: 1px solid rgba(16, 185, 129, 0.4);
+            color: #fff;
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2), inset 0 1px 1px rgba(255, 255, 255, 0.4);
+        }
+
+        .theme-glass-light .voz-post .bbCodeBlock--spoiler {
+            background-color: rgba(0, 0, 0, 0.03) !important;
+            border: 1px solid rgba(0, 0, 0, 0.08) !important;
+        }
+
+        .theme-glass-light .voz-post .bbCodeBlock--spoiler::before {
+            background: rgba(0, 0, 0, 0.05) !important;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05) !important;
+            color: #d97706 !important;
+            /* amber-600 */
+        }
+
+        .theme-glass-light .voz-post .bbCodeBlock--spoiler:hover::before,
+        .theme-glass-light .voz-post .bbCodeBlock--spoiler:active::before {
+            color: #059669 !important;
+            /* emerald-600 */
+        }
+
+        /* Light mode overrides for embedded related articles (BÀI VIẾT LIÊN QUAN / SỰ KIỆN) */
+        .theme-glass-light .embedded-suggested-articles {
+            border-top: 1px solid rgba(0, 0, 0, 0.1) !important;
+        }
+
+        .theme-glass-light .embedded-suggested-header {
+            color: #16a34a !important;
+            /* Green-600 */
+        }
+
+        .theme-glass-light .embedded-suggested-card {
+            background-image: none !important;
+            background-color: rgba(255, 255, 255, 0.65) !important;
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+            border: 1px solid rgba(0, 0, 0, 0.1) !important;
+            box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.08) !important;
+        }
+
+        .theme-glass-light .embedded-suggested-title {
+            color: #0f172a !important;
+            /* Slate-900 */
+        }
+
+        .theme-glass-light .embedded-suggested-summary {
+            color: #475569 !important;
+            /* Slate-600 */
+        }
+
+        .theme-glass-light .embedded-suggested-time {
+            color: #64748b !important;
+            /* Slate-500 */
+        }
+
+        /* Fix Listen to Article colors */
+        .theme-glass-light .text-emerald-200:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) {
+            color: #059669 !important;
+        }
+
+        .theme-glass-light .bg-emerald-500\/\[0\.07\] {
+            background-color: rgba(16, 185, 129, 0.1) !important;
+            border-color: rgba(16, 185, 129, 0.3) !important;
+        }
+
+        /* Force article content text color in Light Liquid Mode */
+        .theme-glass-light .article-rendered-content,
+        .theme-glass-light .article-rendered-content p,
+        .theme-glass-light .article-rendered-content div,
+        .theme-glass-light .article-rendered-content span,
+        .theme-glass-light .article-rendered-content ul,
+        .theme-glass-light .article-rendered-content ol,
+        .theme-glass-light .article-rendered-content li {
+            color: #1d1d1f !important;
+        }
+
+        .theme-glass-light .article-rendered-content h1,
+        .theme-glass-light .article-rendered-content h2,
+        .theme-glass-light .article-rendered-content h3,
+        .theme-glass-light .article-rendered-content h4,
+        .theme-glass-light .article-rendered-content strong,
+        .theme-glass-light .article-rendered-content b {
+            color: #000000 !important;
+        }
+

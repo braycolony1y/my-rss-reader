@@ -30,6 +30,9 @@ test('embedding cache is stored in its own file instead of the main database', a
     assert.equal(typeof stored.example, 'string');
 
     const reader = await import(`../smart-news.js?embedding-reader=${Date.now()}`);
+    // Facades share one owning subsystem. Simulate an empty cache before a
+    // reload instead of relying on another copy of the monolithic module.
+    reader.clearEmbeddingCache();
     await reader.loadEmbeddings({
       get() {
         throw new Error('embedding cache must not be read from the database');

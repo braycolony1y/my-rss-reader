@@ -6,6 +6,8 @@ import {
   verifyWithProviderChain, prepareIncrementalReviewGroups, integrateIncrementalReviews,
   runIncrementalHnswClustering
 } from '../smart-news.js';
+import { EMBEDDING_MODEL, EMBEDDING_CACHE_VERSION } from '../src/smart/embeddings/config.js';
+import { createHash } from 'node:crypto';
 const makeArticle = n => ({ articleKey: `https://fixture${n}.test/story`, link: `https://fixture${n}.test/story`,
   title: 'NASA launches Artemis rocket from Kennedy Space Center', content: 'NASA launched the Artemis rocket from Kennedy Space Center on Monday.',
   pubDate: new Date().toISOString(), language: 'en', smartCategory: 'tech', _status: 'UNCHANGED',
@@ -42,7 +44,14 @@ test('I embedding identity uses normalized input and actual configured model', a
   assert.notEqual(embeddingCacheKey(article), embeddingCacheKey({...article, content:'new input'}));
   const old = process.env.SMART_EMBEDDING_MODEL;
   process.env.SMART_EMBEDDING_MODEL = 'fixture/model-B';
-  try { const other = await import('../smart-news.js?model-identity-fixture'); assert.notEqual(embeddingCacheKey(article), other.embeddingCacheKey(article)); }
+  try {
+    const otherConfig = await import('../src/smart/embeddings/config.js?model-identity-fixture');
+    assert.equal(otherConfig.EMBEDDING_MODEL, 'fixture/model-B');
+    const expected = createHash('sha256').update([EMBEDDING_MODEL, EMBEDDING_CACHE_VERSION, buildEmbeddingText(article)].join('\n')).digest('hex');
+    assert.equal(embeddingCacheKey(article), expected);
+    const changed = createHash('sha256').update([otherConfig.EMBEDDING_MODEL, EMBEDDING_CACHE_VERSION, buildEmbeddingText(article)].join('\n')).digest('hex');
+    assert.notEqual(expected, changed);
+  }
   finally { if (old === undefined) delete process.env.SMART_EMBEDDING_MODEL; else process.env.SMART_EMBEDDING_MODEL = old; }
   const vector = new Float32Array([1, 0]);
   importEmbeddingCache({[embeddingCacheKey(article)]:Buffer.from(vector.buffer).toString('base64')});

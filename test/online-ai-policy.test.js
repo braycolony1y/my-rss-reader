@@ -1,4 +1,6 @@
 import { readServerSource } from './helpers/server-source.js';
+import { readSmartSource } from './helpers/smart-source.js';
+import { readReaderClientSource, readReaderHtml } from './helpers/reader-source.js';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -8,7 +10,10 @@ import { fileURLToPath } from 'node:url';
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 async function read(relativePath) {
+    if (relativePath === 'smart-news.js') return readSmartSource();
     if (relativePath === 'server.js') return readServerSource();
+    if (relativePath === 'script.js') return readReaderClientSource();
+    if (relativePath === 'index.html') return readReaderHtml();
     return readFile(path.join(repositoryRoot, relativePath), 'utf8');
 }
 

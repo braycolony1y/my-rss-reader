@@ -1,0 +1,429 @@
+    <!-- ARTICLE OVERLAY PANEL -->
+    <div x-show="articleOverlayOpen" x-cloak
+        class="article-overlay-root fixed inset-0 z-[80] flex justify-center items-center" @touchmove.prevent>
+        <!-- Backdrop -->
+        <div x-show="articleOverlayOpen" x-transition:enter="transition ease-out duration-300"
+            x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100"
+            x-transition:leave="transition ease-in duration-200" x-transition:leave-start="opacity-100"
+            x-transition:leave-end="opacity-0" class="article-overlay-backdrop absolute inset-0"
+            :class="theme === 'glass-light' ? 'bg-gray-400/20 backdrop-blur-md' : (theme === 'glass-dark' ? 'bg-black/40 backdrop-blur-md' : 'bg-black/60 backdrop-blur-md')"
+            @click="closeArticleOverlay()"></div>
+
+        <!-- Panel -->
+        <div x-show="articleOverlayOpen" x-transition:enter="transition ease-out duration-300 transform"
+            x-transition:enter-start="opacity-0 translate-y-8 md:translate-y-4 scale-95"
+            x-transition:enter-end="opacity-100 translate-y-0 scale-100"
+            x-transition:leave="transition ease-in duration-200 transform"
+            x-transition:leave-start="opacity-100 translate-y-0 scale-100"
+            x-transition:leave-end="opacity-0 translate-y-8 md:translate-y-4 scale-95"
+            class="article-overlay-panel relative w-full h-[100dvh] md:w-[90%] md:max-w-[720px] md:h-[85vh] md:max-h-[85vh] md:rounded-3xl bg-[#111827] shadow-2xl flex flex-col overflow-hidden"
+            @click.stop @touchstart.stop>
+
+<!-- reader:include article/overlay-header -->
+            <!-- Content -->
+            <div id="overlay-scroll-container" class="flex-1 min-h-0 overflow-y-auto overscroll-contain"
+                @scroll.passive="trackVozThreadScroll($event)" @touchmove.stop>
+                <!-- Loading state -->
+                <div x-show="isLoadingOverlay" class="flex flex-col items-center justify-center h-full gap-4">
+                    <div class="relative">
+                        <div class="w-12 h-12 rounded-full border-2 animate-spin transition"
+                            :class="theme === 'glass-light' ? 'border-emerald-500/20 border-t-emerald-600' : 'border-emerald-500/20 border-t-emerald-500'">
+                        </div>
+                    </div>
+                    <div class="text-sm transition text-center px-6 max-w-sm" :class="theme === 'glass-light' ? 'text-gray-600' : 'text-gray-400'">
+                        <span x-text="overlayProgress.message || 'Fetching'"></span><br>
+                        <span class="font-semibold" :class="theme === 'glass-light' ? 'text-emerald-700' : 'text-emerald-400'" x-text="overlayArticle ? stripHtml(overlayArticle.title) : 'article content...'"></span>
+                    </div>
+                </div>
+
+                <!-- Error state -->
+                <div x-show="!isLoadingOverlay && overlayError"
+                    class="flex flex-col items-center justify-center h-full gap-4 px-8">
+                    <div class="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center">
+                        <svg class="w-8 h-8 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z">
+                            </path>
+                        </svg>
+                    </div>
+                    <p class="text-gray-300 text-center whitespace-pre-wrap text-sm" x-text="overlayError"></p>
+                    <a :href="overlayArticle ? articleSourceUrl(overlayArticle) : '#'" target="_blank"
+                        class="mt-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-sm font-semibold transition">
+                        Open in Browser →
+                    </a>
+                    <button x-show="overlayRemainingAvailable" @click="fetchFallbackArticle()"
+                        class="mt-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-semibold transition">
+                        Try remaining fallback methods
+                    </button>
+                </div>
+
+                <!-- Article content -->
+                <div x-show="!isLoadingOverlay && !overlayError && (overlayContent || (overlayArticle && overlayArticle.sourceDeleted))"
+                    class="px-6 md:px-10 py-8 mx-auto max-w-[760px]"
+                    :class="theme === 'glass-light' ? '!text-gray-900' : ''">
+                    <!-- VOZ Thread Notice / Position Banner -->
+                    <template x-if="vozThreadNotice">
+                        <div class="relative z-50 mb-6 flex items-center justify-between gap-4 p-4 rounded-2xl border shadow-xl transition backdrop-blur-md"
+                            :class="theme === 'glass-light' ? 'bg-white/40 border-white/60 text-slate-800 shadow-[0_8px_32px_rgba(0,0,0,0.04)]' : (theme === 'glass' ? 'bg-blue-900/20 border-blue-500/20 text-blue-100 shadow-[0_8px_32px_rgba(0,0,0,0.2)]' : 'bg-[#0f172a] border-blue-500/50 text-blue-200')">
+                            <div class="flex items-center gap-3">
+                                <div class="w-8 h-8 rounded-full flex items-center justify-center shadow-sm backdrop-blur-sm"
+                                    :class="theme === 'glass-light' ? 'bg-white/60 text-slate-600 border border-white/50' : 'bg-blue-500/20 text-blue-400'">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z">
+                                        </path>
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                    </svg>
+                                </div>
+                                <span class="text-[13px] font-semibold tracking-wide"
+                                    x-text="vozThreadNotice.text"></span>
+                            </div>
+                            <button @click="vozThreadNotice.action && vozThreadNotice.action()"
+                                class="px-4 py-2 text-xs font-bold rounded-xl transition-all duration-300 shadow-md flex-shrink-0 backdrop-blur-md border"
+                                :class="theme === 'glass-light' ? 'bg-white/50 text-slate-800 hover:bg-white/70 hover:-translate-y-0.5 hover:shadow-lg border-white/60 shadow-[0_4px_16px_rgba(0,0,0,0.05)]' : 'bg-blue-500/50 text-white hover:bg-blue-500/80 hover:-translate-y-0.5 hover:shadow-lg border-white/10 hover:border-white/30 shadow-[0_4px_16px_rgba(0,0,0,0.3)]'"
+                                x-text="vozThreadNotice.actionText || 'OK'"></button>
+                        </div>
+                    </template>
+
+                    <!-- Hero image -->
+                    <template x-if="overlayArticle && overlayArticle.overlayImage">
+                        <figure data-article-export-header class="w-full mb-8">
+                            <img :src="overlayArticle.overlayImage"
+                                class="w-full h-auto max-h-[40vh] md:max-h-[320px] object-cover rounded-2xl shadow-lg"
+                                @error="$el.closest('figure').style.display='none'">
+                            <figcaption x-show="overlayArticle.overlayImageCaption"
+                                class="mt-2 px-1 text-sm leading-relaxed"
+                                :class="theme === 'glass-light' ? 'text-gray-600' : 'text-gray-400'"
+                                x-text="overlayArticle.overlayImageCaption"></figcaption>
+                        </figure>
+                    </template>
+
+                    <!-- Title -->
+                    <h1 data-article-export-header class="text-3xl md:text-4xl font-bold leading-tight mb-6 mt-4 tracking-tight"
+                        :class="theme === 'glass-light' ? 'text-black' : 'text-white'"
+                        x-text="overlayArticle ? (overlayArticle.overlayTitle || stripHtml(overlayArticle.title)) : ''">
+                    </h1>
+
+                    <!-- Meta row -->
+                    <div data-article-export-header class="flex flex-wrap items-center gap-2 md:gap-3 text-[13px] md:text-sm mb-8 pb-6 border-b"
+                        :class="theme === 'glass-light' ? 'border-gray-200/60' : 'border-white/10'">
+
+
+                        <template x-if="overlayArticle && (overlayArticle.overlayAuthor || overlayArticle.author)">
+                            <span
+                                class="flex items-center gap-2 px-2.5 py-1.5 rounded-full border shadow-sm backdrop-blur-md transition-all"
+                                :class="theme === 'glass-light' ? 'bg-white/60 border-gray-200/80 shadow-[0_2px_8px_rgba(0,0,0,0.03)] text-gray-700' : 'bg-white/5 border-white/5 text-gray-300 shadow-[0_2px_8px_rgba(0,0,0,0.1)]'">
+                                <template x-if="overlayArticle.authorAvatar || overlayArticle.overlayAuthorAvatar">
+                                    <img :src="overlayArticle.authorAvatar || overlayArticle.overlayAuthorAvatar"
+                                        @error="$el.style.display='none'"
+                                        class="w-5 h-5 rounded-full object-cover shadow-sm">
+                                </template>
+                                <template x-if="!(overlayArticle.authorAvatar || overlayArticle.overlayAuthorAvatar)">
+                                    <span
+                                        class="w-5 h-5 rounded-full flex items-center justify-center shadow-sm text-[10px] font-bold"
+                                        :class="theme === 'glass-light' ? 'bg-gray-100 text-gray-500 border border-gray-200' : 'bg-gray-800 text-gray-400 border border-gray-700'"
+                                        x-text="(overlayArticle.overlayAuthor || overlayArticle.author).charAt(0).toUpperCase()"></span>
+                                </template>
+                                <span class="font-medium"
+                                    x-text="overlayArticle.overlayAuthor || overlayArticle.author"></span>
+                            </span>
+                        </template>
+
+                        <template x-if="overlayArticle && (overlayArticle.overlayDate || overlayArticle.pubDate)">
+                            <span
+                                class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border shadow-sm backdrop-blur-md transition-all"
+                                :class="theme === 'glass-light' ? 'bg-white/60 border-gray-200/80 shadow-[0_2px_8px_rgba(0,0,0,0.03)] text-gray-500' : 'bg-white/5 border-white/5 text-gray-400 shadow-[0_2px_8px_rgba(0,0,0,0.1)]'">
+                                <svg class="w-3.5 h-3.5 opacity-70" fill="none" stroke="currentColor"
+                                    viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                </svg>
+                                <span class="font-medium tracking-tight"
+                                    x-text="overlayArticle.publicationTimeReliable === false ? 'Time unavailable' : formatVietnamDateTime(overlayArticle.overlayDate || overlayArticle.pubDate)"></span>
+                            </span>
+                        </template>
+                        
+                        <!-- Removed Copy Link from here, moved to header -->
+                    </div>
+
+                    <template x-if="overlayArticle && overlayArticle.partialContent">
+                        <div class="mb-7 rounded-2xl border px-4 py-3 text-sm leading-relaxed"
+                            :class="theme === 'glass-light' ? 'border-amber-200 bg-amber-50 text-amber-900' : 'border-amber-400/20 bg-amber-400/10 text-amber-100'">
+                            <div class="font-bold">Partial publisher preview</div>
+                            <div class="mt-1" x-text="overlayArticle.partialContentReason || 'The publisher did not expose the full article to the reader.'"></div>
+                        </div>
+                    </template>
+
+<!-- reader:include article/summary -->
+                    <!-- Listen to article widget -->
+                    <div x-show="supportsArticleSpeech() && overlayContent && (articleSpeechChunks.length || overlayHasNativeAudio) && !((overlayArticle && overlayArticle.link) || '').includes('voz.vn')"
+                        class="mb-7 rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.07] p-3.5 md:p-4">
+                        <div class="flex items-center gap-3">
+                            <button @click="toggleArticleSpeech()"
+                                class="w-11 h-11 shrink-0 rounded-full bg-emerald-400 hover:bg-emerald-300 text-[#07130f] flex items-center justify-center transition"
+                                :title="articleSpeechState === 'playing' ? 'Pause' : 'Play article'">
+                                <svg x-show="articleSpeechState !== 'playing'" class="w-5 h-5 ml-0.5"
+                                    fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M8 5v14l11-7z"></path>
+                                </svg>
+                                <svg x-show="articleSpeechState === 'playing'" class="w-5 h-5" fill="currentColor"
+                                    viewBox="0 0 24 24">
+                                    <path d="M6 5h4v14H6zm8 0h4v14h-4z"></path>
+                                </svg>
+                            </button>
+                            <button @click="skipArticleSpeech(-1)"
+                                class="w-9 h-9 shrink-0 rounded-full text-gray-400 hover:text-white hover:bg-white/[0.06] flex items-center justify-center transition"
+                                title="Previous section" aria-label="Previous section">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M11 19l-7-7 7-7m8 14l-7-7 7-7"></path>
+                                </svg>
+                            </button>
+                            <div class="min-w-0 flex-1">
+                                <div class="flex items-center justify-between gap-3 mb-2 text-xs">
+                                    <span class="font-semibold text-emerald-200">Listen to article</span>
+                                    <span class="tabular-nums text-gray-500"
+                                        x-text="articleSpeechProgressLabel()"></span>
+                                </div>
+                                <input type="range" min="0" :max="nativeAudioEl ? 100 : Math.max(0, articleSpeechChunks.length - 1)"
+                                    :value="articleSpeechIndex" @change="seekArticleSpeech(Number($event.target.value))"
+                                    class="w-full h-1.5 accent-emerald-400 cursor-pointer"
+                                    aria-label="Article playback position">
+                            </div>
+                            <button @click="skipArticleSpeech(1)"
+                                class="w-9 h-9 shrink-0 rounded-full text-gray-400 hover:text-white hover:bg-white/[0.06] flex items-center justify-center transition"
+                                title="Skip forward" aria-label="Skip forward">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M13 5l7 7-7 7M5 5l7 7-7 7"></path>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- VOZ Thread Top Pagination Bar -->
+                    <template
+                        x-if="overlayPagination && (overlayPagination.pages.length > 1 || overlayPagination.prevUrl || overlayPagination.nextUrl)">
+                        <div class="voz-pagination-wrapper mb-3 pb-3 border-b flex items-center justify-center">
+                            <div class="flex items-center justify-center gap-1 flex-wrap">
+                                <template x-if="overlayPagination.prevUrl">
+                                    <button @click="navigateToThreadPage(overlayPagination.prevUrl)"
+                                        class="voz-pagination-btn voz-pagination-btn--prev active:scale-95">
+                                        <span>←</span> Trước
+                                    </button>
+                                </template>
+                                <template x-for="p in compactVozPaginationPages()" :key="p.key">
+                                    <span class="inline-flex items-center">
+                                        <template x-if="p.type === 'ellipsis'">
+                                            <span class="px-1.5 text-gray-400 select-none">…</span>
+                                        </template>
+
+                                        <template x-if="p.type === 'page'">
+                                            <button @click="navigateToThreadPage(p.url)"
+                                                :class="p.isCurrent ? 'voz-pagination-btn voz-pagination-btn--current shadow-sm' : 'voz-pagination-btn voz-pagination-btn--page'"
+                                                class="active:scale-95 tabular-nums text-center">
+                                                <span x-text="p.page"></span>
+                                            </button>
+                                        </template>
+                                    </span>
+                                </template>
+                                <template x-if="overlayPagination.nextUrl">
+                                    <button @click="navigateToThreadPage(overlayPagination.nextUrl)"
+                                        class="voz-pagination-btn voz-pagination-btn--next active:scale-95 shadow-sm">
+                                        Sau <span>→</span>
+                                    </button>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+
+                    <div x-show="overlayArticle && overlayArticle.sourceDeleted" x-cloak
+                        class="source-deleted-warning" role="alert" aria-live="polite">
+                        <div class="source-deleted-warning__icon" aria-hidden="true">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M12 9v3m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z">
+                                </path>
+                            </svg>
+                        </div>
+                        <div>
+                            <strong class="source-deleted-warning__title"
+                                x-text="overlayArticle?.sourceDeletedKind === 'thread' ? 'Thread removed at source' : 'Article removed at source'"></strong>
+                            <span class="source-deleted-warning__message"
+                                x-text="overlayArticle?.sourceDeletedHasCache
+                                    ? `This ${overlayArticle?.sourceDeletedKind || 'article'} is no longer available on ${overlayArticle?.siteName || 'the publisher website'}. You are viewing the last successfully cached copy; the reader will not contact the original source again.`
+                                    : `This ${overlayArticle?.sourceDeletedKind || 'article'} is no longer available on ${overlayArticle?.siteName || 'the publisher website'}. No cached copy is available, and the reader will not retry the original source.`"></span>
+                        </div>
+                    </div>
+
+                    <!-- Rendered article body -->
+                    <div class="article-rendered-content" x-html="overlayContent" @click="openPostHistory($event); handleArticleClick($event)"></div>
+
+                    <!-- VOZ Thread Pagination Bar -->
+                    <template
+                        x-if="overlayPagination && (overlayPagination.pages.length > 1 || overlayPagination.prevUrl || overlayPagination.nextUrl)">
+                        <div class="voz-pagination-wrapper mt-4 pt-4 border-t flex items-center justify-center">
+                            <div class="flex items-center justify-center gap-1 flex-wrap">
+                                <template x-if="overlayPagination.prevUrl">
+                                    <button @click="navigateToThreadPage(overlayPagination.prevUrl)"
+                                        class="voz-pagination-btn voz-pagination-btn--prev active:scale-95">
+                                        <span>←</span> Trước
+                                    </button>
+                                </template>
+                                <template x-for="p in compactVozPaginationPages()" :key="p.key">
+                                    <span class="inline-flex items-center">
+                                        <template x-if="p.type === 'ellipsis'">
+                                            <span class="px-1.5 text-gray-400 select-none">…</span>
+                                        </template>
+
+                                        <template x-if="p.type === 'page'">
+                                            <button @click="navigateToThreadPage(p.url)"
+                                                :class="p.isCurrent ? 'voz-pagination-btn voz-pagination-btn--current shadow-sm' : 'voz-pagination-btn voz-pagination-btn--page'"
+                                                class="active:scale-95 tabular-nums text-center">
+                                                <span x-text="p.page"></span>
+                                            </button>
+                                        </template>
+                                    </span>
+                                </template>
+                                <template x-if="overlayPagination.nextUrl">
+                                    <button @click="navigateToThreadPage(overlayPagination.nextUrl)"
+                                        class="voz-pagination-btn voz-pagination-btn--next active:scale-95 shadow-sm">
+                                        Sau <span>→</span>
+                                    </button>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+                    <!-- All sources in the same Smart cluster -->
+                    <template
+                        x-if="overlayArticle && overlayArticle.relatedArticles && overlayArticle.relatedArticles.length > 0">
+                        <section class="mt-12 pt-7 border-t border-white/10"
+                            :class="theme === 'glass-light' ? 'border-gray-200' : 'border-white/10'">
+                            <div class="flex items-center justify-between gap-4 mb-4">
+                                <h2 class="text-lg font-bold"
+                                    :class="theme === 'glass-light' ? 'text-gray-900' : 'text-white'">Related coverage
+                                </h2>
+                                <span class="text-xs rounded-full px-3 py-1 font-medium"
+                                    :class="theme === 'glass-light' ? 'bg-black/[0.05] text-gray-600 border border-black/10' : 'text-cyan-300 bg-cyan-500/10 border border-cyan-500/20'"
+                                    x-text="overlayArticle.relatedArticles.length + ' articles'"></span>
+                            </div>
+                            <div class="grid grid-cols-1 gap-2">
+                                <template
+                                    x-for="(related, relatedIndex) in sortedRelatedArticles(overlayArticle.relatedArticles)"
+                                    :key="articleKey(related, relatedIndex)">
+                                    <a :href="related.originalLink || related.link"
+                                        @click.prevent.stop="openRelatedArticle(related, $event)"
+                                        class="styled-rel-card block px-3 py-2.5 rounded-xl border transition group overflow-hidden relative"
+                                        :class="theme === 'glass-light' ? 'bg-white/50 border-gray-100 hover:bg-white hover:border-gray-200' : 'bg-[#0B101E] border-white/5 hover:bg-white/5 hover:border-white/10'">
+                                        <div class="flex gap-2.5 relative z-10">
+                                            <!-- Site Icon -->
+                                            <div class="shrink-0 pt-[3px]">
+                                                <div
+                                                    class="w-4 h-4 rounded overflow-hidden flex items-center justify-center">
+                                                    <img :src="related.feedIcon || smartSourceIcon({ domain: new URL(related.link).hostname })"
+                                                        class="w-full h-full object-cover"
+                                                        @error="$el.style.display='none'">
+                                                </div>
+                                            </div>
+
+                                            <!-- Content -->
+                                            <div class="min-w-0 flex-1">
+                                                <div class="flex items-center gap-1.5 mb-1 text-[11px] font-medium"
+                                                    :class="theme === 'glass-light' ? 'text-gray-500' : 'text-gray-400'">
+                                                    <span class="truncate font-semibold tracking-tight"
+                                                        :class="theme === 'glass-light' ? 'text-emerald-700' : 'text-emerald-400'"
+                                                        x-text="related.siteName || new URL(related.link).hostname"></span>
+                                                    <span class="opacity-40">•</span>
+                                                    <span class="truncate opacity-80"
+                                                        x-text="formatVietnamDateTime(related.pubDate)"></span>
+                                                </div>
+                                                <h3 class="text-[13px] font-bold leading-snug transition"
+                                                    :class="theme === 'glass-light' ? 'text-gray-800 group-hover:text-emerald-600' : 'text-gray-200 group-hover:text-emerald-400'"
+                                                    x-text="stripHtml(related.title)"></h3>
+                                            </div>
+                                        </div>
+                                    </a>
+                                </template>
+                            </div>
+                        </section>
+                    </template>
+
+                    <div x-show="overlayFetchStrategy && overlayFetchStrategy !== 'none'"
+                        class="mt-8 pt-5 mb-12 pb-6 border-t border-white/[0.07]">
+                        <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+                            <div class="flex items-center gap-2 text-[11px] text-gray-600">
+                                <svg class="w-3.5 h-3.5 text-emerald-500/60" fill="none" stroke="currentColor"
+                                    viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M5 13l4 4L19 7"></path>
+                                </svg>
+                                <span>Reader method<span x-show="overlayFetchedFromCache"> · cached</span></span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <button x-show="overlayFetchedFromCache && overlayArticle && !overlayArticle.sourceDeleted"
+                                    @click="clearArticleCache"
+                                    class="px-3 py-1.5 rounded-lg border text-[11px] font-semibold transition disabled:opacity-40"
+                                    :class="theme === 'glass-light' ? 'border-gray-200 text-gray-500 hover:bg-gray-100 hover:text-gray-800 hover:border-gray-300' : 'border-white/10 text-gray-400 hover:bg-white/10 hover:text-gray-200 hover:border-white/20'"
+                                    title="Tải lại bản mới nhất">
+                                    <span>Xoá bộ nhớ đệm (Làm mới)</span>
+                                </button>
+                                <button x-show="overlayArticle && !overlayArticle.sourceDeleted"
+                                    @click="rejectAndTryNextArticleMethod()" :disabled="overlayTryingMethod"
+                                    class="px-3 py-1.5 rounded-lg border text-[11px] font-semibold transition disabled:opacity-40"
+                                    :class="theme === 'glass-light' ? 'border-gray-200 text-gray-500 hover:bg-gray-100 hover:text-gray-800 hover:border-gray-300' : 'border-white/10 text-gray-400 hover:bg-white/10 hover:text-gray-200 hover:border-white/20'">
+                                    <span
+                                        x-text="overlayTryingMethod ? 'Trying next method…' : 'Reject current · try next'"></span>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="space-y-2">
+                            <template x-for="strategy in overlaySuccessfulStrategies()" :key="strategy">
+                                <div class="flex items-center gap-2 rounded-xl border px-3 py-2 transition"
+                                    :class="overlayFetchStrategy === strategy ? 'border-emerald-500/25 bg-emerald-500/[0.06]' : 'border-white/[0.06] bg-white/[0.015]'">
+                                    <button @click="switchOverlayFetchStrategy(strategy)"
+                                        class="min-w-0 flex-1 text-left">
+                                        <span class="block text-xs font-semibold truncate"
+                                            :class="overlayFetchStrategy === strategy ? 'text-emerald-300' : 'text-gray-400'"
+                                            x-text="articleFetchStrategyLabel(strategy)"></span>
+                                        <span x-show="overlayRejectedStrategies.includes(strategy)"
+                                            class="block text-[10px] text-amber-300/70 mt-0.5">Rejected for this article
+                                            · still available to compare</span>
+                                    </button>
+                                    <button @click="setArticleFetchPreference(strategy, 'like')"
+                                        class="p-1.5 rounded-lg transition"
+                                        :class="overlayMethodPreferences[strategy] === 'like' ? 'text-emerald-300 bg-emerald-500/15' : 'text-gray-600 hover:text-emerald-300 hover:bg-white/5'"
+                                        :aria-label="'Prefer ' + articleFetchStrategyLabel(strategy)"
+                                        title="Prefer this method for this publisher">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 001.94-1.515l1.5-6A2 2 0 0019.78 12H15M7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3">
+                                            </path>
+                                        </svg>
+                                    </button>
+                                    <button @click="setArticleFetchPreference(strategy, 'dislike')"
+                                        class="p-1.5 rounded-lg transition"
+                                        :class="overlayMethodPreferences[strategy] === 'dislike' ? 'text-red-300 bg-red-500/15' : 'text-gray-600 hover:text-red-300 hover:bg-white/5'"
+                                        :aria-label="'Avoid ' + articleFetchStrategyLabel(strategy)"
+                                        title="Avoid this method for this publisher">
+                                        <svg class="w-4 h-4 rotate-180" fill="none" stroke="currentColor"
+                                            viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 001.94-1.515l1.5-6A2 2 0 0019.78 12H15M7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3">
+                                            </path>
+                                        </svg>
+                                    </button>
+                                </div>
+                            </template>
+                        </div>
+                        <p x-show="overlayMethodError" x-text="overlayMethodError"
+                            class="text-[11px] text-red-300 mt-2"></p>
+                        <p class="text-[10px] text-gray-700 mt-2">Like or dislike changes the method order only for this
+                            publisher.</p>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+

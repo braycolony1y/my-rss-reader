@@ -1,0 +1,150 @@
+            <!-- Header -->
+            <div class="flex items-center justify-between px-4 py-2 border-b flex-shrink-0 transition z-10 sticky top-0"
+                :class="theme === 'glass-light' ? 'bg-white/60 border-gray-200/50 backdrop-blur-2xl' : (theme === 'glass' ? 'bg-black/50 border-white/10 backdrop-blur-2xl' : 'bg-[#0B101E] border-[#333]')">
+                <div class="flex items-center gap-3 min-w-0 flex-1">
+                    <button @click="closeArticleOverlay()"
+                        class="transition p-2 rounded-full flex-shrink-0 backdrop-blur-md"
+                        :class="theme === 'glass-light' ? 'bg-black/5 hover:bg-black/10 text-gray-600 hover:text-gray-900' : 'bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white'"
+                        :title="articleOverlayStack.length ? 'Back to previous article' : 'Close'">
+                        <svg x-show="!articleOverlayStack.length" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                        <svg x-show="articleOverlayStack.length" x-cloak class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M15 19l-7-7 7-7"></path>
+                        </svg>
+                    </button>
+                    <div class="min-w-0 flex-1 flex items-center">
+                        <span class="inline-flex min-w-0 items-center gap-1.5 md:gap-2 transition-all"
+                            :class="theme === 'glass-light' ? 'text-emerald-700' : 'text-emerald-400'">
+                            <template x-if="overlayArticle">
+                                <img :src="overlayArticle.feedIcon || smartSourceIcon({ domain: overlayArticle.link ? new URL(overlayArticle.link).hostname : '' })"
+                                    class="w-4 h-4 rounded-sm object-cover" @error="$el.style.display='none'">
+                            </template>
+                            <span
+                                class="text-[13px] font-bold tracking-tight uppercase truncate max-w-[150px] md:max-w-[250px]"
+                                x-text="(overlayArticle && overlayArticle.siteName) || (overlayArticle && overlayArticle.feedTitle) || 'Article'"></span>
+                        </span>
+                        <template x-if="overlayArticle && overlayArticle.primarySource && overlayArticle.primarySource.domain">
+                            <span class="inline-flex min-w-0 items-center gap-1.5 ml-2 pl-2 border-l border-gray-300/40"
+                                :title="'Main article from ' + (overlayArticle.primarySource.name || overlayArticle.primarySource.domain)">
+                                <a :href="overlayArticle.primarySource.url || overlayArticle.primaryArticleUrl" target="_blank" rel="noopener noreferrer"
+                                    @click.stop class="inline-flex min-w-0 items-center gap-1.5 no-underline"
+                                    :class="theme === 'glass-light' ? 'text-sky-700' : 'text-sky-300'">
+                                    <img :src="overlayArticle.primarySource.icon || smartSourceIcon({ domain: overlayArticle.primarySource.domain })"
+                                        class="w-4 h-4 rounded-sm object-cover flex-shrink-0" @error="$el.style.display='none'" referrerpolicy="no-referrer">
+                                    <span class="hidden sm:inline text-[12px] font-bold tracking-tight uppercase truncate max-w-[120px] md:max-w-[190px]"
+                                        x-text="overlayArticle.primarySource.name || overlayArticle.primarySource.domain"></span>
+                                </a>
+                            </span>
+                        </template>
+                    </div>
+                </div>
+                <div class="flex items-center gap-1 md:gap-2 flex-shrink-0">
+                    <!-- Copy Link Button (Moved to leftmost) -->
+                    <button @click="navigator.clipboard.writeText(window.location.href); const svg = $el.querySelector('svg'); svg.classList.add('text-green-500', 'dark:text-green-400'); setTimeout(() => svg.classList.remove('text-green-500', 'dark:text-green-400'), 2000)"
+                        class="transition p-2 rounded-lg"
+                        :class="theme === 'glass-light' ? 'hover:bg-black/5 text-gray-500' : 'hover:bg-white/10 text-gray-400'"
+                        :title="isMobile ? '' : 'Copy reader link'">
+                        <svg class="w-5 h-5 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path>
+                        </svg>
+                    </button>
+                    <!-- Copy Rich Article Content Button -->
+                    <button @click="copyArticleContent()" :disabled="!overlayContent || articleCopyState === 'copying'"
+                        class="transition p-2 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
+                        :class="articleCopyState === 'success'
+                            ? (theme === 'glass-light' ? 'bg-emerald-50 text-emerald-600' : 'bg-emerald-500/10 text-emerald-400')
+                            : (articleCopyState === 'error'
+                                ? (theme === 'glass-light' ? 'bg-red-50 text-red-600' : 'bg-red-500/10 text-red-400')
+                                : (theme === 'glass-light' ? 'hover:bg-black/5 text-gray-500' : 'hover:bg-white/10 text-gray-400'))"
+                        :title="articleCopyState === 'success' ? 'Article copied with images' : (articleCopyState === 'error' ? 'Could not copy article' : 'Copy article content with images')"
+                        :aria-label="articleCopyState === 'success' ? 'Article copied with images' : 'Copy article content with images'">
+                        <svg x-show="articleCopyState !== 'success'" class="w-5 h-5 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-2M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m4 4v6m3-3h-6"></path>
+                        </svg>
+                        <svg x-show="articleCopyState === 'success'" x-cloak class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                        </svg>
+                    </button>
+                    <!-- Save Article as PDF Button -->
+                    <button @click="saveArticleAsPdf()" :disabled="!overlayContent"
+                        class="transition p-2 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
+                        :class="articlePdfState === 'preparing'
+                            ? (theme === 'glass-light' ? 'bg-amber-50 text-amber-700' : 'bg-amber-500/10 text-amber-300')
+                            : (articlePdfState === 'error'
+                                ? (theme === 'glass-light' ? 'bg-red-50 text-red-600' : 'bg-red-500/10 text-red-400')
+                                : (theme === 'glass-light' ? 'hover:bg-black/5 text-gray-500' : 'hover:bg-white/10 text-gray-400'))"
+                        :title="articlePdfState === 'preparing' ? 'Pause PDF generation' : 'Download PDF from server'"
+                        :aria-label="articlePdfState === 'preparing' ? 'Pause PDF generation' : 'Download PDF from server'">
+                        <svg x-show="articlePdfState !== 'preparing'" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v12m0 0l-4-4m4 4l4-4M5 17v3h14v-3"></path>
+                        </svg>
+                        <svg x-show="articlePdfState === 'preparing'" x-cloak class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                    <button @click="saveArticleAsPdf(true)" :disabled="!overlayContent || articlePdfState === 'preparing'"
+                        class="transition p-2 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
+                        title="Regenerate PDF with the latest thread changes" aria-label="Regenerate PDF">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v6h6M20 20v-6h-6M5 10a7 7 0 0112-5l3 3M4 16l3 3a7 7 0 0012-5"></path>
+                        </svg>
+                    </button>
+                    <!-- Read Later Button -->
+                    <button @click="overlayArticle && toggleState('savedStates', overlayArticle.link)" 
+                        class="transition p-2 rounded-lg" 
+                        :class="theme === 'glass-light' ? 'hover:bg-black/5 text-gray-500' : 'hover:bg-white/10 text-gray-400'"
+                        :title="overlayArticle && savedStates.includes(overlayArticle.link) ? 'Remove from Read Later' : 'Read Later'">
+                        <svg class="w-5 h-5 transition-colors" :class="overlayArticle && savedStates.includes(overlayArticle.link) ? (theme === 'glass-light' ? 'fill-blue-100 text-blue-600' : 'fill-blue-900/50 text-blue-500') : 'currentColor'" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"></path></svg>
+                    </button>
+                    <!-- Save to Board Button -->
+                    <button @click.stop="if(overlayArticle) openBoardModal(overlayArticle)" 
+                        class="transition p-2 rounded-lg" 
+                        :class="theme === 'glass-light' ? 'hover:bg-black/5 text-gray-500' : 'hover:bg-white/10 text-gray-400'"
+                        :title="isOnBoard(overlayArticle) ? 'Remove from Board' : 'Save to Board'">
+                        <svg class="w-5 h-5 transition-colors" :class="isOnBoard(overlayArticle) ? (theme === 'glass-light' ? 'fill-yellow-100 text-yellow-600' : 'fill-yellow-900/50 text-yellow-500') : 'currentColor'" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"></path></svg>
+                    </button>
+                    <!-- Open in New Tab Button -->
+                    <a :href="overlayArticle ? articleSourceUrl(overlayArticle) : '#'" target="_blank" rel="noopener noreferrer"
+                        class="transition p-2 rounded-lg"
+                        :class="theme === 'glass-light' ? 'hover:bg-black/5 text-gray-500' : 'hover:bg-white/10 text-gray-400'"
+                        title="Open in new tab">
+                        <svg class="w-5 h-5 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
+                        </svg>
+                    </a>
+                </div>
+            </div>
+
+            <div x-show="articlePdfState !== 'idle'" x-cloak aria-live="polite"
+                class="flex-shrink-0 border-b px-4 py-2.5"
+                :class="theme === 'glass-light' ? 'bg-white/80 border-gray-200/70 text-gray-700' : 'bg-[#0B101E]/95 border-white/10 text-gray-300'">
+                <div class="flex items-center gap-3">
+                    <div class="min-w-0 flex-1">
+                        <div class="flex items-center justify-between gap-3 text-xs">
+                            <span class="truncate" x-text="articlePdfProgress.message || 'Preparing PDF…'"></span>
+                            <span x-show="articlePdfProgress.total > 0" class="flex-shrink-0 tabular-nums"
+                                x-text="Math.min(articlePdfProgress.current, articlePdfProgress.total) + ' / ' + articlePdfProgress.total"></span>
+                        </div>
+                        <div x-show="articlePdfState === 'preparing' && articlePdfProgress.total > 0"
+                            class="mt-2 h-1.5 overflow-hidden rounded-full"
+                            :class="theme === 'glass-light' ? 'bg-gray-200' : 'bg-white/10'">
+                            <div class="h-full rounded-full bg-emerald-500 transition-all duration-300"
+                                :style="'width:' + Math.max(3, Math.min(100, articlePdfProgress.current / articlePdfProgress.total * 100)) + '%'">
+                            </div>
+                        </div>
+                    </div>
+                    <button x-show="articlePdfState === 'preparing'" @click="cancelArticlePdf()"
+                        class="flex-shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold transition"
+                        :class="theme === 'glass-light' ? 'bg-gray-100 hover:bg-gray-200 text-gray-700' : 'bg-white/10 hover:bg-white/15 text-gray-200'">
+                        Pause
+                    </button>
+                </div>
+            </div>
+
+            <div x-show="cacheMember(overlayArticle) || overlayArticle?.cacheLastSync" class="px-4 py-2 text-xs border-b flex-shrink-0"
+                :class="theme === 'glass-light' ? 'text-slate-600 border-black/5' : 'text-gray-400 border-white/10'"
+                role="status" x-text="cacheLastSuccessText(overlayArticle)"></div>
+

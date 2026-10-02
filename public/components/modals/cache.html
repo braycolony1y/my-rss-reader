@@ -1,0 +1,41 @@
+    <div x-show="cacheRulesOpen" x-cloak class="cache-modal" @keydown.escape.window="cacheRulesOpen = false" role="dialog" aria-modal="true" aria-labelledby="cache-rules-title">
+        <section class="cache-glass cache-dialog" @click.outside="cacheRulesOpen = false">
+            <div class="cache-toolbar"><h2 id="cache-rules-title">Auto Cache Rules</h2><button class="cache-button" @click="cacheRulesOpen = false" aria-label="Close rules">Close</button></div>
+            <p>Add new matching articles to the Cache folder and keep their posts updated while caching is on. Existing threads are not backfilled; replies to cached threads are synced.</p>
+            <p x-show="!cacheRules.length" class="cache-empty">No rules yet. Add a rule to start caching automatically.</p>
+            <template x-for="(rule, ruleIndex) in cacheRules" :key="rule.id">
+                <div class="cache-rule" :class="{ 'cache-rule-disabled': !rule.enabled }">
+                    <div class="cache-toolbar">
+                        <label class="cache-switch"><input type="checkbox" x-model="rule.enabled"> <span x-text="rule.enabled ? 'Rule enabled' : 'Rule disabled'"></span></label>
+                        <button class="cache-button" @click="cacheRules.splice(ruleIndex, 1)">Delete rule</button>
+                    </div>
+                    <label class="cache-field">Source<select x-model="rule.source"><option value="">Any source</option><template x-for="feed in cacheRuleSources" :key="feed.url"><option :value="feed.url" x-text="feed.title || feed.name || feed.url"></option></template></select></label>
+                    <label class="cache-field">Title keywords or phrases</label>
+                    <div class="cache-keywords">
+                        <template x-for="(keyword, keywordIndex) in rule.keywords" :key="keywordIndex">
+                            <span class="cache-chip"><input :value="keyword" :size="Math.max(3, Math.min(keyword.length + 1, 30))" maxlength="200" aria-label="Edit keyword or phrase" @change="editCacheKeyword(rule, keywordIndex, $event.target)" @keydown.enter.prevent="$event.target.blur()"><button @click="rule.keywords.splice(keywordIndex, 1)" :aria-label="'Remove ' + keyword">×</button></span>
+                        </template>
+                        <input class="cache-chip-entry" placeholder="Add a phrase…" maxlength="200" aria-label="Add keyword or phrase" @keydown.enter.prevent="addCacheKeyword(rule, $event.target)" @blur="addCacheKeyword(rule, $event.target)">
+                    </div>
+                    <p class="cache-hint">Press Enter to add a chip. Spaces stay inside the phrase. Click a chip to edit.</p>
+                </div>
+            </template>
+            <button class="cache-button" @click="addCacheRule()">+ Add rule</button>
+            <p x-show="cacheNotice" x-text="cacheNotice" class="cache-notice" role="status"></p>
+            <div class="cache-dialog-footer"><button class="cache-button" @click="cacheRulesOpen = false">Cancel</button><button class="cache-button cache-primary" :disabled="cacheRulesSaving" @click="saveCacheRules()" x-text="cacheRulesSaving ? 'Saving…' : 'Save rules'"></button></div>
+        </section>
+    </div>
+    <div x-show="cacheHistory" x-cloak class="cache-modal" @keydown.escape.window="cacheHistory = null" role="dialog" aria-modal="true" aria-labelledby="cache-history-title">
+        <section class="cache-glass cache-dialog cache-history-dialog" @click.outside="cacheHistory = null">
+            <div class="cache-toolbar"><h2 id="cache-history-title">Post change history</h2><button class="cache-button" @click="cacheHistory = null">Close</button></div>
+            <p><span x-text="cacheHistory?.author_name"></span> · Post <span x-text="cacheHistory?.post_id"></span></p>
+            <div class="cache-history-selectors">
+                <label class="cache-field">Previous version<select x-model.number="historyFrom"><template x-for="(version, index) in cacheHistory?.versions || []" :key="index"><option :value="index" x-text="'Version ' + version.version + ' · Captured ' + new Date(version.captured_at).toLocaleString() + (version.edited_at ? ' · Edited ' + new Date(version.edited_at).toLocaleString() : ' · Edit time unavailable')"></option></template></select></label>
+                <label class="cache-field">Compare with<select x-model.number="historyTo"><template x-for="(version, index) in cacheHistory?.versions || []" :key="index"><option :value="index" x-text="'Version ' + version.version + ' · Captured ' + new Date(version.captured_at).toLocaleString() + (version.edited_at ? ' · Edited ' + new Date(version.edited_at).toLocaleString() : ' · Edit time unavailable')"></option></template></select></label>
+            </div>
+            <p class="cache-diff-legend"><del>Removed</del> <ins>Added</ins> · Changes show both.</p>
+            <div class="cache-diff" x-html="historyDiff()"></div>
+            <details><summary>Read selected previous version</summary><div class="cache-diff" x-text="historyText(cacheHistory?.versions[historyFrom])"></div></details>
+        </section>
+    </div>
+

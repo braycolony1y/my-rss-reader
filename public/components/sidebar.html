@@ -1,0 +1,537 @@
+    <div x-show="isLoggedIn && mobileSidebarOpen && isMobile" x-cloak @click="closeSidebar()"
+        class="fixed inset-0 bg-[#0B101E]/60 z-40 md:hidden transition-opacity"></div>
+
+    <div x-show="isLoggedIn && sidebarExpanded && !isMobile" x-cloak @click="closeSidebar()"
+        class="fixed inset-0 z-40 hidden md:block" aria-hidden="true"></div>
+
+    <div x-show="isLoggedIn && !isMobile"
+        class="hidden md:block w-[68px] flex-shrink-0 transition-all duration-300 relative z-40"></div>
+    <aside x-show="isLoggedIn" x-cloak x-data="{ sidebarHovered: false }" @mouseenter="sidebarHovered = true"
+        @mouseleave="sidebarHovered = false"
+        class="group flex fixed md:absolute inset-y-0 left-0 z-50 flex-shrink-0 flex-col h-[100dvh] transition-all duration-300 ease-in-out whitespace-nowrap overflow-x-hidden hide-scrollbar scrollbar-hide border-r"
+        style="scrollbar-width: none; -ms-overflow-style: none;" :class="{
+               'bg-white/60 border-white/80 shadow-[0_8px_32px_rgba(0,0,0,0.04)] backdrop-blur-xl text-gray-900': theme === 'glass-light',
+               'bg-[#111827] border-white/5': theme !== 'glass-light',
+               'w-72 translate-x-0': isMobile && mobileSidebarOpen,
+               'w-72 -translate-x-full border-none': isMobile && !mobileSidebarOpen,
+               'w-[220px] translate-x-0 opacity-100': !isMobile && sidebarExpanded,
+               'w-[68px] translate-x-0 opacity-100': !isMobile && !sidebarExpanded
+           }">
+
+        <div class="p-3 border-b border-white/5 flex items-center justify-end w-full flex-shrink-0 md:hidden">
+            <button @click="toggleSidebar()"
+                class="w-8 h-8 rounded-lg flex items-center justify-center transition-all"
+                :class="theme === 'glass-light' ? 'text-gray-500 hover:bg-gray-100 hover:text-gray-700' : 'text-gray-400 hover:bg-white/10 hover:text-white'"
+                :aria-expanded="mobileSidebarOpen"
+                :aria-label="mobileSidebarOpen ? 'Close sidebar' : 'Open sidebar'"
+                :title="mobileSidebarOpen ? 'Close sidebar' : 'Open sidebar'">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        :d="mobileSidebarOpen ? 'M6 18 18 6M6 6l12 12' : 'M4 6h16M4 12h16M4 18h16'">
+                    </path>
+                </svg>
+            </button>
+        </div>
+        <!-- The same sidebar toggle used at desktop size. -->
+        <div class="hidden md:flex items-center p-3 flex-shrink-0"
+            :class="sidebarExpanded ? 'justify-end' : 'justify-center'">
+            <button @click="toggleSidebar()"
+                class="w-8 h-8 rounded-lg flex items-center justify-center transition-all"
+                :class="theme === 'glass-light' ? 'text-gray-500 hover:bg-gray-100 hover:text-gray-700' : 'text-gray-400 hover:bg-white/10 hover:text-white'"
+                :aria-expanded="sidebarExpanded"
+                :aria-label="sidebarExpanded ? 'Close sidebar' : 'Open sidebar'"
+                :title="sidebarExpanded ? 'Close sidebar' : 'Open sidebar'">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        :d="sidebarExpanded ? 'M6 18 18 6M6 6l12 12' : 'M4 6h16M4 12h16M4 18h16'">
+                    </path>
+                </svg>
+            </button>
+        </div>
+
+        <div class="flex-1 overflow-y-auto hide-scrollbar scrollbar-hide w-full min-h-0 flex flex-col pb-[env(safe-area-inset-bottom)]"
+            style="scrollbar-width: none; -ms-overflow-style: none;">
+            <div class="flex-1 pb-4">
+                <ul class="space-y-1 px-2 mb-6 mt-2">
+                    <!-- Smart Briefing as regular nav item -->
+                    <li @click="setSmartSection('news')"
+                        class="relative flex items-center justify-between px-3 py-2 rounded-md cursor-pointer transition-all duration-300 font-medium text-sm overflow-hidden"
+                        :class="selectedFilterType === 'smart' ? (theme === 'glass-light' ? 'bg-emerald-50 text-emerald-700 shadow-sm' : 'bg-teal-900/40 text-teal-400 shadow-[inset_0_0_10px_rgba(20,184,166,0.1)]') : (theme === 'glass-light' ? 'text-gray-600 hover:bg-gray-100/50 hover:text-gray-900' : 'text-gray-400 hover:bg-white/5 hover:text-white')">
+                        <div class="flex items-center gap-2">
+                            <div class="w-7 flex items-center justify-center shrink-0">
+                                <svg class="w-4 h-4"
+                                    :class="theme === 'glass-light' ? 'text-emerald-600' : 'text-emerald-400'"
+                                    fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                                </svg>
+                            </div>
+                            <span class="transition-opacity duration-300 truncate delay-75"
+                                :class="!sidebarExpanded && !isMobile ? 'opacity-0' : 'opacity-100'">Smart
+                                Briefing</span>
+                        </div>
+                    </li>
+                    <div x-show="sidebarExpanded || isMobile"
+                        class="grid grid-cols-3 gap-1 rounded-xl p-1 mb-2 transition-all duration-300 overflow-hidden"
+                        :class="theme === 'glass-light' ? 'bg-gray-100/80 border border-white/50' : 'bg-[#080F19]/80 border border-white/[0.06]'">
+                        <button @click="setSmartSection('news')"
+                            class="py-1.5 rounded-lg text-[11px] font-semibold transition"
+                            :class="selectedFilterType === 'smart' && smartSection === 'news' ? (theme === 'glass-light' ? 'bg-white shadow text-emerald-700' : 'bg-emerald-400 text-[#07130f] shadow') : (theme === 'glass-light' ? 'text-gray-500 hover:text-gray-900' : 'text-gray-500 hover:text-white hover:bg-white/5')">News</button>
+                        <button @click="setSmartSection('finance')"
+                            class="py-1.5 rounded-lg text-[11px] font-semibold transition"
+                            :class="selectedFilterType === 'smart' && smartSection === 'finance' ? (theme === 'glass-light' ? 'bg-white shadow text-emerald-700' : 'bg-emerald-400 text-[#07130f] shadow') : (theme === 'glass-light' ? 'text-gray-500 hover:text-gray-900' : 'text-gray-500 hover:text-white hover:bg-white/5')">Finance</button>
+                        <button @click="setSmartSection('tech')"
+                            class="py-1.5 rounded-lg text-[11px] font-semibold transition"
+                            :class="selectedFilterType === 'smart' && smartSection === 'tech' ? (theme === 'glass-light' ? 'bg-white shadow text-emerald-700' : 'bg-emerald-400 text-[#07130f] shadow') : (theme === 'glass-light' ? 'text-gray-500 hover:text-gray-900' : 'text-gray-500 hover:text-white hover:bg-white/5')">Tech</button>
+                    </div>
+                    <div x-show="(sidebarExpanded || isMobile) && selectedFilterType === 'smart' && smartSection !== 'tech'"
+                        x-transition.opacity class="grid grid-cols-2 gap-1 mb-2 transition-opacity duration-300">
+                        <button
+                            @click="setFilter('smart', smartSection === 'news' ? 'news_vietnam' : 'finance_vietnam')"
+                            class="px-2 py-1.5 rounded-lg text-[11px] font-medium transition border"
+                            :class="(selectedFilterValue || '').endsWith('_vietnam') ? (theme === 'glass-light' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-teal-400/10 border-teal-400/30 text-teal-200') : (theme === 'glass-light' ? 'border-transparent text-gray-500 hover:text-gray-900 hover:bg-gray-100' : 'border-transparent text-gray-500 hover:text-white hover:bg-white/5')">Vietnam</button>
+                        <button @click="setFilter('smart', smartSection === 'news' ? 'news_global' : 'finance_global')"
+                            class="px-2 py-1.5 rounded-lg text-[11px] font-medium transition border"
+                            :class="selectedFilterValue === 'news_global' || selectedFilterValue === 'finance_global' ? (theme === 'glass-light' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-teal-400/10 border-teal-400/30 text-teal-200') : (theme === 'glass-light' ? 'border-transparent text-gray-500 hover:text-gray-900 hover:bg-gray-100' : 'border-transparent text-gray-500 hover:text-white hover:bg-white/5')"
+                            x-text="'Global'"></button>
+                    </div>
+                    <div x-show="(sidebarExpanded || isMobile) && selectedFilterType === 'smart' && smartSection === 'tech'"
+                        x-transition.opacity class="grid grid-cols-2 gap-1 mb-2 transition-opacity duration-300">
+                        <button
+                            @click="setSmartRegion('vietnam')"
+                            class="px-2 py-1.5 rounded-lg text-[11px] font-medium transition border"
+                            :class="smartRegion === 'vietnam' ? (theme === 'glass-light' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-teal-400/10 border-teal-400/30 text-teal-200') : (theme === 'glass-light' ? 'border-transparent text-gray-500 hover:text-gray-900 hover:bg-gray-100' : 'border-transparent text-gray-500 hover:text-white hover:bg-white/5')">
+                            Vietnam
+                        </button>
+                        <button
+                            @click="setSmartRegion('global')"
+                            class="px-2 py-1.5 rounded-lg text-[11px] font-medium transition border"
+                            :class="smartRegion === 'global' ? (theme === 'glass-light' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-teal-400/10 border-teal-400/30 text-teal-200') : (theme === 'glass-light' ? 'border-transparent text-gray-500 hover:text-gray-900 hover:bg-gray-100' : 'border-transparent text-gray-500 hover:text-white hover:bg-white/5')">
+                            Global
+                        </button>
+                    </div>
+                    <li @click="setFilter('today', null)"
+                        class="relative flex items-center justify-between px-3 py-2 rounded-md cursor-pointer transition-all duration-300 font-medium text-sm mt-4 overflow-hidden"
+                        :class="selectedFilterType === 'today' ? (theme === 'glass-light' ? 'bg-emerald-50 text-emerald-700 shadow-sm' : 'bg-teal-900/40 text-teal-400 shadow-[inset_0_0_10px_rgba(20,184,166,0.1)]') : (theme === 'glass-light' ? 'text-gray-600 hover:bg-gray-100/50 hover:text-gray-900' : 'text-gray-400 hover:bg-white/5 hover:text-white')">
+                        <div class="flex items-center gap-2">
+                            <div class="w-7 flex items-center justify-center shrink-0">
+                                <svg class="w-5 h-5 md:w-4 md:h-4" fill="none" stroke="currentColor"
+                                    viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 002-2V9.5L18.5 7H20">
+                                    </path>
+                                </svg>
+                            </div>
+                            <span class="transition-opacity duration-300 truncate delay-75"
+                                :class="!sidebarExpanded && !isMobile ? 'opacity-0' : 'opacity-100'">Today</span>
+                        </div>
+                        <span class="text-xs font-semibold shrink-0 transition-opacity duration-300 delay-75"
+                            :class="!sidebarExpanded && !isMobile ? 'opacity-0' : 'opacity-100'"
+                            x-text="unreadCounts.total > 0 ? (unreadCounts.total > 99 ? '99+' : unreadCounts.total) : ''"></span>
+                    </li>
+                    <li @click="setFilter('recent', null)"
+                        class="relative flex items-center justify-between px-3 py-2 rounded-md cursor-pointer transition-all duration-300 font-medium text-sm overflow-hidden"
+                        :class="selectedFilterType === 'recent' ? (theme === 'glass-light' ? 'bg-emerald-50 text-emerald-700 shadow-sm' : 'bg-teal-900/40 text-teal-400 shadow-[inset_0_0_10px_rgba(20,184,166,0.1)]') : (theme === 'glass-light' ? 'text-gray-600 hover:bg-gray-100/50 hover:text-gray-900' : 'text-gray-400 hover:bg-white/5 hover:text-white')">
+                        <div class="flex items-center gap-2">
+                            <div class="w-7 flex items-center justify-center shrink-0">
+                                <svg class="w-5 h-5 md:w-4 md:h-4" fill="none" stroke="currentColor"
+                                    viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                </svg>
+                            </div>
+                            <span class="transition-opacity duration-300 truncate delay-75"
+                                :class="!sidebarExpanded && !isMobile ? 'opacity-0' : 'opacity-100'">Recently
+                                Read</span>
+                        </div>
+                    </li>
+                    <li @click="setFilter('saved', null)"
+                        class="relative flex items-center justify-between px-3 py-2 rounded-md cursor-pointer transition-all duration-300 font-medium text-sm mt-2 overflow-hidden"
+                        :class="selectedFilterType === 'saved' ? (theme === 'glass-light' ? 'bg-emerald-50 text-emerald-700 shadow-sm' : 'bg-teal-900/40 text-teal-400 shadow-[inset_0_0_10px_rgba(20,184,166,0.1)]') : (theme === 'glass-light' ? 'text-gray-600 hover:bg-gray-100/50 hover:text-gray-900' : 'text-gray-400 hover:bg-white/5 hover:text-white')">
+                        <div class="flex items-center gap-2">
+                            <div class="w-7 flex items-center justify-center shrink-0">
+                                <svg class="w-5 h-5 md:w-4 md:h-4" fill="none" stroke="currentColor"
+                                    viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"></path>
+                                </svg>
+                            </div>
+                            <span class="transition-opacity duration-300 truncate delay-75"
+                                :class="!sidebarExpanded && !isMobile ? 'opacity-0' : 'opacity-100'">Read Later</span>
+                        </div>
+                        <span
+                            class="text-xs font-semibold text-gray-500 shrink-0 transition-opacity duration-300 delay-75"
+                            :class="!sidebarExpanded && !isMobile ? 'opacity-0' : 'opacity-100'"
+                            x-text="savedStates.filter(link => articles.some(a => a.link === link)).length || ''"></span>
+                    </li>
+                    <li @click="setFilter('board', null)"
+                        class="relative flex items-center justify-between px-3 py-2 rounded-md cursor-pointer transition-all duration-300 font-medium text-sm overflow-hidden"
+                        :class="selectedFilterType === 'board' ? (theme === 'glass-light' ? 'bg-emerald-50 text-emerald-700 shadow-sm' : 'bg-teal-900/40 text-teal-400 shadow-[inset_0_0_10px_rgba(20,184,166,0.1)]') : (theme === 'glass-light' ? 'text-gray-600 hover:bg-gray-100/50 hover:text-gray-900' : 'text-gray-400 hover:bg-white/5 hover:text-white')">
+                        <div class="flex items-center gap-2">
+                            <div class="w-7 flex items-center justify-center shrink-0">
+                                <svg class="w-5 h-5 md:w-4 md:h-4" fill="none" stroke="currentColor"
+                                    viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2">
+                                    </path>
+                                </svg>
+                            </div>
+                            <span class="transition-opacity duration-300 truncate delay-75"
+                                :class="!sidebarExpanded && !isMobile ? 'opacity-0' : 'opacity-100'">Boards</span>
+                        </div>
+                    </li>
+                    <li @click="setFilter('hidden', null)"
+                        class="relative flex items-center justify-between px-3 py-2 rounded-md cursor-pointer transition-all duration-300 font-medium text-sm overflow-hidden"
+                        :class="selectedFilterType === 'hidden' ? (theme === 'glass-light' ? 'bg-emerald-50 text-emerald-700 shadow-sm' : 'bg-teal-900/40 text-teal-400 shadow-[inset_0_0_10px_rgba(20,184,166,0.1)]') : (theme === 'glass-light' ? 'text-gray-600 hover:bg-gray-100/50 hover:text-gray-900' : 'text-gray-400 hover:bg-white/5 hover:text-white')">
+                        <div class="flex items-center gap-2">
+                            <div class="w-7 flex items-center justify-center shrink-0">
+                                <svg class="w-5 h-5 md:w-4 md:h-4" fill="none" stroke="currentColor"
+                                    viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21">
+                                    </path>
+                                </svg>
+                            </div>
+                            <span class="transition-opacity duration-300 truncate delay-75"
+                                :class="!sidebarExpanded && !isMobile ? 'opacity-0' : 'opacity-100'">Hidden
+                                Articles</span>
+                        </div>
+                        <span
+                            class="text-xs font-semibold text-gray-500 shrink-0 transition-opacity duration-300 delay-75"
+                            :class="!sidebarExpanded && !isMobile ? 'opacity-0' : 'opacity-100'"
+                            x-text="hiddenArticleCount() || ''"></span>
+                    </li>
+                    <li @click="openContentFilterSettings()"
+                        class="relative flex items-center justify-between px-3 py-2 rounded-md cursor-pointer transition-all duration-300 font-medium text-sm mt-4 overflow-hidden"
+                        :class="theme === 'glass-light' ? 'text-gray-600 hover:bg-gray-100/50 hover:text-gray-900' : 'text-gray-400 hover:bg-white/5 hover:text-white'">
+                        <div class="flex items-center gap-2">
+                            <div class="w-7 flex items-center justify-center shrink-0">
+                                <svg class="w-5 h-5 md:w-4 md:h-4" fill="none" stroke="currentColor"
+                                    viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z">
+                                    </path>
+                                </svg>
+                            </div>
+                            <span class="transition-opacity duration-300 truncate delay-75"
+                                :class="!sidebarExpanded && !isMobile ? 'opacity-0' : 'opacity-100'">Content
+                                Filters</span>
+                        </div>
+                        <span x-show="blockedKeywords.length"
+                            class="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 rounded-full px-2 py-0.5 shrink-0 transition-opacity duration-300 delay-75"
+                            :class="!sidebarExpanded && !isMobile ? 'opacity-0' : 'opacity-100'"
+                            x-text="blockedKeywords.length"></span>
+                    </li>
+                    <li @click="openSmartSourcesSettings()"
+                        class="relative flex items-center justify-between px-3 py-2 rounded-md cursor-pointer transition-all duration-300 font-medium text-sm overflow-hidden"
+                        :class="theme === 'glass-light' ? 'text-gray-600 hover:bg-gray-100/50 hover:text-gray-900' : 'text-gray-400 hover:bg-white/5 hover:text-white'">
+                        <div class="flex items-center gap-2">
+                            <div class="w-7 flex items-center justify-center shrink-0">
+                                <svg class="w-5 h-5 md:w-4 md:h-4" fill="none" stroke="currentColor"
+                                    viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z">
+                                    </path>
+                                </svg>
+                            </div>
+                            <span class="transition-opacity duration-300 truncate delay-75"
+                                :class="!sidebarExpanded && !isMobile ? 'opacity-0' : 'opacity-100'">Smart
+                                Sources</span>
+                        </div>
+                    </li>
+                    <li onclick="document.getElementById('ai-providers-modal').classList.replace('hidden', 'flex'); refreshAiProvidersStatus()"
+                        class="relative flex items-center justify-between px-3 py-2 rounded-md cursor-pointer transition-all duration-300 font-medium text-sm overflow-hidden"
+                        :class="theme === 'glass-light' ? 'text-gray-600 hover:bg-gray-100/50 hover:text-gray-900' : 'text-gray-400 hover:bg-white/5 hover:text-white'">
+                        <div class="flex items-center gap-2">
+                            <div class="w-7 flex items-center justify-center shrink-0">
+                                <svg class="w-5 h-5 md:w-4 md:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path>
+                                </svg>
+                            </div>
+                            <span class="transition-opacity duration-300 truncate delay-75"
+                                :class="!sidebarExpanded && !isMobile ? 'opacity-0' : 'opacity-100'">AI Providers</span>
+                        </div>
+                    </li>
+                    <li @click="openGeminiStatus()"
+                        class="flex items-center justify-between px-3 py-2 rounded-md cursor-pointer transition-all duration-300 font-medium text-sm overflow-hidden"
+                        :class="theme === 'glass-light' ? 'text-gray-500 hover:bg-gray-100/50 hover:text-gray-900' : 'text-gray-400 hover:bg-white/5 hover:text-white'">
+                        <div class="flex items-center gap-2">
+                            <div class="w-7 flex items-center justify-center shrink-0">
+                                <svg class="w-4 h-4 shrink-0 transition-colors duration-300"
+                                    :class="geminiKeyStatus?.valid ? 'text-emerald-400' : 'text-amber-400'"
+                                    fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z">
+                                    </path>
+                                </svg>
+                            </div>
+                            <span class="transition-opacity duration-300 truncate delay-75 flex items-center gap-2"
+                                :class="!sidebarExpanded && !isMobile ? 'opacity-0' : 'opacity-100'">
+                                AI Usage &amp; Keys
+                            </span>
+                        </div>
+                        <span
+                            x-show="geminiKeyStatus?.valid"
+                            class="w-2 h-2 rounded-full bg-emerald-400 shrink-0 transition-opacity duration-300 delay-75"
+                            :class="!sidebarExpanded && !isMobile ? 'opacity-0' : 'opacity-100'"></span>
+                    </li>
+
+                    <!-- Trending Categories -->
+                    <div class="px-3 pt-4 pb-1 text-[10px] font-bold tracking-wider uppercase transition-opacity duration-300 truncate"
+                        :class="(!sidebarExpanded && !isMobile ? 'opacity-0' : 'opacity-100') + ' ' + (theme === 'glass-light' ? 'text-gray-500' : 'text-gray-600')">
+                        Voz Trending</div>
+
+                    <li @click="setFilter('hot_today', null)"
+                        class="flex items-center justify-between px-3 py-2 rounded-md cursor-pointer transition-all duration-300 font-medium text-sm overflow-hidden"
+                        :class="selectedFilterType === 'hot_today' ? (theme === 'glass-light' ? 'bg-orange-50 text-orange-700 shadow-sm' : 'bg-orange-900/40 text-orange-400 shadow-[inset_0_0_10px_rgba(249,115,22,0.1)]') : (theme === 'glass-light' ? 'text-gray-600 hover:bg-gray-100/50 hover:text-gray-900' : 'text-gray-400 hover:bg-white/5 hover:text-white')">
+                        <div class="flex items-center gap-2">
+                            <div class="w-7 flex items-center justify-center shrink-0">
+                                <svg class="w-5 h-5 md:w-4 md:h-4" fill="none" stroke="currentColor"
+                                    viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z">
+                                    </path>
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M9.879 16.121A3 3 0 1012.015 11L11 14H9c0 .768.293 1.536.879 2.121z"></path>
+                                </svg>
+                            </div>
+                            <span class="transition-opacity duration-300 truncate delay-75"
+                                :class="!sidebarExpanded && !isMobile ? 'opacity-0' : 'opacity-100'">Hot Today</span>
+                        </div>
+                    </li>
+                    <li @click="setFilter('hot_week', null)"
+                        class="flex items-center justify-between px-3 py-2 rounded-md cursor-pointer transition-all duration-300 font-medium text-sm overflow-hidden"
+                        :class="selectedFilterType === 'hot_week' ? (theme === 'glass-light' ? 'bg-orange-50 text-orange-700 shadow-sm' : 'bg-orange-900/40 text-orange-400 shadow-[inset_0_0_10px_rgba(249,115,22,0.1)]') : (theme === 'glass-light' ? 'text-gray-600 hover:bg-gray-100/50 hover:text-gray-900' : 'text-gray-400 hover:bg-white/5 hover:text-white')">
+                        <div class="flex items-center gap-2">
+                            <div class="w-7 flex items-center justify-center shrink-0">
+                                <svg class="w-5 h-5 md:w-4 md:h-4" fill="none" stroke="currentColor"
+                                    viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z">
+                                    </path>
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M9.879 16.121A3 3 0 1012.015 11L11 14H9c0 .768.293 1.536.879 2.121z"></path>
+                                </svg>
+                            </div>
+                            <span class="transition-opacity duration-300 truncate delay-75"
+                                :class="!sidebarExpanded && !isMobile ? 'opacity-0' : 'opacity-100'">Hot This
+                                Week</span>
+                        </div>
+                    </li>
+                    <li @click="setFilter('views_today', null)"
+                        class="flex items-center justify-between px-3 py-2 rounded-md cursor-pointer transition-all duration-300 font-medium text-sm overflow-hidden"
+                        :class="selectedFilterType === 'views_today' ? (theme === 'glass-light' ? 'bg-blue-50 text-blue-700 shadow-sm' : 'bg-blue-900/40 text-blue-400 shadow-[inset_0_0_10px_rgba(59,130,246,0.1)]') : (theme === 'glass-light' ? 'text-gray-600 hover:bg-gray-100/50 hover:text-gray-900' : 'text-gray-400 hover:bg-white/5 hover:text-white')">
+                        <div class="flex items-center gap-2">
+                            <div class="w-7 flex items-center justify-center shrink-0">
+                                <svg class="w-5 h-5 md:w-4 md:h-4" fill="none" stroke="currentColor"
+                                    viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z">
+                                    </path>
+                                </svg>
+                            </div>
+                            <span class="transition-opacity duration-300 truncate delay-75"
+                                :class="!sidebarExpanded && !isMobile ? 'opacity-0' : 'opacity-100'">Most Views
+                                Today</span>
+                        </div>
+                    </li>
+                    <li @click="setFilter('views_week', null)"
+                        class="flex items-center justify-between px-3 py-2 rounded-md cursor-pointer transition-all duration-300 font-medium text-sm overflow-hidden"
+                        :class="selectedFilterType === 'views_week' ? (theme === 'glass-light' ? 'bg-blue-50 text-blue-700 shadow-sm' : 'bg-blue-900/40 text-blue-400 shadow-[inset_0_0_10px_rgba(59,130,246,0.1)]') : (theme === 'glass-light' ? 'text-gray-600 hover:bg-gray-100/50 hover:text-gray-900' : 'text-gray-400 hover:bg-white/5 hover:text-white')">
+                        <div class="flex items-center gap-2">
+                            <div class="w-7 flex items-center justify-center shrink-0">
+                                <svg class="w-5 h-5 md:w-4 md:h-4" fill="none" stroke="currentColor"
+                                    viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z">
+                                    </path>
+                                </svg>
+                            </div>
+                            <span class="transition-opacity duration-300 truncate delay-75"
+                                :class="!sidebarExpanded && !isMobile ? 'opacity-0' : 'opacity-100'">Most Views This
+                                Week</span>
+                        </div>
+                    </li>
+
+                    <li @click="openLogsPanel()"
+                        class="relative flex items-center justify-between px-3 py-2 rounded-md cursor-pointer transition-all duration-300 font-medium text-sm mt-4 overflow-hidden"
+                        :class="theme === 'glass-light' ? 'text-gray-600 hover:bg-gray-100/50 hover:text-gray-900' : 'text-gray-400 hover:bg-white/5 hover:text-white'">
+                        <div class="flex items-center gap-2">
+                            <div class="w-7 flex items-center justify-center shrink-0">
+                                <svg class="w-5 h-5 md:w-4 md:h-4" fill="none" stroke="currentColor"
+                                    viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z">
+                                    </path>
+                                </svg>
+                            </div>
+                            <span class="transition-opacity duration-300 truncate delay-75"
+                                :class="!sidebarExpanded && !isMobile ? 'opacity-0' : 'opacity-100'">System Logs</span>
+                        </div>
+                    </li>
+                </ul>
+
+                <div class="px-5 mb-2 mt-4 flex items-center justify-between transition-opacity duration-300 delay-75"
+                    :class="!sidebarExpanded && !isMobile ? 'opacity-0' : 'opacity-100'">
+                    <h3 class="text-xs font-bold text-gray-500 tracking-wider uppercase truncate w-full">Categories</h3>
+                    <button @click="openAddSourceModal()" class="text-gray-500 hover:text-blue-400 transition shrink-0"
+                        title="Add source">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4">
+                            </path>
+                        </svg>
+                    </button>
+                </div>
+
+                <!-- Collapsed-only: flat icon strip -->
+                <div x-show="!sidebarExpanded && !isMobile" class="flex flex-col items-center gap-0.5 py-2">
+                    <template x-for="category in categories.filter(c => c.feeds.length > 0)"
+                        :key="'collapsed-' + category.name">
+                        <div>
+                            <template x-for="feed in category.feeds" :key="'collapsed-' + feed.url">
+                                <div class="w-10 h-8 flex items-center justify-center rounded-md cursor-pointer transition-all"
+                                    :class="selectedFilterType === 'feed' && selectedFilterValue === feed.url ? (theme === 'glass-light' ? 'bg-emerald-100' : 'bg-teal-900/40 shadow-[inset_0_0_10px_rgba(20,184,166,0.1)]') : (theme === 'glass-light' ? 'hover:bg-gray-100/50' : 'hover:bg-white/10')"
+                                    @click="setFilter('feed', feed.url)" :title="feed.title">
+                                    <img :src="smartSourceIcon(feed) || feed.icon"
+                                        class="w-4 h-4 rounded-sm object-contain transition"
+                                        @error="$el.src='data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'16\' height=\'16\' fill=\'gray\'><rect width=\'16\' height=\'16\'/></svg>'">
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+                </div>
+
+                <div x-show="sidebarExpanded || isMobile" class="space-y-3 px-2">
+                    <template x-for="category in categories.filter(c => c.feeds.length > 0)" :key="category.name">
+                        <div @dragover.prevent.stop="dragTargetCategory = category.name"
+                            @dragleave.prevent.stop="if(dragTargetCategory === category.name) dragTargetCategory = null"
+                            @drop.prevent.stop="dropCategory(category.name)"
+                            class="transition-all duration-200 border-t-2" :class="{
+                                'opacity-40': draggedCategory === category.name,
+                                'border-[#4facfe] pt-2 mt-2': dragTargetCategory === category.name,
+                                'border-transparent border-t-white/10 pt-2 mt-2': dragTargetCategory !== category.name
+                            }">
+                            <div class="flex items-center justify-between px-3 py-1.5 rounded-md cursor-grab active:cursor-grabbing text-sm transition-opacity duration-300 delay-75"
+                                :class="selectedFilterType === 'category' && selectedFilterValue === category.name ? (theme === 'glass-light' ? 'text-black' : 'text-white') : (theme === 'glass-light' ? 'text-slate-500 hover:text-black hover:bg-black/5' : 'text-gray-400 hover:text-gray-200 hover:bg-white/5')">
+                                <div class="flex items-center gap-2 flex-1 min-w-0"
+                                    @click="setFilter('category', category.name)">
+                                    <svg @click.stop="toggleCategory(category.name)"
+                                        class="w-3 h-3 shrink-0 transition-transform"
+                                        :class="expandedCategories.includes(category.name) ? 'rotate-90' : ''"
+                                        fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M9 5l7 7-7 7"></path>
+                                    </svg>
+                                    <span class="font-medium truncate" x-text="category.name"></span>
+                                </div>
+                                <span class="text-xs font-medium shrink-0"
+                                    x-text="(unreadCounts.categories[category.name] || 0) > 0 ? unreadCounts.categories[category.name] : ''"></span>
+                            </div>
+
+                            <ul x-show="expandedCategories.includes(category.name)" x-collapse
+                                class="mt-1 space-y-1 mb-2">
+                                <template x-for="feed in category.feeds" :key="feed.url">
+                                    <li x-data="{ isHovered: false }" @mouseenter="isHovered = true"
+                                        @mouseleave="isHovered = false"
+                                        class="relative flex items-center justify-between px-3 py-1.5 rounded-md cursor-grab active:cursor-grabbing text-sm border border-transparent transition-all duration-300 overflow-hidden"
+                                        draggable="true" @dragstart.stop="dragStart(feed)" @dragend.stop="dragEnd()"
+                                        @dragover.prevent.stop="dragTargetUrl = feed.url"
+                                        @dragleave.prevent.stop="if(dragTargetUrl === feed.url) dragTargetUrl = null"
+                                        @drop.prevent.stop="dropFeed(feed)" :class="{
+                                            'bg-teal-900/40 text-teal-400 shadow-[inset_0_0_10px_rgba(20,184,166,0.1)]': selectedFilterType === 'feed' && selectedFilterValue === feed.url,
+                                            'text-gray-400 hover:bg-white/5 hover:text-white': !(selectedFilterType === 'feed' && selectedFilterValue === feed.url),
+                                            'opacity-50': draggedUrl === feed.url,
+                                            'drag-over': dragTargetUrl === feed.url
+                                        }">
+
+                                        <div class="flex items-center gap-2 flex-1 overflow-hidden cursor-pointer"
+                                            @click="setFilter('feed', feed.url)">
+                                            <div class="w-7 flex items-center justify-center shrink-0">
+                                                <img :src="smartSourceIcon(feed) || feed.icon"
+                                                    class="max-w-full h-5 md:h-4 rounded object-contain bg-white transition"
+                                                    @error="$el.src='data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'16\' height=\'16\' fill=\'gray\'><rect width=\'16\' height=\'16\'/></svg>'">
+                                            </div>
+                                            <span class="transition-opacity duration-300 truncate delay-75"
+                                                x-text="feed.title" :title="feed.url"></span>
+                                        </div>
+                                        <span
+                                            class="text-xs font-medium shrink-0 transition-opacity duration-300 delay-75"
+                                            x-text="(unreadCounts.feeds[feed.url] || 0) > 0 ? unreadCounts.feeds[feed.url] : ''"></span>
+
+                                        <div x-show="isHovered || (isMobile && selectedFilterType === 'feed' && selectedFilterValue === feed.url)"
+                                            style="display: none;"
+                                            class="absolute right-0 top-0 h-full flex items-center bg-[#2a2a2a] px-2 rounded-r-md border-l border-white/5 transition-opacity duration-300">
+                                            <div class="text-gray-500 px-1 cursor-grab" title="Drag to reorder">
+                                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor"
+                                                    viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                                        stroke-width="2" d="M4 8h16M4 16h16"></path>
+                                                </svg>
+                                            </div>
+                                            <button @click.stop="openEditModal(feed)"
+                                                class="text-gray-500 hover:text-blue-400 px-1" title="Edit Source">
+                                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor"
+                                                    viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                                        stroke-width="2"
+                                                        d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z">
+                                                    </path>
+                                                </svg>
+                                            </button>
+                                            <button @click.stop="removeFeed(feed)"
+                                                class="text-gray-500 hover:text-red-400 px-1" title="Remove Feed">
+                                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor"
+                                                    viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                                        stroke-width="2"
+                                                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16">
+                                                    </path>
+                                                </svg>
+                                            </button>
+                                        </div>
+                                    </li>
+                                </template>
+                            </ul>
+                        </div>
+                    </template>
+                </div>
+            </div>
+
+            <div x-show="sidebarExpanded || isMobile"
+                class="px-4 pb-4 mt-8 relative rounded-2xl overflow-hidden flex-shrink-0 whitespace-normal">
+                <div class="relative z-10 rounded-2xl p-5 border flex flex-col gap-3 overflow-hidden whitespace-normal transition duration-300"
+                    :class="theme === 'glass-light' ? 'bg-gradient-to-br from-white/80 to-white/40 border-white/80 shadow-[0_8px_32px_rgba(0,0,0,0.08)] backdrop-blur-xl' : (theme === 'glass' ? 'bg-white/5 border-white/10 shadow-[0_4px_24px_rgb(0,0,0,0.2)] backdrop-blur-md' : 'bg-[#1A2230] border-transparent')">
+                    <div class="w-12 h-12 rounded-[14px] flex items-center justify-center mb-1 transition duration-300"
+                        :class="theme === 'glass-light' ? 'bg-gradient-to-br from-orange-400/20 to-orange-500/10 text-orange-600 shadow-[inset_0_1px_2px_rgba(255,255,255,0.8)]' : (theme === 'glass' ? 'bg-orange-500/20 text-orange-400' : 'bg-[#2A1D1A] text-[#F37B3D]')">
+                        <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                            <path
+                                d="M4 11a9 9 0 019 9h-2a7 7 0 00-7-7v-2zm0-4a13 13 0 0113 13h-2a11 11 0 00-11-11V7zm1.5 13a1.5 1.5 0 110-3 1.5 1.5 0 010 3z">
+                            </path>
+                        </svg>
+                    </div>
+                    <h3 class="font-bold text-[16px] leading-tight whitespace-normal break-words transition duration-300"
+                        :class="theme === 'glass-light' ? 'text-slate-800' : 'text-white'">Add your favorite feeds</h3>
+                    <p class="text-[14px] mb-2 leading-snug whitespace-normal break-words max-w-full transition duration-300"
+                        :class="theme === 'glass-light' ? 'text-slate-500 font-medium' : (theme === 'glass' ? 'text-gray-300' : 'text-gray-400')">
+                        Stay updated with the content you love.</p>
+                    <button @click="showAddFeedModal = true"
+                        class="w-full py-2.5 rounded-xl text-[15px] font-bold transition-all duration-300 flex items-center justify-center gap-2"
+                        :class="theme === 'glass-light' ? 'bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white shadow-[0_4px_12px_rgba(59,130,246,0.3)] hover:shadow-[0_6px_16px_rgba(59,130,246,0.4)] border border-blue-400/30' : (theme === 'glass' ? 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 shadow-lg' : 'bg-[#20C997] hover:bg-[#1BAE83] text-[#0A0F1A]')">
+                        <span>+</span>
+                        Add Feed
+                    </button>
+                </div>
+                <div class="absolute z-0 -bottom-8 -left-4 w-[120%] h-56 pointer-events-none overflow-hidden transition-opacity duration-300"
+                    :class="theme.includes('glass') ? 'opacity-0' : 'opacity-60 mix-blend-screen'"
+                    style="background-image: url('/public/astronaut.png'); background-size: contain; background-repeat: no-repeat; background-position: center bottom;">
+                </div>
+            </div>
+        </div>
+
+
+    </aside>
+

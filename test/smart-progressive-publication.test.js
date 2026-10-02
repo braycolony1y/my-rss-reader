@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { readSmartSource } from './helpers/smart-source.js';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createTopStoriesSnapshots } from '../src/articles/top-stories-snapshot.js';
@@ -131,7 +132,7 @@ test('a mismatched progressive publication is never ranked', async () => {
 });
 
 test('Smart progress source reports remaining work and provider position without advancing group current', async () => {
-  const source = await readFile(new URL('../smart-news.js', import.meta.url), 'utf8');
+  const source = readSmartSource();
   assert.match(source, /remaining\s*=\s*Math\.max/);
   assert.match(source, /providerIndex/);
   assert.match(source, /providerTotal/);

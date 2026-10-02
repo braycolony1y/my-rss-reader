@@ -16,7 +16,10 @@ document.querySelector('#read-toggle').addEventListener('change',e=>document.que
 document.querySelector('#mode').addEventListener('change',e=>document.querySelectorAll('article').forEach(card=>{
     card.classList.toggle('is-smart-classic-card',e.target.value==='classic');card.classList.toggle('is-standard-card',e.target.value==='standard');
     card.dataset.imageLayout=e.target.value==='top'?'top':'standard';
-    if(e.target.value==='standard')card.querySelector('.article-card-panel').dataset.expanded='false';
+    if(e.target.value==='standard') {
+        card.querySelector('.article-card-panel').dataset.expanded='false';
+        card.querySelector('.article-panel-content').inert=true;
+    }
     updateBlendGeometry(card);
 }));
 if(new URLSearchParams(location.search).has('debug'))await import('./debug.js');

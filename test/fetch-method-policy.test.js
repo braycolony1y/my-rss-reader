@@ -1,6 +1,7 @@
 import { readReaderClientSource, readReaderHtml } from './helpers/reader-source.js';
 import { readServerSource } from './helpers/server-source.js';
 import test from 'node:test';
+import { readSmartSource } from './helpers/smart-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
@@ -69,7 +70,7 @@ test('OpenCLI-only feed and Smart sources prefetch new article content during in
     assert.doesNotMatch(server, /!historyStatsMap\.has\(safeLink\) && hasOnlyOpenCliFetchMethod/);
     assert.match(server, /fetchParsedArticleByStrategy\([\s\S]*'opencli'[\s\S]*cacheArticleResult/);
 
-    const smartNews = readFileSync(new URL('../smart-news.js', import.meta.url), 'utf8');
+    const smartNews = readSmartSource();
     assert.match(smartNews, /prefetchOpenCliOnlySmartArticles/);
     assert.match(smartNews, /result\?\.source\?\.fetchMethods/);
     assert.match(smartNews, /helpers\.prefetchOpenCliOnlyArticles\(articlesToPrefetch, result\.source\.url\)/);

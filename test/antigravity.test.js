@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { readSmartSource } from './helpers/smart-source.js';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import {
@@ -81,7 +82,7 @@ test('Antigravity cooldown is scoped to the failing model',async()=>{
 });
 test('both production AI paths prioritize Antigravity before Gemini',async()=>{
  const summary=await readFile(new URL('../summary-engine.js',import.meta.url),'utf8');
- const smart=await readFile(new URL('../smart-news.js',import.meta.url),'utf8');
+ const smart=readSmartSource();
  const chain=summary.slice(summary.indexOf('async function generateWithFallback'));
  assert.ok(chain.indexOf('await generateWithAntigravity')<chain.indexOf('await geminiGenerate'));
  const low=smart.indexOf("id: 'antigravity-low'");

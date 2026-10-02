@@ -1,0 +1,146 @@
+    <!-- Content Filter Settings -->
+    <div x-show="contentFilterSettingsOpen" x-cloak
+        class="fixed inset-0 bg-[#0B101E]/90 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
+        <div class="bg-[#111827] rounded-2xl max-w-5xl w-full max-h-[92vh] border border-white/10 shadow-2xl overflow-hidden flex flex-col"
+            @click.outside="if (!savingContentFilter) contentFilterSettingsOpen = false">
+            <div class="flex items-start justify-between gap-4 px-6 py-5 border-b border-white/10">
+                <div>
+                    <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                        <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707L13 15v4l-4 2v-6L3.293 7.293A1 1 0 013 6.586V4z">
+                            </path>
+                        </svg>
+                        Content filters
+                    </h2>
+                    <p class="text-sm text-gray-500 mt-1">Hide stories containing words or phrases you do not want to
+                        see.</p>
+                </div>
+                <button type="button" @click.prevent.stop="if (!savingContentFilter) contentFilterSettingsOpen = false"
+                    class="text-gray-500 hover:text-white transition p-1"><svg class="w-5 h-5" fill="none"
+                        stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12">
+                        </path>
+                    </svg></button>
+            </div>
+            <div class="p-5 md:p-6 overflow-y-auto">
+                <p x-show="contentFilterLoading" role="status">Loading saved filters…</p>
+                <p x-show="contentFilterError" role="alert" x-text="contentFilterError"></p>
+                <fieldset :disabled="contentFilterLoading || savingContentFilter || !contentFilterLoaded">
+                <label class="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">Blocked words or
+                    phrases</label>
+                <div class="cache-chip-list w-full bg-[#0B101E] border border-white/10 rounded-xl px-3 py-3 focus-within:border-emerald-500/60 focus-within:ring-1 focus-within:ring-emerald-500/30">
+                    <template x-for="(keyword, keywordIndex) in blockedKeywordsDraft" :key="keyword + ':' + keywordIndex">
+                        <span class="cache-chip">
+                            <input :value="keyword" :size="Math.max(3, Math.min(keyword.length + 1, 30))" maxlength="200"
+                                aria-label="Edit blocked keyword or phrase"
+                                @focus="selectContentFilterPreviewKeyword(keyword)"
+                                @click.stop="selectContentFilterPreviewKeyword(keyword)"
+                                :style="contentFilterPreviewKeyword === keyword
+                                    ? 'box-shadow: inset 0 0 0 2px rgba(16,185,129,.55); background-color: rgba(16,185,129,.08);'
+                                    : ''"
+                                @change="editContentFilterKeyword(keywordIndex, $event.target)"
+                                @keydown.enter.prevent="$event.target.blur()">
+                            <button @click="removeContentFilterKeyword(keywordIndex)" :aria-label="'Remove ' + keyword">×</button>
+                        </span>
+                    </template>
+                    <input class="cache-chip-entry" placeholder="Add a word or phrase…" maxlength="200"
+                        aria-label="Add blocked keyword or phrase"
+                        @keydown.enter.prevent="addContentFilterKeyword($event.target)"
+                        @blur="addContentFilterKeyword($event.target)">
+                </div>
+                <div class="flex items-center justify-between mt-2 text-xs text-gray-500">
+                    <span>Checks titles, subheadlines, summaries, and excerpts.</span>
+                    <span><span x-text="draftBlockedKeywords().length"></span> active</span>
+                </div>
+
+                <div class="mt-6 pt-5 border-t border-white/10">
+                    <div class="flex items-center justify-between gap-3 mb-3">
+                        <div>
+                            <h3 class="text-sm font-bold text-white">Affected articles</h3>
+                            <p class="text-xs text-gray-500 mt-0.5">Each phrase has its own preview. Filters are not
+                                saved until you press Save filters.</p>
+                        </div>
+                        <button type="button" @click.prevent.stop="fetchContentFilterPreview()" :disabled="contentFilterPreviewLoading"
+                            class="shrink-0 px-3 py-2 rounded-lg border border-white/10 text-xs font-semibold text-gray-300 hover:text-white hover:border-emerald-400/30 transition disabled:opacity-50">
+                            <span x-text="contentFilterPreviewLoading ? 'Checking…' : 'Check matches'"></span>
+                        </button>
+                    </div>
+
+
+                    <div x-show="contentFilterPreviewError"
+                        class="mb-3 px-3 py-2 rounded-lg bg-red-500/10 border border-red-400/20 text-xs text-red-300"
+                        x-text="contentFilterPreviewError"></div>
+                    <div x-show="!draftBlockedKeywords().length"
+                        class="rounded-xl border border-dashed border-white/10 px-4 py-8 text-center text-sm text-gray-500">
+                        Add a word or phrase to see which articles would be hidden.
+                    </div>
+                    <div x-show="draftBlockedKeywords().length && !contentFilterPreviewLoading && contentFilterPreviewTotal === 0 && !contentFilterPreviewError"
+                        class="rounded-xl border border-emerald-400/15 bg-emerald-500/5 px-4 py-8 text-center text-sm text-emerald-300">
+                        No current articles match this phrase.
+                    </div>
+
+                    <div x-show="contentFilterPreviewTotal > 0" class="space-y-2.5">
+                        <div class="flex items-center justify-between text-xs text-gray-500 px-1">
+                            <span><span class="text-gray-300 font-semibold" x-text="contentFilterPreviewTotal"></span>
+                                affected by <span class="text-amber-300"
+                                    x-text="'“' + contentFilterPreviewKeyword + '”'"></span></span>
+                            <span>Showing <span x-text="contentFilterPreview.length"></span></span>
+                        </div>
+                        <template x-for="item in contentFilterPreview" :key="item.id">
+                            <article class="rounded-xl border border-white/10 bg-[#0B101E]/65 p-4">
+                                <div class="flex items-center gap-2 text-[11px] text-gray-500 mb-2">
+                                    <img x-show="item.feedIcon" :src="item.feedIcon" alt=""
+                                        class="w-4 h-4 rounded object-contain" @error="$el.style.display='none'">
+                                    <span class="text-gray-400 font-medium truncate" x-text="item.feedTitle"></span>
+                                    <template x-for="surface in item.surfaces" :key="surface">
+                                        <span class="px-1.5 py-0.5 rounded bg-white/5 text-gray-500"
+                                            x-text="surface"></span>
+                                    </template>
+                                    <span class="ml-auto whitespace-nowrap"
+                                        x-text="formatVietnamDateTime(item.pubDate)"></span>
+                                </div>
+                                <a x-show="item.link" :href="item.link" target="_blank" rel="noopener noreferrer"
+                                    class="block text-sm md:text-[15px] leading-snug font-semibold text-gray-100 hover:text-emerald-300 transition"
+                                    x-text="item.title"></a>
+                                <div x-show="!item.link"
+                                    class="text-sm md:text-[15px] leading-snug font-semibold text-gray-100"
+                                    x-text="item.title"></div>
+                                <div class="mt-3 space-y-2">
+                                    <template x-for="(detail, detailIndex) in item.matches"
+                                        :key="detail.keyword + ':' + detailIndex">
+                                        <div class="rounded-lg bg-white/[0.035] px-3 py-2">
+                                            <div class="flex flex-wrap items-center gap-1.5 text-[11px] mb-1">
+                                                <span
+                                                    class="px-1.5 py-0.5 rounded bg-amber-400/10 text-amber-300 font-semibold"
+                                                    x-text="'“' + detail.keyword + '”'"></span>
+                                                <span class="text-gray-500">matched in</span>
+                                                <span class="text-emerald-300"
+                                                    x-text="detail.fieldLabels.join(' + ')"></span>
+                                            </div>
+                                            <p class="text-xs leading-relaxed text-gray-400" x-text="detail.snippet">
+                                            </p>
+                                        </div>
+                                    </template>
+                                </div>
+                            </article>
+                        </template>
+                        <button x-show="contentFilterPreview.length < contentFilterPreviewTotal"
+                            @click="fetchContentFilterPreview(true)" :disabled="contentFilterPreviewLoading"
+                            class="w-full py-2.5 rounded-xl border border-white/10 text-sm font-semibold text-gray-300 hover:text-white hover:border-emerald-400/30 transition disabled:opacity-50"
+                            x-text="contentFilterPreviewLoading ? 'Loading…' : 'Load more affected articles'"></button>
+                    </div>
+                </div>
+                </fieldset>
+            </div>
+            <div class="px-5 md:px-6 py-4 border-t border-white/10 bg-[#0B101E]/70 flex items-center justify-end gap-3">
+                <button type="button" @click.prevent.stop="blockedKeywordsDraft = []; saveContentFilterSettings()" :disabled="savingContentFilter || contentFilterLoading || !contentFilterLoaded"
+                    class="mr-auto text-sm text-gray-500 hover:text-red-300 transition">Clear all</button>
+                <button type="button" @click.prevent.stop="if (!savingContentFilter) contentFilterSettingsOpen = false"
+                    class="px-4 py-2 text-sm text-gray-400 hover:text-white transition">Cancel</button>
+                <button type="button" @click.prevent.stop="saveContentFilterSettings()" :disabled="savingContentFilter || contentFilterLoading || !contentFilterLoaded"
+                    class="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-[#07130f] text-sm font-bold transition disabled:opacity-50"
+                    x-text="savingContentFilter ? 'Saving…' : 'Save filters'"></button>
+            </div>
+        </div>
+    </div>

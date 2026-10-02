@@ -1,5 +1,7 @@
 # Article-card redesign audit — 1 October 2026
 
+Historical snapshot: the 2 October ambient rebuild supersedes the transition/layout status below. See [the current implementation and validation notes](liquid-article-cards.md) for that later, separately requested work.
+
 Scope: the transition adjustments and the subsequent full pasted redesign in this conversation. This is a reconstruction from the recorded editing commands and current files, not a diff against a clean commit. The checkout already contained many unrelated changes and deletions. Those are not attributed to this redesign.
 
 ## Requested corrections in the latest turn

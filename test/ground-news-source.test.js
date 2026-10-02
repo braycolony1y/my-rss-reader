@@ -1,4 +1,3 @@
-import { readReaderClientSource } from './helpers/reader-source.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -177,9 +176,9 @@ test('perspectives and publisher filters work through a stopped overlay click an
     try {
         const { document } = dom.window;
         document.querySelector('#overlay').addEventListener('click', e => e.stopPropagation());
-        const script = readReaderClientSource();
+        const script = readFileSync(new URL('../public/js/sources/ground-news.js', import.meta.url), 'utf8');
         dom.window.fetch = async () => ({ok: true, json: async () => ({})});
-        dom.window.eval(script.slice(script.indexOf('// Capture runs before the reader overlay')));
+        dom.window.eval(script + '\nReaderGroundNews.install();');
         for (const group of ['left', 'center', 'right', 'all']) {
             document.querySelector(`[data-ground-filter="${group}"]`).click();
             const visible = [...document.querySelectorAll('[data-ground-bias]')].filter(node => !node.hidden);
