@@ -10,6 +10,6 @@
     z-index: 3;
 }
 @container (max-width: 639px) {
-    :where(.theme-glass-light #scroll-container) .article-card[data-image-layout="top"] .story-coverage-orbs { top: calc(var(--hero-top, 0px) + 12px); gap: 0; }
+    :where(.theme-glass-light #scroll-container) .article-card[data-image-layout="top"]:not(:where([data-mobile-clean="1"])) .story-coverage-orbs { top: calc(var(--hero-top, 0px) + 12px); gap: 0; }
     :where(.theme-glass-light #scroll-container) .article-card[data-image-layout="top"] .story-coverage-orb + .story-coverage-orb { margin-left: -5px; }
 }

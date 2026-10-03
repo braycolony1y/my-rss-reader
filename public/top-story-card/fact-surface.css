@@ -1,0 +1,9 @@
+/* A near-opaque, existing theme tint keeps fact text readable over the photo.
+   Reuse the resolved Smart Top desktop gate without changing layout or type. */
+@media (min-width: 768px) {
+    @container (min-width: 640px) {
+        .theme-glass-light #scroll-container .article-card[data-image-layout="top"][data-story-blend][data-smart-hero-extent] .story-key-fact {
+            background: color-mix(in oklab, var(--field-neutral) 94%, transparent);
+        }
+    }
+}

@@ -1,5 +1,5 @@
-@import "./hierarchy.css?v=20261002_editorial_3";
-@import "./coverage.css?v=20261002_editorial_3";
+@import "./hierarchy.css?v=20261004_mobile_1";
+@import "./coverage.css?v=20261004_mobile_1";
 /* Smart Top Story shell; hierarchy.css owns typography and section sizing.
    Legacy treatments exclude this variant. Alpine owns visibility. */
 :where(.theme-glass-light #scroll-container) .article-card[data-image-layout="top"] {
@@ -184,5 +184,5 @@ html[data-image-focus] :where(.theme-glass-light #scroll-container) .article-car
 :where(.theme-glass-light #scroll-container) .article-card[data-image-layout="top"] .article-actions-overlay { z-index: 20; border-color: rgb(255 255 255 / .7); background: rgb(255 255 255 / .85); box-shadow: 0 3px 12px rgb(45 35 20 / .08); }
 :where(.theme-glass-light #scroll-container) .article-card[data-image-layout="top"].is-read .article-card-heading :is(h2, p) { color: oklch(.47 .015 var(--tint-hue, 250)); }
 @container (max-width: 639px) {
-    :where(.theme-glass-light #scroll-container) .article-card[data-image-layout="top"] .article-card-image { position: relative; inset: auto; order: 2; width: 100%; height: auto; aspect-ratio: 16 / 9; --story-left-mask: linear-gradient(#000, #000); }
+    :where(.theme-glass-light #scroll-container) .article-card[data-image-layout="top"]:not(:where([data-mobile-clean="1"])) .article-card-image { position: relative; inset: auto; order: 2; width: 100%; height: auto; aspect-ratio: 16 / 9; --story-left-mask: linear-gradient(#000, #000); }
 }

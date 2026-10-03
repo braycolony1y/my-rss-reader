@@ -1,4 +1,4 @@
-@import "./photo-envelope.css?v=20261003_organic_1";
+@import "./photo-envelope.css?v=20261004_mobile_1";
 /* Registered photo, spatial color extension, material and readability planes.
    The existing Alpine card owns all content and interactions. */
 .theme-glass-light #scroll-container .article-card[data-image-layout="top"][data-story-blend] {
@@ -62,7 +62,7 @@
 .theme-glass-light #scroll-container .article-card[data-image-layout="top"][data-story-blend] .story-analysis-next { color: var(--accent-text); }
 .theme-glass-light #scroll-container .article-card[data-image-layout="top"] :is(button, a):focus-visible { outline: 2px solid var(--accent-text, var(--accent)); outline-offset: 3px; }
 @container (max-width: 639px) {
-    .theme-glass-light #scroll-container .article-card[data-image-layout="top"][data-story-blend] .story-coverage-orbs { top: calc(var(--hero-top) + 12px); }
+    .theme-glass-light #scroll-container .article-card[data-image-layout="top"]:not(:where([data-mobile-clean="1"]))[data-story-blend] .story-coverage-orbs { top: calc(var(--hero-top) + 12px); }
 }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
     .theme-glass-light #scroll-container .article-card[data-image-layout="top"][data-story-blend] .story-analysis-shell { background: color-mix(in oklab, var(--panel-tint) 94%, var(--field-lower)); }

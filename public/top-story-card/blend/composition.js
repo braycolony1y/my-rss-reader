@@ -1,14 +1,13 @@
 import { clamp, gamutMap } from './palette.js';
-import { desktopPhotoEnvelope } from './organic-envelope.js?v=20261003_organic_1';
+import { desktopPhotoEnvelope, desktopMaskProperties } from './organic-envelope.js?v=20261003_dual_mask_1';
 
 const cssColor = (L, C, H) => {
     const mapped = gamutMap(L, C, H);
     return `oklch(${L.toFixed(4)} ${mapped.C.toFixed(5)} ${H.toFixed(2)})`;
 };
 
-// A broad, asymmetric contour replaces separate horizontal/vertical fades.
-// Coordinates belong to the source photograph, so resizing never separates
-// the clear image from its registered, blurred color extension.
+// Mobile keeps its existing contour. Desktop combines independently controlled
+// left and lower masks in source-photo coordinates without changing geometry.
 export function organicPhotoMask({ stacked = false, soft = false, subjectBottom = .6 } = {}) {
     if (!stacked) return desktopPhotoEnvelope({ soft, subjectBottom });
     const bottom = clamp(Math.max(.82, subjectBottom + .16), .82, .98) * 1000;
@@ -45,6 +44,7 @@ export function deriveStoryComposition(analysis, geometry) {
         '--hero-photo-ratio': `${p.imageW} / ${p.imageH}`,
         '--hero-soft-left': `${(p.offsetX / width * 100 - 2).toFixed(2)}%`,
         '--hero-soft-width': `${(p.imageW / width * 100 + 2).toFixed(2)}%`,
+        ...(!stacked ? desktopMaskProperties() : {}),
         '--detail-mask': organicPhotoMask({ stacked, subjectBottom }),
         '--color-mask': organicPhotoMask({ stacked, soft: true, subjectBottom }),
         '--field-land': atmosphere(.15, .2, .96),

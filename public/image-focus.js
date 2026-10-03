@@ -1,6 +1,6 @@
 import { fitCardImageViewport, visiblePhotoHeight } from './card-image-layout.js?v=2';
 import { applyImageColors } from './card-blend/legacy-color.js?v=1';
-import { applyTopStoryImage } from './top-story-card/blend/runtime.js?v=20261003_organic_1';
+import { applyTopStoryImage } from './top-story-card/blend/runtime.js?v=20261004_edges_2';
 
 const clamp = (value, low = 0, high = 1) => Math.max(low, Math.min(high, value));
 const center = { x: 0.5, y: 0.5 };

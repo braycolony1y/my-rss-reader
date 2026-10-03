@@ -6,6 +6,7 @@ import puppeteer from 'puppeteer-core';
 import sharp from 'sharp';
 const base = process.env.READER_URL || 'http://127.0.0.1:3000';
 const output = process.env.CARD_OUTPUT || '/tmp/top-story-photo-review';
+const widths = (process.env.PHOTO_REVIEW_WIDTHS || '320,375,390,430,640,800,844,1100').split(',').map(Number);
 await fs.mkdir(output, { recursive: true });
 const browser = await puppeteer.launch({ executablePath: process.env.CHROMIUM_PATH || '/snap/bin/chromium', headless: true, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
 const selectors = ['.article-card-heading', '.article-metadata', 'h2', '.article-card-heading p', '.story-freshness', '.story-key-facts', '.story-analysis-shell', '.story-analysis-tabs', '.story-analysis-body', '.story-coverage-orbs', '.story-rank'];
@@ -61,7 +62,7 @@ async function verify(page, card, label, width, { screenshot = false } = {}) {
         assert.ok(Math.abs(values.photo.width / values.width - .66) < .001);
         assert.ok(Math.abs((values.photo.left + values.photo.width) / values.width - 1.14) < .001);
         assert.equal(values.veil, 'none'); assert.equal(values.photo.filter, 'none');
-        assert.ok(values.photo.mask.startsWith('radial-gradient'), 'A single curved envelope owns both edges');
+        assert.ok(values.photo.mask.startsWith('radial-gradient') && values.photo.mask.includes('data:image/svg+xml'), 'Independent left and lower contours intersect');
         assert.equal(values.soft.opacity, '.1'.replace(/^\./, '0.')); assert.equal(values.soft.filter, 'blur(14px)');
         assert.equal(values.ambient.opacity, '0.15'); assert.ok(values.ambient.filter.includes('blur(70px)'));
     } else if (values.width < 640) {
@@ -110,7 +111,7 @@ try {
         await card.scrollIntoView();
         await page.waitForFunction(el=>el.querySelector('.thumbnail-img').dataset.focusState==='ready', {timeout:60000}, card);
         console.log('Checking real '+label+' card');
-        for (const width of [320,375,390,430,640,800,844,1100]) {
+        for (const width of widths) {
             if(report.some(r=>r.label===label && r.viewport===width))continue;
             await page.setViewport({width:width<640?width:1450,height:1100,deviceScaleFactor:1});
             await card.evaluate((el,w)=>el.style.width=w+'px',width<640?width-24:width); await frames(page);
@@ -137,7 +138,10 @@ try {
     await page.goto(base+'/public/top-story-card/demo/',{waitUntil:'domcontentloaded'});
     await page.waitForFunction(()=>document.documentElement.dataset.reviewReady==='true');
     await page.addStyleTag({content:'.review-controls { display: none !important; }'});
-    for(const width of [320,375,390,430,640,800,844,1100]) {
+    // Use the captured source pixels, not the demo's pre-blurred baked asset.
+    const flagSource = 'data:image/avif;base64,' + (await fs.readFile(new URL('../fixtures/top-story-blend/S3.heif', import.meta.url))).toString('base64');
+    await page.evaluate(async source => { const entry = window.topStoryReview.entries.find(e => e.card.dataset.fixture === 'S3'); entry.img.src = source; await entry.img.decode(); window.topStoryReview.update(); }, flagSource);
+    for(const width of widths) {
         await page.setViewport({width:width<640?width+24:2300,height:1100,deviceScaleFactor:1});
         await page.evaluate(w=>{const select=document.querySelector('#width');if(![...select.options].some(o=>o.value===String(w)))select.add(new Option(w,w));select.value=w;window.topStoryReview.update()},width);
         await frames(page);

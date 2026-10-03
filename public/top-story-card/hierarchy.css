@@ -79,13 +79,13 @@
     :where(.theme-glass-light #scroll-container) .article-card[data-image-layout="top"] .story-rank { left: 24px; }
 }
 @container (max-width: 639px) {
-    :where(.theme-glass-light #scroll-container) .article-card[data-image-layout="top"] .article-card-header { display: flex; flex-direction: column; }
+    :where(.theme-glass-light #scroll-container) .article-card[data-image-layout="top"]:not(:where([data-mobile-clean="1"])) .article-card-header { display: flex; flex-direction: column; }
     :where(.theme-glass-light #scroll-container) .article-card[data-image-layout="top"] .article-entity-row { order: 3; }
-    :where(.theme-glass-light #scroll-container) .article-card[data-image-layout="top"] .article-card-heading { order: 1; width: 100%; max-width: 100%; padding: 24px 20px 20px; }
+    :where(.theme-glass-light #scroll-container) .article-card[data-image-layout="top"]:not(:where([data-mobile-clean="1"])) .article-card-heading { order: 1; width: 100%; max-width: 100%; padding: 24px 20px 20px; }
     :where(.theme-glass-light #scroll-container) .article-card[data-image-layout="top"] .article-card-heading h2 { -webkit-line-clamp: unset; }
     :where(.theme-glass-light #scroll-container) .article-card[data-image-layout="top"] .article-card-heading p { -webkit-line-clamp: 5; }
-    :where(.theme-glass-light #scroll-container) .article-card[data-image-layout="top"] .story-rank { top: 25px; left: 20px; }
-    :where(.theme-glass-light #scroll-container) .article-card[data-image-layout="top"] .article-metadata { width: 100%; margin-bottom: 16px; gap: 6px; }
+    :where(.theme-glass-light #scroll-container) .article-card[data-image-layout="top"]:not(:where([data-mobile-clean="1"])) .story-rank { top: 25px; left: 20px; }
+    :where(.theme-glass-light #scroll-container) .article-card[data-image-layout="top"]:not(:where([data-mobile-clean="1"])) .article-metadata { width: 100%; margin-bottom: 16px; gap: 6px; }
     :where(.theme-glass-light #scroll-container) .article-card[data-image-layout="top"] .article-briefing { margin: 16px 12px 12px; }
     :where(.theme-glass-light #scroll-container) .article-card[data-image-layout="top"] .story-key-facts:has(> .story-key-fact):not(:has(> .story-key-fact:nth-of-type(2))) { width: 100%; max-width: 100%; }
     :where(.theme-glass-light #scroll-container) .article-card[data-image-layout="top"] .story-key-facts { grid-template-columns: minmax(0, 1fr); }

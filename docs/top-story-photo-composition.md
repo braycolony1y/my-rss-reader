@@ -1,30 +1,50 @@
-# Approved Top Story photograph composition
+# Desktop Top Story photograph dissolve
 
-The Light Top Story card now positions its desktop photograph at **48% left with 66% width**. The resulting **114% right extent is intentional**: the existing rounded article card clips it. Position and scale are independent. Source width and height come from the decoded thumbnail, with existing image analysis retained for focal position and palette. The photograph uses `height: auto`, its intrinsic ratio, and `object-fit: contain`.
+The desktop photograph remains anchored at **48% left with 66% width**, extending to 114% before the existing card clips it. Height and aspect ratio still come from the decoded source, and the existing focal-position pipeline remains intact. No heading, excerpt, metadata, rank, coverage, fact-card, analysis-panel, or mobile layout rules were changed.
 
-## Ownership
+## Changed implementation
 
-- `public/top-story-card/blend/desktop-photo.js`: desktop photo geometry and intrinsic source dimensions.
-- `public/top-story-card/blend/organic-envelope.js`: one elliptical alpha envelope connecting the left and lower dissolve. The lower feather stays near the source's bottom; the upper/right detail remains opaque.
-- `public/top-story-card/blend/photo-envelope.css`: image layers and their responsive presentation, imported by `appearance.css`.
-- `fit.js`, `composition.js`, and `runtime.js`: existing module integration and palette/focal state.
+- `public/top-story-card/blend/organic-envelope.js`: `desktopLeftMask`, `desktopBottomMask`, `desktopPhotoEnvelope`, and `desktopMaskProperties` generate independent left and lower alpha masks.
+- `public/top-story-card/blend/composition.js`: `deriveStoryComposition` supplies the four named desktop mask variables; `organicPhotoMask` delegates desktop masking and retains the existing mobile branch. Geometry and palette calculations are unchanged.
+- `public/top-story-card/blend/photo-envelope.css`: inside the existing `@container (min-width: 640px)` editorial-photo rules, hero images intersect the two masks with `mask-composite: intersect` and `-webkit-mask-composite: source-in`. The soft duplicate uses its slightly broader masks. Existing cropped-artwork handling uses the sharp masks.
+- Cache references only: `index.html`, `public/image-focus.js`, `public/top-story-card/blend/runtime.js`, `public/top-story-card/blend/appearance.css`, `public/top-story-card/demo/index.html`, and `public/top-story-card/demo/page.js`.
+- Validation: `test/story-card-composition.test.js` and `test/helpers/top-story-photo-browser.mjs`. The browser helper accepts selected widths and checks the flag fixture using the original captured source, rather than the demo's baked blur asset.
 
-Desktop uses a 10% soft duplicate with 14px blur and a 15% ambient field with 70px blur. The desktop text scrim is removed. Geometry derives no values from article titles, links, or publisher identity. Existing framed/transparent artwork handling is retained.
+The old `ellipse 92% 84% at 103% 18%` surrounded the entire photograph with one curved perimeter. Its horizontal and vertical radii coupled the left transition to a rounded lower boundary, producing an oval cutout. The replacement's tall left ellipse controls only the left fade; a separate SVG Bezier contour controls the bottom. Intersection multiplies their alpha, producing a continuous lower-left dissolve without changing image scale.
 
-The existing mobile composition remains below the 640px card-width breakpoint. Its fit, reserved image height, masks, and treatment are retained. Header, metadata, title, summary, rank, coverage orbs, freshness, entity cards, and analysis controls were not restructured or restyled. Rank and coverage remain absolute. Hero rules target only the existing photo layers; UI icon images retain their normal dimensions and appearance.
+## Final desktop values
+
+| Property | Sharp photo | Soft duplicate |
+| --- | --- | --- |
+| Left / width | 48% / 66% | 46% / 68% |
+| Left ellipse | 98% × 182%, centered at 100% 42% | 99% × 192%, centered at 100% 42% |
+| Bottom | SVG Bezier contour below | Same contour shifted upward 0.8% for the wider feather |
+| SVG feather | 11/1000 of image height | 14/1000 of image height |
+| Image opacity / blur | 1 / none | 0.10 / 14px |
+
+Both left gradients use these distance/alpha stops:
+
+`0/1, 54/1, 59/.995, 63/.97, 67/.91, 71/.82, 75/.70, 79/.56, 83/.42, 87/.29, 90/.18, 93/.10, 96/.045, 98/.012, 100/0`.
+
+The lower SVG has `viewBox="0 0 1000 1000"`, `preserveAspectRatio="none"`, and this path:
+
+```text
+M -120 -120 H 1120 V 944
+C 920 963, 810 925, 640 933
+C 440 943, 340 908, 200 914
+C 60 920, -30 886, -120 894 Z
+```
+
+A solid upper field extends to y=820, where the filtered path is already opaque, preventing SVG filter clipping at the top. The lower alpha reaches zero before the physical bottom of the source. There is no linear lower fade and no new text veil. Ambient remains 15% opacity with 70px blur; all image-derived field and panel tint calculations are unchanged.
 
 ## Verification
 
-`npm test` completed successfully: **567 passed, 0 failed**, followed by the existing server/worker syntax checks. Focused regressions verify that changing the photo anchor does not change its scale or intrinsic proportions, the full 14% overflow is retained, the curved transition reaches zero at the lower source boundary, and decoded source dimensions take precedence over analysis-preview dimensions.
+The required `npm test` completed successfully: **567/567 passed, 0 failed**, including the server and worker syntax checks. The first full run was interrupted; this result is from the completed retry. The focused composition, runtime, and blend test files also pass. Independent raster tests verify an opaque upper/right region, a lower contour that changes height across the image, a gradual feather, and zero alpha across the entire physical bottom edge for both masks.
 
-`test/helpers/top-story-photo-browser.mjs` checks live durian and ship cards plus the captured Vietnamese flag photograph at 320, 375, 390, 430, 640, 800, 844, and 1100px viewports/card widths. It measures photo geometry and content rectangles, checks icon isolation, exercises live coverage and analysis controls, verifies text-only read styling, and compares crisp photo pixels with an unmasked render. All 24 required-case/width combinations passed with 0px content shift, 0 mean RGB difference in the crisp photo region, and no browser errors. The live analysis tabs, next control, expansion rail, coverage expansion, source URLs, and read state checks passed. It waits for actual image decoding before photographing the cards.
+Before/after Chromium measurements on durian and flag fixtures at 390, 639, 640, 800, and 1100px show identical photo geometry, content rectangles, font settings, rank and coverage positioning, card dimensions, and all six sampled field/panel tint variables. Mobile mask values are identical as well.
 
-`test/helpers/top-story-blend-browser.mjs` checks six real thumbnail families at 390 and 800px. All twelve renders passed their existing text-contrast checks. The measured minimum headline contrast was 9.56:1 and minimum summary contrast was 6.63:1. No measured content layout shift occurred. Raw texture/seam measurements are diagnostics; this does not claim conformance to older numeric seam thresholds.
+Live durian and ship cards plus the original captured flag photograph passed at 640, 800, and 1100px (nine renders). Maximum measured content shift was 0px; maximum mean RGB change in the crisp image region versus an unmasked reference was 0.00784/255. Rank and coverage remain absolute. Source icons are unmasked. Analysis tabs, next analysis, more analysis, coverage expansion, publisher links, and text-only read styling passed, with no browser errors. Chromium was verified; no native WebKit result is claimed.
 
-Measured durian card atmosphere at x=12px: RGB(242,242,216) at y=140px, RGB(241,241,214) at y=250px, and RGB(236,237,210) at y=540px. The ship card at the same x=12px measured RGB(237,240,241) at y=140px, RGB(233,239,242) at y=250px, and RGB(229,236,241) at y=480px. These are rendered pixels, not fixed article colors.
+Final browser and full-suite results are recorded with the preview artifacts in:
 
-Preview images and measurements are stored at:
-
-`/home/ubuntu/.codex/visualizations/2026/10/02/01a0fdc6-1736-7ed0-a79e-c9a9b4e05e14/`
-
-This run verified Chromium. Native WebKit was unavailable; no WebKit result is claimed. Only the pasted design instructions were attached, so exact comparison against the referenced primary screenshot could not be performed.
+`/home/ubuntu/.codex/visualizations/2026/10/03/01a0ff20-6e62-7ee0-bb00-44b3ba51eb43/`

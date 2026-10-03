@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import sharp from 'sharp';
-import { organicPhotoMask, deriveStoryComposition, storyPhotoSource } from '../public/top-story-card/blend/composition.js';
+import { deriveStoryComposition, storyPhotoSource } from '../public/top-story-card/blend/composition.js';
 import { placeStoryHero } from '../public/top-story-card/blend/placement.js';
 import { placeDesktopPhoto, intrinsicPhotoAnalysis } from '../public/top-story-card/blend/desktop-photo.js';
+import { desktopLeftMask, desktopBottomMask } from '../public/top-story-card/blend/organic-envelope.js';
 const photo = { w:1200, h:630, focal:{x:.416,y:.5,w:.15,h:.2,kind:'saliency'},
     avgL:.65, clusters:[{x:.2,y:.4,pop:.48,L:.86,C:.015,H:150},{x:.8,y:.5,pop:.5,L:.45,C:.07,H:245}] };
 // Render native elliptical gradient parameters with an independent SVG rasterizer.
@@ -15,19 +16,26 @@ const svg = value => {
     return Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000" preserveAspectRatio="none"><defs><radialGradient id="m" gradientUnits="userSpaceOnUse" cx="${cx*10}" cy="${cy*10}" r="${rx*10}" gradientTransform="translate(${cx*10} ${cy*10}) scale(1 ${ry/rx}) translate(${-cx*10} ${-cy*10})">${stops}</radialGradient></defs><rect width="1000" height="1000" fill="url(#m)"/></svg>`);
 };
 
-test('the curved detail contour preserves the ship and has no straight left fade', async () => {
-    const image = await sharp(svg(organicPhotoMask())).resize(600,315,{fit:'fill'}).ensureAlpha().raw().toBuffer({resolveWithObject:true});
-    const alpha = (x,y) => image.data[(Math.floor(y*image.info.height)*image.info.width + Math.floor(x*image.info.width))*4+3];
-    assert.ok(alpha(.77,.48)>=250,'Ship stays inside the clear region');
-    const depths = [.16,.45,.7].map(y=>alpha(.17,y));
-    assert.ok(Math.max(...depths)-Math.min(...depths)>30,'Fade depth changes along the image edge');
-    assert.ok(alpha(.75,.99)<60,'Detail dissolves before the source ends');
-    for (const soft of [false,true]) {
-        const {data,info}=await sharp(svg(organicPhotoMask({soft}))).resize(600,315,{fit:'fill'}).ensureAlpha().raw().toBuffer({resolveWithObject:true});
-        const column=y=>data[(y*info.width+510)*4+3];
-        assert.ok(new Set(Array.from({length:75},(_,i)=>column(240+i))).size>12,'The narrow feather has a gradual alpha transition');
-        assert.equal(column(info.height-1),0,'No visible rectangular lower source boundary');
-        assert.ok(column(Math.floor(info.height*.84))>=245,'The lower photograph survives until the narrow feather');
+test('independent left and lower masks retain detail and finish before physical photo edges', async () => {
+    for (const soft of [false, true]) {
+        const raster = value => sharp(svg(value)).resize(600, 600, {fit:'fill'}).ensureAlpha().png().toBuffer();
+        const left = await raster(desktopLeftMask({soft}));
+        const bottom = await raster(desktopBottomMask({soft}));
+        const {data,info} = await sharp(left).composite([{input:bottom,blend:'dest-in'}]).raw().toBuffer({resolveWithObject:true});
+        const alpha = (x,y) => data[(Math.floor(y*info.height)*info.width+Math.floor(x*info.width))*4+3];
+        assert.equal(alpha(.85,0),255, 'No filter clipping at the upper photo edge');
+        assert.ok(alpha(.77,.48)>=250, 'The main photographic region stays crisp');
+        assert.ok(alpha(.85,.84)>=245, 'Useful lower photo content is retained');
+        const leftDepths = [.03,.42,.85].map(y=>alpha(.17,y));
+        assert.ok(Math.max(...leftDepths)-Math.min(...leftDepths)>5, 'Left fade varies vertically');
+        for (let x=0; x<info.width; x++) {
+            assert.equal(data[((info.height-1)*info.width+x)*4+3],0, 'Whole physical bottom edge is transparent');
+        }
+        const b = await sharp(bottom).raw().toBuffer();
+        const halfAlpha = x => Array.from({length:600},(_,y)=>y).find(y=>b[(y*600+Math.floor(x*600))*4+3]<128);
+        const contour = [.05,.5,.9].map(halfAlpha);
+        assert.ok(contour[1]-contour[0]>=10 && contour[2]>contour[1], 'The lower contour curves down toward the right');
+        assert.ok(new Set(Array.from({length:100},(_,i)=>alpha(.85,(500+i)/600))).size>12, 'Lower feather has a gradual alpha transition');
     }
 });
 

@@ -1,7 +1,9 @@
+import { updateSharedCardStyle, rememberSharedProperties } from '../../shared-card-style/runtime.js?v=20261004_2';
+import { scheduleHeroExtent } from '../hero-extent.js?v=20261004_edges_2';
 import { deriveStoryTokens } from './tokens.js';
 import { placeStoryHero, smoothMask } from './placement.js?v=20261003_organic_1';
 import { clamp } from './palette.js';
-import { deriveStoryComposition, storyPhotoSource } from './composition.js?v=20261003_organic_1';
+import { deriveStoryComposition, storyPhotoSource } from './composition.js?v=20261003_dual_mask_1';
 import { intrinsicPhotoAnalysis } from './desktop-photo.js?v=20261003_organic_1';
 const cards = new WeakMap();
 const asset = value => typeof value === 'string' && value.length < 800000 && /^data:image\/webp;base64,[a-zA-Z0-9+/=]+$/.test(value) ? value : '';
@@ -38,7 +40,9 @@ function geometry(card, analysis, img) {
 }
 export function applyTopStoryImage(img, state, { ready = true, isDefault = false, forceLight = true } = {}) {
     const card = img.closest('.article-card');
-    if (!card?.closest('.theme-glass-light') || card.dataset.imageLayout !== 'top') return false;
+    const shared = updateSharedCardStyle(card);
+    if (card) scheduleHeroExtent(card);
+    if (!card?.closest('.theme-glass-light') || (card.dataset.imageLayout !== 'top' && !shared)) return false;
     const previous = cards.get(card);
     const analysis = isDefault ? fallback(img) : state.blend?.story || state.focus?.topStoryBlend
         || (previous?.source === state.source ? previous.analysis : null) || fallback(img, state.focus);
@@ -80,6 +84,7 @@ export function applyTopStoryImage(img, state, { ready = true, isDefault = false
     if (footerNode) { const range = card.ownerDocument.createRange(); range.selectNodeContents(footerNode); footer = range.getBoundingClientRect(); }
     const cr = card.getBoundingClientRect();
     css['--footer-scrim'] = footer ? `radial-gradient(ellipse ${(footer.width * .85 + 40).toFixed(2)}px ${(footer.height * 4).toFixed(2)}px at ${((footer.left - cr.left + footer.width / 2) / width * 100).toFixed(2)}% ${((footer.top - cr.top + footer.height / 2) / height * 100).toFixed(2)}%, ${rgba('var(--scrim-left)', .95)} 60%, transparent 100%)` : 'none';
+    if (shared) rememberSharedProperties(card, css);
     for (const [key, value] of Object.entries(css)) set(card, key, value);
     const soft = card.querySelector('.thumbnail-soft');
     if (soft) {

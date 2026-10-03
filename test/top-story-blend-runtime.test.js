@@ -34,8 +34,8 @@ test('late analysis replaces the generic palette even when legacy focal placemen
     assert.equal(storyBlendState(f.card).analysis.hMean, 67);
     assert.equal(f.soft.getAttribute('src'), f.analysis.assets.heroImage);
 });
-test('other card layouts and app themes keep their existing image treatment', () => {
-    for (const options of [{layout:'standard'}, {theme:'theme-glass-dark'}]) {
+test('other app themes keep their existing image treatment', () => {
+    for (const options of [{theme:'theme-glass-dark'}]) {
         const f = fixture(options);
         assert.equal(applyTopStoryImage(f.img, f.state), false);
         assert.equal(f.card.dataset.storyBlend, undefined);
@@ -51,4 +51,16 @@ test('the photo uses one clear right region instead of individual face openings'
     assert.equal(f.card.style.getPropertyValue('--hero-scale'),'1');
     assert.equal(f.card.style.getPropertyValue('--hero-opacity'),'1');
     assert.ok(parseFloat(f.card.style.getPropertyValue('--scrim-clear-at')) <= 64);
+});
+
+test('standard desktop cards reuse Top placement while mobile keeps its existing treatment', () => {
+    const f=fixture({layout:'standard'});f.state.blend={story:f.analysis};
+    f.card.style.setProperty('--ink','red');
+    assert.equal(applyTopStoryImage(f.img,f.state),true);
+    assert.equal(f.card.dataset.sharedCardStyle,'desktop');
+    assert.equal(f.card.style.getPropertyValue('--hero-pos'),'48.00% 28.00%');
+    f.dom.window.innerWidth=390;
+    assert.equal(applyTopStoryImage(f.img,f.state),false);
+    assert.equal(f.card.dataset.sharedCardStyle,undefined);
+    assert.equal(f.card.style.getPropertyValue('--ink'),'red');
 });

@@ -1,0 +1,28 @@
+/* The hero ends 18px below analysis, so its final 18px fade starts at the panel top. */
+/* Activated only by the Smart Top desktop geometry controller. */
+@media (min-width: 768px) {
+    @container (min-width: 640px) {
+        .theme-glass-light #scroll-container .article-card:is([data-image-layout="top"], [data-shared-card-style="desktop"])[data-story-blend][data-story-hero-placement="editorial"][data-smart-hero-extent] :is(.article-card-image, .thumbnail-plate, img.thumbnail-img, img.thumbnail-soft) {
+            height: var(--smart-hero-height);
+            bottom: auto;
+        }
+        .theme-glass-light #scroll-container .article-card:is([data-image-layout="top"], [data-shared-card-style="desktop"])[data-story-blend][data-story-hero-placement="editorial"][data-smart-hero-extent] :is(img.thumbnail-img, img.thumbnail-soft) {
+            object-fit: cover;
+            object-position: var(--smart-hero-focus);
+            -webkit-mask-image: var(--hero-left-mask);
+            mask-image: var(--hero-left-mask);
+        }
+        .theme-glass-light #scroll-container .article-card:is([data-image-layout="top"], [data-shared-card-style="desktop"])[data-story-blend][data-story-hero-placement="editorial"][data-smart-hero-extent]:not([data-story-photo="cropped"]) img.thumbnail-soft {
+            -webkit-mask-image: var(--hero-soft-left-mask);
+            mask-image: var(--hero-soft-left-mask);
+        }
+        .theme-glass-light #scroll-container .article-card:is([data-image-layout="top"], [data-shared-card-style="desktop"])[data-story-blend][data-story-hero-placement="editorial"][data-smart-hero-extent="analysis"] .article-card-image {
+            -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 18px), transparent 100%);
+            mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 18px), transparent 100%);
+        }
+        .theme-glass-light #scroll-container .article-card:is([data-image-layout="top"], [data-shared-card-style="desktop"])[data-story-blend][data-story-hero-placement="editorial"][data-smart-hero-extent="card-bottom-no-feather"] .article-card-image {
+            -webkit-mask-image: none;
+            mask-image: none;
+        }
+    }
+}
