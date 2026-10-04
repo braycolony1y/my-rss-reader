@@ -4,16 +4,16 @@
         }
 
         /* Typography overrides for reading */
-        .theme-glass-light .text-white:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)),
-.theme-glass-light .text-gray-200:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) {
+        .theme-glass-light .text-white:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)),
+.theme-glass-light .text-gray-200:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)) {
             color: #1d1d1f !important;
         }
 
-        .theme-glass-light .text-gray-300:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) {
+        .theme-glass-light .text-gray-300:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)) {
             color: #424245 !important;
         }
 
-        .theme-glass-light .text-gray-400:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) {
+        .theme-glass-light .text-gray-400:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)) {
             color: #86868b !important;
         }
 
@@ -110,18 +110,18 @@
         }
 
         /* Neon color removal for Light Mode ONLY */
-        .theme-glass-light .text-emerald-400:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)),
-.theme-glass-light .text-teal-400:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) {
+        .theme-glass-light .text-emerald-400:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)),
+.theme-glass-light .text-teal-400:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)) {
             color: #34C759 !important;
         }
 
-        .theme-glass-light .text-orange-400:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)),
-.theme-glass-light .text-amber-300:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) {
+        .theme-glass-light .text-orange-400:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)),
+.theme-glass-light .text-amber-300:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)) {
             color: #FF9500 !important;
         }
 
-        .theme-glass-light .text-blue-400:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)),
-.theme-glass-light .text-cyan-400:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) {
+        .theme-glass-light .text-blue-400:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)),
+.theme-glass-light .text-cyan-400:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)) {
             color: #007AFF !important;
         }
 
@@ -142,15 +142,15 @@
         }
 
         /* Override text colors globally for light mode */
-        .theme-glass-light .text-\[\#d4d4d4\]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)),
-.theme-glass-light .text-gray-200:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)),
-.theme-glass-light .text-white:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)),
-.theme-glass-light .text-gray-400:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)),
-.theme-glass-light .text-gray-300:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) {
+        .theme-glass-light .text-\[\#d4d4d4\]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)),
+.theme-glass-light .text-gray-200:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)),
+.theme-glass-light .text-white:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)),
+.theme-glass-light .text-gray-400:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)),
+.theme-glass-light .text-gray-300:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)) {
             color: #2d3748 !important;
         }
 
-        .theme-glass-light .text-gray-500:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) {
+        .theme-glass-light .text-gray-500:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)) {
             color: #4a5568 !important;
         }
 
@@ -209,8 +209,8 @@
         }
 
         /* Highlight colors for light mode */
-        .theme-glass-light .text-emerald-400:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)),
-.theme-glass-light .text-emerald-300:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) {
+        .theme-glass-light .text-emerald-400:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)),
+.theme-glass-light .text-emerald-300:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)) {
             color: #059669 !important;
         }
 
@@ -241,8 +241,8 @@
             background-color: rgba(13, 148, 136, 0.15) !important;
         }
 
-        .theme-glass-light .text-blue-400:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)),
-.theme-glass-light .text-blue-300:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) {
+        .theme-glass-light .text-blue-400:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)),
+.theme-glass-light .text-blue-300:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)) {
             color: #2563eb !important;
         }
 
@@ -254,8 +254,8 @@
             border-color: rgba(37, 99, 235, 0.3) !important;
         }
 
-        .theme-glass-light .text-orange-400:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)),
-.theme-glass-light .text-orange-300:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) {
+        .theme-glass-light .text-orange-400:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)),
+.theme-glass-light .text-orange-300:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)) {
             color: #ea580c !important;
         }
 

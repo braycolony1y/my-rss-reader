@@ -1,9 +1,10 @@
-import { updateSharedCardStyle, rememberSharedProperties } from '../../shared-card-style/runtime.js?v=20261004_2';
-import { scheduleHeroExtent } from '../hero-extent.js?v=20261004_edges_2';
+import { rememberMobileSubject } from '../mobile-photo-framing.js?v=20261004_fill_1';
+import { updateSharedCardStyle, rememberSharedProperties } from '../../shared-card-style/runtime.js?v=20261004_fill_1';
+import { scheduleHeroExtent } from '../hero-extent.js?v=20261004_continuation_1';
 import { deriveStoryTokens } from './tokens.js';
 import { placeStoryHero, smoothMask } from './placement.js?v=20261003_organic_1';
 import { clamp } from './palette.js';
-import { deriveStoryComposition, storyPhotoSource } from './composition.js?v=20261003_dual_mask_1';
+import { deriveStoryComposition, storyPhotoSource } from './composition.js?v=20261004_fill_1';
 import { intrinsicPhotoAnalysis } from './desktop-photo.js?v=20261003_organic_1';
 const cards = new WeakMap();
 const asset = value => typeof value === 'string' && value.length < 800000 && /^data:image\/webp;base64,[a-zA-Z0-9+/=]+$/.test(value) ? value : '';
@@ -46,6 +47,7 @@ export function applyTopStoryImage(img, state, { ready = true, isDefault = false
     const previous = cards.get(card);
     const analysis = isDefault ? fallback(img) : state.blend?.story || state.focus?.topStoryBlend
         || (previous?.source === state.source ? previous.analysis : null) || fallback(img, state.focus);
+    rememberMobileSubject(img, analysis, state.focus);
     const source = state.source || img.currentSrc || img.src;
     const g = geometry(card, analysis, img);
     if (g.width <= 0 || g.height <= 0) return true;
@@ -110,7 +112,7 @@ export function applyTopStoryImage(img, state, { ready = true, isDefault = false
     card.dataset.storyHeroPlacement = p.placement;
     card.dataset.storyPhoto = analysis.crop?.some(value => value > 0) ? 'cropped' : 'original';
     card.dataset.storyBlendNear = String(state.near !== false);
-    card.dataset.storyImageMissing = String(isDefault || img.complete && !img.naturalWidth);
+    card.dataset.storyImageMissing = String(img.complete && !img.naturalWidth);
     if (ready && state.settled) { img.dataset.focusState = 'ready'; state.shown = true; }
     cards.set(card, { analysis, source, geometry: g, tokens, avatarZoneLum: avatarLum, img, state, isDefault, forceLight });
     return true;

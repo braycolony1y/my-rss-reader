@@ -212,36 +212,36 @@
             -webkit-backdrop-filter: none !important;
         }
 
-        .theme-glass-light .ai-status-modal .ai-status-usage [class*="text-white"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)),
-.theme-glass-light .ai-status-modal .ai-status-usage [class*="text-gray-200"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)),
-.theme-glass-light .ai-status-modal .ai-status-usage [class*="text-gray-300"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) {
+        .theme-glass-light .ai-status-modal .ai-status-usage [class*="text-white"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)),
+.theme-glass-light .ai-status-modal .ai-status-usage [class*="text-gray-200"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)),
+.theme-glass-light .ai-status-modal .ai-status-usage [class*="text-gray-300"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)) {
             color: #1e293b !important;
         }
 
-        .theme-glass-light .ai-status-modal .ai-status-usage [class*="text-gray-400"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)),
-.theme-glass-light .ai-status-modal .ai-status-usage [class*="text-gray-500"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)),
-.theme-glass-light .ai-status-modal .ai-status-usage [class*="text-gray-600"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) {
+        .theme-glass-light .ai-status-modal .ai-status-usage [class*="text-gray-400"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)),
+.theme-glass-light .ai-status-modal .ai-status-usage [class*="text-gray-500"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)),
+.theme-glass-light .ai-status-modal .ai-status-usage [class*="text-gray-600"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)) {
             color: #526077 !important;
         }
 
-        .theme-glass-light .ai-status-modal .ai-status-usage [class*="text-red-"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) {
+        .theme-glass-light .ai-status-modal .ai-status-usage [class*="text-red-"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)) {
             color: #b42334 !important;
         }
 
-        .theme-glass-light .ai-status-modal .ai-status-usage [class*="text-emerald-"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) {
+        .theme-glass-light .ai-status-modal .ai-status-usage [class*="text-emerald-"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)) {
             color: #047857 !important;
         }
 
-        .theme-glass-light .ai-status-modal .ai-status-usage [class*="text-amber-"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) {
+        .theme-glass-light .ai-status-modal .ai-status-usage [class*="text-amber-"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)) {
             color: #92400e !important;
         }
 
-        .theme-glass-light .ai-status-modal .ai-status-usage [class*="bg-red-"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) {
+        .theme-glass-light .ai-status-modal .ai-status-usage [class*="bg-red-"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)) {
             background: #fff1f2 !important;
             border-color: rgba(190, 18, 60, 0.24) !important;
         }
 
-        .theme-glass-light .ai-status-modal .ai-status-usage [class*="bg-emerald-"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) {
+        .theme-glass-light .ai-status-modal .ai-status-usage [class*="bg-emerald-"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)) {
             background: #ecfdf5 !important;
             border-color: rgba(4, 120, 87, 0.22) !important;
         }

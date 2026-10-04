@@ -142,11 +142,11 @@ test('source reconciliation ranks the durable clusters with fresh raw articles d
 test('client boot retains cached Top cards while fetching, then installs the authoritative ordering atomically; Classic keeps its merge behavior',async()=>{
  const vm=await import('node:vm');
  const source=await readReaderClientSource();
- const method=source.slice(source.indexOf('async fetchData('),source.indexOf('async loadMore()'));
+ const method=source.slice(source.indexOf('const ReaderFeedRequests ='),source.indexOf('const ReaderFeedPagination ='));
  for(const isTop of [true,false]){
   let release;const gate=new Promise(r=>release=r);
   const latest=[{link:'b',topStory:{rank:1,isTop:true}},{link:'a',topStory:{rank:2,isTop:false}}];
-  const {fetchData}=vm.runInNewContext('({'+method+'})',{performance,URLSearchParams,Set,console,window:{history:{replaceState(){}}},setTimeout:()=>0,setInterval:()=>0,clearInterval:()=>{},requestAnimationFrame:()=>{},fetch:async()=>{await gate;return {ok:true,json:async()=>({articles:latest,smartTabMode:isTop?'top':'classic'})}}});
+  const {fetchData}=vm.runInNewContext(method+';ReaderFeedRequests',{performance,URLSearchParams,Set,console,window:{history:{replaceState(){}}},setTimeout:()=>0,setInterval:()=>0,clearInterval:()=>{},clearTimeout:()=>{},requestAnimationFrame:()=>{},fetch:async()=>{await gate;return {ok:true,json:async()=>({articles:latest,smartTabMode:isTop?'top':'classic'})}}});
   const app={normalizeSmartDestination:value=>value,getFilterFromHash:()=>null,pendingUnreadLinks:new Set(),pendingRecentReadLinks:new Set(),applyPendingStateMutations:(_,values)=>values,usesTopStories:isTop,articleRequestGeneration:0,currentPage:1,isMobile:false,selectedFilterType:'smart',selectedFilterValue:'news_vietnam',smartRegion:'vietnam',hideRead:false,searchQuery:'',smartTabMode:isTop?'top':'classic',articles:[{link:'a'},{link:'b'}],pendingPreferences:{},pendingReadLinks:[],savedStates:[],readStates:new Set(),dedupeStateLinks:a=>a,hideTooltip(){},saveState(){},scheduleBriefingRefresh(){},$nextTick(){}};
   const pending=fetchData.call(app,false,true,true);
   assert.deepEqual(app.articles.map(a=>a.link),['a','b']);

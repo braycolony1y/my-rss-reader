@@ -1,6 +1,6 @@
 /* Previous card treatments are retained only for other themes and card modes. */
 
-        #scroll-container .article-card:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) {
+        #scroll-container .article-card:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)) {
             transform: none;
             filter: none;
             content-visibility: visible !important;
@@ -8,7 +8,7 @@
             will-change: auto;
         }
 
-        .theme-glass-light .article-card:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) {
+        .theme-glass-light .article-card:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)) {
             background-image: none !important;
             background-color: rgba(255, 255, 255, 0.85) !important;
             border: 1px solid rgba(0, 0, 0, 0.2) !important;
@@ -16,14 +16,14 @@
             transform: translateY(-3px) scale(1.005);
             transition: all 0.3s ease !important;
         }
-        .theme-glass-light .article-card:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)):hover {
+        .theme-glass-light .article-card:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)):hover {
             background-image: none !important;
             background-color: rgba(255, 255, 255, 0.45) !important;
             border: 1px solid transparent !important;
             box-shadow: none !important;
             transform: translateY(0) scale(1);
         }
-        .article-card:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) img.thumbnail-img {
+        .article-card:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)) img.thumbnail-img {
             opacity: 1 !important;
             -webkit-mask-image: linear-gradient(to right,
                     transparent 0%,
@@ -42,37 +42,37 @@
             transform: scale(1.05);
         }
 
-        .article-card:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)):hover img.thumbnail-img {
+        .article-card:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)):hover img.thumbnail-img {
             transform: scale(1);
         }
-        .article-card:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)).is-read {
+        .article-card:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)).is-read {
             background-color: rgba(17, 24, 39, 0.4) !important;
         }
-        .theme-glass-light .article-card:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)).is-read {
+        .theme-glass-light .article-card:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)).is-read {
             background-color: rgba(255, 255, 255, 0.6) !important;
         }
         
-        .article-card:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)).is-read img.thumbnail-img {
+        .article-card:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)).is-read img.thumbnail-img {
             filter: grayscale(50%) !important;
             opacity: 0.6 !important;
         }
 
-        .article-card:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)).is-read .relative.z-10 {
+        .article-card:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)).is-read .relative.z-10 {
             opacity: 0.65 !important;
         }
-        #scroll-container .article-card:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)),
-#scroll-container .article-card:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) * {
+        #scroll-container .article-card:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)),
+#scroll-container .article-card:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)) * {
             backdrop-filter: none !important;
             -webkit-backdrop-filter: none !important;
         }
-        #scroll-container .article-card:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)),
-#scroll-container .article-card:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)):hover {
+        #scroll-container .article-card:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)),
+#scroll-container .article-card:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)):hover {
             border: 0 !important;
             transform: none !important;
             filter: none !important;
             transition-property: border-color, background-color, box-shadow !important;
         }
-        #scroll-container .article-card:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)):not(.has-story-briefing) img.thumbnail-img {
+        #scroll-container .article-card:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)):not(.has-story-briefing) img.thumbnail-img {
             mask-image: none !important;
             -webkit-mask-image: none !important;
             filter: none !important;

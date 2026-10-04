@@ -31,10 +31,12 @@ test('independent left and lower masks retain detail and finish before physical 
         for (let x=0; x<info.width; x++) {
             assert.equal(data[((info.height-1)*info.width+x)*4+3],0, 'Whole physical bottom edge is transparent');
         }
-        const b = await sharp(bottom).raw().toBuffer();
+        const b = await sharp(bottom).toColourspace('srgb').ensureAlpha().raw().toBuffer();
         const halfAlpha = x => Array.from({length:600},(_,y)=>y).find(y=>b[(y*600+Math.floor(x*600))*4+3]<128);
         const contour = [.05,.5,.9].map(halfAlpha);
-        assert.ok(contour[1]-contour[0]>=10 && contour[2]>contour[1], 'The lower contour curves down toward the right');
+        assert.ok(contour.every(y => y >= 600 * .94), 'The shortened feather stays near the bottom');
+        for (let x=0; x<600; x++) assert.equal(b[(551*600+x)*4+3],255, 'Upper 92% stays opaque');
+        assert.ok(contour[1]-contour[0]>=3 && contour[2]>=contour[1], 'The lower contour curves down toward the right');
         assert.ok(new Set(Array.from({length:100},(_,i)=>alpha(.85,(500+i)/600))).size>12, 'Lower feather has a gradual alpha transition');
     }
 });

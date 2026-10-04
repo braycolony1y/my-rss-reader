@@ -302,18 +302,18 @@
 
 
         /* Improved legibility for cluster sources and icons in light mode */
-        .theme-glass-light .text-cyan-300:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) {
+        .theme-glass-light .text-cyan-300:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)) {
             color: #0284c7 !important;
             /* light blue-600 */
         }
 
-        .theme-glass-light .text-emerald-400:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) {
+        .theme-glass-light .text-emerald-400:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)) {
             color: #059669 !important;
             /* emerald-600 */
         }
 
-        .theme-glass-light .text-orange-300:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)),
-.theme-glass-light .text-orange-400:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) {
+        .theme-glass-light .text-orange-300:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)),
+.theme-glass-light .text-orange-400:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)) {
             color: #ea580c !important;
             /* orange-600 */
         }
@@ -324,18 +324,18 @@
         }
 
         /* Improved legibility for cluster sources and icons in light mode */
-        .theme-glass-light .text-cyan-300:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) {
+        .theme-glass-light .text-cyan-300:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)) {
             color: #0284c7 !important;
             /* light blue-600 */
         }
 
-        .theme-glass-light .text-emerald-400:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) {
+        .theme-glass-light .text-emerald-400:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)) {
             color: #059669 !important;
             /* emerald-600 */
         }
 
-        .theme-glass-light .text-orange-300:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)),
-.theme-glass-light .text-orange-400:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) {
+        .theme-glass-light .text-orange-300:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)),
+.theme-glass-light .text-orange-400:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)) {
             color: #ea580c !important;
             /* orange-600 */
         }

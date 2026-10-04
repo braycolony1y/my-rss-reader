@@ -1,11 +1,12 @@
+import { frameMobilePhoto } from './mobile-photo-framing.js?v=20261004_fill_1';
 // Mobile Smart Top owns only presentation; palette, focus and coverage data stay upstream.
 export const MOBILE_TOP = Object.freeze({
     MOBILE_BREAKPOINT: 767, META_TOP: 20, META_LEFT: 20, META_GAP: 7,
     RANK_WIDTH: 28, RANK_HEIGHT: 26, META_ITEM_HEIGHT: 26, META_ROW_HEIGHT: 28,
-    IMAGE_FEATHER_EDGE: 83, IMAGE_FEATHER_WAVE: 5, IMAGE_FEATHER_SOFTNESS: 10,
-    TITLE_LIFT: 34, TITLE_TOP_PADDING: 14, COVERAGE_GAP: 8,
+    IMAGE_FEATHER_EDGE: 94, IMAGE_FEATHER_WAVE: .25, IMAGE_FEATHER_SOFTNESS: 5,
+    TITLE_LIFT: 20, TITLE_TOP_PADDING: 14, COVERAGE_GAP: 8,
 });
-const selector = '.theme-glass-light #scroll-container .article-card[data-image-layout="top"][data-story-blend]:not(.is-smart-classic-card):not(.is-standard-card)';
+const selector = '.theme-glass-light #scroll-container .article-card[data-story-blend]:is([data-image-layout="top"], [data-image-layout="standard"])';
 const set = (node, key, value) => {
     if (node.style.getPropertyValue(key) !== value) node.style.setProperty(key, value);
 };
@@ -20,7 +21,7 @@ export function directImageMask(width, height) {
         const progress = i / layers;
         const alpha = progress * progress * (3 - 2 * progress);
         const opacity = (alpha - previous) / (1 - previous);
-        const offset = c.IMAGE_FEATHER_SOFTNESS * (1 - 4 * progress);
+        const offset = Math.min(c.IMAGE_FEATHER_SOFTNESS, height * .02) * (1 - 4 * progress);
         const y = v => (edge + wave * v + offset).toFixed(2);
         paths += `<path fill="white" fill-opacity="${opacity.toFixed(5)}" d="M -60 -60 H ${width+60} V ${y(.3)} C ${width*.9} ${y(.3)}, ${width*.85} ${y(-.7)}, ${width*.76} ${y(-.5)} S ${width*.62} ${y(.8)}, ${width*.51} ${y(.1)} S ${width*.38} ${y(.8)}, ${width*.32} ${y(.5)} S ${width*.21} ${y(-.8)}, ${width*.14} ${y(-.4)} S 0 ${y(.6)}, -60 ${y(.4)} Z"/>`;
         previous = alpha;
@@ -50,6 +51,7 @@ export function mountMobileTopLayout(root = document.querySelector('#scroll-cont
     const resize = new ResizeObserver(schedule);
     function clear(card) {
         delete card.dataset.mobileClean;
+        delete card.dataset.mobileFramed;
         for (const key of [...card.style]) if (key.startsWith('--mobile-') || key === '--direct-image-mask') card.style.removeProperty(key);
         for (const node of card.querySelectorAll('[data-mobile-meta-role]')) delete node.dataset.mobileMetaRole;
         resize.unobserve(card);
@@ -72,9 +74,15 @@ export function mountMobileTopLayout(root = document.querySelector('#scroll-cont
             const hero = card.querySelector('.article-card-image');
             if (!header || !metadata || !hero) continue;
             classify(metadata); resize.observe(metadata);
+            const rank = card.querySelector('.story-rank');
+            const hasRank = rank?.getClientRects().length > 0;
+            set(card, '--mobile-meta-start', `${MOBILE_TOP.META_LEFT + (hasRank ? MOBILE_TOP.RANK_WIDTH + MOBILE_TOP.META_GAP : 0)}px`);
+            frameMobilePhoto(card);
             const width = hero.clientWidth, height = hero.clientHeight;
             const key = `${width}/${height}`;
             if (width && height && masks.get(card) !== key) {
+                set(card, '--mobile-mask-width', `${width}px`);
+                set(card, '--mobile-mask-height', `${height}px`);
                 set(card, '--direct-image-mask', directImageMask(width, height)); masks.set(card, key);
             }
             const coverage = card.querySelector('.story-coverage-orbs');
@@ -87,7 +95,7 @@ export function mountMobileTopLayout(root = document.querySelector('#scroll-cont
                 .filter(node => node.getClientRects().length);
             const minimumMetadata = items.reduce((sum, node) => sum + (node.dataset.mobileMetaRole === 'source' ? 38 : node.getBoundingClientRect().width), 0)
                 + Math.max(0, items.length - 1) * MOBILE_TOP.META_GAP;
-            const available = hr.width - MOBILE_TOP.META_LEFT * 2 - MOBILE_TOP.RANK_WIDTH - MOBILE_TOP.META_GAP
+            const available = hr.width - MOBILE_TOP.META_LEFT * 2 - (hasRank ? MOBILE_TOP.RANK_WIDTH + MOBILE_TOP.META_GAP : 0)
                 - minimumMetadata - MOBILE_TOP.COVERAGE_GAP;
             const stackWidth = Math.min(29 + (visible.length - 1) * 14, hr.width < 400 ? 57 : Infinity);
             const fitWidth = available >= 29 ? 29 + Math.floor((available - 29) / 14) * 14 : 0;
@@ -104,7 +112,7 @@ export function mountMobileTopLayout(root = document.querySelector('#scroll-cont
             || r.target.closest('.article-metadata, .story-coverage-orbs'))) schedule();
     });
     observer.observe(root, { subtree: true, childList: true, characterData: true,
-        attributes: true, attributeFilter: ['data-image-layout', 'data-story-blend', 'class', 'style'] });
+        attributes: true, attributeFilter: ['data-image-layout', 'data-story-blend', 'data-focus-state', 'class', 'style'] });
     // Theme changes are outside the card tree.
     const theme = new MutationObserver(schedule);
     theme.observe(root.ownerDocument.body, { attributes: true, attributeFilter: ['class'] });

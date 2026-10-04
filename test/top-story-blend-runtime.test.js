@@ -53,14 +53,23 @@ test('the photo uses one clear right region instead of individual face openings'
     assert.ok(parseFloat(f.card.style.getPropertyValue('--scrim-clear-at')) <= 64);
 });
 
-test('standard desktop cards reuse Top placement while mobile keeps its existing treatment', () => {
+test('standard cards reuse Top palette on desktop and mobile and restore it outside the shared theme', () => {
     const f=fixture({layout:'standard'});f.state.blend={story:f.analysis};
     f.card.style.setProperty('--ink','red');
     assert.equal(applyTopStoryImage(f.img,f.state),true);
     assert.equal(f.card.dataset.sharedCardStyle,'desktop');
     assert.equal(f.card.style.getPropertyValue('--hero-pos'),'48.00% 28.00%');
     f.dom.window.innerWidth=390;
+    assert.equal(applyTopStoryImage(f.img,f.state),true);
+    assert.equal(f.card.dataset.sharedCardStyle,'mobile');
+    f.card.parentElement.className = 'theme-glass-dark';
     assert.equal(applyTopStoryImage(f.img,f.state),false);
     assert.equal(f.card.dataset.sharedCardStyle,undefined);
     assert.equal(f.card.style.getPropertyValue('--ink'),'red');
+});
+
+test('decoded default thumbnails are visible; only broken image bytes are missing', () => {
+    const f = fixture();
+    applyTopStoryImage(f.img, f.state, { isDefault: true });
+    assert.equal(f.card.dataset.storyImageMissing, 'false');
 });

@@ -79,3 +79,20 @@ slots rotate between pages, rather than being held for a whole thread. A slow
 scan cannot block the next tick from refreshing already-completed threads.
 The displayed successful-cache time advances only when a complete scan finishes;
 network failures or long scans can still make it older than one minute.
+
+Threads stopped with `verified_idle_24h` remain outside scheduled live scans.
+Feed ingestion can request a bounded first-page/latest-page verification when
+an idle member first appears, reappears after absence, moves upward in its
+source's observed order, or changes its RSS date. Repeated unchanged feed
+observations do not fetch it again. Opening an archived article also requests
+verification before rendering, so a successful revival includes fresh posts.
+These checks share the existing fetch slots, coalesce per thread, and have a
+persisted five-minute cooldown; no idle polling job or timer is added.
+
+A check resumes caching only after complete source snapshots establish a newer
+latest post created within the last 24 hours. Feed order/date alone is only a
+hint. Unavailable, incomplete, stale, or future-dated results leave caching
+paused and the archive readable. Manual pauses, departed Cache members, and
+source-removed members are excluded. Membership and pause state are checked
+again after network work so a concurrent manual pause wins. The normal live-tail
+scan runs after revival and remains responsible for capturing post history.

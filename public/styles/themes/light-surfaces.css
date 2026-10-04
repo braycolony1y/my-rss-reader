@@ -1,10 +1,10 @@
         /* Unified Liquid Glass Overrides (Light Only) */
-        .theme-glass-light [class*="bg-[#111827]"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)),
-.theme-glass-light [class*="bg-[#0B101E]"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)),
-.theme-glass-light [class*="bg-[#121212]"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)),
-.theme-glass-light [class*="bg-[#1e1e1e]"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)),
-.theme-glass-light [class*="bg-[#080F19]"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)),
-.theme-glass-light [class*="bg-gray-800"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) {
+        .theme-glass-light [class*="bg-[#111827]"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)),
+.theme-glass-light [class*="bg-[#0B101E]"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)),
+.theme-glass-light [class*="bg-[#121212]"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)),
+.theme-glass-light [class*="bg-[#1e1e1e]"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)),
+.theme-glass-light [class*="bg-[#080F19]"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)),
+.theme-glass-light [class*="bg-gray-800"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)) {
             background: rgba(255, 255, 255, 0.65) !important;
             backdrop-filter: var(--apple-blur) var(--apple-saturate) !important;
             -webkit-backdrop-filter: var(--apple-blur) var(--apple-saturate) !important;
@@ -18,7 +18,7 @@
 
         /* Premium seamless image mask for all modes */
 
-        .theme-glass-light [class*="bg-[#0A0F1A]"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) {
+        .theme-glass-light [class*="bg-[#0A0F1A]"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)) {
             background: transparent !important;
             backdrop-filter: none !important;
             border: none !important;

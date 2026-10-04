@@ -2,8 +2,9 @@
    Two smooth axes mix it with the existing left-side color at their junction. */
 @media (min-width: 768px) {
     .theme-glass-light #scroll-container .article-card[data-smart-hero-extent="analysis"][data-edge-color="ready"]::after {
-        background: linear-gradient(to right, transparent 25%, var(--edge-bottom-color) 100%);
-        -webkit-mask-image: linear-gradient(to bottom, transparent calc(var(--edge-color-start) - 18px), #000 calc(var(--edge-color-start) + 80px));
-        mask-image: linear-gradient(to bottom, transparent calc(var(--edge-color-start) - 18px), #000 calc(var(--edge-color-start) + 80px));
+        -webkit-mask-composite: source-in; mask-composite: intersect;
+        background: var(--edge-bottom-gradient);
+        -webkit-mask-image: linear-gradient(to right, transparent var(--edge-color-left), #000 var(--edge-color-solid)), linear-gradient(to bottom, transparent calc(var(--edge-color-start) - 18px), #000 var(--edge-color-start));
+        mask-image: linear-gradient(to right, transparent var(--edge-color-left), #000 var(--edge-color-solid)), linear-gradient(to bottom, transparent calc(var(--edge-color-start) - 18px), #000 var(--edge-color-start));
     }
 }

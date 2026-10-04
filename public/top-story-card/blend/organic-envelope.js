@@ -5,10 +5,10 @@ export function desktopLeftMask({ soft = false } = {}) {
 }
 
 export function desktopBottomMask({ soft = false } = {}) {
-    // The contour stays around 90–95% of source height. Its Gaussian tail
+    // The contour stays around 95–98% of source height. Its Gaussian tail
     // finishes before the physical source edge, without a linear bottom fade.
     // The solid upper field prevents SVG filter clipping at the top boundary.
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000" preserveAspectRatio="none"><defs><filter id="b" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="${soft ? 14 : 11}"/></filter></defs><rect width="1000" height="820" fill="white"/><path fill="white" filter="url(#b)" transform="translate(0 ${soft ? -8 : 0})" d="M -120 -120 H 1120 V 944 C 920 963, 810 925, 640 933 C 440 943, 340 908, 200 914 C 60 920, -30 886, -120 894 Z"/></svg>`;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000" preserveAspectRatio="none"><defs><filter id="b" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="${soft ? 6 : 5}"/></filter></defs><rect width="1000" height="920" fill="white"/><path fill="white" filter="url(#b)" transform="translate(0 ${soft ? -3 : 0})" d="M -120 -120 H 1120 V 974 C 920 983, 810 965, 640 973 C 440 983, 340 958, 200 964 C 60 970, -30 956, -120 964 Z"/></svg>`;
     return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
 }
 

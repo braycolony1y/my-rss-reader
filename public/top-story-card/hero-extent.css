@@ -1,4 +1,4 @@
-/* The hero ends 18px below analysis, so its final 18px fade starts at the panel top. */
+/* The hero ends 18px below analysis, so its final 10px fade stays below the panel top. */
 /* Activated only by the Smart Top desktop geometry controller. */
 @media (min-width: 768px) {
     @container (min-width: 640px) {
@@ -17,8 +17,8 @@
             mask-image: var(--hero-soft-left-mask);
         }
         .theme-glass-light #scroll-container .article-card:is([data-image-layout="top"], [data-shared-card-style="desktop"])[data-story-blend][data-story-hero-placement="editorial"][data-smart-hero-extent="analysis"] .article-card-image {
-            -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 18px), transparent 100%);
-            mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 18px), transparent 100%);
+            -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 10px), transparent 100%);
+            mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 10px), transparent 100%);
         }
         .theme-glass-light #scroll-container .article-card:is([data-image-layout="top"], [data-shared-card-style="desktop"])[data-story-blend][data-story-hero-placement="editorial"][data-smart-hero-extent="card-bottom-no-feather"] .article-card-image {
             -webkit-mask-image: none;

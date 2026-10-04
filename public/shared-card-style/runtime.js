@@ -1,13 +1,14 @@
 const originals = new WeakMap();
 // Standard, Classic and VOZ cards use the existing Top Story photo pipeline
-// on desktop. Their templates still own which content and controls exist.
+// on desktop and mobile. Their templates still own which content and controls exist.
 export function updateSharedCardStyle(card) {
     if (!card) return false;
     const win = card.ownerDocument.defaultView;
     const enabled = card.dataset.imageLayout === 'standard' && !!card.closest('.theme-glass-light')
-        && win.innerWidth >= 768 && card.clientWidth >= 640;
+        && (win.innerWidth < 768 || card.clientWidth >= 640);
     if (enabled) {
-        if (card.dataset.sharedCardStyle !== 'desktop') card.dataset.sharedCardStyle = 'desktop';
+        const mode = win.innerWidth < 768 ? 'mobile' : 'desktop';
+        if (card.dataset.sharedCardStyle !== mode) card.dataset.sharedCardStyle = mode;
     } else {
         delete card.dataset.sharedCardStyle;
         const previous = originals.get(card);
@@ -22,7 +23,7 @@ export function updateSharedCardStyle(card) {
     return enabled;
 }
 
-// Restore the legacy/mobile palette when leaving this desktop presentation.
+// Restore the original palette when leaving the shared light-theme presentation.
 export function rememberSharedProperties(card, css) {
     let previous=originals.get(card);
     if(!previous){previous=new Map();originals.set(card,previous);}

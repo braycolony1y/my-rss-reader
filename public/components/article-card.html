@@ -113,11 +113,11 @@
                                 <template x-if="article.isCluster">
                                     <div class="flex items-center gap-1.5 md:gap-2 ml-1"
                                         :title="(article.sources || []).join(', ')">
-                                        <span class="text-white/20 hidden md:inline">•</span>
+                                        <span x-show="!usesTopStories || Number(article.sourceCount) > 1" class="text-white/20 hidden md:inline">•</span>
                                         <span x-show="!usesTopStories" class="flex items-center gap-1 text-orange-300 whitespace-nowrap">
                                             <span>🔥</span><span x-text="article.hotness"></span>
                                         </span>
-                                        <span class="flex items-center gap-1 text-cyan-300 whitespace-nowrap">
+                                        <span x-show="Number(article.sourceCount) > 1" class="flex items-center gap-1 text-cyan-300 whitespace-nowrap">
                                             <span x-text="article.sourceCount"></span><span
                                                 x-text="article.sourceCount === 1 ? 'source' : 'sources'"></span>
                                         </span>

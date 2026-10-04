@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import assert from 'node:assert/strict';
 const output = process.env.CARD_OUTPUT || '/tmp/mobile-top-review';
 await fs.mkdir(output, { recursive: true });
-const browser = await puppeteer.launch({ executablePath: '/snap/bin/chromium', headless: true, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
+const browser = await puppeteer.launch({ executablePath: process.env.CHROMIUM_PATH || '/snap/bin/chromium', timeout: 90000, headless: true, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
 try {
  const page = await browser.newPage(), errors = [];
  page.on('pageerror', e => errors.push(e.message));
@@ -38,17 +38,18 @@ try {
    s.value = width - 24; window.topStoryReview.update();
   }, width);
   await page.waitForFunction(() => [...document.querySelectorAll('.article-card')].every(c => c.dataset.mobileClean === '1'));
-  await new Promise(r => setTimeout(r, 250));
+  await page.waitForFunction(() => [...document.querySelectorAll('.article-card')].every(c => c.scrollWidth <= c.clientWidth));
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   const measurements = await page.$$eval('.article-card', cards => cards.map(c => {
    const b = n => {const r = n.getBoundingClientRect(); return {x:r.x,y:r.y,width:r.width,height:r.height,right:r.right,bottom:r.bottom};};
    const hero = c.querySelector('.article-card-image'), img = c.querySelector('.thumbnail-img'), heading = c.querySelector('.article-card-heading'), meta = c.querySelector('.article-metadata'), rank=c.querySelector('.story-rank'), orbs=c.querySelector('.story-coverage-orbs');
    const items=[...meta.querySelectorAll('[data-mobile-meta-role="source"],[data-mobile-meta-role="item"]')].filter(n=>n.getClientRects().length);
-   return {id:c.dataset.fixture,card:b(c),hero:b(hero),heading:b(heading),meta:b(meta),rank:b(rank),orbs:b(orbs),items:items.map(n=>({text:n.textContent.trim(),...b(n),surface:getComputedStyle(n).backgroundColor})),mask:getComputedStyle(img).maskImage,fit:getComputedStyle(img).objectFit,headingPosition:getComputedStyle(heading).position,lift:getComputedStyle(heading).marginTop,padding:getComputedStyle(heading).paddingTop,background:getComputedStyle(c).backgroundColor,base:getComputedStyle(c).getPropertyValue('--scrim-bottom'),overflow:c.scrollWidth>c.clientWidth,soft:getComputedStyle(c.querySelector('.thumbnail-soft')).display};
+   return {id:c.dataset.fixture,card:b(c),hero:b(hero),heading:b(heading),meta:b(meta),rank:b(rank),orbs:b(orbs),items:items.map(n=>({text:n.textContent.trim(),...b(n),surface:getComputedStyle(n).backgroundColor})),mask:getComputedStyle(img).maskImage,fit:getComputedStyle(img).objectFit,headingPosition:getComputedStyle(heading).position,lift:getComputedStyle(heading).marginTop,padding:getComputedStyle(heading).paddingTop,background:getComputedStyle(c).backgroundColor,base:getComputedStyle(c).getPropertyValue('--story-mobile-surface'),overflow:c.scrollWidth>c.clientWidth,soft:getComputedStyle(c.querySelector('.thumbnail-soft')).display};
   }));
   for (const m of measurements) {
    assert.equal(m.headingPosition,'static'); assert.equal(m.fit,'cover'); assert.equal(m.soft,'none'); assert.ok(m.mask.includes('data:image/svg+xml'));
-   assert.ok(Math.abs(m.hero.width/m.hero.height-16/9)<.01); assert.ok(Math.abs(m.hero.x-m.card.x-1)<1);
-   assert.equal(m.lift,'-34px'); assert.equal(m.padding,'14px'); assert.equal(m.overflow,false);
+   assert.ok(m.hero.height>=m.hero.width*9/16-.1); assert.ok(Math.abs(m.hero.x-m.card.x-1)<1);
+   assert.equal(m.lift,'-20px'); assert.equal(m.padding,'14px'); assert.equal(m.overflow,false);
    assert.ok(Math.abs(m.rank.y+m.rank.height/2-m.meta.y-m.meta.height/2)<.1);
    for (const i of m.items) { assert.ok(Math.abs(i.y+i.height/2-m.meta.y-m.meta.height/2)<1,`${width} ${i.text} center`); assert.equal(i.surface,'rgb(241, 245, 249)'); assert.ok(i.right <= m.meta.right + 1, `${width}: metadata item clipped`); }
    assert.ok(m.orbs.right<=m.card.right, 'coverage inside card');
@@ -58,18 +59,25 @@ try {
  }
  // Rerender classification, long names, and scope cleanup on a live node.
  await page.setViewport({width:390,height:1100});
+ await page.evaluate(()=>{const s=document.querySelector('#width');s.value=366;window.topStoryReview.update();});
  await page.evaluate(()=>{const row=document.querySelector('.article-metadata');row.querySelector('span span').textContent='VIETNAMPLUS INTERNATIONAL';const item=document.createElement('span');item.textContent='•';row.append(item);});
  await page.waitForFunction(() => getComputedStyle(document.querySelector('.article-metadata > span:last-child')).display === 'none');
  for(const cls of ['is-smart-classic-card','is-standard-card']) {
-  await page.$eval('.article-card',(c,cls)=>c.classList.add(cls),cls);
-  await page.waitForFunction(()=>!document.querySelector('.article-card').hasAttribute('data-mobile-clean'));
-  assert.equal(await page.$eval('.article-card',c=>c.style.getPropertyValue('--direct-image-mask')),'');
-  await page.$eval('.article-card',(c,cls)=>c.classList.remove(cls),cls);
+  await page.$eval('.article-card',(c,cls)=>{c.classList.remove('is-smart-classic-card','is-standard-card');c.classList.add(cls);c.dataset.imageLayout='standard';c.querySelector('.story-rank')?.remove();c.querySelector('.story-coverage-orbs')?.remove();},cls);
+  await page.evaluate(()=>window.topStoryReview.update());
   await page.waitForFunction(()=>document.querySelector('.article-card').dataset.mobileClean==='1');
+  const count = await page.$eval('.article-card',c=>c.querySelectorAll('*').length);
+  await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
+  assert.equal(await page.$eval('.article-card',c=>c.querySelectorAll('*').length),count);
+  assert.equal(await page.$eval('.article-card-heading',n=>getComputedStyle(n).position),'static');
+  assert.equal(await page.$eval('.article-card .thumbnail-soft',n=>getComputedStyle(n).display),'none');
+  assert.equal(await page.$eval('.article-metadata > span:first-child',n=>getComputedStyle(n).backgroundColor),'rgb(241, 245, 249)');
+  assert.equal(await page.$eval('.article-card',c=>c.querySelectorAll('.story-rank,.story-coverage-orbs').length),0);
+  await (await page.$('.article-card')).screenshot({path:`${output}/${cls}.png`});
  }
  await page.setViewport({width:844,height:1100});
  await page.waitForFunction(()=>!document.querySelector('[data-mobile-clean]'));
  assert.deepEqual(errors,[]);
  await fs.writeFile(output+'/measurements.json',JSON.stringify(report,null,2));
- console.log(`MOBILE_TOP_OK: ${report.length * 6} responsive cards, desktop styles unchanged, scope/resize/rerender passed`);
+ console.log(`MOBILE_TOP_OK: ${report.length * 6} responsive cards, desktop scope, resize/rerender passed`);
 } finally { await browser.close(); }

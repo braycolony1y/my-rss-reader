@@ -9,14 +9,14 @@
             border: 1px solid rgba(255, 255, 255, 0.3) !important;
         }
 
-        .theme-glass-light .styled-rel-card .text-gray-900:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)),
-.theme-glass-light .styled-rel-card .dark\:text-gray-100:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) {
+        .theme-glass-light .styled-rel-card .text-gray-900:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)),
+.theme-glass-light .styled-rel-card .dark\:text-gray-100:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)) {
             color: #1e293b !important;
             /* slate-800 */
         }
 
-        .theme-glass-light .styled-rel-card .text-blue-600:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)),
-.theme-glass-light .styled-rel-card .dark\:text-blue-400:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) {
+        .theme-glass-light .styled-rel-card .text-blue-600:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)),
+.theme-glass-light .styled-rel-card .dark\:text-blue-400:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)) {
             color: #2563eb !important;
             /* blue-600 */
         }
@@ -150,7 +150,7 @@
         }
 
         /* Fix Listen to Article colors */
-        .theme-glass-light .text-emerald-200:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *)) {
+        .theme-glass-light .text-emerald-200:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)) {
             color: #059669 !important;
         }
 

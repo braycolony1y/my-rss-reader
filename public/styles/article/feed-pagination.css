@@ -1,0 +1,2 @@
+/* Appending cards must not anchor the viewport to the load-more button. */
+#scroll-container { overflow-anchor: none; }

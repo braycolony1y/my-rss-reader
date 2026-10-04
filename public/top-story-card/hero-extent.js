@@ -1,4 +1,4 @@
-import { applyBottomEdgeColor } from './edge-colors.js?v=20261004_2';
+import { applyBottomEdgeColor } from './edge-colors.js?v=20261004_continuation_1';
 // Consume resolved Smart Top placement; never change its focus or horizontal box.
 // The image lifecycle calls this after its normal placement/palette update.
 const pending = new Set();
