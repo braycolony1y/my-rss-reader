@@ -41,7 +41,7 @@ test('C/G: in-flight, failed, empty, and persistence-failed replacements retain 
 test('I: a new service loads durable cards without reading candidates or invoking ranking',async t=>{
  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'top-snapshot-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
  const filename=path.join(dir,'published.json'); await fs.writeFile(filename,JSON.stringify(published));
- const service=createTopStoriesSnapshots({db:{get:async key=>{assert.equal(key,'topStoriesPublished');return JSON.parse(await fs.readFile(filename))}},compute:()=>assert.fail('must not rank')});
+ const service=createTopStoriesSnapshots({db:{get:async key=>{if(key==='smartPersonalFilters')return null;assert.equal(key,'topStoriesPublished');return JSON.parse(await fs.readFile(filename))}},compute:()=>assert.fail('must not rank')});
  assert.deepEqual((await service.get()).articles,published.articles);
 });
 test('legacy ranked state is reused only when stored evidence still matches',async()=>{

@@ -1,49 +1,21 @@
     <!-- LOGS PANEL MODAL -->
-    <div x-show="logsPanelOpen" x-cloak
-        class="fixed inset-0 bg-[#0B101E]/80 z-[60] flex items-center justify-center p-2 md:p-4">
-        <div class="bg-[#0B101E] rounded-xl w-full max-w-5xl h-[90vh] flex flex-col border border-[#333] shadow-2xl"
-            @click.outside="closeLogsPanel()">
-            <div class="flex items-center justify-between px-5 py-4 border-b border-[#333] flex-shrink-0">
-                <div class="flex items-center gap-4">
-                    <h2 class="text-lg font-bold text-white">System Monitor</h2>
-                    <div class="flex bg-[#252525] rounded-lg p-0.5">
-                        <button @click="logsTab = 'stats'; fetchSourceStats()"
-                            class="px-4 py-1.5 rounded-md text-sm font-medium transition"
-                            :class="logsTab === 'stats' ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-gray-200'">Source
-                            Stats</button>
-                        <button @click="logsTab = 'history'; fetchFetchHistory()"
-                            class="px-4 py-1.5 rounded-md text-sm font-medium transition"
-                            :class="logsTab === 'history' ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-gray-200'">Fetch
-                            History</button>
-                        <button @click="logsTab = 'errors'; fetchFetchErrors()"
-                            class="px-4 py-1.5 rounded-md text-sm font-medium transition"
-                            :class="logsTab === 'errors' ? 'bg-red-600 text-white shadow' : 'text-gray-400 hover:text-gray-200'">Error
-                            Log</button>
-                    </div>
+    <div x-show="logsPanelOpen" x-cloak class="system-monitor-backdrop" @click.self="closeLogsPanel()" @keydown.escape.window="if (logsPanelOpen) closeLogsPanel()">
+        <section class="system-monitor-panel" role="dialog" aria-modal="true" aria-labelledby="monitor-title" @keydown="trapFeedbackFocus($event)">
+            <header>
+                <h2 id="monitor-title">System Monitor</h2>
+                <nav class="monitor-tabs" role="tablist" aria-label="Monitor views">
+                    <button role="tab" :aria-selected="logsTab === 'stats'" @click="logsTab = 'stats'; fetchSourceStats()">Source Stats</button>
+                    <button role="tab" :aria-selected="logsTab === 'history'" @click="logsTab = 'history'; fetchFetchHistory()">Fetch History</button>
+                    <button role="tab" :aria-selected="logsTab === 'errors'" @click="logsTab = 'errors'; fetchFetchErrors()">Error Log</button>
+                    <button role="tab" :aria-selected="logsTab === 'filtered'" @click="logsTab = 'filtered'; fetchFilterLog()">Filtered</button>
+                </nav>
+                <div class="monitor-controls">
+                    <button class="monitor-pause" @click="toggleSyncPause()" :aria-label="syncPaused ? 'Resume background auto-sync' : 'Pause background auto-sync'" x-text="syncPaused ? '▶ Resume Sync' : '⏸ Pause Sync'"></button>
+                    <button @click="refreshLogs()" aria-label="Refresh monitor" title="Refresh">↻</button>
+                    <button @click="closeLogsPanel()" aria-label="Close System Monitor" title="Close">×</button>
                 </div>
-                <div class="flex items-center gap-3">
-                    <button @click="toggleSyncPause()"
-                        class="px-3 py-1.5 rounded-md text-xs font-bold transition flex items-center gap-1.5 border"
-                        :class="syncPaused ? 'bg-green-600/20 text-green-400 border-green-500/30 hover:bg-green-600/30' : 'bg-yellow-600/20 text-yellow-400 border-yellow-500/30 hover:bg-yellow-600/30'"
-                        :title="syncPaused ? 'Resume background auto-sync' : 'Pause background auto-sync'">
-                        <span x-text="syncPaused ? '▶ Resume Sync' : '⏸ Pause Sync'"></span>
-                    </button>
-                    <button @click="refreshLogs()" class="text-gray-400 hover:text-white transition p-1.5"
-                        title="Refresh">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15">
-                            </path>
-                        </svg>
-                    </button>
-                    <button @click="closeLogsPanel()" class="text-gray-400 hover:text-white transition p-1.5">
-                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M6 18L18 6M6 6l12 12"></path>
-                        </svg>
-                    </button>
-                </div>
-            </div>
+            </header>
+            <!-- reader:include modals/filter-log -->
 
             <!-- SOURCE STATS TAB -->
             <div x-show="logsTab === 'stats'" class="flex-1 overflow-y-auto">
@@ -188,6 +160,6 @@
                     <span>Manual refresh only</span>
                 </div>
             </div>
-        </div>
+        </section>
     </div>
     

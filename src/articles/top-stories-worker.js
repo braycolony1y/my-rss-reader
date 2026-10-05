@@ -1,3 +1,4 @@
+import { workerPrefilterValues } from '../smart/prefilter/publication.js';
 // The existing deterministic index runs away from the HTTP event loop.
 import { parentPort, workerData } from 'node:worker_threads';
 import { createTopStoriesIndex } from './top-stories.js';
@@ -39,6 +40,7 @@ try {
 }
 
 const state = {
+    ...workerPrefilterValues(workerData.prefilterState),
     topStoriesState: initialStates
 };
 

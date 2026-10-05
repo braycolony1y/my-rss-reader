@@ -1,3 +1,4 @@
+import { acceptAiSideTask, primaryDecision } from '../prefilter/ai.js';
 import { requestClusteringDecision } from '../../ai/clustering-json.js';
 import { getGeminiWebCooldownState } from '../../ai/gemini-web.js';
 import { globalAiTaskActive, runGlobalAiTask } from '../../ai/global-ai-scheduler.js';
@@ -58,7 +59,7 @@ async function attemptComponentProviderVerification(
             repairPrompt,
             reviewSpec
           ),
-        validate: value => validateComponentReviewResult(value, units),
+        validate: value => validateComponentReviewResult(primaryDecision(value), units),
         schema: COMPONENT_REVIEW_RESPONSE_SCHEMA,
         onEvent: (event, error) => {
           group.diagnostics ||= {};
@@ -92,7 +93,7 @@ async function attemptComponentProviderVerification(
         }
       });
 
-      const validation = validateComponentReviewResult(parsed, units);
+      const validation = validateComponentReviewResult(primaryDecision(parsed), units);
       if (!validation.valid) {
         const error = new Error(`Invalid component review: ${validation.reason}`);
         error.code = 'INVALID_PARTITION';
@@ -149,6 +150,7 @@ async function attemptComponentProviderVerification(
         throw error;
       }
 
+      await acceptAiSideTask(db, group, parsed, 'event_verification');
       await recordProviderSuccess(db, provider);
 
       if (provider.type === 'gemini' || provider.type === 'antigravity') {

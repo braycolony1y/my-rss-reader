@@ -1,3 +1,4 @@
+import { withoutVietnamPrefilter } from './helpers/without-vietnam-prefilter.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -19,7 +20,7 @@ test('configuration, text, dates, source normalization and component keys match 
 });
 
 test('refresh, editorial routing, persistence, notifications and unchanged reuse match the original engine', async () => {
-  const result = await captureSmartRuntimeContract(smart, fixture);
+  const result = await withoutVietnamPrefilter(() => captureSmartRuntimeContract(smart, fixture));
   assert.deepEqual(result, expected.refresh);
   assert.equal(result.workerMessages.length, 1);
   assert.equal(result.second.skipped, true);
@@ -32,7 +33,7 @@ test('Smart dependencies, including the compatibility facade, have no import cyc
 });
 
 test('progressive publication and verified updates preserve original ordering and final retirement', async () => {
-  const result = await captureSmartRuntimeContract(smart, fixture, { ambiguous: true });
+  const result = await withoutVietnamPrefilter(() => captureSmartRuntimeContract(smart, fixture, { ambiguous: true }));
   assert.deepEqual(result, expected.progressive);
   assert.ok(result.notifications.some(progress => progress.publicationPhase === 'deterministic_base'));
   assert.ok(result.notifications.some(progress => progress.publicationPhase === 'progressive_review_update'));

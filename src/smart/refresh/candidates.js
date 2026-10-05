@@ -1,3 +1,6 @@
+import { buildCluster } from '../clustering/cluster.js';
+import { sourceWorkView } from '../prefilter/source-work.js';
+import { preparePrefilterCandidates, prefilterConfiguration, hydrateStoredClusters, survivingClusters } from '../prefilter/boundaries.js';
 import { normalizeBlockedKeywordEntries, articleContentFilterMatches } from '../../filters/content-filter.js';
 import { isInvestingComSource } from '../articles/categories.js';
 import { stableId } from '../articles/identity.js';
@@ -117,6 +120,8 @@ export async function prepareSmartCandidates({ db, smartSources, getSettings, ha
         )
     );
 
+  let sourceWork = await sourceWorkView(db, sourceResults, smartSources, metrics);
+
   if (
     typeof helpers
       .resolveSmartArticleDestinations ===
@@ -128,9 +133,11 @@ export async function prepareSmartCandidates({ db, smartSources, getSettings, ha
     );
     await helpers
       .resolveSmartArticleDestinations(
-        sourceResults
+        sourceWork
       );
   }
+
+  sourceWork = null;
 
   let fetchedArticles =
     sourceResults.flatMap(
@@ -448,6 +455,8 @@ export async function prepareSmartCandidates({ db, smartSources, getSettings, ha
       })
     );
   }
+  rawCandidates = await preparePrefilterCandidates({ db, articles: rawCandidates, sources: smartSources, metrics });
+  existingClusters = survivingClusters(await hydrateStoredClusters(db, existingClusters, smartSources), buildCluster);
   let previousArticleMap = new Map();
   for (const article of previousRawArticles) {
     if (article.articleKey) {
@@ -555,7 +564,7 @@ export async function prepareSmartCandidates({ db, smartSources, getSettings, ha
       SMART_NEWS_AI_CONFIG.cache.rulesVersion,
       SMART_NEWS_AI_CONFIG.cache.schemaVersion,
       SMART_CLUSTER_VERSION,
-      sourceSignature, JSON.stringify(settings), [...dynamicExcludedUrls].sort().join(',')
+      ...prefilterConfiguration(), sourceSignature, JSON.stringify(settings), [...dynamicExcludedUrls].sort().join(',')
     ].join('|');
 
   const previousAiConfiguration =

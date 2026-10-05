@@ -30,6 +30,7 @@ const ReaderUiDiagnostics = {
                     this.logsPanelOpen = true;
                     this.mobileSidebarOpen = false;
                     this.logsTab = 'stats';
+                    this.$nextTick?.(() => document.querySelector('.monitor-tabs button')?.focus());
                     await this.fetchSyncStatus();
                     // Only fetch the active tab's data to avoid loading 19K+ history entries
                     await this.fetchSourceStats();
@@ -44,6 +45,7 @@ const ReaderUiDiagnostics = {
                     if (this.logsTab === 'stats') await this.fetchSourceStats();
                     else if (this.logsTab === 'history') await this.fetchFetchHistory();
                     else if (this.logsTab === 'errors') await this.fetchFetchErrors();
+                    else if (this.logsTab === 'filtered') await this.fetchFilterLog();
                 },
 
                 async fetchSourceStats() {

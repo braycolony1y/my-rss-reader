@@ -1,3 +1,4 @@
+import { filterPersonalView } from '../smart/feedback/pipeline.js';
 import { canonicalIdentity } from '../board/thread-model.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { normalizeBlockedKeywordEntries, articleContentFilterMatches } from '../filters/content-filter.js';
@@ -268,6 +269,7 @@ export function registerDataRoutes({
                     return cleaned;
                 })
                 .filter(article => !hiddenSet.has(article.link) && !articleIsBlocked(article));
+            filteredArticles = await filterPersonalView(env.RSS_DATA, filteredArticles, filterValue, 'classic_api');
             if (filterValue === 'news') {
                 filteredArticles = filteredArticles.filter(article => ['news_vietnam', 'news_global'].includes(article.smartCategory));
             } else if (filterValue === 'finance') {

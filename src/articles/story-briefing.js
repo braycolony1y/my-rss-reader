@@ -1,3 +1,4 @@
+import { excludedPublishedStory, excludedBriefingState } from '../smart/prefilter/publication.js';
 import { publishAppEvent } from '../events.js';
 import { runGlobalAiTask, setGlobalAiReadingMode } from '../ai/global-ai-scheduler.js';
 import { detectRoundup } from './story-roundups.js';
@@ -771,6 +772,7 @@ export function createStoryBriefings({ db, generate, loadSource, concurrency = 2
         return briefingSources({...hydrated[0],clusterId:cluster.clusterId,relatedArticles:hydrated.slice(1)});
     }
     async function run(job) {
+        if (await excludedPublishedStory(db, job.cluster, job.tab)) return;
         const entries = await cache();
         try {
             job.stage = 'synthesizing';
@@ -811,6 +813,7 @@ normal form where appropriate.`;
             job.stage = 'generating';
             let feedback = '';
             for (let attempt=0;attempt<2;attempt++) {
+                if (await excludedPublishedStory(db, job.cluster, job.tab)) return;
                 const output = await generate(prompt + feedback, {operation:'story-briefing'});
 
                 if (
@@ -1178,6 +1181,7 @@ normal form where appropriate.`;
             return entries[`rank:${tab}:${revision}`] || entries[`${tab}:${revision}`] || null;
         },
         async get(cluster,tab,options={}) {
+            if (await excludedPublishedStory(db, cluster, tab)) return excludedBriefingState();
             if (cluster.topStory?.isRoundup || detectRoundup(cluster).isRoundup) return {status:'source-only',generationState:'not-applicable',analysisStatus:'not-applicable',sections:[],keyFacts:[],sources:[]};
             const entries=await cache();
             const revision=cluster.topStory ? `${cluster.clusterId}:material:${cluster.topStory.material_version}` : storyRevision(cluster);

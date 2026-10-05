@@ -1,3 +1,6 @@
+import { prepareRankingCandidates } from '../smart/prefilter/publication.js';
+import { allowedDestinations } from './top-story-destinations.js';
+export { allowedDestinations } from './top-story-destinations.js';
 // Top Stories editorial state. Classic deliberately continues using story-ranking.js.
 import { detectRoundup, splitContainerMembers, attachRoundupCoverage } from './story-roundups.js';
 import { createHash } from 'node:crypto';
@@ -720,91 +723,6 @@ const stamp = a => a.publicationTimeReliable === false ? 0 : Date.parse(a.pubDat
 const iso = time => new Date(time || 0).toISOString();
 const vi = /[ăâđêôơưạảấầẩẫậắằẳẵặẹẻẽếềểễệỉịọỏốồổỗộớờởỡợụủứừửữựỳỵỷỹ]/iu;
 export const articleLanguage = a => /^(vi|en)/i.exec(a.language || a.lang || '')?.[1].toLowerCase() || (vi.test(storyText(a.title + ' ' + (a.content || ''))) ? 'vi' : 'en');
-const destinationsForSource = (category, region) => {
-    const normalizedCategory =
-        canonicalDestination(category);
-
-    const normalizedRegion =
-        region === 'vietnam'
-            ? 'vietnam'
-            : (
-                region
-                    ? 'global'
-                    : ''
-            );
-
-    if (normalizedCategory === 'tech') {
-        if (
-            normalizedRegion ===
-            'vietnam'
-        ) {
-            return [
-                'tech_vietnam'
-            ];
-        }
-
-        if (
-            normalizedRegion ===
-            'global'
-        ) {
-            return [
-                'tech_global'
-            ];
-        }
-
-        return [
-            'tech_vietnam',
-            'tech_global'
-        ];
-    }
-
-    if (
-        [
-            'news',
-            'finance'
-        ].includes(
-            normalizedCategory
-        )
-    ) {
-        if (normalizedRegion) {
-            return [
-                `${normalizedCategory}_${normalizedRegion}`
-            ];
-        }
-
-        return [
-            `${normalizedCategory}_vietnam`,
-            `${normalizedCategory}_global`
-        ];
-    }
-
-    return normalizedCategory
-        ? [normalizedCategory]
-        : [];
-};
-export function allowedDestinations(article, sources) {
-    // Source/feed configuration is the hard eligibility boundary.
-    // Language is metadata, not geography.
-    const configured = sources.filter(
-        source =>
-            source.enabled !== false &&
-            (
-                source.url === article.feedUrl ||
-                source.fallbackUrl === article.feedUrl
-            )
-    );
-    return [
-        ...new Set(
-            configured.flatMap(
-                source =>
-                    destinationsForSource(
-                        source.category,
-                        source.region
-                    )
-            )
-        )
-    ].filter(Boolean);
-}
 // Editorial scope is independent of publisher membership and writing language.
 export function feedRelevance(article, feed) {
     const editorial =
@@ -1000,6 +918,7 @@ export function createTopStoriesIndex({ db, config = {} } = {}) {
     return {
         settings,
         async rank(clusters, sources = [], now = Date.now(), timings = {}) {
+            clusters = await prepareRankingCandidates(db, clusters, sources);
             let phaseAt=performance.now();
             const mark=name=>{const t=performance.now();timings[name]=(timings[name]||0)+t-phaseAt;phaseAt=t;};
             states ||= await (loading ||= db.get('topStoriesState', { type: 'json' }).then(value => value || {}));

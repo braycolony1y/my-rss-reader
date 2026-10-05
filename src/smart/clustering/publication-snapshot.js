@@ -1,3 +1,4 @@
+import { survivingArticles, survivingGroups, survivingClusters } from '../prefilter/boundaries.js';
 import { retainStoryIds } from '../../articles/story-ranking.js';
 import { getArticleId, stableId } from '../articles/identity.js';
 import { detectArticleLanguage } from '../articles/language.js';
@@ -114,11 +115,13 @@ function buildPublicationClusterSnapshot({
   storyIdRetentionClusters,
   storyRelationships = []
 }) {
-  const rawGroups = integrateIncrementalReviews(
+  const rawGroups = survivingGroups(integrateIncrementalReviews(
     autoMergedClusters,
     reviewedClusters,
     reviewGroups
-  );
+  ));
+  candidates = survivingArticles(candidates);
+  existingClusters = survivingClusters(existingClusters, buildCluster);
 
   assertEveryCandidateAppearsExactlyOnce(
     candidates,

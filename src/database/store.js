@@ -1,3 +1,5 @@
+import { PERSONAL_STATE_KEY } from '../smart/feedback/store.js';
+import { FILTER_STATE_KEY } from '../smart/prefilter/policy.js';
 import { writeJsonSnapshot } from './json-writer.js';
 import { readFileSync, unlinkSync } from 'node:fs';
 import fs from 'fs/promises';
@@ -10,16 +12,16 @@ export function createDatabaseStore() {
 
     const SMART_DB_FILE = './smart-data.json';
     const SMART_STATE_FILE = './smart-state.json';
-    const SMART_STATE_KEYS = new Set(['storyBriefings', 'smartStatus', 'smartClusteringCounters', 'smartEventVerificationCache', 'smartEditorialAssessmentCache']);
+    const SMART_STATE_KEYS = new Set([FILTER_STATE_KEY, 'storyBriefings', 'smartStatus', 'smartClusteringCounters', 'smartEventVerificationCache', 'smartEditorialAssessmentCache']);
     let smartStateRevision = 0;
     let smartStateOverlay = {};
     const STATE_FILE = './database-state.json';
-    const STATE_KEYS = new Set(['readStates', 'savedStates', 'hiddenStates', 'boardStates', 'recentReadAt', 'userPreferences', 'cacheMembers', 'cacheIdentityLedger', 'smartAiProviderHealth', 'articleFetchStrategyStats', 'googleNewsUrlCache']);
+    const STATE_KEYS = new Set([PERSONAL_STATE_KEY, 'readStates', 'savedStates', 'hiddenStates', 'boardStates', 'recentReadAt', 'userPreferences', 'cacheMembers', 'cacheIdentityLedger', 'smartAiProviderHealth', 'articleFetchStrategyStats', 'googleNewsUrlCache']);
     let stateRevision = 0;
     let stateOverlay = {};
 
 
-    const SMART_KEYS = new Set(['smartClusters', 'smartRawArticles', 'smartCandidateLinks', 'smartCandidateSignature', 'smartAiConfig', 'smartClusterVersion', 'smartStatus', 'smartEmbeddingIdentity', 'smartVerificationFailures', 'smartClusteringInputs', 'smartClusteringFailedAttempt', 'smartClusteringAlgorithmVersion', 'smartClusterState', 'smartEventVerificationCache', 'smartEditorialAssessmentCache', 'smartClusteringCounters', 'smartDeferredReviewGroups', 'smartProgressivePublication', 'smartProgressiveClusterState', 'storyBriefings', 'topStoriesPublished']);
+    const SMART_KEYS = new Set([FILTER_STATE_KEY, 'smartClusters', 'smartRawArticles', 'smartCandidateLinks', 'smartCandidateSignature', 'smartAiConfig', 'smartClusterVersion', 'smartStatus', 'smartEmbeddingIdentity', 'smartVerificationFailures', 'smartClusteringInputs', 'smartClusteringFailedAttempt', 'smartClusteringAlgorithmVersion', 'smartClusterState', 'smartEventVerificationCache', 'smartEditorialAssessmentCache', 'smartClusteringCounters', 'smartDeferredReviewGroups', 'smartProgressivePublication', 'smartProgressiveClusterState', 'storyBriefings', 'topStoriesPublished']);
 
     const NON_PERSISTED_DB_KEYS = new Set(['smartEmbeddings']);
 

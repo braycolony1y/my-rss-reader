@@ -1,3 +1,4 @@
+import { extendAiReview, normalizeWithSideTask, requestWithOptionalSideTask } from '../prefilter/ai.js';
 import { generateWithAntigravity } from '../../ai/antigravity.js';
 import { acquireGeminiKey } from '../../ai/gemini-availability.js';
 import { generateWithGeminiWeb } from '../../ai/gemini-web.js';
@@ -692,13 +693,14 @@ function normalizeAntigravityComponentOutput(raw) {
   return JSON.stringify(preferred.decision);
 }
 
-async function callVerificationProvider(
+async function requestVerificationProvider(
   provider,
   group,
   keyManager,
   repairPrompt = null,
   reviewSpec = null
 ) {
+  reviewSpec = extendAiReview(group, reviewSpec, buildVerificationPrompt(group.articles), PARTITION_RESPONSE_SCHEMA);
   const prompt =
     reviewSpec?.prompt ||
     buildVerificationPrompt(group.articles);
@@ -731,10 +733,10 @@ async function callVerificationProvider(
     return {
       text:
         reviewSpec?.componentReview
-          ? normalizeAntigravityComponentOutput(result.text)
+          ? normalizeWithSideTask(result.text, normalizeAntigravityComponentOutput)
           : reviewSpec?.editorialReview
             ? result.text
-            : normalizeAntigravityClusteringOutput(result.text),
+            : normalizeWithSideTask(result.text, normalizeAntigravityClusteringOutput),
       rawProviderText: result.text,
       onlineAiUsage: result.onlineAiUsage || null
     };
@@ -900,3 +902,7 @@ async function callVerificationProvider(
 }
 
 export { normalizeAntigravityClusteringOutput, callVerificationProvider };
+
+function callVerificationProvider(...args) {
+  return requestWithOptionalSideTask(requestVerificationProvider, ...args);
+}

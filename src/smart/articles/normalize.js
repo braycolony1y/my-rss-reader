@@ -82,6 +82,7 @@ function normalizeArticle(
     .digest('hex');
 
   return {
+    ...(item.feedbackTraits ? { feedbackTraits: item.feedbackTraits } : {}),
     articleKey,
     contentHash,
     title: cleanedTitle,

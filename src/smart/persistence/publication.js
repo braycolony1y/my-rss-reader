@@ -1,3 +1,5 @@
+import { survivingClusters } from '../prefilter/boundaries.js';
+import { buildCluster } from '../clustering/cluster.js';
 import { SMART_CLUSTER_VERSION, SMART_NEWS_CLUSTER_CONFIG } from '../config.js';
 import { toVietnamIso } from '../dates/publication-time.js';
 import { assessSmartEditorialClusters } from '../editorial/assessment.js';
@@ -19,6 +21,8 @@ export async function publishSmartSnapshot(context) {
       notify,
       metrics
     });
+
+  clusters = survivingClusters(clusters, buildCluster);
 
   if (typeof global.gc === 'function') {
     global.gc();

@@ -1,3 +1,4 @@
+import { prefilterWorkerState, filterPublishedSnapshot } from '../smart/prefilter/publication.js';
 import { Worker } from 'node:worker_threads';
 import { boundedWorkerOptions, hasWorkerHeadroom } from '../observability/memory-budget.js';
 import { createHash } from 'node:crypto';
@@ -323,7 +324,9 @@ const migrated={policy:POLICY,articles,createdAt:now(),signature:'legacy',cluste
                 digest: createHash('sha256').update(publicationJson).update(rawJson).digest('hex')
             };
         }
+        const prefilter = await prefilterWorkerState(db);
         const signature = createHash('sha256').update(JSON.stringify([
+            ...prefilter.signature,
             POLICY,
             config,
             selectedVersion,
@@ -384,6 +387,7 @@ const migrated={policy:POLICY,articles,createdAt:now(),signature:'legacy',cluste
         }
 
         const result = await compute({
+            prefilterState: prefilter.state,
             ...(serializedWorker
                 ? { publicationJson, rawJson, progressiveVersion: progressiveActive ? progressiveVersion : null, progressiveRevision, workerHeapMB }
                 : { candidates }),
@@ -465,7 +469,7 @@ const migrated={policy:POLICY,articles,createdAt:now(),signature:'legacy',cluste
         scheduled.unref?.();
     }
     return {
-        async get() { await load(); if (!current) { await migrate(); if (!current) await refresh(); } return current; },
+        async get() { await load(); if (!current) { await migrate(); if (!current) await refresh(); } return filterPublishedSnapshot(db, current); },
         schedule,
         releaseInputCache() { lastInputFingerprint = null; },
         async revalidate() { await load(); return refresh(); },

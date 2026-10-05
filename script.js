@@ -18,6 +18,8 @@ function rssApp() {
         ReaderAiStatus.create,
         ReaderSmartSources.create,
         ReaderUiDiagnostics.create,
+        ReaderSmartFeedback.create,
+        ReaderFilterLog.create,
         ReaderBoardFolders.create,
         ReaderArticleOverlay.create,
         ReaderArticleExport.create,

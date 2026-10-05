@@ -1,3 +1,4 @@
+import { registerPersonalFilterRoutes } from './smart/feedback/routes.js';
 import { touchAntigravityBriefingFocus, clearAntigravityBriefingFocus } from './ai/antigravity.js';
 import { acquireOpenCliBrowserOriginLease, releaseOpenCliBrowserOriginLease } from './opencli-reader.js';
 import { authMiddleware } from './middleware/auth.js';
@@ -441,6 +442,8 @@ export async function createApplication({ isMainModule = false } = {}) {
         app: http.app,
         env: database.env
     });
+
+    registerPersonalFilterRoutes({ app: http.app, db: database.env.RSS_DATA, keyManager: geminiKeyManager });
 
     registerSmartRoutes({
         app: http.app,

@@ -7,7 +7,7 @@ export const READER_COMPONENT_PATHS = Object.fromEntries([
     'article/summary', 'modals/add-feed', 'modals/content-filter',
     'modals/ai-status', 'modals/smart-sources', 'modals/edit-source',
     'modals/logs', 'modals/boards', 'modals/article-debug',
-    'modals/ai-providers', 'modals/cache'
+    'modals/ai-providers', 'modals/cache', 'smart/feedback-button', 'smart/feedback-picker', 'modals/filter-log'
 ].map(name => [name, fileURLToPath(new URL(`../../public/components/${name}.html`, import.meta.url))]));
 
 // Composition happens before sending the document. No additional DOM nodes,

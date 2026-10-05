@@ -1,0 +1,44 @@
+<div x-show="logsTab === 'filtered'" class="monitor-filtered monitor-scroll">
+    <div class="monitor-filter-toolbar">
+        <div class="monitor-segment" aria-label="Filter origin">
+            <template x-for="origin in [{id:'all',label:'All'},{id:'user_preference',label:'User'},{id:'system_editorial',label:'System'}]" :key="origin.id">
+                <button type="button" :aria-pressed="filterLogOrigin === origin.id" @click="filterLogOrigin = origin.id; fetchFilterLog()" x-text="origin.label"></button>
+            </template>
+        </div>
+        <input type="search" aria-label="Search filtered articles" placeholder="Search articles, reasons or sections" x-model="filterLogSearch" @input.debounce.300ms="fetchFilterLog()">
+        <span x-text="filterLogTotal + ' decisions'"></span>
+    </div>
+    <p x-show="filterLogError" x-text="filterLogError" role="alert"></p>
+    <p x-show="filterLogBusy" role="status">Loading filter decisions…</p>
+    <details class="monitor-preferences">
+        <summary>Personal preferences <span x-text="'(' + filterRules.filter(r => r.active).length + ' active)' "></span></summary>
+        <p x-show="!filterRules.length">No confirmed preferences yet.</p>
+        <template x-for="rule in filterRules" :key="rule.id">
+            <div class="monitor-preference">
+                <div><strong x-text="rule.label"></strong><small x-text="rule.criteria.scope + ' · ' + rule.feedbackCount + ' confirmations · ' + (rule.active ? 'Active' : 'Disabled')"></small></div>
+                <button type="button" x-show="rule.active" @click="disableSmartRule(rule.id)">Disable filter</button>
+                <button type="button" @click="disableSmartRule(rule.id, true)">Delete</button>
+            </div>
+        </template>
+    </details>
+    <p x-show="!filterLogBusy && !filterLogRows.length">No filter decisions to show. Opening or canceling the picker does not create a log entry.</p>
+    <div class="monitor-filter-table">
+        <div class="monitor-filter-head"><span>Time</span><span>Article / source</span><span>Section</span><span>Origin</span><span>Reason / rule / stage</span><span>Action</span></div>
+        <template x-for="row in filterLogRows" :key="row.id">
+            <div class="monitor-filter-row" :class="{'is-reverted': !row.active}">
+                <time x-text="formatLogTime(row.timestamp)"></time>
+                <div><a :href="/^https?:\/\//.test(row.canonicalUrl || '') ? row.canonicalUrl : null" target="_blank" rel="noopener noreferrer" x-text="row.title"></a><small x-text="row.source"></small></div>
+                <span x-text="row.section"></span>
+                <span class="monitor-origin" :data-origin="row.origin" x-text="row.origin === 'user_preference' ? 'User' : 'System'"></span>
+                <div><strong x-text="row.humanReason"></strong><small x-text="row.pipelineStage || row.decisionSource"></small><small x-show="!row.active">Reverted / disabled</small>
+                    <details><summary>Why it matched</summary><pre x-text="JSON.stringify({articleId:row.articleId, clusterId:row.clusterId, reasonCode:row.reasonCode, rules:(row.userRuleIds || []).map(id => filterRuleLabel(id)), matchedTraits:row.matchedTraits, confidence:row.matchConfidence, decisionSource:row.decisionSource, version:row.filterVersion}, null, 2)"></pre></details>
+                </div>
+                <div class="monitor-row-actions" x-show="row.origin === 'user_preference'">
+                    <template x-for="id in row.userRuleIds || []" :key="id"><button type="button" x-show="filterRules.some(rule => rule.id === id && rule.active)" @click="disableSmartRule(id)">Disable filter</button></template>
+                    <button type="button" x-show="row.feedbackId && row.active" @click="undoSmartFeedback(row.feedbackId)">Undo feedback</button>
+                </div>
+            </div>
+        </template>
+    </div>
+    <button type="button" x-show="filterLogRows.length < filterLogTotal" :disabled="filterLogBusy" @click="fetchFilterLog(true)">Load more decisions</button>
+</div>

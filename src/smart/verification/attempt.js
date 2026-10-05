@@ -1,3 +1,4 @@
+import { acceptAiSideTask, primaryDecision } from '../prefilter/ai.js';
 import { requestClusteringDecision } from '../../ai/clustering-json.js';
 import { getArticleId } from '../articles/identity.js';
 import { detectEventConflicts } from '../clustering/event-evidence.js';
@@ -57,7 +58,7 @@ async function attemptProviderVerification(
     try {
       parsed = await requestClusteringDecision({
         request: repairPrompt => callVerificationProvider(provider, group, keyManager, repairPrompt),
-        validate: value => validatePartitionResult(value, group.articles),
+        validate: value => validatePartitionResult(primaryDecision(value), group.articles),
         schema: PARTITION_RESPONSE_SCHEMA,
         onEvent: (event, error) => {
           group.diagnostics ||= {};
@@ -107,7 +108,7 @@ async function attemptProviderVerification(
 
       const validation =
         validatePartitionResult(
-          parsed,
+          primaryDecision(parsed),
           group.articles
         );
 
@@ -593,6 +594,7 @@ async function attemptProviderVerification(
         );
       }
 
+      await acceptAiSideTask(db, group, parsed, 'event_verification');
       await recordProviderSuccess(
         db,
         provider

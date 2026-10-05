@@ -1,3 +1,5 @@
+import { personalSignature } from '../smart/feedback/store.js';
+import { filterPersonalView } from '../smart/feedback/pipeline.js';
 import { indexStoriesById } from './story-index.js';
 import { smartDestination } from '../utils/smart-destinations.js';
 import { createTopStoriesSnapshots } from './top-stories-snapshot.js';
@@ -1179,7 +1181,9 @@ export function createArticlePresentation({
         const blockedKeywordEntries = normalizeBlockedKeywordEntries(blockedKeywords || []);
         const matchesSearch = value => String(value || '').toLowerCase().includes(searchQuery);
 
+        const personalFilterSignature = await personalSignature(env.RSS_DATA);
         const filterSignature = JSON.stringify([
+            personalFilterSignature,
             filterValue,
             smartRegionKey,
             hideRead,
@@ -1251,6 +1255,7 @@ export function createArticlePresentation({
             }
         }
         const viewSignature = JSON.stringify([
+            personalFilterSignature,
             filterValue,
             smartTabMode,
             filterValue === 'tech' ? smartRegion : null,
@@ -1276,6 +1281,7 @@ export function createArticlePresentation({
         //
         // Top remains unchanged: its ranking is already precomputed in the
         // published Top snapshot.
+        filteredArticles = await filterPersonalView(env.RSS_DATA, filteredArticles, filterValue, 'pre_classic_ranking');
         const ranked =
             !isTop && reusableView
                 ? priorView.articles
@@ -1323,7 +1329,7 @@ export function createArticlePresentation({
         mark("filtering");
 
         let smartViewToken = req.query.smartView;
-        filteredArticles = reusableView ? priorView.articles : ranked;
+        filteredArticles = await filterPersonalView(env.RSS_DATA, reusableView ? priorView.articles : ranked, filterValue, 'cached_smart_view');
         if (!reusableView) {
             smartViewToken = `${Date.now()}-${++storyViewSequence}`;
             storyViews.set(smartViewToken, {

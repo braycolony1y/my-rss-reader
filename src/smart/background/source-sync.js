@@ -1,3 +1,4 @@
+import { sourceWorkView } from '../prefilter/source-work.js';
 import { hasWorkerHeadroom } from '../../observability/memory-budget.js';
 import { beginSmartRefresh, endSmartRefresh, isSmartRefreshActive } from '../refresh/coordination.js';
 import { sleep } from '../refresh/scheduling.js';
@@ -71,6 +72,8 @@ async function startSmartSyncLoop(
         continue;
       }
 
+      const sourceWork = await sourceWorkView(db, results, configuredSources);
+
       if (
         typeof helpers
           .resolveSmartArticleDestinations ===
@@ -78,7 +81,7 @@ async function startSmartSyncLoop(
       ) {
         await helpers
           .resolveSmartArticleDestinations(
-            results
+            sourceWork
           );
       }
 
@@ -91,7 +94,7 @@ async function startSmartSyncLoop(
 
       await helpers.observeCacheArticles?.(articles);
       void prefetchOpenCliOnlySmartArticles(
-        results,
+        sourceWork,
         helpers
       ).catch(error => console.warn('[SMART PREFETCH]', error.message));
 

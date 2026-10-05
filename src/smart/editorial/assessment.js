@@ -1,3 +1,6 @@
+import { acceptAiSideTask } from '../prefilter/ai.js';
+import { survivingClusters } from '../prefilter/boundaries.js';
+import { buildCluster } from '../clustering/cluster.js';
 import { getGeminiWebCooldownState } from '../../ai/gemini-web.js';
 import { runGlobalAiTask } from '../../ai/global-ai-scheduler.js';
 import { prepareSmartEditorialPlan, buildSmartEditorialPrompt, SMART_EDITORIAL_RESPONSE_SCHEMA, parseSmartEditorialResponse, SMART_EDITORIAL_POLICY_VERSION, applySmartEditorialAssessment } from '../../ai/smart-editorial.js';
@@ -16,6 +19,7 @@ async function assessSmartEditorialClusters({
   notify,
   metrics
 }) {
+  clusters = survivingClusters(clusters, buildCluster);
   let cache =
     {};
 
@@ -172,10 +176,9 @@ async function assessSmartEditorialClusters({
             )
         );
 
-      return parseSmartEditorialResponse(
-        raw,
-        providerBatch
-      );
+      const rows = parseSmartEditorialResponse(raw, providerBatch);
+      await acceptAiSideTask(db, group, raw, 'editorial_assessment');
+      return rows;
     };
 
   for (

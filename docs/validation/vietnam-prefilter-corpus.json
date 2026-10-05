@@ -1,0 +1,2483 @@
+{
+  "generatedAt": "2026-10-05T00:22:19.332Z",
+  "mode": "Offline metadata-only; no fetching and no AI requests",
+  "results": [
+    {
+      "section": "tech_vietnam",
+      "counts": {
+        "total": 83,
+        "kept": 56,
+        "excluded": 27,
+        "reused": 0,
+        "deterministicExclusions": 27,
+        "existingAiExclusions": 0,
+        "ambiguousKeeps": 27,
+        "excludedByReason": {
+          "TECH_VN_EVENT_OR_EXHIBITION": 5,
+          "TECH_VN_AWARD_OR_CONTEST": 4,
+          "TECH_VN_GENERIC_TARGET_OR_AMBITION": 2,
+          "TECH_VN_SURVEY_OR_ADOPTION_STAT": 2,
+          "TECH_VN_MINOR_LOCAL_DIGITALIZATION": 2,
+          "TECH_VN_RANKING_OR_INDEX": 3,
+          "TECH_VN_MINOR_PILOT_OR_DEMO": 1,
+          "TECH_VN_CORPORATE_TECH_PR": 2,
+          "TECH_VN_MINOR_TRAINING_OR_RESEARCH": 3,
+          "TECH_VN_ORDINARY_PRODUCT_OR_FEATURE": 3
+        }
+      },
+      "rows": [
+        {
+          "title": "Bộ Chính trị: Đến năm 2030 đưa vào vận hành 3 khu thử nghiệm UAV cấp quốc gia - VOV.VN",
+          "url": "https://vov.vn/chinh-tri/bo-chinh-tri-den-nam-2030-dua-vao-van-hanh-3-khu-thu-nghiem-uav-cap-quoc-gia-post1338383.vov",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "structural_capacity, binding_or_funded_action"
+        },
+        {
+          "title": "VNeID sắp tích hợp thêm loạt giấy tờ xe",
+          "url": "https://tech.zingnews.vn/vneid-sap-tich-hop-them-loat-giay-to-xe-post1687418.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "major_failure"
+        },
+        {
+          "title": "Gian hàng nổi bật tại triển lãm Đổi mới sáng tạo 2026",
+          "url": "https://vnexpress.net/gian-hang-noi-bat-tai-trien-lam-doi-moi-sang-tao-2026-5128239.html",
+          "decision": "EXCLUDE",
+          "source": "deterministic",
+          "reason": "TECH_VN_EVENT_OR_EXHIBITION"
+        },
+        {
+          "title": "Phó thủ tướng Hồ Quốc Dũng: Chuyển từ 'có hoạt động' sang 'có kết quả' đổi mới sáng tạo",
+          "url": "https://vnexpress.net/khai-mac-ngay-hoi-doi-moi-sang-tao-quoc-gia-2026-5128002-tong-thuat.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Doanh nghiệp bán dẫn tại TP.HCM có thể được hỗ trợ tới 7 tỷ đồng",
+          "url": "https://tech.zingnews.vn/doanh-nghiep-ban-dan-tai-tphcm-co-the-duoc-ho-tro-toi-7-ty-dong-post1687292.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "meaningful_scale"
+        },
+        {
+          "title": "Taxi bay Trung Quốc sắp thử ở Hà Nội: Từng bán online giá hơn 9,2 tỷ đồng/chiếc, vé 1,16 triệu đồng, gập lại gọn như ô tô",
+          "url": "https://genk.vn/taxi-bay-trung-quoc-sap-thu-o-ha-noi-tung-ban-online-gia-hon-92-ty-dong-chiec-ve-116-trieu-dong-gap-lai-gon-nhu-o-to-16526100409553707.chn",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "major_failure, meaningful_scale"
+        },
+        {
+          "title": "Nền tảng quang học siêu phổ thắng giải nhất Sáng kiến Khoa học 2026",
+          "url": "https://vnexpress.net/nen-tang-quang-hoc-sieu-pho-thang-giai-nhat-sang-kien-khoa-hoc-2026-5128167.html",
+          "decision": "EXCLUDE",
+          "source": "deterministic",
+          "reason": "TECH_VN_AWARD_OR_CONTEST"
+        },
+        {
+          "title": "Việt Nam có thể trở thành trung tâm AI của ASEAN vào năm 2030",
+          "url": "https://thanhnien.vn/viet-nam-co-the-tro-thanh-trung-tam-ai-cua-asean-vao-nam-2030-185261004123315838.htm",
+          "decision": "EXCLUDE",
+          "source": "deterministic",
+          "reason": "TECH_VN_GENERIC_TARGET_OR_AMBITION"
+        },
+        {
+          "title": "Better Choice Awards 2026 vinh danh FPT.AI: Khi năng lực AI Việt được chứng minh bằng những bài toán thực tế",
+          "url": "https://genk.vn/better-choice-awards-2026-vinh-danh-fptai-khi-nang-luc-ai-viet-duoc-chung-minh-bang-nhung-bai-toan-thuc-te-165261004203231491.chn",
+          "decision": "EXCLUDE",
+          "source": "deterministic",
+          "reason": "TECH_VN_AWARD_OR_CONTEST"
+        },
+        {
+          "title": "95% độc giả VnExpress từng sử dụng AI",
+          "url": "https://vnexpress.net/95-doc-gia-vnexpress-tung-su-dung-ai-5127696.html",
+          "decision": "EXCLUDE",
+          "source": "deterministic",
+          "reason": "TECH_VN_SURVEY_OR_ADOPTION_STAT"
+        },
+        {
+          "title": "Cà Mau kết nối dữ liệu, hướng tới giải quyết hồ sơ tốt hơn cho người dân",
+          "url": "https://thanhnien.vn/ca-mau-ket-noi-du-lieu-huong-toi-giai-quyet-ho-so-tot-hon-cho-nguoi-dan-185261003102405294.htm",
+          "decision": "EXCLUDE",
+          "source": "deterministic",
+          "reason": "TECH_VN_MINOR_LOCAL_DIGITALIZATION"
+        },
+        {
+          "title": "Nghị quyết 57 đưa công nghệ về vùng cao Sơn La: Gỡ điểm nghẽn để công nghệ vươn xa - VOV.VN",
+          "url": "http://vov.vn/cong-nghe/chuyen-doi-so/nghi-quyet-57-dua-cong-nghe-ve-vung-cao-son-la-go-diem-nghen-de-cong-nghe-vuon-xa-post1337576.vov",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "public_consequence"
+        },
+        {
+          "title": "10.000 drone đang sử dụng tại Đồng bằng sông Cửu Long",
+          "url": "https://vnexpress.net/10-000-drone-dang-su-dung-tai-dong-bang-song-cuu-long-5127752.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Những thay đổi cần biết trên ứng dụng VNeID",
+          "url": "https://thanhnien.vn/nhung-thay-doi-can-biet-tren-ung-dung-vneid-185260928235453085.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Doanh nghiệp khai thác 40 triệu tấn \"vàng đen\" mỗi năm bắt tay Viettel, muốn thử nghiệm đưa robot vào đào lò - CafeF",
+          "url": "https://cafef.vn/doanh-nghiep-khai-thac-40-trieu-tan-vang-den-moi-nam-bat-tay-viettel-muon-thu-nghiem-dua-robot-vao-dao-lo-188261002103116259.chn",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "structural_capacity"
+        },
+        {
+          "title": "Bộ trưởng Vũ Hải Quân: 'Khởi nguồn của những thay đổi là tư duy đổi mới'",
+          "url": "https://vnexpress.net/bo-truong-vu-hai-quan-khoi-nguon-cua-nhung-thay-doi-la-tu-duy-doi-moi-5128202.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Phát triển khu vực gần 1.000 ha tại Hòa Lạc để thử nghiệm, thí điểm UAV - CafeF",
+          "url": "https://cafef.vn/phat-trien-khu-vuc-gan-1000-ha-tai-hoa-lac-de-thu-nghiem-thi-diem-uav-188261002151850927.chn",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "meaningful_scale"
+        },
+        {
+          "title": "Ba cách số hóa giáo dục để giáo viên bớt 'hầu hạ công nghệ' - Báo Tuổi Trẻ",
+          "url": "https://tuoitre.vn/ba-cach-so-hoa-giao-duc-de-giao-vien-bot-hau-ha-cong-nghe-100261003142220071.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "public_consequence"
+        },
+        {
+          "title": "Khai mạc VIMS 2026: Khách đến từ trước giờ mở cửa, khu trưng bày và khu lái thử kín người tham quan",
+          "url": "https://genk.vn/khai-mac-vims-2026-khach-den-tu-truoc-gio-mo-cua-khu-trung-bay-va-khu-lai-thu-kin-nguoi-tham-quan-165261003161805451.chn",
+          "decision": "EXCLUDE",
+          "source": "deterministic",
+          "reason": "TECH_VN_EVENT_OR_EXHIBITION"
+        },
+        {
+          "title": "Việt Nam lần đầu chế tạo thiết bị điện 500 kV thay thế hàng nhập khẩu - CafeF",
+          "url": "https://cafef.vn/viet-nam-lan-dau-che-tao-thiet-bi-dien-500-kv-thay-the-hang-nhap-khau-188260928140915057.chn",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "structural_capacity, meaningful_scale"
+        },
+        {
+          "title": "Kaspersky hợp tác với Cục An ninh mạng",
+          "url": "https://dantri.com.vn/cong-nghe/kaspersky-hop-tac-voi-cuc-an-ninh-mang-20260929145424036.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "public_consequence"
+        },
+        {
+          "title": "Hà Nội tiếp tục dẫn đầu cả nước về đổi mới sáng tạo",
+          "url": "https://vnexpress.net/ha-noi-tiep-tuc-dan-dau-ca-nuoc-ve-doi-moi-sang-tao-5128158.html",
+          "decision": "EXCLUDE",
+          "source": "deterministic",
+          "reason": "TECH_VN_RANKING_OR_INDEX"
+        },
+        {
+          "title": "95% doanh nghiệp Việt dùng AI nhưng chỉ 15% ghi nhận tăng doanh thu",
+          "url": "https://dantri.com.vn/cong-nghe/95-doanh-nghiep-viet-dung-ai-nhung-chi-15-ghi-nhan-tang-doanh-thu-20261001145029417.htm",
+          "decision": "EXCLUDE",
+          "source": "deterministic",
+          "reason": "TECH_VN_SURVEY_OR_ADOPTION_STAT"
+        },
+        {
+          "title": "Loạt kết quả từ hợp tác công nghệ Việt Nam - Australia",
+          "url": "https://vnexpress.net/loat-ket-qua-tu-hop-tac-cong-nghe-viet-nam-australia-5127271.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Vận hành doanh nghiệp với “lực lượng nhân sự AI” - Hơn 10 nghìn AI Agents của FPT đang làm việc như thế nào?",
+          "url": "https://genk.vn/van-hanh-doanh-nghiep-voi-luc-luong-nhan-su-ai-hon-10-nghin-ai-agents-cua-fpt-dang-lam-viec-nhu-the-nao-165261002223912494.chn",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "binding_or_funded_action"
+        },
+        {
+          "title": "Vượt Mỹ, Hàn Quốc và Ấn Độ, Việt Nam thành công đứng top 2 thế giới ở một mặt hàng quan trọng, thu về hơn 46 tỷ USD - SOHA",
+          "url": "https://soha.vn/vuot-my-han-quoc-va-an-do-viet-nam-thanh-cong-dung-top-2-the-gioi-o-mot-mat-hang-quan-trong-thu-ve-hon-46-ty-usd-198261002063708151.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "meaningful_scale"
+        },
+        {
+          "title": "Cục trưởng Điện ảnh: Phim ngắn AI không thể lấy cớ 'clip mạng' để né luật",
+          "url": "https://genk.vn/cuc-truong-dien-anh-phim-ngan-ai-khong-the-lay-co-clip-mang-de-ne-luat-165261001081444699.chn",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Từ hôm nay, những trường hợp nào có thể bị khóa tài khoản VNeID?",
+          "url": "https://dantri.com.vn/cong-nghe/tu-hom-nay-nhung-truong-hop-nao-co-the-bi-khoa-tai-khoan-vneid-20260928111213191.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "public_consequence"
+        },
+        {
+          "title": "Xây dựng nền tảng dữ liệu giao thông quốc gia, quản lý giao thông trên toàn quốc - VOV.VN",
+          "url": "http://vov.vn/xa-hoi/xay-dung-nen-tang-du-lieu-giao-thong-quoc-gia-quan-ly-giao-thong-tren-toan-quoc-post1337388.vov",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "structural_capacity"
+        },
+        {
+          "title": "Thúc đẩy hệ sinh thái nghiên cứu chung Việt Nam - Hàn Quốc",
+          "url": "https://vnexpress.net/thuc-day-he-sinh-thai-nghien-cuu-chung-viet-nam-han-quoc-5126990.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Chuỗi hoạt động hưởng ứng Ngày hội Đổi mới sáng tạo quốc gia",
+          "url": "https://vnexpress.net/chuoi-hoat-dong-huong-ung-ngay-hoi-doi-moi-sang-tao-quoc-gia-5125856.html",
+          "decision": "EXCLUDE",
+          "source": "deterministic",
+          "reason": "TECH_VN_EVENT_OR_EXHIBITION"
+        },
+        {
+          "title": "Galaxy Z Fold8, robot đấu cờ và loạt công nghệ lạ hút khách tại Ngày hội Đổi mới sáng tạo Quốc gia 2026",
+          "url": "https://genk.vn/galaxy-z-fold8-robot-dau-co-va-loat-cong-nghe-la-hut-khach-tai-ngay-hoi-doi-moi-sang-tao-quoc-gia-2026-165261004123921134.chn",
+          "decision": "EXCLUDE",
+          "source": "deterministic",
+          "reason": "TECH_VN_EVENT_OR_EXHIBITION"
+        },
+        {
+          "title": "'Việt Nam thuộc nhóm thăng hạng Chỉ số GII nhanh nhất'",
+          "url": "https://vnexpress.net/viet-nam-thuoc-nhom-thang-hang-chi-so-gii-nhanh-nhat-5126785.html",
+          "decision": "EXCLUDE",
+          "source": "deterministic",
+          "reason": "TECH_VN_RANKING_OR_INDEX"
+        },
+        {
+          "title": "Khởi công dự án KHCN cấp Quốc gia về làm chủ công nghệ chế tạo cuộn kháng bù ngang điện áp 500kV - VOV.VN",
+          "url": "https://vov1.vov.vn/kinh-te/tin-kinh-te/khoi-cong-du-an-khcn-cap-quoc-gia-ve-lam-chu-cong-nghe-che-tao-cuon-khang-bu-ngang-dien-ap-500kv-136233.vov",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "structural_capacity, binding_or_funded_action"
+        },
+        {
+          "title": "Đến năm 2045, 100% xã vùng dân tộc thiểu số được cung cấp thông tin số phù hợp - VOV4",
+          "url": "https://vov4.vov.vn/dan-toc-va-phat-trien/den-nam-2045-100-xa-vung-dan-toc-thieu-so-duoc-cung-cap-thong-tin-so-phu-hop-530068.vov4",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Bắc Ninh lọt \"tầm ngắm\" của \"gã khổng lồ\" công nghệ đến từ Trung Quốc, hé lộ cú rót vốn khổng lồ - SOHA",
+          "url": "https://soha.vn/bac-ninh-lot-tam-ngam-cua-ga-khong-lo-cong-nghe-den-tu-trung-quoc-he-lo-cu-rot-von-khong-lo-198260930104637887.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "binding_or_funded_action"
+        },
+        {
+          "title": "15 công trình thắng giải Sáng kiến khoa học 2026",
+          "url": "https://vnexpress.net/15-cong-trinh-thang-giai-sang-kien-khoa-hoc-2026-5128048.html",
+          "decision": "EXCLUDE",
+          "source": "deterministic",
+          "reason": "TECH_VN_AWARD_OR_CONTEST"
+        },
+        {
+          "title": "Hà Nội đề xuất thử nghiệm taxi bay - vtcnews.vn",
+          "url": "https://vtcnews.vn/ha-noi-de-xuat-thu-nghiem-taxi-bay-ar1042266.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Việt Nam đưa đổi mới sáng tạo làm động lực phát triển",
+          "url": "https://vnexpress.net/viet-nam-dua-doi-moi-sang-tao-lam-dong-luc-phat-trien-5125362.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "15 giải pháp AI bước vào cuộc đua giành giải thưởng một triệu USD",
+          "url": "https://vnexpress.net/15-giai-phap-ai-buoc-vao-cuoc-dua-gianh-giai-thuong-mot-trieu-usd-5125184.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "meaningful_scale"
+        },
+        {
+          "title": "'Robot hình người ở Việt Nam chủ yếu dùng để trình diễn'",
+          "url": "https://vnexpress.net/robot-hinh-nguoi-o-viet-nam-chu-yeu-dung-de-trinh-dien-5127833.html",
+          "decision": "EXCLUDE",
+          "source": "deterministic",
+          "reason": "TECH_VN_MINOR_PILOT_OR_DEMO"
+        },
+        {
+          "title": "HTV hợp tác cùng hãng phim TFS và CapCut đưa tiểu thuyết viễn tưởng lên màn ảnh bằng AI",
+          "url": "https://genk.vn/htv-hop-tac-cung-hang-phim-tfs-va-capcut-dua-tieu-thuyet-vien-tuong-len-man-anh-bang-ai-165260929210332093.chn",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Một ngành nghề mới liên quan đến robot vừa được Bộ GD&ĐT đưa vào danh mục đào tạo: Học gì, làm việc ở đâu? - CafeF",
+          "url": "https://cafef.vn/mot-nganh-nghe-moi-lien-quan-den-robot-vua-duoc-bo-gddt-dua-vao-danh-muc-dao-tao-hoc-gi-lam-viec-o-dau-188260930082552644.chn",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Thứ trưởng Trần Trung Tính đề xuất 4 giải pháp phát triển kinh tế biển",
+          "url": "https://vnexpress.net/thu-truong-tran-trung-tinh-de-xuat-4-giai-phap-phat-trien-kinh-te-bien-5127424.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Phó Thủ tướng Hồ Quốc Dũng: Gỡ vướng cơ chế đầu tư, vận hành phòng thí nghiệm - VOV.VN",
+          "url": "https://vov.vn/chinh-tri/pho-thu-tuong-ho-quoc-dung-go-vuong-co-che-dau-tu-van-hanh-phong-thi-nghiem-post1336955.vov",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "structural_capacity, binding_or_funded_action"
+        },
+        {
+          "title": "Bên trong xưởng phim AI: 11 nhân sự, mỗi ngày sản xuất 100 tập phim",
+          "url": "https://dantri.com.vn/cong-nghe/ben-trong-xuong-phim-ai-11-nhan-su-moi-ngay-san-xuat-100-tap-phim-20261001183724548.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Website doanh nghiệp tại Việt Nam 'sập' hàng loạt",
+          "url": "https://tech.zingnews.vn/website-doanh-nghiep-tai-viet-nam-sap-hang-loat-post1686362.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "major_failure, meaningful_scale"
+        },
+        {
+          "title": "Việt Nam đề xuất ba ưu tiên hợp tác sở hữu trí tuệ với Hàn Quốc",
+          "url": "https://dantri.com.vn/khoa-hoc/viet-nam-de-xuat-ba-uu-tien-hop-tac-so-huu-tri-tue-voi-han-quoc-20260930142205790.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "The Hunter Group ra mắt Nolan, ứng dụng AI vào sản xuất nội dung",
+          "url": "https://tech.zingnews.vn/the-hunter-group-ra-mat-nolan-ung-dung-ai-vao-san-xuat-noi-dung-post1687167.html",
+          "decision": "EXCLUDE",
+          "source": "deterministic",
+          "reason": "TECH_VN_CORPORATE_TECH_PR"
+        },
+        {
+          "title": "Chuyên gia bán dẫn: 'Việt Nam cần làm thật, không đầu tư dàn trải'",
+          "url": "https://vnexpress.net/chuyen-gia-ban-dan-viet-nam-can-lam-that-khong-dau-tu-dan-trai-5126770.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "binding_or_funded_action"
+        },
+        {
+          "title": "Shopee, TikTok nắm gần 98% thị trường, hãng giao nhận cạnh tranh thế nào để được khách hàng chọn?",
+          "url": "https://genk.vn/shopee-tiktok-nam-gan-98-thi-truong-hang-giao-nhan-canh-tranh-the-nao-de-duoc-khach-hang-chon-165260929092432318.chn",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Đưa hệ thống thông tin cơ sở trở thành hạ tầng số chiến lược trọng yếu quốc gia - VOV.VN",
+          "url": "http://vov.vn/chinh-tri/dua-he-thong-thong-tin-co-so-tro-thanh-ha-tang-so-chien-luoc-trong-yeu-quoc-gia-post1336995.vov",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "structural_capacity"
+        },
+        {
+          "title": "Công nghệ nhuộm mô phát sáng giúp loại bỏ u não tối đa",
+          "url": "https://vnexpress.net/cong-nghe-nhuom-mo-phat-sang-giup-loai-bo-u-nao-toi-da-5125870.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Tập đoàn Mỹ muốn cùng TP HCM đưa công nghệ Việt ra thế giới",
+          "url": "https://vnexpress.net/tap-doan-my-muon-cung-tp-hcm-dua-cong-nghe-viet-ra-the-gioi-5126798.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Gelex Electric muốn đổi tên, mở rộng sang lĩnh vực công nghiệp và công nghệ - CafeF",
+          "url": "https://cafef.vn/gelex-electric-muon-doi-ten-mo-rong-sang-linh-vuc-cong-nghiep-va-cong-nghe-188261004095850933.chn",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Trường học 'ngợp' vì quá nhiều phần mềm, chuyên gia đề xuất gì? - Báo Tuổi Trẻ",
+          "url": "https://tuoitre.vn/qua-nhieu-phan-mem-vao-truong-hieu-truong-de-nghi-so-gioi-thieu-it-thoi-100260929140404944.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Độc đáo Robot tuần tra, an ninh giám sát trong triển lãm của C06, Bộ Công an - VOV.VN",
+          "url": "https://vov.vn/phap-luat/doc-dao-robot-tuan-tra-an-ninh-giam-sat-trong-trien-lam-cua-c06-bo-cong-an-post1337421.vov",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "public_consequence"
+        },
+        {
+          "title": "TikTok xác nhận gỡ bỏ video AI 18+ sau phản ánh của Dân trí",
+          "url": "https://dantri.com.vn/cong-nghe/tiktok-xac-nhan-go-bo-video-ai-18-sau-phan-anh-cua-dan-tri-20260930145038563.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Đổi điện thoại mới: Vì sao cần phải xác thực khuôn mặt gấp trong 2 giờ nếu không muốn bị khóa SIM? - SOHA",
+          "url": "https://soha.vn/doi-dien-thoai-moi-vi-sao-can-phai-xac-thuc-khuon-mat-gap-trong-2-gio-neu-khong-muon-bi-khoa-sim-198260929092415394.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "public_consequence"
+        },
+        {
+          "title": "Cà Mau đưa chuyển đổi số đến gần người dân",
+          "url": "https://thanhnien.vn/ca-mau-dua-chuyen-doi-so-den-gan-nguoi-dan-185260930164147822.htm",
+          "decision": "EXCLUDE",
+          "source": "deterministic",
+          "reason": "TECH_VN_MINOR_LOCAL_DIGITALIZATION"
+        },
+        {
+          "title": "Người Việt mê đồ ship, cả nước có 5 tỷ bưu gửi trong 1 năm",
+          "url": "https://dantri.com.vn/khoa-hoc/nguoi-viet-me-do-ship-ca-nuoc-co-5-ty-buu-gui-trong-1-nam-20260930125406899.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "InnovaConnect kết nối nhà khoa học Việt với chuyên gia quốc tế",
+          "url": "https://vnexpress.net/innovaconnect-ket-noi-nha-khoa-hoc-viet-voi-chuyen-gia-quoc-te-5127548.html",
+          "decision": "EXCLUDE",
+          "source": "deterministic",
+          "reason": "TECH_VN_MINOR_TRAINING_OR_RESEARCH"
+        },
+        {
+          "title": "Việt Nam nghiên cứu tự sản xuất thiết bị lưới 500 kV",
+          "url": "https://vnexpress.net/viet-nam-nghien-cuu-tu-san-xuat-thiet-bi-luoi-500-kv-5125725.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "structural_capacity"
+        },
+        {
+          "title": "'Doanh nghiệp cần chuyển từ sử dụng sang làm chủ, tạo ra công nghệ'",
+          "url": "https://vnexpress.net/doanh-nghiep-can-chuyen-tu-su-dung-sang-lam-chu-tao-ra-cong-nghe-5126695.html",
+          "decision": "EXCLUDE",
+          "source": "deterministic",
+          "reason": "TECH_VN_GENERIC_TARGET_OR_AMBITION"
+        },
+        {
+          "title": "VssID có thêm một thay đổi người tham gia BHXH nên biết",
+          "url": "https://tech.zingnews.vn/vssid-co-them-mot-thay-doi-nguoi-tham-gia-bhxh-nen-biet-post1685887.html",
+          "decision": "EXCLUDE",
+          "source": "deterministic",
+          "reason": "TECH_VN_ORDINARY_PRODUCT_OR_FEATURE"
+        },
+        {
+          "title": "Đắk Lắk số hóa dữ liệu, chuyển đổi số giáo dục - VOV.VN",
+          "url": "https://vov.vn/xa-hoi/giao-duc/dak-lak-so-hoa-du-lieu-chuyen-doi-so-giao-duc-post1337234.vov",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "public_consequence"
+        },
+        {
+          "title": "Lý do Việt Nam có Ngày hội Đổi mới sáng tạo quốc gia",
+          "url": "https://vnexpress.net/ly-do-viet-nam-co-ngay-hoi-doi-moi-sang-tao-quoc-gia-5127125.html",
+          "decision": "EXCLUDE",
+          "source": "deterministic",
+          "reason": "TECH_VN_EVENT_OR_EXHIBITION"
+        },
+        {
+          "title": "\"Mang chuông đi đánh xứ người\" - Sức mạnh của sáng chế và vị thế công nghệ Việt trên trường quốc tế",
+          "url": "https://genk.vn/mang-chuong-di-danh-xu-nguoi-suc-manh-cua-sang-che-va-vi-the-cong-nghe-viet-tren-truong-quoc-te-165261001103931522.chn",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Từ điều hòa, tủ lạnh đến đường sắt, Việt Nam bắt đầu siết quản lý môi chất lạnh - VOV.VN",
+          "url": "http://vov.vn/xa-hoi/tu-dieu-hoa-tu-lanh-den-duong-sat-viet-nam-bat-dau-siet-quan-ly-moi-chat-lanh-post1337007.vov",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "public_consequence"
+        },
+        {
+          "title": "Chuẩn bị hạ tầng Cloud cho giai đoạn cao điểm",
+          "url": "https://vnexpress.net/chuan-bi-ha-tang-cloud-cho-giai-doan-cao-diem-5126176.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "‏Giải pháp container linh hoạt hơn cho ứng dụng số đến từ VNPT Cloud‏",
+          "url": "https://genk.vn/giai-phap-container-linh-hoat-hon-cho-ung-dung-so-den-tu-vnpt-cloud-165260928114845709.chn",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "10 cuốn sách khoa học hay được đề cử giải thưởng năm 2026",
+          "url": "https://vnexpress.net/10-cuon-sach-khoa-hoc-hay-duoc-de-cu-giai-thuong-nam-2026-5126577.html",
+          "decision": "EXCLUDE",
+          "source": "deterministic",
+          "reason": "TECH_VN_AWARD_OR_CONTEST"
+        },
+        {
+          "title": "Việt Nam muốn biến không gian tầm thấp thành ngành kinh tế mới",
+          "url": "https://tech.zingnews.vn/viet-nam-muon-bien-khong-gian-tam-thap-thanh-nganh-kinh-te-moi-post1687142.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "structural_capacity"
+        },
+        {
+          "title": "Rủi ro khi mua bán tiền số trên 'chợ đen'",
+          "url": "https://thanhnien.vn/rui-ro-khi-mua-ban-tien-so-tren-cho-den-185261001093643017.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Chi tiêu y tế Việt Nam dự báo đạt 34,1 tỉ USD: Bài toán ứng dụng công nghệ và cơ hội kết nối - Báo Tuổi Trẻ",
+          "url": "https://tuoitre.vn/chi-tieu-y-te-viet-nam-du-bao-dat-341-ti-usd-bai-toan-ung-dung-cong-nghe-va-co-hoi-ket-noi-100261002193612583.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "public_consequence, meaningful_scale"
+        },
+        {
+          "title": "Robot hút bụi giá rẻ không còn được người Việt ưa chuộng",
+          "url": "https://dantri.com.vn/cong-nghe/robot-hut-bui-gia-re-khong-con-duoc-nguoi-viet-ua-chuong-20260928145520703.htm",
+          "decision": "EXCLUDE",
+          "source": "deterministic",
+          "reason": "TECH_VN_ORDINARY_PRODUCT_OR_FEATURE"
+        },
+        {
+          "title": "52% cuộc lừa đảo bằng AI thành công trong chưa đầy 30 phút - Tin tức 24h",
+          "url": "https://www.24h.com.vn/cong-nghe-thong-tin/52-cuoc-lua-dao-bang-ai-thanh-cong-trong-chua-day-30-phut-c55a1799153.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "'An toàn phải được chuẩn bị cùng với phát triển' - Báo Tuổi Trẻ",
+          "url": "https://tuoitre.vn/an-toan-phai-duoc-chuan-bi-cung-voi-phat-trien-100261002184212814.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "public_consequence"
+        },
+        {
+          "title": "Threads mở tính năng giám sát người dùng trẻ tại Việt Nam",
+          "url": "https://vnexpress.net/threads-mo-tinh-nang-giam-sat-nguoi-dung-tre-tai-viet-nam-5126363.html",
+          "decision": "EXCLUDE",
+          "source": "deterministic",
+          "reason": "TECH_VN_ORDINARY_PRODUCT_OR_FEATURE"
+        },
+        {
+          "title": "Đưa kiến thức và kỹ năng số đến gần hơn với người dân",
+          "url": "https://genk.vn/dua-kien-thuc-va-ky-nang-so-den-gan-hon-voi-nguoi-dan-16526100209330886.chn",
+          "decision": "EXCLUDE",
+          "source": "deterministic",
+          "reason": "TECH_VN_MINOR_TRAINING_OR_RESEARCH"
+        },
+        {
+          "title": "MoMo AI Moni: lớp trợ thủ tài chính tiếng Việt xuyên suốt ứng dụng, hỗ trợ giao dịch 24/7 và bảo mật 99,999% độ chính xác",
+          "url": "https://genk.vn/momo-ai-moni-lop-tro-thu-tai-chinh-tieng-viet-xuyen-suot-ung-dung-ho-tro-giao-dich-24-7-va-bao-mat-99999-do-chinh-xac-16526092913431772.chn",
+          "decision": "EXCLUDE",
+          "source": "deterministic",
+          "reason": "TECH_VN_CORPORATE_TECH_PR"
+        },
+        {
+          "title": "Việt Nam đứng thứ 7 thế giới về tỷ lệ sử dụng Internet thế hệ mới",
+          "url": "https://dantri.com.vn/khoa-hoc/viet-nam-dung-thu-7-the-gioi-ve-ty-le-su-dung-internet-the-he-moi-20260930120523127.htm",
+          "decision": "EXCLUDE",
+          "source": "deterministic",
+          "reason": "TECH_VN_RANKING_OR_INDEX"
+        },
+        {
+          "title": "Viện CNTT và Truyền thông CDIT mở rộng đào tạo ngành game, hướng tới thị trường toàn cầu - m.gamek.vn",
+          "url": "https://gamek.vn/vien-cntt-va-truyen-thong-cdit-mo-rong-dao-tao-nganh-game-huong-toi-thi-truong-toan-cau-178260928161421001.chn",
+          "decision": "EXCLUDE",
+          "source": "deterministic",
+          "reason": "TECH_VN_MINOR_TRAINING_OR_RESEARCH"
+        }
+      ]
+    },
+    {
+      "section": "news_vietnam",
+      "counts": {
+        "total": 265,
+        "kept": 265,
+        "excluded": 0,
+        "reused": 0,
+        "deterministicExclusions": 0,
+        "existingAiExclusions": 0,
+        "ambiguousKeeps": 207,
+        "excludedByReason": {}
+      },
+      "rows": [
+        {
+          "title": "Cô giáo 44 tuổi tìm bạn đồng hành cho những năm tháng bình yên",
+          "url": "https://vnexpress.net/co-giao-44-tuoi-tim-ban-dong-hanh-cho-nhung-nam-thang-binh-yen-5127489.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Tìm em - cô gái cùng tần số, thích cuộc sống giản đơn",
+          "url": "https://vnexpress.net/tim-em-co-gai-cung-tan-so-thich-cuoc-song-gian-don-5127473.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Tôi mệt mỏi vì vợ lấy phim ngắn AI làm tiêu chuẩn đời thật",
+          "url": "https://vnexpress.net/toi-met-moi-vi-vo-lay-phim-ngan-ai-lam-tieu-chuan-doi-that-5128217.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Thủ tướng Đức tới Kiev bất chấp cảnh báo của Nga",
+          "url": "https://vnexpress.net/thu-tuong-duc-toi-kiev-bat-chap-canh-bao-cua-nga-5128235.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Biển người phủ kín khu thắng cảnh ở Trung Quốc dịp Tuần lễ vàng",
+          "url": "https://vnexpress.net/bien-nguoi-phu-kin-khu-thang-canh-o-trung-quoc-dip-tuan-le-vang-5128221.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Hà Nội tiếp tục dẫn đầu cả nước về đổi mới sáng tạo",
+          "url": "https://vnexpress.net/ha-noi-tiep-tuc-dan-dau-ca-nuoc-ve-doi-moi-sang-tao-5128158.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Vì sao tóc bạc khi bạn còn trẻ?",
+          "url": "https://vnexpress.net/vi-sao-toc-bac-khi-ban-con-tre-5128096.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "public_consequence"
+        },
+        {
+          "title": "Ăn dứa có giúp thơm vùng kín?",
+          "url": "https://vnexpress.net/an-dua-co-giup-thom-vung-kin-5128040.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Vì sao người ngưng thở khi ngủ hay mệt mỏi ban ngày?",
+          "url": "https://vnexpress.net/vi-sao-nguoi-ngung-tho-khi-ngu-hay-met-moi-ban-ngay-5128027.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "major_failure"
+        },
+        {
+          "title": "Bộ trưởng Vũ Hải Quân: 'Khởi nguồn của những thay đổi là tư duy đổi mới'",
+          "url": "https://vnexpress.net/bo-truong-vu-hai-quan-khoi-nguon-cua-nhung-thay-doi-la-tu-duy-doi-moi-5128202.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Lịch trực tiếp FIFA ASEAN Cup 2026: Việt Nam đấu Malaysia, Thái Lan gặp Indonesia",
+          "url": "https://tuoitre.vn/lich-truc-tiep-fifa-asean-cup-2026-viet-nam-dau-malaysia-thai-lan-gap-indonesia-100261004184508619.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Tin tức sáng 5-10: TP.HCM sẽ lập hệ thống báo ngập; Đề xuất người dưới 18 tuổi được hiến xác",
+          "url": "https://tuoitre.vn/tin-tuc-sang-5-10-tphcm-se-lap-he-thong-bao-ngap-de-xuat-nguoi-duoi-18-tuoi-duoc-hien-xac-100261004225919577.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Thời tiết hôm nay 5-10: Không khí lạnh gây mưa to cho Bắc Bộ",
+          "url": "https://tuoitre.vn/thoi-tiet-hom-nay-5-10-khong-khi-lanh-gay-mua-to-cho-bac-bo-100261004210640022.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Sét đánh chết cả đàn heo sắp xuất chuồng, người nông dân mất trắng",
+          "url": "https://tuoitre.vn/set-danh-chet-ca-dan-heo-sap-xuat-chuong-nguoi-nong-dan-mat-trang-100261004213711977.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "public_consequence, major_failure"
+        },
+        {
+          "title": "Israel: Cơ phó Flydubai có thể đã hành động đơn lẻ",
+          "url": "https://tuoitre.vn/israel-co-pho-flydubai-co-the-da-hanh-dong-don-le-100261004220919437.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Vụ lật thuyền trên sông Lam: Tìm thấy thi thể người vợ trong đêm",
+          "url": "https://tuoitre.vn/vu-lat-thuyen-tren-song-lam-tim-thay-thi-the-nguoi-vo-trong-dem-100261004220523679.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Ông Trump chọn 'trùm siêu trí tuệ' và đặc phái viên con tin mới",
+          "url": "https://tuoitre.vn/ong-trump-chon-trum-sieu-tri-tue-va-dac-phai-vien-con-tin-moi-100261004213839362.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "public_consequence"
+        },
+        {
+          "title": "Hơn 400 triệu đồng giá trị giải thưởng tại Giải cầu lông trung cao tuổi TP.HCM",
+          "url": "https://tuoitre.vn/hon-400-trieu-dong-gia-tri-giai-thuong-tai-giai-cau-long-trung-cao-tuoi-tphcm-100261004204100538.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "‘Việt Nam ngày càng chủ động đóng góp sáng kiến vào những vấn đề chung của thế giới’",
+          "url": "https://tuoitre.vn/viet-nam-ngay-cang-chu-dong-dong-gop-sang-kien-vao-nhung-van-de-chung-cua-the-gioi-100261004211804267.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Conan để người hâm mộ chọn nhạc phim yêu thích nhân kỷ niệm 30 năm",
+          "url": "https://tuoitre.vn/conan-de-nguoi-ham-mo-chon-nhac-phim-yeu-thich-nhan-ky-niem-30-nam-100261004183410596.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Nàng thơ 'Em và Trịnh' được đề cử gương mặt đẹp nhất thế giới",
+          "url": "https://thanhnien.vn/nang-tho-em-va-trinh-duoc-de-cu-guong-mat-dep-nhat-the-gioi-185261004233946472.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "TP.HCM lên kế hoạch giải quyết 50 điểm ngập nặng",
+          "url": "https://thanhnien.vn/tphcm-len-ke-hoach-giai-quyet-50-diem-ngap-nang-185261004224119279.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "binding_or_funded_action"
+        },
+        {
+          "title": "Thể thao Việt Nam cần thay đổi tận gốc",
+          "url": "https://thanhnien.vn/the-thao-viet-nam-can-thay-doi-tan-goc-185261004225001111.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "binding_or_funded_action"
+        },
+        {
+          "title": "Hà Nội quá tải chất thải rắn xây dựng",
+          "url": "https://thanhnien.vn/ha-noi-qua-tai-chat-thai-ran-xay-dung-185261004201649573.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Bất ngờ nam sinh GDTX chinh phục IELTS 8.5, điểm SAT thuộc top 1% thế giới",
+          "url": "https://thanhnien.vn/bat-ngo-nam-sinh-gdtx-chinh-phuc-ielts-85-diem-sat-thuoc-top-1-the-gioi-185260930053948224.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Học sinh Việt Nam giành 10 huy chương Olympic thiên văn quốc tế",
+          "url": "https://thanhnien.vn/hoc-sinh-viet-nam-gianh-10-huy-chuong-olympic-thien-van-quoc-te-185261004205450024.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Đỗ ô tô trong hẻm: Không chắn cửa, xe khác vẫn qua là được?",
+          "url": "https://thanhnien.vn/do-o-to-trong-hem-khong-chan-cua-xe-khac-van-qua-la-duoc-185261003205354421.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Phim ngắn AI: Đừng để giải trí nhanh thành 'bẫy' nội dung",
+          "url": "https://thanhnien.vn/phim-ngan-ai-dung-de-giai-tri-nhanh-thanh-bay-noi-dung-185261004230939255.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Kỷ vật kể chuyện cụ Huỳnh: Đọc lại Tiếng Dân từ gần 1 thế kỷ trước",
+          "url": "https://thanhnien.vn/ky-vat-ke-chuyen-cu-huynh-doc-lai-tieng-dan-tu-gan-1-the-ky-truoc-185261004224900665.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Du lịch lập kỷ lục nhưng chưa thể 'thở phào'",
+          "url": "https://thanhnien.vn/du-lich-lap-ky-luc-nhung-chua-the-tho-phao-185261004230324803.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Giữ chợ truyền thống, trước hết phải giữ người đi chợ",
+          "url": "https://dantri.com.vn/tam-diem/giu-cho-truyen-thong-truoc-het-phai-giu-nguoi-di-cho-20261004180855973.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Robot, giải pháp AI gây chú ý tại Ngày hội đổi mới sáng tạo",
+          "url": "https://dantri.com.vn/cong-nghe/robot-giai-phap-ai-gay-chu-y-tai-ngay-hoi-doi-moi-sang-tao-20261004104247519.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "public_consequence"
+        },
+        {
+          "title": "Giám đốc nhà tù Mỹ từ chức sau vụ tử tù bị tiêm thuốc độc không chết",
+          "url": "https://dantri.com.vn/the-gioi/giam-doc-nha-tu-my-tu-chuc-sau-vu-tu-tu-bi-tiem-thuoc-doc-khong-chet-20261004182406427.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Alcaraz tiến vào bán kết Japan Open, Djokovic hạ Zverev ở China Open",
+          "url": "https://dantri.com.vn/the-thao/alcaraz-tien-vao-ban-ket-japan-open-djokovic-ha-zverev-o-china-open-20261004203858600.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Thuyền chở đoàn kiểm lâm bị chìm trên sông Hồng, một người mất tích",
+          "url": "https://dantri.com.vn/thoi-su/thuyen-cho-doan-kiem-lam-bi-chim-tren-song-hong-mot-nguoi-mat-tich-20261004215646896.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Không khí lạnh tràn về, Hà Nội và nhiều nơi ở miền Bắc mưa lạnh",
+          "url": "https://dantri.com.vn/thoi-tiet/khong-khi-lanh-tran-ve-ha-noi-va-nhieu-noi-o-mien-bac-mua-lanh-20261004214732767.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Ukraine tấn công mạnh hạ tầng năng lượng Nga, Moscow đáp trả đanh thép",
+          "url": "https://dantri.com.vn/the-gioi/ukraine-tan-cong-manh-ha-tang-nang-luong-nga-moscow-dap-tra-danh-thep-20261004211045364.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Ukraine cảnh báo đáp trả \"học thuyết\" không kích mới của Nga",
+          "url": "https://dantri.com.vn/the-gioi/ukraine-canh-bao-dap-tra-hoc-thuyet-khong-kich-moi-cua-nga-20261004174642735.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "public_consequence"
+        },
+        {
+          "title": "Đình Bắc báo tin không vui trước trận đội tuyển Việt Nam gặp Malaysia",
+          "url": "https://dantri.com.vn/the-thao/dinh-bac-bao-tin-khong-vui-truoc-tran-doi-tuyen-viet-nam-gap-malaysia-20261004203338430.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Tranh tài kịch tính giải đua thuyền rồng trên hồ Tây",
+          "url": "https://dantri.com.vn/the-thao/tranh-tai-kich-tinh-giai-dua-thuyen-rong-tren-ho-tay-20261004203416216.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Chủ tịch phường ở TPHCM lên tiếng sau phản ánh đường cao hơn nền nhà gần 1m",
+          "url": "https://vietnamnet.vn/chu-tich-phuong-o-tphcm-len-tieng-sau-phan-anh-duong-cao-hon-nen-nha-gan-1m-2561486.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Dự báo thời tiết 5/10/2026: Hà Nội chuyển lạnh, nhiều nơi mưa giông",
+          "url": "https://vietnamnet.vn/du-bao-thoi-tiet-5-10-2026-ha-noi-chuyen-lanh-nhieu-noi-mua-giong-2555489.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Thời sự sáng 5/10: Danh tính nam thanh niên mặc áo mưa, bịt kín mặt cướp tiệm vàng",
+          "url": "https://vietnamnet.vn/thoi-su-sang-5-10-chay-xuong-ghe-o-tphcm-cuop-tiem-vang-o-lam-dong-2561606.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "public_consequence"
+        },
+        {
+          "title": "Nhận 'kèo' gây sốc trên TikTok đến xâm phạm mồ mả: Người ra kèo có liên đới?",
+          "url": "https://vietnamnet.vn/nhan-keo-gay-soc-tren-tiktok-den-xam-pham-mo-ma-nguoi-ra-keo-co-lien-doi-2560569.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Mặt đường hầm chui dài 455m xuất hiện nhiều ổ gà, tài xế thót tim phanh gấp",
+          "url": "https://vietnamnet.vn/mat-duong-ham-chui-an-phu-xuat-hien-nhieu-o-ga-tai-xe-thot-tim-phanh-gap-2561540.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "public_consequence"
+        },
+        {
+          "title": "Hé lộ diễn biến vụ kiểm lâm viên mất tích trên sông Hồng",
+          "url": "https://vietnamnet.vn/he-lo-dien-bien-vu-kiem-lam-vien-mat-tich-tren-song-hong-2561654.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Một kiểm lâm viên mất tích trên sông Hồng",
+          "url": "https://vietnamnet.vn/mot-kiem-lam-vien-o-lao-cai-mat-tich-tren-song-hong-2561646.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Không khí lạnh bắt đầu tràn về, Hà Nội giảm gần 10 độ, miền Bắc mưa lớn",
+          "url": "https://vietnamnet.vn/khong-khi-lanh-bat-dau-tran-ve-ha-noi-giam-gan-10-do-mien-bac-mua-lon-2555490.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "TPHCM ngập nặng sau mưa lớn: Loạt phương tiện chết máy, nước tràn vào cả xe buýt",
+          "url": "https://vietnamnet.vn/tphcm-ngap-nang-sau-mua-lon-loat-phuong-tien-chet-may-nuoc-tran-vao-ca-xe-buyt-2561597.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Xác minh vụ người đàn ông lên ô tô 7 chỗ rồi mất tích gần 1 tháng",
+          "url": "https://vietnamnet.vn/xac-minh-vu-nguoi-dan-ong-len-o-to-7-cho-roi-mat-tich-gan-1-thang-2561587.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Tin tức XÃ HỘI đời sống MỚI NHẤT - BÁO LAO ĐỘNG | LAODONG.VN - Laodong.vn",
+          "url": "https://laodong.vn/xa-hoi/?page=13512",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Giao lưu và chia sẻ trên dulich.laodong.vn | Chuyên trang DU LỊCH - Laodong.vn",
+          "url": "https://laodong.vn/du-lich/cong-dong?page=175",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "MEDIA - Chuyên mục truyền thông đa phương tiện - BÁO LAO ĐỘNG | LAODONG.VN - Laodong.vn",
+          "url": "https://laodong.vn/media?page=7818",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Tin tức XÃ HỘI đời sống MỚI NHẤT - BÁO LAO ĐỘNG | LAODONG.VN - Laodong.vn",
+          "url": "https://laodong.vn/xa-hoi?page=13511",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Bản tin - Báo Lao Động | LAODONG.VN - Laodong.vn",
+          "url": "https://laodong.vn/short-video?page=26",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Hoạt động Mặt trận - Laodong.vn",
+          "url": "https://laodong.vn/hoat-dong-mat-tran?page=80",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "An ninh hình sự - Laodong.vn",
+          "url": "https://laodong.vn/an-ninh-hinh-su?page=475",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "public_consequence"
+        },
+        {
+          "title": "Tin tức mới nhất về lao động cuối tuần - Laodong.vn - Laodong.vn",
+          "url": "https://laodong.vn/lao-dong-cuoi-tuan?page=513",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Xem ngay video văn hoá - giải trí mới nhất - Lao Động - Laodong.vn",
+          "url": "https://laodong.vn/video-van-hoa-giai-tri?page=292",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Giải trí - Laodong.vn",
+          "url": "https://laodong.vn/giai-tri?page=2681",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Video: 45 phút bùng nổ của Đình Bắc giúp tuyển Việt Nam đánh bại Pakistan - Báo Tuổi Trẻ",
+          "url": "https://nld.com.vn/video-45-phut-bung-no-cua-dinh-bac-giup-tuyen-viet-nam-danh-bai-pakistan-100261002184421353.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "'Tia chớp' Thái Lan và 'thần gió' Trung Quốc hẹn hò? - Báo Tuổi Trẻ",
+          "url": "https://nld.com.vn/tia-chop-thai-lan-va-than-gio-trung-quoc-hen-ho-100260930211542606.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Dự đoán tỉ số: Thắng chật vật Malaysia, Việt Nam giành hạng ba FIFA ASEAN Cup 2026 - Báo Tuổi Trẻ",
+          "url": "https://nld.com.vn/du-doan-ti-so-thang-chat-vat-malaysia-viet-nam-gianh-hang-3-fifa-asean-cup-2026-100261004162416026.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "AFC thay đổi gây sốc, ảnh hưởng kế hoạch dự World Cup của Việt Nam - Báo Tuổi Trẻ",
+          "url": "https://nld.com.vn/afc-thay-doi-gay-soc-anh-huong-ke-hoach-du-world-cup-cua-viet-nam-100261004204416569.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "HLV Kim Sang Sik: Càng khó khăn, tuyển Việt Nam càng quyết tâm thắng Malaysia - Báo Tuổi Trẻ",
+          "url": "https://nld.com.vn/hlv-kim-sang-sik-cang-kho-khan-tuyen-viet-nam-cang-quyet-tam-thang-malaysia-100261004184000714.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Bảng xếp hạng bóng chuyền nam Asiad 20 - Báo Tuổi Trẻ",
+          "url": "https://nld.com.vn/bang-xep-hang-bong-chuyen-nam-asiad-20-100261004070531931.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Bất ngờ bị ‘đòi nợ’ tiền thuế đất - Báo Tuổi Trẻ",
+          "url": "http://www.nld.com.vn/bat-ngo-bi-doi-no-tien-thue-dat-100261004194004127.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Thiếu Messi, tuyển Argentina vẫn thắng dễ 7-0 - Báo Tuổi Trẻ",
+          "url": "https://nld.com.vn/thieu-messi-tuyen-argentina-van-thang-de-7-0-100261004093447553.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Việt Nam hướng đến vé dự U17 nữ châu Á 2027 - Báo Tuổi Trẻ",
+          "url": "https://nld.com.vn/viet-nam-huong-den-ve-du-u17-nu-chau-a-2027-100261004163125518.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Chất lượng cầu thủ nhập tịch Việt Nam không bằng Indonesia? - Báo Tuổi Trẻ",
+          "url": "https://nld.com.vn/chat-luong-cau-thu-nhap-tich-viet-nam-khong-bang-indonesia-100261004150407622.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "public_consequence"
+        },
+        {
+          "title": "Vóc dáng như siêu mẫu của 'bạn gái tổng tài hot nhất hiện tại'",
+          "url": "https://tienphong.vn/voc-dang-nhu-sieu-mau-cua-ban-gai-tong-tai-hot-nhat-hien-tai-post1881968.tpo",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Goncalo Ramos đưa Bồ Đào Nha vào tứ kết UEFA Nations League",
+          "url": "https://tienphong.vn/goncalo-ramos-dua-bo-dao-nha-vao-tu-ket-uefa-nations-league-post1882240.tpo",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "major_failure"
+        },
+        {
+          "title": "Lâm Đồng chỉnh trang đô thị đón Festival Hoa Đà Lạt",
+          "url": "https://tienphong.vn/lam-dong-chinh-trang-do-thi-don-festival-hoa-da-lat-post1882098.tpo",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "public_consequence"
+        },
+        {
+          "title": "Miền Trung đón mưa rất lớn",
+          "url": "https://tienphong.vn/mien-trung-don-mua-rat-lon-post1882241.tpo",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "major_failure"
+        },
+        {
+          "title": "Chuyên gia hiến kế để TPHCM thoát ngập",
+          "url": "https://tienphong.vn/chuyen-gia-hien-ke-de-tphcm-thoat-ngap-post1882169.tpo",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "public_consequence"
+        },
+        {
+          "title": "Hàng nghìn du khách vượt đêm lên núi, chờ săn biển mây ở Ba Vì",
+          "url": "https://tienphong.vn/hang-nghin-du-khach-vuot-dem-len-nui-cho-san-bien-may-o-ba-vi-post1882231.tpo",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Khuyến cáo miền Tây ứng phó hạn, mặn gay gắt mùa khô sắp tới",
+          "url": "https://tienphong.vn/khuyen-cao-mien-tay-ung-pho-han-man-gay-gat-mua-kho-sap-toi-post1882122.tpo",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "public_consequence, major_failure"
+        },
+        {
+          "title": "Người trẻ 'nhăn mặt' với phim ngắn AI",
+          "url": "https://tienphong.vn/nguoi-tre-nhan-mat-voi-phim-ngan-ai-post1882185.tpo",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Giữ rừng ngập mặn, bảo vệ 'lá chắn xanh' ở Quảng Ngãi",
+          "url": "https://tienphong.vn/giu-rung-ngap-man-bao-ve-la-chan-xanh-o-quang-ngai-post1881826.tpo",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "public_consequence, major_failure"
+        },
+        {
+          "title": "Thương vụ thâu tóm đắt giá nhất lịch sử",
+          "url": "https://tienphong.vn/thuong-vu-thau-tom-dat-gia-nhat-lich-su-post1881814.tpo",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "major_failure"
+        },
+        {
+          "title": "Quan hệ hữu nghị truyền thống Việt Nam-Panama",
+          "url": "https://www.vietnamplus.vn/quan-he-huu-nghi-truyen-thong-viet-nam-panama-post1140026.vnp",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Thời tiết ngày 5/10: Không khí lạnh gây mưa lớn, vùng núi có nơi dưới 18 độ C",
+          "url": "https://www.vietnamplus.vn/thoi-tiet-ngay-510-khong-khi-lanh-gay-mua-lon-vung-nui-co-noi-duoi-18-do-c-post1140023.vnp",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Học sinh Việt Nam giành 6 HCV kỳ thi Olympic thiên văn, vật lý thiên văn quốc tế",
+          "url": "https://www.vietnamplus.vn/hoc-sinh-viet-nam-gianh-6-hcv-ky-thi-olympic-thien-van-vat-ly-thien-van-quoc-te-post1140025.vnp",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Bầu cử giữa kỳ Mỹ 2026: Cử tri gốc Latinh chuyển hướng sang đảng Dân chủ",
+          "url": "https://www.vietnamplus.vn/bau-cu-giua-ky-my-2026-cu-tri-goc-latinh-chuyen-huong-sang-dang-dan-chu-post1140024.vnp",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Quan hệ hữu nghị truyền thống Việt Nam-Panama ngày càng phát triển mạnh mẽ",
+          "url": "https://www.vietnamplus.vn/quan-he-huu-nghi-truyen-thong-viet-nam-panama-ngay-cang-phat-trien-manh-me-post1139950.vnp",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Kết quả thực hiện Nghị quyết 57-NQ/TW về đột phá phát triển khoa học công nghệ",
+          "url": "https://www.vietnamplus.vn/ket-qua-thuc-hien-nghi-quyet-57-nqtw-ve-dot-pha-phat-trien-khoa-hoc-cong-nghe-post1140022.vnp",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "public_consequence, binding_or_funded_action"
+        },
+        {
+          "title": "Ghé thăm Văn Thánh-Khổng Miếu, khám phá di sản đất học xứ Quảng",
+          "url": "https://www.vietnamplus.vn/ghe-tham-van-thanh-khong-mieu-kham-pha-di-san-dat-hoc-xu-quang-post1139655.vnp",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Đại sứ quán Việt Nam tại Hungary chào đón tân sinh viên năm học 2026-2027",
+          "url": "https://www.vietnamplus.vn/dai-su-quan-viet-nam-tai-hungary-chao-don-tan-sinh-vien-nam-hoc-2026-2027-post1140021.vnp",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Thảo nguyên Nội Mông Cổ khoác lên mình chiếc \"áo tuyết trắng\" đẹp đến nao lòng",
+          "url": "https://www.vietnamplus.vn/thao-nguyen-noi-mong-co-khoac-len-minh-chiec-ao-tuyet-trang-dep-den-nao-long-post1140007.vnp",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Phnom Penh ủng hộ lời kêu gọi của LHQ liên quan xung đột Thái Lan-Campuchia",
+          "url": "https://www.vietnamplus.vn/phnom-penh-ung-ho-loi-keu-goi-cua-lhq-lien-quan-xung-dot-thai-lan-campuchia-post1140020.vnp",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Dấu mốc quan trọng trong lịch sử quan hệ Việt Nam-Panama",
+          "url": "https://nhandan.vn/dau-moc-quan-trong-trong-lich-su-quan-he-viet-nam-panama-post992914.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "major_failure"
+        },
+        {
+          "title": "Tổng thống Cộng hòa Panama bắt đầu thăm chính thức Việt Nam",
+          "url": "https://nhandan.vn/tong-thong-cong-hoa-panama-bat-dau-tham-chinh-thuc-viet-nam-post992912.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "major_failure"
+        },
+        {
+          "title": "[Video] Cán bộ, công chức cấp xã chính thức được hưởng phụ cấp công vụ 55%",
+          "url": "https://nhandan.vn/video-can-bo-cong-chuc-cap-xa-chinh-thuc-duoc-huong-phu-cap-cong-vu-55-post992893.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "public_consequence"
+        },
+        {
+          "title": "[Video] Triển khai giá dịch vụ phục vụ hành khách tại sân bay Long Thành",
+          "url": "https://nhandan.vn/video-trien-khai-gia-dich-vu-phuc-vu-hanh-khach-tai-san-bay-long-thanh-post992888.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "public_consequence, binding_or_funded_action"
+        },
+        {
+          "title": "[Video] Tăng mức phụ cấp ưu đãi nghề giữ chân cán bộ y tế vùng khó khăn",
+          "url": "https://nhandan.vn/video-tang-muc-phu-cap-uu-dai-nghe-giu-chan-can-bo-y-te-vung-kho-khan-post992892.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "public_consequence"
+        },
+        {
+          "title": "Báo Nhân Dân số 25888",
+          "url": "https://nhandan.vn/bao-nhan-dan-so-25888-post992908.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "[Video] Dự báo thời tiết ngày 5/10/2026: Không khí lạnh gây mưa ở Bắc Bộ, Trung Bộ; Nam Bộ chiều tối tăng dông",
+          "url": "https://nhandan.vn/video-du-bao-thoi-tiet-ngay-5102026-khong-khi-lanh-gay-mua-o-bac-bo-trung-bo-nam-bo-chieu-toi-tang-dong-post992863.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Đồng Nai nâng cao kỹ năng số",
+          "url": "https://nhandan.vn/dong-nai-nang-cao-ky-nang-so-post992894.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Vang mãi hồn dân tộc",
+          "url": "https://nhandan.vn/vang-mai-hon-dan-toc-post992895.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Kiến tạo không gian kinh tế đa cực",
+          "url": "https://nhandan.vn/kien-tao-khong-gian-kinh-te-da-cuc-post992897.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "9 tháng, GRDP tỉnh Quảng Ngãi tăng 9,16% so với cùng kỳ - vov.vn",
+          "url": "https://vov.vn/kinh-te/9-thang-grdp-tinh-quang-ngai-tang-916-so-voi-cung-ky-post1338093.vov",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Xuất khẩu Việt Nam: Từ áp lực đến thế chủ động - vov.vn",
+          "url": "https://vov.vn/kinh-te/xuat-khau-viet-nam-tu-ap-luc-den-the-chu-dong-post1337530.vov",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Quy định đặc biệt về trận đấu Việt Nam vs Malaysia ở FIFA ASEAN Cup - vov.vn",
+          "url": "https://vov.vn/the-thao/quy-dinh-dac-biet-ve-tran-dau-viet-nam-vs-malaysia-o-fifa-asean-cup-post1338409.vov",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Thai Nguyen to host international festival highlighting premier tea - VOV.VN",
+          "url": "https://english.vov.vn/en/culture/thai-nguyen-to-host-international-festival-highlighting-premier-tea-post1337895.vov",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "TP.HCM dành hơn 5.000 tỷ đồng đầu tư 5 dự án tại Bệnh viện Ung bướu - vov.vn",
+          "url": "https://vov.vn/xa-hoi/tphcm-danh-hon-5000-ty-dong-dau-tu-5-du-an-tai-benh-vien-ung-buou-post1338052.vov",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "public_consequence, binding_or_funded_action"
+        },
+        {
+          "title": "Hôm nay 4/10, ASIAD 2026 chính thức bế mạc - vov.vn",
+          "url": "https://vov.vn/the-thao/hom-nay-410-asiad-2026-chinh-thuc-be-mac-post1338283.vov",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Vietnam sees 149,700 new businesses in nine months - VOV.VN",
+          "url": "https://english.vov.vn/en/economy/vietnam-sees-149700-new-businesses-in-nine-months-post1338401.vov",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Hến giàu dinh dưỡng đến đâu? Ai nên thận trọng khi ăn? - vov.vn",
+          "url": "http://vov.vn/suc-khoe/hen-giau-dinh-duong-den-dau-ai-nen-than-trong-khi-an-post1338178.vov",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Nghi phạm vụ Flydubai từng bị hãng khác loại khỏi chương trình đào tạo - vov.vn",
+          "url": "https://vov.vn/the-gioi/nghi-pham-vu-flydubai-tung-bi-hang-khac-loai-khoi-chuong-trinh-dao-tao-post1338116.vov",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Phục dựng Điện Kính Thiên: Từ dấu tích đến sức sống di sản - VOV2.VN",
+          "url": "https://vov2.vov.vn/van-hoa-giai-tri/phuc-dung-dien-kinh-thien-tu-dau-tich-den-suc-song-di-san-60914.vov2",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Ban Bí thư bổ nhiệm 3 Phó Tổng Giám đốc Đài Truyền hình Việt Nam - Báo điện tử VTC News",
+          "url": "https://vtcnews.vn/ban-bi-thu-bo-nhiem-3-pho-tong-giam-doc-dai-truyen-hinh-viet-nam-ar1043037.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "GDP quý III/2026 tăng 9,95%, 9 tháng tăng 9,01% - VTC News - Báo điện tử VTC News",
+          "url": "https://vtcnews.vn/gdp-quy-iii-2026-tang-9-95-9-thang-tang-9-01-ar1043199.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Tăng phụ cấp lên 55%, thu nhập cán bộ cấp xã thay đổi thế nào? - Báo điện tử VTC News",
+          "url": "https://vtcnews.vn/tang-phu-cap-len-55-thu-nhap-can-bo-cap-xa-thay-doi-the-nao-ar1043264.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "public_consequence"
+        },
+        {
+          "title": "Truy tìm nam thanh niên đi xe máy liên quan vụ ẩu đả dưới hầm chui ở Bắc Ninh - Báo điện tử VTC News",
+          "url": "https://vtcnews.vn/truy-tim-nam-thanh-nien-di-xe-may-lien-quan-vu-au-da-duoi-ham-chui-o-bac-ninh-ar1042828.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "'Taxi bay' không người lái sắp thử nghiệm tại Hà Nội có gì đặc biệt? - Báo điện tử VTC News",
+          "url": "https://vtcnews.vn/taxi-bay-khong-nguoi-lai-sap-thu-nghiem-tai-ha-noi-co-gi-dac-biet-ar1042944.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "major_failure"
+        },
+        {
+          "title": "Giấc mơ ô tô Việt dang dở, Vinaxuki giờ ra sao? - Báo điện tử VTC News",
+          "url": "https://vtcnews.vn/giac-mo-o-to-viet-dang-do-vinaxuki-gio-ra-sao-ar1043290.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Chuyên gia dự báo TP.HCM vẫn còn đợt mưa diện rộng vào đầu tháng 10 - Báo điện tử VTC News",
+          "url": "https://vtcnews.vn/chuyen-gia-du-bao-tp-hcm-van-con-dot-mua-dien-rong-vao-dau-thang-10-ar1042793.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Thời tiết tháng 10: Biển Đông có thể đón bão, mưa lớn tập trung ở Trung Bộ - Báo điện tử VTC News",
+          "url": "https://vtcnews.vn/thoi-tiet-thang-10-bien-dong-co-the-don-bao-mua-lon-tap-trung-o-trung-bo-ar1042851.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Trực tiếp họp báo Việt Nam vs Pakistan: HLV Kim Sang-sik thoát hiểm - Báo điện tử VTC News",
+          "url": "https://vtcnews.vn/truc-tiep-hop-bao-viet-nam-vs-pakistan-hlv-kim-sang-sik-thoat-hiem-ar1043137.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Đội hình Việt Nam vs Pakistan: Đình Bắc, Adou Minh dự bị - Báo điện tử VTC News",
+          "url": "https://vtcnews.vn/doi-hinh-viet-nam-vs-pakistan-dinh-bac-adou-minh-du-bi-ar1043083.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Tái khởi động dự án Golden Hills, đưa nguồn lực trở lại phục vụ phát triển - baochinhphu.vn",
+          "url": "https://baochinhphu.vn/tai-khoi-dong-du-an-golden-hills-dua-nguon-luc-tro-lai-phuc-vu-phat-trien-10226100317500548.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Phó Thủ tướng Thường trực Phạm Gia Túc: Đánh giá thực chất tiến độ các công trình trọng điểm - baochinhphu.vn",
+          "url": "https://baochinhphu.vn/pho-thu-tuong-thuong-truc-pham-gia-tuc-danh-gia-thuc-chat-tien-do-cac-cong-trinh-trong-diem-102261001142729163.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Thủ tướng: Quyết tâm cao nhất để GDP quý IV tăng trên 12,5% - baochinhphu.vn",
+          "url": "https://baochinhphu.vn/thu-tuong-quyet-tam-cao-nhat-de-gdp-quy-iv-tang-tren-125-102261003102554144.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Dùng công nghệ giúp tài chính tiêu dùng minh bạch: vay đúng, trả đúng - baochinhphu.vn",
+          "url": "https://baochinhphu.vn/dung-cong-nghe-giup-tai-chinh-tieu-dung-minh-bach-vay-dung-tra-dung-102261003112006771.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Không để nguồn lực bị ách tắc vì chậm trễ trong tổ chức thực hiện - baochinhphu.vn",
+          "url": "https://baochinhphu.vn/khong-de-nguon-luc-bi-ach-tac-vi-cham-tre-trong-to-chuc-thuc-hien-102261003184057163.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Thủ tướng: Cần những giải pháp mạnh hơn nữa trong giai đoạn nước rút của năm 2026 - baochinhphu.vn",
+          "url": "https://baochinhphu.vn/thu-tuong-can-nhung-giai-phap-manh-hon-nua-trong-giai-doan-nuoc-rut-cua-nam-2026-102261003083433538.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Địa phương tăng tốc 3 tháng cuối năm, cam kết đạt mục tiêu tăng trưởng hai con số - baochinhphu.vn",
+          "url": "https://baochinhphu.vn/dia-phuong-tang-toc-3-thang-cuoi-nam-cam-ket-dat-muc-tieu-tang-truong-hai-con-so-102261003100027781.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Việt Nam hướng tới đáp ứng tiêu chí nâng hạng của MSCI, lên nhóm mới nổi bậc cao của FTSE - baochinhphu.vn",
+          "url": "https://baochinhphu.vn/viet-nam-huong-toi-dap-ung-tieu-chi-nang-hang-cua-msci-len-nhom-moi-noi-bac-cao-cua-ftse-102261001111517843.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Dự kiến Chương trình bồi dưỡng chuẩn nghề nghiệp giảng viên - baochinhphu.vn",
+          "url": "https://baochinhphu.vn/du-kien-chuong-trinh-boi-duong-chuan-nghe-nghiep-giang-vien-102261002123514297.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Phê duyệt mở rộng khu kinh tế Vũng Áng, Hà Tĩnh - baochinhphu.vn",
+          "url": "https://baochinhphu.vn/thu-tuong-chinh-phu-phe-duyet-mo-rong-khu-kinh-te-vung-ang-ha-tinh-102261002144107396.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "public_consequence"
+        },
+        {
+          "title": "Bitcoin hút tiền - Znews",
+          "url": "https://znews.vn/bitcoin-hut-tien-post1687407.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Thịt đông lạnh ồ ạt về Việt Nam - Znews",
+          "url": "https://znews.vn/thit-dong-lanh-o-at-ve-viet-nam-post1687325.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Phương Mỹ Chi vượt 'thế khó' - Znews",
+          "url": "https://znews.vn/phuong-my-chi-vuot-the-kho-post1687356.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Ảnh hưởng của Kỷ Băng Hà nhỏ tới châu Á - Znews",
+          "url": "https://znews.vn/anh-huong-cua-ky-bang-ha-nho-toi-chau-a-post1687256.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Tiền lãi có thực sự cần thiết? - Znews",
+          "url": "https://znews.vn/tien-lai-co-thuc-su-can-thiet-post1687358.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Sầu riêng siêu rẻ, giá chỉ vài chục nghìn đồng/kg - Znews",
+          "url": "https://znews.vn/sau-rieng-sieu-re-gia-chi-vai-chuc-nghin-dongkg-post1687400.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Muốn tuổi 40 không hối tiếc, tuổi 30 cần làm gì? - Znews",
+          "url": "https://znews.vn/muon-tuoi-40-khong-hoi-tiec-tuoi-30-can-lam-gi-post1687329.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Điều kỳ lạ về ngôi sao 'Doctor Strange' - Znews",
+          "url": "https://znews.vn/dieu-ky-la-ve-ngoi-sao-doctor-strange-post1687404.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Sói già trả giá - Znews",
+          "url": "https://znews.vn/soi-gia-tra-gia-post1687244.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Tàn Tuyết - người đang đứng đầu bảng cược Nobel - là ai? - Znews",
+          "url": "https://znews.vn/tan-tuyet-nguoi-dang-dung-dau-bang-cuoc-nobel-la-ai-post1686928.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Nga kiểm soát Novaya Kazachya - Chuyên gia nêu lý do ông Putin đổi mục tiêu, khiến điều hiếm thấy xảy ra ở Ukraine",
+          "url": "https://soha.vn/nga-kiem-soat-novaya-kazachya-chuyen-gia-neu-ly-do-ong-putin-doi-muc-tieu-khien-dieu-hiem-thay-xay-ra-o-ukraine-198261004234410332.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Đầu tư 30,8 tỷ rúp, Nga mang chuỗi công nghệ \"độc bản, hiếm có khó tìm\" sang châu Âu: Để làm gì?",
+          "url": "https://soha.vn/dau-tu-308-ty-rup-nga-mang-chuoi-cong-nghe-doc-ban-hiem-co-kho-tim-sang-chau-au-de-lam-gi-198261005060316657.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "binding_or_funded_action"
+        },
+        {
+          "title": "Lời khuyên cho những người để khăn mặt trong nhà vệ sinh 24/7",
+          "url": "https://soha.vn/loi-khuyen-cho-nhung-nguoi-de-khan-mat-trong-nha-ve-sinh-24-7-198261002143758366.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Phát minh của Trung Quốc làm rung chuyển ngành xây dựng: Xi măng \"sống\" có thể xây nhà trên sao Hoả, bền ngang vật liệu thông thường",
+          "url": "https://soha.vn/phat-minh-cua-trung-quoc-lam-rung-chuyen-nganh-xay-dung-xi-mang-song-co-the-xay-nha-tren-sao-hoa-ben-ngang-vat-lieu-thong-thuong-198261004225840212.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Tất cả người dân chú ý mức phạt 20 triệu đồng liên quan đến khai báo tạm trú",
+          "url": "https://soha.vn/tat-ca-nguoi-dan-chu-y-muc-phat-20-trieu-dong-lien-quan-den-khai-bao-tam-tru-198260928163238515.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Nhiều gia đình trồng đu đủ trong sân vườn, hóa ra không chỉ để lấy quả",
+          "url": "https://soha.vn/nhieu-gia-dinh-trong-du-du-trong-san-vuon-hoa-ra-khong-chi-de-lay-qua-198261003211125455.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "56 kích thủy lực nâng khối mái 'cánh sen' có diện tích gần 20.000 m², nặng 5.300 tấn lên cao",
+          "url": "https://soha.vn/56-kich-thuy-luc-nang-khoi-mai-canh-sen-co-dien-tich-gan-20000-m-nang-5300-tan-len-cao-198261004182444654.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Từ 5/10/2026, một số người được hưởng trợ cấp 1,35 triệu đồng/tháng: Điều kiện cụ thể thế nào?",
+          "url": "https://soha.vn/tu-5-10-2026-mot-so-nguoi-duoc-huong-tro-cap-135-trieu-dong-thang-dieu-kien-cu-the-the-nao-198261004153515526.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "public_consequence"
+        },
+        {
+          "title": "Chuyên gia: \"Ai làm sai người đấy chịu, miễn là đừng chĩa S-400 ngược về phía Nga\"",
+          "url": "https://soha.vn/chuyen-gia-ai-lam-sai-nguoi-day-tu-chiu-mien-la-dung-chia-s-400-nguoc-ve-phia-nga-198261004114948066.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Mỹ nhân Việt cao 1,55 m vào top đẹp nhất thế giới",
+          "url": "https://soha.vn/my-nhan-viet-cao-155-m-vao-top-dep-nhat-the-gioi-198261003222103218.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Trấn Thành bắt Bích Phương \"thề\" chuyện cưới Tăng Duy Tân",
+          "url": "https://kenh14.vn/tran-thanh-bat-bich-phuong-the-chuyen-cuoi-tang-duy-tan-215261004203330516.chn",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Không cần đi gym, làm theo bài tập \"lười\" chỉ mất 3 phút này mỗi ngày có thể mang lại điều bất ngờ cho vóc dáng",
+          "url": "https://kenh14.vn/khong-can-di-gym-lam-theo-bai-tap-luoi-chi-mat-3-phut-nay-moi-ngay-co-the-mang-lai-dieu-bat-ngo-cho-voc-dang-215261005063528254.chn",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Đầu tháng 10 gửi ngân hàng 100 triệu, lãi tối đa bao nhiêu?",
+          "url": "https://kenh14.vn/dau-thang-10-gui-ngan-hang-100-trieu-lai-toi-da-bao-nhieu-215261004172333042.chn",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Vì sao không nên tráng bát đĩa trước khi cho vào máy?",
+          "url": "https://kenh14.vn/vi-sao-khong-nen-trang-bat-dia-truoc-khi-cho-vao-may-215261002095216336.chn",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "3 con giáp sinh ra để theo đuổi khối ngành STEM, càng gắn bó càng giàu",
+          "url": "https://kenh14.vn/3-con-giap-sinh-ra-de-theo-duoi-khoi-nganh-stem-cang-gan-bo-cang-giau-215260410170936225.chn",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Bùng binh tình ái sốc nhất showbiz hiện tại: Nàng thơ gen Z giật bồ bạn thân, còn phũ phàng nhân đôi nỗi đau cho đối phương",
+          "url": "https://kenh14.vn/bung-binh-tinh-ai-soc-nhat-showbiz-hien-tai-nang-tho-gen-z-giat-bo-ban-than-con-phu-phang-nhan-doi-noi-dau-cho-doi-phuong-215261004144416318.chn",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Nam NSND mang hàm Đại tá, cưới vợ kém 12 tuổi, ở chung cư cao cấp Hà Nội",
+          "url": "https://kenh14.vn/nam-nsnd-mang-ham-dai-ta-cuoi-vo-kem-12-tuoi-o-chung-cu-cao-cap-ha-noi-215261005000518435.chn",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Bảng giá xe máy Honda Vision 2026 mới nhất tháng 10/2026",
+          "url": "https://kenh14.vn/bang-gia-xe-may-honda-vision-2026-moi-nhat-thang-10-2026-215261005023937105.chn",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Những địa chỉ đắt giá nhất Việt Nam: 1 góc ở Long Biên “chứa” hơn 2,35 triệu tỷ đồng vốn hóa, trụ sở FPT, Vinamilk xếp thứ mấy?",
+          "url": "https://kenh14.vn/nhung-dia-chi-dat-gia-nhat-viet-nam-1-goc-o-long-bien-chua-hon-235-trieu-ty-dong-von-hoa-tru-so-fpt-vinamilk-xep-thu-may-215261005000542033.chn",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Điểm danh 3 con giáp may mắn nhất ngày 5/10",
+          "url": "https://kenh14.vn/diem-danh-3-con-giap-may-man-nhat-ngay-5-10-215261004223200209.chn",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Xác minh vụ người đàn ông lên ô tô 7 chỗ rồi mất tích gần 1 tháng - Tin tức 24h",
+          "url": "https://www.24h.com.vn/tin-tuc-trong-ngay/xac-minh-vu-nguoi-dan-ong-len-o-to-7-cho-roi-mat-tich-gan-1-thang-c46a1800112.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Ba Lan bất ngờ lên tiếng về khả năng chiến tranh với Nga - Tin tức 24h",
+          "url": "https://www.24h.com.vn/tin-tuc-quoc-te/ba-lan-bat-ngo-len-tieng-ve-kha-nang-chien-tranh-voi-nga-c415a1800024.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Video tennis Alcaraz - Shapovalov: Sự cố cay đắng ở set 2 (Japan Open) - Tin tức 24h",
+          "url": "https://www.24h.com.vn/the-thao/video-tennis-alcaraz-shapovalov-su-co-cay-dang-o-set-2-japan-open-c101a1800031.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "major_failure"
+        },
+        {
+          "title": "Ông Medvedev tiết lộ cách Nga giúp đỡ Iran - Tin tức 24h",
+          "url": "https://www.24h.com.vn/tin-tuc-quoc-te/ong-medvedev-tiet-lo-cach-nga-giup-do-iran-c415a1800051.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Video bóng đá Tây Ban Nha - CH Séc: Yamal ghi siêu phẩm (Nations League) - Tin tức 24h",
+          "url": "https://www.24h.com.vn/bong-da/video-bong-da-tay-ban-nha-ch-sec-yamal-ghi-sieu-pham-nations-league-c48a1799930.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Ba \"sao\" Việt góp mặt trong Ủy ban Trung ương Hội LHTN Việt Nam khóa IX - Tin tức 24h",
+          "url": "https://www.24h.com.vn/giai-tri/ba-sao-viet-gop-mat-trong-uy-ban-trung-uong-hoi-lhtn-viet-nam-khoa-ix-c731a1799985.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Houthi tấn công thủ đô của Ả-rập Xê-út - Tin tức 24h",
+          "url": "https://www.24h.com.vn/tin-tuc-quoc-te/houthi-tan-cong-thu-do-cua-a-rap-xe-ut-c415a1800000.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Tháo dỡ quả cầu 18 tấn ở cửa ngõ TP HCM - Tin tức 24h",
+          "url": "https://www.24h.com.vn/tin-tuc-trong-ngay/thao-do-qua-cau-18-tan-o-cua-ngo-tp-hcm-c46a1799972.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Video bóng đá Croatia - Anh: Kinh hoàng sức mạnh \"Tam sư\" (Nations League) - Tin tức 24h",
+          "url": "https://www.24h.com.vn/bong-da/video-bong-da-croatia-anh-kinh-hoang-suc-manh-tam-su-nations-league-c48a1799946.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Video tennis Zverev - Djokovic: Ngược dòng đẳng cấp (China Open) - Tin tức 24h",
+          "url": "https://www.24h.com.vn/the-thao/video-tennis-zverev-djokovic-nguoc-dong-dang-cap-china-open-c101a1800113.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Bảo Việt được vinh danh Thương hiệu Mạnh năm 2026",
+          "url": "https://cand.vn/bao-viet-duoc-vinh-danh-thuong-hieu-manh-nam-2026-post823987.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "public_consequence"
+        },
+        {
+          "title": "Việt Nam thắng lớn tại Olympic Thiên văn và Vật lý thiên văn quốc tế 2026",
+          "url": "https://cand.vn/viet-nam-thang-lon-tai-olympic-thien-van-va-vat-ly-thien-van-quoc-te-2026-post823976.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Phụ huynh học sinh ở TP Hồ Chí Minh mệt mỏi vì môn học liên kết",
+          "url": "https://cand.vn/phu-huynh-hoc-sinh-o-tp-ho-chi-minh-met-moi-vi-mon-hoc-lien-ket-post823979.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "public_consequence"
+        },
+        {
+          "title": "Lễ bế mạc ASIAD 20: Lời tạm biệt từ Nhật Bản",
+          "url": "https://cand.vn/le-be-mac-asiad-20-loi-tam-biet-tu-nhat-ban-post823985.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Câu chuyện về hành trình giữ bình yên thành phố của lực lượng PCCC và CNCH",
+          "url": "https://cand.vn/cau-chuyen-ve-hanh-trinh-giu-binh-yen-thanh-pho-cua-luc-luong-pccc-va-cnch-post823984.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Đã quy tập được 718 bộ hài cốt liệt sĩ tại Công viên Lê Thị Riêng",
+          "url": "https://cand.vn/da-quy-tap-duoc-718-bo-hai-cot-liet-si-tai-cong-vien-le-thi-rieng-post823983.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Đại uý Hồ Đình Khánh nhiều lần dũng cảm cứu dân trong mưa bão",
+          "url": "https://cand.vn/dai-uy-ho-dinh-khanh-nhieu-lan-dung-cam-cuu-dan-trong-mua-bao-post823978.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "public_consequence"
+        },
+        {
+          "title": "Tham khảo kinh nghiệm về bồi thường nhà nước, đăng ký tài sản",
+          "url": "https://cand.vn/tham-khao-kinh-nghiem-ve-boi-thuong-nha-nuoc-dang-ky-tai-san-post823982.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "public_consequence"
+        },
+        {
+          "title": "Nỗ lực bảo đảm an toàn giao thông đường thủy nội địa ở Khánh Hòa",
+          "url": "https://cand.vn/no-luc-bao-dam-an-toan-giao-thong-duong-thuy-noi-dia-o-khanh-hoa-post823980.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "public_consequence"
+        },
+        {
+          "title": "Không thể nhân danh nhân quyền để đánh tráo bản chất, bao che khủng bố",
+          "url": "https://cand.vn/khong-the-nhan-danh-nhan-quyen-de-danh-trao-ban-chat-bao-che-khung-bo-post823977.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "public_consequence"
+        },
+        {
+          "title": "9 tháng, giải ngân đầu tư công ước đạt 640.000 tỷ đồng - Báo Quân đội nhân dân",
+          "url": "https://www.qdnd.vn/kinh-te/tin-tuc/9-thang-giai-ngan-dau-tu-cong-uoc-dat-640-000-ty-dong-1059274",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "binding_or_funded_action"
+        },
+        {
+          "title": "Israel xác định sự cố trên chuyến bay FlyDubai là tấn công khủng bố - Báo Quân đội nhân dân",
+          "url": "https://www.qdnd.vn/quoc-te/tin-tuc/israel-xac-dinh-su-co-tren-chuyen-bay-flydubai-la-tan-cong-khung-bo-1058965",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "major_failure"
+        },
+        {
+          "title": "Giá xăng dầu hôm nay (3-10): Giá dầu giảm sau khi châu Âu đồng ý xả kho dự trữ diesel - Báo Quân đội nhân dân",
+          "url": "https://www.qdnd.vn/kinh-te/tin-tuc/gia-xang-dau-hom-nay-3-10-gia-dau-giam-sau-khi-chau-au-dong-y-xa-kho-du-tru-diesel-1059238",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Giá vàng hôm nay (2-10): Giá vàng miếng tăng nhẹ - Báo Quân đội nhân dân",
+          "url": "https://www.qdnd.vn/kinh-te/tin-tuc/gia-vang-hom-nay-2-10-gia-vang-mieng-tang-nhe-1059089",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Giá xăng dầu hôm nay (2-10): Giá dầu tăng vọt 4% khi Trung Quốc dừng xuất khẩu nhiên liệu - Báo Quân đội nhân dân",
+          "url": "https://www.qdnd.vn/kinh-te/tin-tuc/gia-xang-dau-hom-nay-2-10-gia-dau-tang-vot-4-khi-trung-quoc-dung-xuat-khau-nhien-lieu-1059096",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Hộp thư thông tin viên-cộng tác viên - Báo Quân đội nhân dân",
+          "url": "https://www.qdnd.vn/ban-doc/thu-ban-doc/hop-thu-thong-tin-vien-cong-tac-vien-1059183",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Bản tin tổng hợp tuần: Toàn quân nắm chắc tình hình, xử lý hiệu quả các tình huống - Báo Quân đội nhân dân",
+          "url": "https://www.qdnd.vn/tu-lieu-ho-so/van-kien-tu-lieu/ban-tin-tong-hop-tuan-toan-quan-nam-chac-tinh-hinh-xu-ly-hieu-qua-cac-tinh-huong-1059267",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Điều động, bổ nhiệm, kéo dài thời hạn giữ chức vụ một số cán bộ thuộc Bộ Quốc phòng - Báo Quân đội nhân dân",
+          "url": "https://www.qdnd.vn/quoc-phong-an-ninh/tin-tuc/dieu-dong-bo-nhiem-keo-dai-thoi-han-giu-chuc-vu-mot-so-can-bo-thuoc-bo-quoc-phong-1059043",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Người quê thương người phố - ct.qdnd.vn",
+          "url": "https://ct.qdnd.vn/su-viec-va-suy-ngam/nguoi-que-thuong-nguoi-pho-534575",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Giá vàng hôm nay (3-10): Tăng, giảm không đồng nhất - Báo Quân đội nhân dân",
+          "url": "https://www.qdnd.vn/kinh-te/tin-tuc/gia-vang-hom-nay-3-10-tang-giam-khong-dong-nhat-1059234",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Lý do Mỹ khẩn cấp rút toàn bộ oanh tạc cơ B-1 khỏi Anh",
+          "url": "https://baotintuc.vn/ly-do-my-khan-cap-rut-toan-bo-oanh-tac-co-b-1-khoi-anh-post1391407.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "public_consequence"
+        },
+        {
+          "title": "Nhìn lại ASIAD 20: Những dấu ấn từ Aichi-Nagoya",
+          "url": "https://baotintuc.vn/nhin-lai-asiad-20-nhung-dau-an-tu-aichi-nagoya-post1391405.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "major_failure"
+        },
+        {
+          "title": "Tổng thống Trump chính thức tuyên bố thành lập 'Lực lượng Siêu trí tuệ'",
+          "url": "https://baotintuc.vn/tong-thong-trump-chinh-thuc-tuyen-bo-thanh-lap-luc-luong-sieu-tri-tue-post1391397.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "major_failure"
+        },
+        {
+          "title": "Khoảnh khắc & sự kiện ngày 5/10",
+          "url": "https://baotintuc.vn/khoanh-khac-su-kien-ngay-510-post1391406.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "binding_or_funded_action"
+        },
+        {
+          "title": "IOAA 2026: Học sinh Việt Nam giành 6 Huy chương Vàng",
+          "url": "https://baotintuc.vn/ioaa-2026-hoc-sinh-viet-nam-gianh-6-huy-chuong-vang-post1391400.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "binding_or_funded_action"
+        },
+        {
+          "title": "Iran phản hồi đề xuất chuyển urani làm giàu sang Nga",
+          "url": "https://baotintuc.vn/iran-phan-hoi-de-xuat-chuyen-urani-lam-giau-sang-nga-post1391392.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "public_consequence"
+        },
+        {
+          "title": "Học, thực hành theo Bác: Nối dài mạch nguồn văn hóa Tây Nguyên",
+          "url": "https://baotintuc.vn/hoc-thuc-hanh-theo-bac-noi-dai-mach-nguon-van-hoa-tay-nguyen-post1391403.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Quan hệ hữu nghị truyền thống Việt Nam - Panama",
+          "url": "https://baotintuc.vn/quan-he-huu-nghi-truyen-thong-viet-nam-panama-post1391402.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Bộ trưởng Dầu mỏ Iran bất ngờ từ chức giữa chiến dịch gây sức ép kinh tế của Mỹ",
+          "url": "https://baotintuc.vn/bo-truong-dau-mo-iran-bat-ngo-tu-chuc-giua-chien-dich-gay-suc-ep-kinh-te-cua-my-post1391404.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "public_consequence"
+        },
+        {
+          "title": "Các tân sinh viên Việt Nam niên khóa 2026 - 2027 được chào đón tại Hungary",
+          "url": "https://baotintuc.vn/cac-tan-sinh-vien-viet-nam-nien-khoa-2026-2027-duoc-chao-don-tai-hungary-post1391401.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Báo Sài Gòn Giải Phóng ngày 5/10/2026",
+          "url": "https://www.sggp.org.vn/bao-sai-gon-giai-phong-ngay-5102026-post874923.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Phân quyền hiệu quả",
+          "url": "https://www.sggp.org.vn/phan-quyen-hieu-qua-post874928.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Chủ động máy bơm, ứng phó ngập úng tại TPHCM",
+          "url": "https://www.sggp.org.vn/chu-dong-may-bom-ung-pho-ngap-ung-tai-tphcm-post874930.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Thực thi luật phát triển đô thị: Phát huy tính chủ động, kiểm soát chặt quyền lực",
+          "url": "https://www.sggp.org.vn/thuc-thi-luat-phat-trien-do-thi-phat-huy-tinh-chu-dong-kiem-soat-chat-quyen-luc-post874931.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "public_consequence"
+        },
+        {
+          "title": "Phim ngắn AI và hàng loạt hệ lụy: Bài 5: Giữ bản sắc điện ảnh Việt",
+          "url": "https://www.sggp.org.vn/phim-ngan-ai-va-hang-loat-he-luy-bai-5-giu-ban-sac-dien-anh-viet-post874933.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "public_consequence"
+        },
+        {
+          "title": "Mạnh về biển, phát triển bền vững từ biển - Bài 4: Kinh tế biển TPHCM vươn tầm thế giới",
+          "url": "https://www.sggp.org.vn/manh-ve-bien-phat-trien-ben-vung-tu-bien-bai-4-kinh-te-bien-tphcm-vuon-tam-the-gioi-post872212.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Người học không cần làm và nộp hồ sơ đề nghị xét hưởng học bổng",
+          "url": "https://www.sggp.org.vn/nguoi-hoc-khong-can-lam-va-nop-ho-so-de-nghi-xet-huong-hoc-bong-post874924.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "public_consequence"
+        },
+        {
+          "title": "Djokovic vượt qua Zverev, đạt thành tích 32-0 ở China Open",
+          "url": "https://www.sggp.org.vn/djokovic-vuot-qua-zverev-dat-thanh-tich-32-0-o-china-open-post874926.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Các đội tuyển Thể thao Việt Nam rời Aichi-Nagoya",
+          "url": "https://www.sggp.org.vn/cac-doi-tuyen-the-thao-viet-nam-roi-aichi-nagoya-post874922.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "major_failure"
+        },
+        {
+          "title": "Chia tay ASIAD 20, hẹn gặp lại Qatar năm 2030",
+          "url": "https://www.sggp.org.vn/chia-tay-asiad-20-hen-gap-lai-qatar-nam-2030-post874921.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "major_failure"
+        },
+        {
+          "title": "Giá vàng hôm nay 2-10: SJC giảm 800.000 đồng/lượng - Báo Hànộimới",
+          "url": "https://hanoimoi.vn/gia-vang-hom-nay-2-10-sjc-giam-800-000-dong-luong-1759128.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Chuyên gia nghiêng về kịch bản nào với giá vàng trong tuần tới? - Báo Hànộimới",
+          "url": "https://hanoimoi.vn/chuyen-gia-nghieng-ve-kich-ban-nao-voi-gia-vang-trong-tuan-toi-1759443.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Đại công trường Vành đai 2,5 chạy đua từng ngày để thông xe kỹ thuật vào dịp 10-10 - Báo Hànộimới",
+          "url": "https://hanoimoi.vn/dai-cong-truong-vanh-dai-2-5-chay-dua-tung-ngay-de-thong-xe-ky-thuat-vao-dip-10-10-1759025.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Khai mạc Lễ hội Văn hóa thế giới tại Hà Nội lần thứ II-2026: Hội tụ di sản văn hóa thế giới, lan tỏa tình hữu nghị - Báo Hànộimới",
+          "url": "https://hanoimoi.vn/khai-mac-le-hoi-van-hoa-the-gioi-tai-ha-noi-lan-thu-ii-2026-hoi-tu-di-san-van-hoa-the-gioi-lan-toa-tinh-huu-nghi-1759110.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Giá vàng hôm nay 1-10: Vàng trong nước giảm, thế giới chịu áp lực - Báo Hànộimới",
+          "url": "https://hanoimoi.vn/gia-vang-hom-nay-1-10-vang-trong-nuoc-giam-the-gioi-chiu-ap-luc-1758964.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Matcha Nhật Bản trong cuộc đua giá trị - Báo Hànộimới",
+          "url": "https://hanoimoi.vn/matcha-nhat-ban-trong-cuoc-dua-gia-tri-1759494.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Siết chặt quản lý xe ghép - Báo Hànộimới",
+          "url": "https://hanoimoi.vn/siet-chat-quan-ly-xe-ghep-1759302.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Phường Bạch Mai: Tháo dỡ công trình phục vụ giải phóng mặt bằng Trục không gian Quốc lộ 1A - Báo Hànộimới",
+          "url": "https://hanoimoi.vn/phuong-bach-mai-thao-do-cong-trinh-phuc-vu-giai-phong-mat-bang-truc-khong-gian-quoc-lo-1a-1759064.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Quy hoạch tổ hợp ga Ngọc Hồi, đầu mối đường sắt phía Nam Hà Nội - Báo Hànộimới",
+          "url": "https://hanoimoi.vn/quy-hoach-to-hop-ga-ngoc-hoi-dau-moi-duong-sat-phia-nam-ha-noi-1759482.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Thông tin mới nhất về đợt không khí lạnh ảnh hưởng đến Hà Nội - Báo Hànộimới",
+          "url": "https://hanoimoi.vn/thong-tin-moi-nhat-ve-dot-khong-khi-lanh-anh-huong-den-ha-noi-1759440.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Khởi tố thanh niên người Lào tham gia buôn lậu đường kính vào Việt Nam - Báo điện tử VTC News",
+          "url": "https://vtcnews.vn/khoi-to-thanh-nien-nguoi-lao-tham-gia-buon-lau-duong-kinh-vao-viet-nam-ar1043161.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Công an phát thông báo tìm kiếm phụ nữ nghi nhảy cầu Bảo Hà xuống sông Hồng - Báo điện tử VTC News",
+          "url": "https://vtcnews.vn/cong-an-phat-thong-bao-tim-kiem-phu-nu-nghi-nhay-cau-bao-ha-xuong-song-hong-ar1043394.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "HUAWEI MatePad Air thêm an tâm với Care+: Bảo hiểm tai nạn, thay pin miễn phí 1 năm - fptshop.com.vn",
+          "url": "https://fptshop.com.vn/tin-tuc/tin-khuyen-mai/mua-huawei-matepad-air-nhan-huawei-care-214275",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "52% cuộc lừa đảo bằng AI thành công trong chưa đầy 30 phút - Tin tức 24h",
+          "url": "https://www.24h.com.vn/cong-nghe-thong-tin/52-cuoc-lua-dao-bang-ai-thanh-cong-trong-chua-day-30-phut-c55a1799153.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Khởi tố loạt giám đốc, viện trưởng biến kết quả quan trắc từ không đạt thành đạt - Báo điện tử VTC News",
+          "url": "https://vtcnews.vn/khoi-to-loat-giam-doc-vien-truong-bien-ket-qua-quan-trac-tu-khong-dat-thanh-dat-ar1042773.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Kịp thời hỗ trợ cụ ông 92 tuổi mang 7 cây vàng đi lạc trong đêm",
+          "url": "https://vtv.vn/kip-thoi-ho-tro-cu-ong-92-tuoi-mang-7-cay-vang-di-lac-trong-dem-100261004230213272.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "public_consequence"
+        },
+        {
+          "title": "Sao Mai 2026 - Liveshow 1: Xuất hiện thí sinh được đánh giá như nghệ sĩ thực thụ",
+          "url": "https://vtv.vn/sao-mai-2026-liveshow-1-xuat-hien-thi-sinh-duoc-danh-gia-nhu-nghe-si-thuc-thu-1002610050227097.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Tô Dũng bật mí chặng cuối phim Mùa hè năm ấy",
+          "url": "https://vtv.vn/to-dung-bat-mi-chang-cuoi-phim-mua-he-nam-ay-100261003101828143.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Chung kết Anh trai vượt ngàn chông gai 2026: Kết quả cuộc đối đầu của các thủ lĩnh",
+          "url": "https://vtv.vn/chung-ket-anh-trai-vuot-ngan-chong-gai-2026-ket-qua-cuoc-doi-dau-cua-cac-thu-linh-100261004212253388.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Bình Lư - Sa Pa: Mở rộng không gian phát triển Hoàng Liên Sơn",
+          "url": "https://vtv.vn/binh-lu-sa-pa-mo-rong-khong-gian-phat-trien-hoang-lien-son-100261004205318834.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Nhiều người trẻ tại Nhật Bản bị lôi kéo vào cạm bẫy đổi đời",
+          "url": "https://vtv.vn/nhieu-nguoi-tre-tai-nhat-ban-bi-loi-keo-vao-cam-bay-doi-doi-100261004201907943.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "public_consequence"
+        },
+        {
+          "title": "Nhịp sống bình yên: Tri ân những người đi ngược chiều ngọn lửa",
+          "url": "https://vtv.vn/nhip-song-binh-yen-tri-an-nhung-nguoi-di-nguoc-chieu-ngon-lua-100261004200529422.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Bạn trai tin đồn của nữ chính 'Đầu xuân tươi sáng' gây sốt với vai phản diện",
+          "url": "https://vtv.vn/ban-trai-tin-don-cua-nu-chinh-dau-xuan-tuoi-sang-gay-sot-voi-vai-phan-dien-100261004162526344.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Giao mùa - chủ động phòng bệnh cúm mùa",
+          "url": "https://vtv.vn/giao-mua-chu-dong-phong-benh-cum-mua-100261003215338623.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "public_consequence"
+        },
+        {
+          "title": "Lee Byung Hun - Gương mặt giao thoa giữa Hollywood và Seoul",
+          "url": "https://vtv.vn/lee-byung-hun-guong-mat-giao-thoa-giua-hollywood-va-seoul-100261002120600816.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Phú Thọ: Gỡ điểm nghẽn mặt bằng, đẩy nhanh các dự án đê kè khu vực Hoà Bình - Báo Xây dựng",
+          "url": "https://www.baogiaothong.vn/phu-tho-go-diem-nghen-mat-bang-day-nhanh-cac-du-an-de-ke-khu-vuc-hoa-binh-19226100414534981.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "172 dự án điện tái tạo: EVN đề nghị đàm phán lại giá mua điện - Báo Xây dựng",
+          "url": "https://baogiaothong.vn/172-du-an-dien-tai-tao-evn-de-nghi-dam-phan-lai-gia-mua-dien-192261004115339816.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Từ hoài nghi đến hiệu quả: Những đoàn tàu riêng cho người đi làm - Báo Xây dựng",
+          "url": "https://www.baogiaothong.vn/tu-hoai-nghi-den-hieu-qua-nhung-doan-tau-rieng-cho-nguoi-di-lam-19226100415514754.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Bài 4: Giữ tầm nhìn trăm năm trong cuộc kiến tạo sông Hồng - Báo Xây dựng",
+          "url": "https://www.baogiaothong.vn/bai-4-giu-tam-nhin-tram-nam-trong-cuoc-kien-tao-song-hong-192261004145949596.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Metro số 2 làm sẵn “cửa chờ” đón TOD - Báo Xây dựng",
+          "url": "https://www.baogiaothong.vn/metro-so-2-lam-san-cua-cho-don-tod-192261004153949779.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Vỉa hè: Ranh giới giữa sử dụng và chiếm dụng - Báo Xây dựng",
+          "url": "https://www.baogiaothong.vn/via-he-ranh-gioi-giua-su-dung-va-chiem-dung-192261002104708858.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Mở rộng không gian Vũng Áng, khơi thông nút thắt, tiếp lực cho \"xương sống\" công nghiệp - Báo Xây dựng",
+          "url": "https://www.baogiaothong.vn/mo-rong-khong-gian-vung-ang-khoi-thong-nut-that-tiep-luc-cho-xuong-song-cong-nghiep-192261002151610608.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Cao tốc Châu Đốc - Cần Thơ - Sóc Trăng bố trí 4 trạm dừng nghỉ - Báo Xây dựng",
+          "url": "https://www.baogiaothong.vn/cao-toc-chau-doc-can-tho-soc-trang-bo-tri-4-tram-dung-nghi-192261003111935079.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Chính phủ chốt phương án nghỉ Tết Đinh Mùi 2027 trong 7 ngày, Quốc khánh nghỉ bốn ngày - Báo Xây dựng",
+          "url": "https://www.baogiaothong.vn/chinh-phu-chot-phuong-an-nghi-tet-dinh-mui-2027-trong-7-ngay-quoc-khanh-nghi-bon-ngay-192261002183147054.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Mở rộng diện tích, tạo thêm không gian phát triển khu kinh tế Vũng Áng - Báo Xây dựng",
+          "url": "https://www.baogiaothong.vn/mo-rong-dien-tich-tao-them-khong-gian-phat-trien-khu-kinh-te-vung-ang-19226100217084037.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Lâm Đồng: Bị xe bán tải quay đầu cán trúng, người đàn ông ngồi bên đường tử vong - Báo Xây dựng",
+          "url": "https://baoxaydung.com.vn/lam-dong-bi-xe-ban-tai-quay-dau-can-trung-nguoi-dan-ong-ngoi-ben-duong-tu-vong-192261002141820451.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "public_consequence"
+        },
+        {
+          "title": "Toàn cảnh giao thông 4/10: Đường sắt giảm giá vé tháng 10, tăng phí trả vé dịp Tết - Báo Xây dựng",
+          "url": "https://baoxaydung.com.vn/toan-canh-giao-thong-4-10-duong-sat-giam-gia-ve-thang-10-tang-phi-tra-ve-dip-tet-192261003213205766.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Mất lái vì mải cúi nhìn đuôi xe, người đi xe máy gây tai nạn liên hoàn - Báo Xây dựng",
+          "url": "https://baoxaydung.com.vn/mat-lai-vi-mai-cui-nhin-duoi-xe-nguoi-di-xe-may-gay-tai-nan-lien-hoan-192261003131608396.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "CSGT Đà Nẵng dùng xe đặc chủng đưa nạn nhân bị đột quỵ cấp cứu kịp thời - Báo Xây dựng",
+          "url": "https://baoxaydung.com.vn/csgt-da-nang-dung-xe-dac-chung-dua-nan-nhan-bi-dot-quy-cap-cuu-kip-thoi-192261004185309895.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Phát loa đi đòi nợ, một phụ nữ bị công an Khánh Hòa mời làm việc - Báo Xây dựng",
+          "url": "https://baoxaydung.com.vn/phat-loa-di-doi-no-mot-phu-nu-bi-cong-an-khanh-hoa-moi-lam-viec-192261004143310393.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Cục Đường bộ chấn chỉnh vận hành hệ thống giám sát giao thông trên cao tốc Bắc - Nam - Báo Xây dựng",
+          "url": "https://baoxaydung.com.vn/cuc-duong-bo-chan-chinh-van-hanh-he-thong-giam-sat-giao-thong-tren-cao-toc-bac-nam-192261004111249782.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "binding_or_funded_action"
+        },
+        {
+          "title": "500 nhà báo, vận động viên cùng chinh phục con đường đá cổ PaVi ở Lai Châu - Báo Xây dựng",
+          "url": "https://baoxaydung.com.vn/500-nha-bao-van-dong-vien-cung-chinh-phuc-con-duong-da-co-pavi-o-lai-chau-192261004093520702.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Miền Đông Nam Bộ: Nối thông 3 tuyến cao tốc, mở đường giảm tải QL51 trong tháng 10 - Báo Xây dựng",
+          "url": "https://baoxaydung.com.vn/mien-dong-nam-bo-noi-thong-3-tuyen-cao-toc-mo-duong-giam-tai-ql51-trong-thang-10-192261004102410782.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Lai Châu: Hàng nghìn khán giả hòa mình trong đêm đại nhạc hội Viettel Y-Fest 2026 - Báo Xây dựng",
+          "url": "https://baoxaydung.com.vn/lai-chau-hang-nghin-khan-gia-hoa-minh-trong-dem-dai-nhac-hoi-viettel-y-fest-2026-192261003230046999.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Điều chỉnh quy hoạch khu kinh tế Nghi Sơn, bổ sung gần 59ha đất khoáng sản - Báo Xây dựng",
+          "url": "https://baoxaydung.com.vn/dieu-chinh-quy-hoach-khu-kinh-te-nghi-son-bo-sung-gan-59ha-dat-khoang-san-192261004071455355.htm",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Nhân viên quán thịt dê ở Ninh Bình cầm điếu cày đuổi đánh người quay video, công an vào cuộc - Báo Dân Việt",
+          "url": "https://danviet.vn/nhan-vien-quan-thit-de-o-ninh-binh-cam-dieu-cay-duoi-danh-nguoi-quay-video-cong-an-vao-cuoc-d1463789.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Giá vàng hôm nay (3/10): Lao dốc sau khi tăng mạnh, dự báo \"còn giảm\" - Báo Dân Việt",
+          "url": "https://danviet.vn/gia-vang-hom-nay-3-10-lao-doc-sau-khi-tang-manh-du-bao-con-giam-d1464278.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Giá vàng hôm nay (2/10): Vàng miếng SJC bất ngờ tăng trở lại - Báo Dân Việt",
+          "url": "https://danviet.vn/gia-vang-hom-nay-2-10-vang-mieng-sjc-bat-ngo-tang-tro-lai-d1464001.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Giá xăng dầu hôm nay 3/10: Dầu thế giới neo cao, xăng dầu trong nước khó lường - Báo Dân Việt",
+          "url": "https://danviet.vn/gia-xang-dau-hom-nay-3-10-dau-the-gioi-neo-cao-xang-dau-trong-nuoc-kho-luong-d1464288.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Giá vàng hôm nay (4/10): Tiếp đà giảm sâu, nhà đầu tư có nên \"bắt đáy\"? - Báo Dân Việt",
+          "url": "https://danviet.vn/gia-vang-hom-nay-4-10-tiep-da-giam-sau-nha-dau-tu-co-nen-bat-day-d1464508.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "binding_or_funded_action"
+        },
+        {
+          "title": "TRỰC TIẾP ASIAD 2026 ngày 3/11 - Báo Dân Việt",
+          "url": "https://danviet.vn/truc-tiep-asiad-2026-ngay-3-11-cho-vang-tu-cau-may-d1464305.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "ĐT Pakistan hé lộ \"vũ khí\" trước trận gặp ĐT Việt Nam - Báo Dân Việt",
+          "url": "https://danviet.vn/dt-pakistan-he-lo-vu-khi-truoc-tran-gap-dt-viet-nam-d1463818.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Mazda 2 nhập khẩu giảm giá không “phanh”, rẻ ngang Hyundai Grand i10 - Báo Dân Việt",
+          "url": "https://danviet.vn/mazda-2-nhap-khau-giam-gia-khong-phanh-re-ngang-hyundai-grand-i10-d1463952.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "Nguyễn Thị Tâm mang về HCB cho thể thao Việt Nam tại ASIAD 2026 - Báo Dân Việt",
+          "url": "https://danviet.vn/nguyen-thi-tam-mang-ve-hcb-cho-the-thao-viet-nam-tai-asiad-2026-d1464097.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        },
+        {
+          "title": "“Các đợt tấn công dồn dập của ĐT Việt Nam đã phá vỡ thế trận” - Báo Dân Việt",
+          "url": "https://danviet.vn/cac-dot-tan-cong-don-dap-cua-dt-viet-nam-da-pha-vo-the-tran-d1464311.html",
+          "decision": "KEEP",
+          "source": "deterministic",
+          "reason": "ambiguous_keep"
+        }
+      ]
+    }
+  ]
+}

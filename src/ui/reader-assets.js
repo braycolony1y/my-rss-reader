@@ -16,7 +16,7 @@ export const READER_ASSET_PATHS = Object.freeze({
 export function composeReaderHtml(index, card, partials = {}) {
     const html = composeReaderPartials(index, partials);
     if (!html.includes(CARD_COMPONENT_MARKER)) throw new Error('Reader card component marker is missing');
-    return html.replace(CARD_COMPONENT_MARKER, () => card);
+    return html.replace(CARD_COMPONENT_MARKER, () => composeReaderPartials(card, partials));
 }
 export function composeReaderScript(script, panels, modules = []) {
     return [panels, ...modules, script].join('\n');

@@ -40,6 +40,7 @@ const allowedRootFiles = new Set([
 ]);
 
 const allowedRootDirectories = new Set([
+    '.aws', // Read-only credentials mount supplied by the execution environment.
     '.agents',
     '.codex',
     '.git',

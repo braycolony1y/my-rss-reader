@@ -1,3 +1,4 @@
+import { pruneReviewGroup } from '../prefilter/boundaries.js';
 import { getArticleId, createGroupId } from '../articles/identity.js';
 import { verifyWithProviderChain } from '../verification/review.js';
 import { deferredReviewPartitions } from './review-groups.js';
@@ -45,7 +46,8 @@ async function reviewAmbiguousEventGroups(
     index++
   ) {
     const group =
-      ambiguousGroups[index];
+      pruneReviewGroup(ambiguousGroups[index]);
+    if (!group.articles.length) continue;
 
     statistics.reviewedArticleCount +=
       group.articles.length;

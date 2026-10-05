@@ -1,5 +1,5 @@
                 <template x-for="(article, articleIndex) in displayedArticles" :key="articleRowKey(article, articleIndex)">
-                    <div class="article-row">
+                    <div class="article-row" x-show="!isSmartFeedbackHidden(article)" x-transition.opacity.duration.180ms>
                         <div
                             class="story-divider story-divider-outside"
                             x-show="usesTopStories && !article.topStory?.isTop && (articleIndex === 0 || displayedArticles[articleIndex - 1]?.topStory?.isTop)">
@@ -19,6 +19,7 @@
                             :data-smart-card-page="Math.floor(articleIndex / (isMobile ? 15 : 40)) + 1"
                             @click="handleCardClick(article, $event)">
 
+                        <!-- reader:include smart/feedback-button -->
                         <div class="card-ambient" aria-hidden="true"></div>
                         <div class="article-card-header">
                         <span class="story-rank" x-show="usesTopStories && article.topStory?.isTop" x-text="'#' + article.topStory?.rank"></span>
