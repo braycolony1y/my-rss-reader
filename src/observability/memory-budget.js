@@ -35,22 +35,6 @@ export function boundedWorkerOptions(heapMB) {
     };
 }
 
-export function startMemoryMaintenance({ releaseCaches, budget = readMemoryBudget, collect = () => global.gc?.(), report = console.warn } = {}) {
-    let lastCollection = 0;
-    const timer = setInterval(() => {
-        const before = budget();
-        if (!hasWorkerHeadroom(1280, before) && Date.now() - lastCollection >= 60000) {
-            lastCollection = Date.now();
-            releaseCaches?.();
-            collect();
-            const after = budget();
-            report('[MEMORY BUDGET]', JSON.stringify({ beforeMB: Math.round(before.used / MB), afterMB: Math.round(after.used / MB), limitMB: Math.round(after.limit / MB) }));
-        }
-    }, 15000);
-    timer.unref();
-    return () => clearInterval(timer);
-}
-
 export function startServiceWatchdog() {
     const interval = Number(process.env.WATCHDOG_USEC) / 2000;
     if (!process.env.NOTIFY_SOCKET || !Number.isFinite(interval) || interval <= 0) return;

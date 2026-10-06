@@ -1,3 +1,4 @@
+import { waitForCondition } from './helpers/wait-for-condition.js';
 import { readReaderClientSource } from './helpers/reader-source.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -125,7 +126,7 @@ test('a completed material update refreshes safe card content without changing t
  const first=await request();
  values.smartClusters=[{...original,title:'Hospital now reports 95 suspected cases',content:'Hospital now reports 95 suspected cases.'}];
  first.emit('finish');
- for(let i=0;i<500 && values.topStoriesPublished.articles[0].topStory.material_version===version;i++)await new Promise(r=>setTimeout(r,10));
+ await waitForCondition(() => values.topStoriesPublished.articles[0].topStory.material_version > version);
  assert.ok(values.topStoriesPublished.articles[0].topStory.material_version>version);
  const second=(await request(first.payload.smartViewToken)).payload;
  assert.equal(second.smartViewToken,first.payload.smartViewToken);assert.equal(second.updatesAvailable,true);

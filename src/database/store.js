@@ -1,3 +1,4 @@
+import { createParsedCache } from './parsed-cache.js';
 import { PERSONAL_STATE_KEY } from '../smart/feedback/store.js';
 import { FILTER_STATE_KEY } from '../smart/prefilter/policy.js';
 import { writeJsonSnapshot } from './json-writer.js';
@@ -61,7 +62,7 @@ export function createDatabaseStore() {
     let _dbCache = null;
 
     // In-memory database (source of truth once loaded)
-    let _jsonParsedCache = {};
+    const _jsonParsedCache = createParsedCache();
 
     // Version -> clusters history to prevent mid-session flickering on Smart tab
     let _dbMutexQueue = Promise.resolve();
@@ -83,7 +84,8 @@ export function createDatabaseStore() {
         const value = snapshot?.[key];
         if (Array.isArray(value)) return value;
         if (typeof value !== 'string') return null;
-        if (_jsonParsedCache[key]?.raw === value && Array.isArray(_jsonParsedCache[key].parsed)) return _jsonParsedCache[key].parsed;
+        const cached = _jsonParsedCache.get(key, value);
+        if (Array.isArray(cached?.parsed)) return cached.parsed;
         try {
             const parsed = JSON.parse(value);
             return Array.isArray(parsed) ? parsed : null;
@@ -384,13 +386,12 @@ export function createDatabaseStore() {
                 let val = _dbCache[key];
                 if (!val) return null;
                 if (opts && opts.type === 'json' && typeof val === 'string') {
-                    if (_jsonParsedCache[key]?.raw === val) {
-                        return opts.shared ? _jsonParsedCache[key].parsed : structuredClone(_jsonParsedCache[key].parsed);
-                    }
+                    const cached = _jsonParsedCache.get(key, val);
+                    if (cached) return opts.shared ? cached.parsed : structuredClone(cached.parsed);
                     const parsed = JSON.parse(val);
                     // Mutable one-off readers already own this parse. Retaining
                     // it AND cloning it doubled every background corpus read.
-                    if (opts.shared) _jsonParsedCache[key] = { raw: val, parsed };
+                    if (opts.shared) _jsonParsedCache.set(key, val, parsed);
                     return parsed;
                 }
                 return val;
@@ -427,7 +428,7 @@ export function createDatabaseStore() {
                 _dbCache = next;
                 try {
                     await _persistToDisk(next, previous, key, { ...options, lightweight: STATE_KEYS.has(key) });
-                    if (_jsonParsedCache[key]?.raw !== value) delete _jsonParsedCache[key];
+                    _jsonParsedCache.invalidate(key, value);
                 } catch (err) {
                     _dbCache = previous; // rollback on failure
                     throw err;
@@ -472,7 +473,7 @@ export function createDatabaseStore() {
                 try {
                     await _persistToDisk(next, previous, Object.keys(keyValuePairs), options);
                     _dbCache = next;
-                    for (const key of Object.keys(keyValuePairs)) delete _jsonParsedCache[key];
+                    for (const key of Object.keys(keyValuePairs)) _jsonParsedCache.invalidate(key, next[key]);
                 } catch (err) {
                     _dbCache = previous; // rollback on failure
                     throw err;
@@ -515,16 +516,13 @@ export function createDatabaseStore() {
 
                 if (
                     typeof raw !== 'string'
-                    || _jsonParsedCache[key]?.raw === raw
+                    || _jsonParsedCache.get(key, raw)
                 ) {
                     continue;
                 }
 
                 try {
-                    _jsonParsedCache[key] = {
-                        raw,
-                        parsed: JSON.parse(raw)
-                    };
+                    _jsonParsedCache.set(key, raw, JSON.parse(raw));
                 } catch (error) {
                     console.warn(
                         `[DB WARM] Could not preparse ${key}:`,
@@ -553,7 +551,8 @@ export function createDatabaseStore() {
     }
 
     return {
-        releaseParsedCache() { _jsonParsedCache = {}; },
+        releaseParsedCache() { _jsonParsedCache.clear(); },
+        getResourceState: () => _jsonParsedCache.state(),
         initializeWriterLock,
         env,
         _writeJsonAtomic,

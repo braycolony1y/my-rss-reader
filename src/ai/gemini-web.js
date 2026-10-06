@@ -1,3 +1,6 @@
+import { closeOwnedSlotPage } from '../browser/slot-lifecycle.js';
+import { summarizeGeminiSlots } from '../browser/resource-state.js';
+export const getGeminiWebResourceState = () => summarizeGeminiSlots(slots);
 const sleep = ms =>
     new Promise(resolve => setTimeout(resolve, ms));
 
@@ -171,31 +174,9 @@ function clearIdleClose(slot) {
 }
 
 
-async function closeSlotPage(
-    slot,
-    reason = 'cleanup'
-) {
-    clearIdleClose(slot);
-
-    const page = slot.page;
-    slot.page = null;
-
-    if (!page) return;
-
-    try {
-        await page.closeWindow?.();
-
-        console.log(
-            `[GEMINI WEB] Closed slot ${slot.id} tab (${reason})`
-        );
-    } catch (error) {
-        console.warn(
-            `[GEMINI WEB] Could not close slot ${slot.id} tab:`,
-            error?.message || error
-        );
-    }
+async function closeSlotPage(slot, reason = 'cleanup') {
+    return closeOwnedSlotPage(slot, reason, clearIdleClose);
 }
-
 
 function scheduleIdleClose(slot) {
     clearIdleClose(slot);

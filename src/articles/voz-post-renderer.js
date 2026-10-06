@@ -1,23 +1,9 @@
 import { sourceTimeMarkup } from './source-time.js';
 import { normalizeArticleMediaMarkup } from '../../article-media.js';
-import createDOMPurify from 'dompurify';
-import { JSDOM } from 'jsdom';
+import { sanitizePostMarkup } from './post-markup-sanitizer.js';
+export { sanitizePostMarkup };
 
-const purifier = createDOMPurify(new JSDOM('').window);
 export const escapePostText = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'})[ch]);
-// The same safety and media rules apply to live and archived posts.
-purifier.addHook('uponSanitizeElement', node => {
-    if (node.nodeName !== 'IFRAME') return;
-    try {
-        const url = new URL(node.getAttribute('src'));
-        const hosts = ['youtube.com', 'youtube-nocookie.com', 'player.vimeo.com', 'tiktok.com', 'player.bilibili.com', 'dailymotion.com', 'facebook.com', 'instagram.com', 'platform.twitter.com', 'redditmedia.com', 'reddit.com'];
-        if (url.protocol !== 'https:' || !hosts.some(host => url.hostname === host || url.hostname.endsWith('.' + host))) node.remove();
-        else { node.removeAttribute('srcdoc'); node.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-popups allow-presentation'); }
-    } catch { node.remove(); }
-});
-export function sanitizePostMarkup(html) {
-    return purifier.sanitize(html || '', { USE_PROFILES: {html:true}, ADD_TAGS:['iframe'], ADD_ATTR:['allow', 'allowfullscreen', 'frameborder', 'sandbox', 'scrolling', 'target', 'referrerpolicy'], FORBID_ATTR:['srcdoc'] });
-}
 export function renderVozPost(post, {body = '', reactions = '', annotations = '', history = ''} = {}) {
     const e = escapePostText;
     const avatar = post.author_avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(post.author_name || 'Member')}&background=random&color=fff&size=96`;

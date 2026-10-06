@@ -44,7 +44,16 @@ import { registerSummaryRoutes } from './routes/summary-routes.js';
 import { registerMediaRoutes } from './routes/media-routes.js';
 import { registerPageRoutes } from './routes/page-routes.js';
 import { registerEventRoutes } from './events.js';
-import { startMemoryMaintenance, startServiceWatchdog } from './observability/memory-budget.js';
+import { startServiceWatchdog } from './observability/memory-budget.js';
+import { getGeminiWebResourceState } from './ai/gemini-web.js';
+import { getPostSanitizerState } from './articles/post-markup-sanitizer.js';
+import { startResourceMonitor } from './observability/resource-monitor.js';
+import { getArticleFetchQueueState } from './articles/fetch-lanes.js';
+import { getBrowserFetchBudget } from './browser/work-budget.js';
+import { getOpenCliResourceState } from './opencli-reader.js';
+import { getGlobalAiSchedulerState } from './ai/global-ai-scheduler.js';
+import { getLocalComputeState } from './ai/local-compute.js';
+import { isSmartRefreshActive } from './smart/refresh/coordination.js';
 
 // Construct one owner per subsystem. Deferred callbacks below connect the
 // Smart engine and feed ingestion without module cycles or duplicate state.
@@ -308,10 +317,6 @@ export async function createApplication({ isMainModule = false } = {}) {
         getLastKnownCachedArticleImage: cache.getLastKnownCachedArticleImage,
         env: database.env
     });
-    if (isMainModule) startMemoryMaintenance({ releaseCaches: () => {
-        presentation.releaseTransientCaches();
-        database.releaseParsedCache();
-    } });
 
     const archives = createArticleArchives({
         getCachedArticle: cache.getCachedArticle,
@@ -427,6 +432,13 @@ export async function createApplication({ isMainModule = false } = {}) {
         http
     });
 
+    const resourceMonitor = isMainModule ? startResourceMonitor({ collect: () => ({
+        articleQueues: getArticleFetchQueueState(), browserBudget: getBrowserFetchBudget(),
+        browser: { ...getOpenCliResourceState(), gemini: getGeminiWebResourceState() }, ai: getGlobalAiSchedulerState(),
+        localCompute: getLocalComputeState(), smartRunning: isSmartRefreshActive(),
+        parsedCache: database.getResourceState(), postMarkupCache: getPostSanitizerState(), activeArticleRequests: progress.activeForegroundRequests,
+        syncPaused: sync.syncPaused, lastSyncCompletedAt: sync.lastSyncCompletedAt,
+    }) }) : null;
     registerDiagnosticRoutes({
         app: http.app,
         processStartTime: lifecycle.processStartTime,
@@ -435,7 +447,8 @@ export async function createApplication({ isMainModule = false } = {}) {
         manualSyncProgress: sync.manualSyncProgress,
         pruneOldEntries: logs.pruneOldEntries,
         systemLogs: logs.systemLogs,
-        sync
+        sync,
+        resourceMonitor
     });
 
     registerContentFilterRoutes({

@@ -2,11 +2,11 @@ import { clamp } from './palette.js';
 import { smoothMask } from './masks.js';
 import { placeDesktopPhoto } from './desktop-photo.js?v=20261003_organic_1';
 
-// Fit the complete source with one uniform scale. Never cover-crop it or
-// apply a second focal zoom; small sources are enlarged only to the fit box.
+// Desktop uses the approved photo box, including sources with alpha pixels.
+// The extent controller owns its cover height. Stacked fitting stays separate.
 export function fitStoryHero(a, { width, height, panelTop = .64, headingRight = .54,
     avatar = { left: .75, top: .03, right: .99, bottom: .12 }, stacked = width < 640 } = {}) {
-    if (!stacked && !a.hasTransparency) return placeDesktopPhoto(a, { width, height });
+    if (!stacked) return placeDesktopPhoto(a, { width, height });
     const f = a.focal || { x:.5, y:.4, w:.18, h:.18, kind:'default' };
     const focal = { left:clamp(f.x-f.w/2,0,1), right:clamp(f.x+f.w/2,0,1),
         top:clamp(f.y-f.h/2,0,1), bottom:clamp(f.y+f.h/2,0,1) };

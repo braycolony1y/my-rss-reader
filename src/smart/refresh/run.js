@@ -9,6 +9,7 @@ import { prepareSmartCandidates } from './candidates.js';
 import { beginSmartRefresh, endSmartRefresh } from './coordination.js';
 import { createSmartRefreshMetrics, recordSmartRefreshMetrics } from './metrics.js';
 import { reviewSmartCandidates } from './review-publication.js';
+import { coalesceSmartRefresh } from './coalescing.js';
 
 export function createSmartRefresh({ db, helpers, headers, keyManager, hasGeminiKey, localModel, getSources, getSettings, setStatus, clusterWorkerFactory }) {
   let running = false;
@@ -264,5 +265,5 @@ export function createSmartRefresh({ db, helpers, headers, keyManager, hasGemini
     }
   }
 
-  return { sync, getProgress: () => currentProgress, isRunning: () => running };
+  return { sync: coalesceSmartRefresh(sync), getProgress: () => currentProgress, isRunning: () => running };
 }

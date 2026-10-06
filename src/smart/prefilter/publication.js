@@ -6,6 +6,7 @@ import { getPrefilterStore, terminalExcluded } from './state.js';
 import { FILTER_POLICY_REVISION } from './retired-reasons.js';
 import { hydrateStoredClusters, survivingClusters } from './boundaries.js';
 import { buildCluster } from '../clustering/cluster.js';
+import { filterPublishedView } from './published-view.js';
 
 export async function prepareRankingCandidates(db, clusters, sources) {
   clusters = await preparePersonalCandidates(db, clusters, sources, 'pre_ranking');
@@ -36,11 +37,6 @@ export async function excludedPublishedStory(db, article, section = article?.top
   return [article, ...(article?.relatedArticles || [])].some(member => terminalExcluded(member, section));
 }
 export async function filterPublishedSnapshot(db, snapshot) {
-  if (!snapshot?.articles) return snapshot;
-  const articles = [];
-  for (const article of snapshot.articles) {
-    if (!await excludedPublishedStory(db, article)) articles.push(article);
-  }
-  return articles.length === snapshot.articles.length ? snapshot : { ...snapshot, articles };
+  return filterPublishedView(db, snapshot);
 }
 export const excludedBriefingState = () => ({status:'source-only',generationState:'not-applicable',analysisStatus:'not-applicable',sections:[],keyFacts:[],sources:[],reason:'terminal_smart_top_exclusion'});

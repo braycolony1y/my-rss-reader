@@ -3,32 +3,16 @@ export { rgbToOklab };
 export const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 export const hueOf = (a, b) => (Math.atan2(b, a) * 180 / Math.PI + 360) % 360;
 export const hueDistance = (a, b) => Math.abs((a - b + 540) % 360 - 180);
-export function labToLinear([L, a, b]) {
-    const l = (L + .3963377774*a + .2158037573*b) ** 3;
-    const m = (L - .1055613458*a - .0638541728*b) ** 3;
-    const s = (L - .0894841775*a - 1.291485548*b) ** 3;
-    return [4.0767416621*l - 3.3077115913*m + .2309699292*s,
-        -1.2684380046*l + 2.6097574011*m - .3413193965*s,
-        -.0041960863*l - .7034186147*m + 1.707614701*s];
-}
-export function gamutMap(L, C, h) {
-    const angle = h * Math.PI / 180;
-    const rgb = c => labToLinear([L, c*Math.cos(angle), c*Math.sin(angle)]);
-    const valid = values => values.every(v => v >= -1e-7 && v <= 1.0000001);
-    if (!valid(rgb(C))) {
-        let low = 0, high = C;
-        for (let i = 0; i < 20; i++) { const mid = (low+high)/2; if (valid(rgb(mid))) low = mid; else high = mid; }
-        C = low;
-    }
-    return { L, C, h, rgb: rgb(C).map(v => Math.round(255 * (v <= .0031308 ? 12.92*v : 1.055*Math.max(0,v)**(1/2.4)-.055))) };
-}
+import { gamutMap } from './color-conversion.js';
+export { labToLinear, gamutMap } from './color-conversion.js';
 // Exact area weights are applied AFTER converting source pixels to OKLab.
 export function areaLabGrid(data, width, height, channels = 3, columns = 24, rows = 16) {
     const grid = Array.from({length: columns*rows}, () => [0,0,0,0]);
+    const lab = [0, 0, 0];
     for (let y=0;y<height;y++) for(let x=0;x<width;x++) {
         const i=(y*width+x)*channels, alpha=channels===4?data[i+3]/255:1;
         if (!alpha) continue;
-        const lab=rgbToOklab(data[i],data[i+1],data[i+2]);
+        rgbToOklab(data[i],data[i+1],data[i+2],lab);
         const x0=x*columns/width,x1=(x+1)*columns/width,y0=y*rows/height,y1=(y+1)*rows/height;
         for(let gy=Math.floor(y0);gy<Math.min(rows,Math.ceil(y1));gy++) for(let gx=Math.floor(x0);gx<Math.min(columns,Math.ceil(x1));gx++) {
             const w=(Math.min(x1,gx+1)-Math.max(x0,gx))*(Math.min(y1,gy+1)-Math.max(y0,gy))*alpha;

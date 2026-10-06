@@ -65,6 +65,21 @@ test('decoded photograph dimensions take precedence over resized analysis dimens
     assert.equal(intrinsicPhotoAnalysis(artwork,{naturalWidth:800,naturalHeight:450}),artwork);
 });
 
+test('alpha pixels do not bypass desktop framing or reset the resolved focus', () => {
+    const source = { ...photo, hasTransparency: true, graphic: true };
+    for (const width of [640, 800, 1100]) {
+        const framed = placeStoryHero(source, { width, height: 530 });
+        const ordinary = placeStoryHero(photo, { width, height: 530 });
+        assert.equal(framed.placement, 'editorial');
+        for (const key of ['offsetX', 'offsetY', 'imageW', 'imageH', 'posX', 'posY', 'scale']) {
+            assert.equal(framed[key], ordinary[key], `${width}/${key}`);
+        }
+        assert.equal(framed.posX, photo.focal.x * 100);
+        assert.equal(framed.posY, photo.focal.y * 100);
+    }
+    assert.equal(placeStoryHero(source, { width: 390, height: 530 }).placement, 'stacked');
+});
+
 test('image-derived spatial tones stay luminous for extreme photos and neutral without colors', () => {
     const p=placeStoryHero(photo,{width:1000,height:530});
     const a=deriveStoryComposition(photo,{p,width:1000});

@@ -1,3 +1,5 @@
+import { createArticleRequestFlight } from '../articles/request-flight.js';
+import { beginArticleRequest } from '../articles/request-priority.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { decodeHTMLEntities, normalizeArticleTitle } from '../../feed-parsers.js';
 import { isInvalidImage, extractImageFromHtml, normalizeStateUrl, isRedditUrl } from '../utils/article-utils.js';
@@ -224,11 +226,12 @@ export function registerArticleRoutes({
         }
     });
 
-    app.get('/api/article-content', authMiddleware, articleFetchLaneMiddleware, async (req, res) => {
+    const singleFlight = createArticleRequestFlight({ updateArticleFetchProgress, finishArticleFetchProgress });
+    app.get('/api/article-content', authMiddleware, articleFetchLaneMiddleware, singleFlight(async (req, res) => {
         const requestedUrl = req.query.url;
         if (!requestedUrl) return res.status(400).json({ error: 'URL required' });
         if (isRedditUrl(requestedUrl)) return res.json({ url: requestedUrl, externalUrl: requestedUrl, openExternally: true, content: '' });
-        progress.activeForegroundRequests++;
+        const releaseForeground = beginArticleRequest(req, progress);
         let url = normalizeArticleSourceUrl(requestedUrl);
         let prefetchTargets = [];
         try { if (req.query.prefetchTargets) prefetchTargets = JSON.parse(req.query.prefetchTargets); } catch(e) {}
@@ -767,8 +770,8 @@ export function registerArticleRoutes({
             res.json({ error: e.message, url });
         } finally {
             articleReaderSessions.delete(requestId);
-            progress.activeForegroundRequests = Math.max(0, progress.activeForegroundRequests - 1);
+            releaseForeground();
         }
-    });
+    }));
 
 }

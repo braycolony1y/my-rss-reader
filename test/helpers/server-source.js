@@ -29,6 +29,7 @@ const modulePaths = [
     "src/articles/progress.js",
     "src/articles/pipeline.js",
     "src/feeds/prefetch.js",
+    "src/feeds/next-articles-prefetch.js",
     "src/middleware/auth.js",
     "src/routes/diagnostic-routes.js",
     "src/routes/smart-routes.js",

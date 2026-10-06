@@ -9,6 +9,7 @@ export function registerDiagnosticRoutes({
     pruneOldEntries,
     systemLogs,
     sync,
+    resourceMonitor,
 } = {}) {
     // ============================================================================
     // EXPRESS ROUTES
@@ -31,6 +32,10 @@ export function registerDiagnosticRoutes({
             lastSyncCompletedAt: sync.lastSyncCompletedAt ? new Date(sync.lastSyncCompletedAt).toISOString() : null,
             feedCount: fetchHistory.length > 0 ? new Set(fetchHistory.map(h => h.feedUrl)).size : 'unknown'
         });
+    });
+
+    app.get('/api/resources', authMiddleware, (req, res) => {
+        res.json(resourceMonitor?.latest() || { pid: process.pid, ...process.memoryUsage() });
     });
 
     // Ping endpoint for keepalive

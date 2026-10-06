@@ -1,4 +1,4 @@
-import { applyTopStoryImage, storyBlendState } from '../blend/runtime.js?v=20261004_fill_1';
+import { applyTopStoryImage, storyBlendState } from '../blend/runtime.js?v=20261006_requirements_2';
 import { showBlendDebug } from './debug.js';
 const manifest = await (await fetch('./manifest.json')).json();
 const container = document.querySelector('#scroll-container');

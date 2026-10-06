@@ -1,9 +1,10 @@
 /* Continue the actual lower photo color into the open space below it.
    Two smooth axes mix it with the existing left-side color at their junction. */
 @media (min-width: 768px) {
-    .theme-glass-light #scroll-container .article-card[data-smart-hero-extent="analysis"][data-edge-color="ready"]::after {
+    .theme-glass-light #scroll-container .article-card:is([data-image-layout="top"], [data-shared-card-style="desktop"])[data-story-blend][data-smart-hero-extent="analysis"][data-edge-color="ready"]::after {
+        content: ''; position: absolute; inset: 0; z-index: -2; pointer-events: none;
         -webkit-mask-composite: source-in; mask-composite: intersect;
-        background: var(--edge-bottom-gradient);
+        background: var(--edge-bottom-gradient) !important;
         -webkit-mask-image: linear-gradient(to right, transparent var(--edge-color-left), #000 var(--edge-color-solid)), linear-gradient(to bottom, transparent calc(var(--edge-color-start) - 18px), #000 var(--edge-color-start));
         mask-image: linear-gradient(to right, transparent var(--edge-color-left), #000 var(--edge-color-solid)), linear-gradient(to bottom, transparent calc(var(--edge-color-start) - 18px), #000 var(--edge-color-start));
     }

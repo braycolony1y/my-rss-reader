@@ -1,5 +1,6 @@
+import { associatedSourceUrls } from './source-policy-index.js';
 import { hasWarmOpenCliBrowserFetch } from '../opencli-reader.js';
-import { normalizeStateUrl, normalizedHostname, isRedditUrl } from '../utils/article-utils.js';
+import { normalizedHostname, isRedditUrl } from '../utils/article-utils.js';
 import { sourceFetchPolicyIdentity } from '../../smart-news.js';
 
 export function createArticleFetchPolicy({
@@ -98,12 +99,7 @@ export function createArticleFetchPolicy({
         // before considering any host-level inference.
         try {
             const articles = await env.RSS_DATA.get('articles', { type: 'json', shared: true }) || [];
-            const targetIdentity = normalizeStateUrl(targetUrl);
-            const associatedFeedUrls = [...new Set(articles
-                .filter(article => [article?.link, article?.originalLink, article?.id]
-                    .some(candidate => normalizeStateUrl(candidate) === targetIdentity))
-                .map(article => article?.feedUrl)
-                .filter(Boolean))];
+            const associatedFeedUrls = associatedSourceUrls(articles, targetUrl);
             if (associatedFeedUrls.length) {
                 const associatedPolicies = associatedFeedUrls
                     .map(policyForSourceUrl)

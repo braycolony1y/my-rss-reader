@@ -1,18 +1,14 @@
 import { randomUUID, createHash } from 'node:crypto';
 import { articleIdentity } from '../prefilter/identity.js';
 import { semantics as s } from './semantics.js';
+import { identity } from './identity.js';
+export { identity } from './identity.js';
 
 export const USER_SMART_FILTER_VERSION = 1;
 export const PERSONAL_STATE_KEY = 'smartPersonalFilters';
 const stores = new WeakMap();
 const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 export const members = article => [article, ...(article.relatedArticles || [])];
-export function identity(article) {
-    const value = articleIdentity(article);
-    // No full body in history. Keep exact evidence revision and established IDs.
-    const clusterSignature = article.relatedArticles?.length ? digest(article.relatedArticles.map(member => articleIdentity(member).key).sort()) : null;
-    return { key: clusterSignature ? digest([value.key, clusterSignature]) : value.key, clusterSignature, revision: value.revision, title: value.safeTitle, keys: value.keys.map(([, key]) => key), materialVersion: article.topStory?.material_version || null };
-}
 export function sameArticle(a, b) {
     if (a.clusterSignature && b.clusterSignature && a.clusterSignature !== b.clusterSignature) return false;
     if (a.materialVersion && b.materialVersion && a.materialVersion !== b.materialVersion) return false;

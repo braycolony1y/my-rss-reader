@@ -1,3 +1,4 @@
+import { listJsonCompression } from './middleware/json-compression.js';
 import express from 'express';
 
 export function createHttpApp() {
@@ -23,6 +24,7 @@ export function createHttpApp() {
     });
 
     app.use('/public', express.static('public'));
+    app.use('/api/data', listJsonCompression);
 
     app.use('/api', (req, res, next) => {
         if (!req.path.startsWith('/og-image')) {

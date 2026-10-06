@@ -22,9 +22,10 @@ function measure(card) {
     const win = card.ownerDocument.defaultView;
     // data-image-layout is produced by usesTopStories (smart filter + top tab).
     // Also require the actual Smart article identity and desktop photo layout.
-    const enabled = card.isConnected && win.innerWidth >= 768 && card.clientWidth >= 640
+    const enabled = card.isConnected && win.innerWidth >= 768
         && ((card.dataset.imageLayout === 'top' && !!card.dataset.smartClusterId) || card.dataset.sharedCardStyle === 'desktop')
-        && !!card.closest('.theme-glass-light') && card.dataset.storyHeroPlacement === 'editorial';
+        && !!card.closest('.theme-glass-light') && card.dataset.storyHeroPlacement === 'editorial'
+        && card.clientWidth >= 640;
     if (!enabled) return { card };
     const hero = card.querySelector('.article-card-image');
     const img = hero?.querySelector('.thumbnail-img');

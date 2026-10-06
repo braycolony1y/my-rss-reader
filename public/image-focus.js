@@ -1,6 +1,7 @@
+import { collectImageFocusMutations } from './image-focus-mutations.js';
 import { fitCardImageViewport, visiblePhotoHeight } from './card-image-layout.js?v=2';
 import { applyImageColors } from './card-blend/legacy-color.js?v=1';
-import { applyTopStoryImage } from './top-story-card/blend/runtime.js?v=20261004_continuation_1';
+import { applyTopStoryImage } from './top-story-card/blend/runtime.js?v=20261006_requirements_2';
 
 const clamp = (value, low = 0, high = 1) => Math.max(low, Math.min(high, value));
 const center = { x: 0.5, y: 0.5 };
@@ -233,22 +234,17 @@ export function installImageFocus(win) {
     const onLoad = event => { if (event.target.matches?.(selector)) { watch(event.target); update(event.target); } };
     const onResize = () => { for (const [img,state] of states) { update(img); } };
     const mutations = new win.MutationObserver(records => {
-        const affected = new Set();
+        const { images, added, removed } = collectImageFocusMutations(records, selector);
         for (const record of records) {
-            if (record.type === 'attributes' && record.target.matches(selector)) {
-                if (record.attributeName === 'src' || record.attributeName === 'srcset') {
-                    const state = states.get(record.target);
-                    if (state) state.source = null;
-                    watch(record.target);
-                    affected.add(record.target);
-                }
-            } else if (!record.target.matches?.('.article-card-image')) {
-                const img = record.target.closest?.('.article-card')?.querySelector(selector);
-                if (img) affected.add(img);
+            if (['src', 'srcset'].includes(record.attributeName) && images.has(record.target)) {
+                const state = states.get(record.target);
+                if (state) state.source = null;
+                watch(record.target);
             }
-            record.addedNodes.forEach(scan);
         }
-        affected.forEach(update);
+        added.forEach(scan);
+        images.forEach(update);
+        if (!removed) return;
         for (const [img, state] of states) {
             if (!img.isConnected) {
                 win.clearTimeout(state.timer);

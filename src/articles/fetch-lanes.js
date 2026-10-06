@@ -1,9 +1,18 @@
 // ARTICLE_FETCH_PRIORITY_LANES_V1
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { createConcurrencyLimiter, cpuCapacity, workloadConcurrency } from '../runtime/concurrency-limiter.js';
 
 const laneStorage = new AsyncLocalStorage();
 const originQueues = new Map();
 const VALID_LANES = new Set(['p0', 'p1', 'p2', 'p3', 'p4']);
+const foreground = createConcurrencyLimiter(workloadConcurrency('RSS_FOREGROUND_FETCH_CONCURRENCY', cpuCapacity() * 2));
+export function getArticleFetchQueueState() {
+    let queued = 0, active = 0;
+    for (const origin of originQueues.values()) for (const queue of Object.values(origin)) {
+        queued += queue.high.length + queue.low.length; active += Number(queue.running);
+    }
+    return { foreground: foreground.state(), other: { active, pending: queued }, origins: originQueues.size };
+}
 
 function normalizeLane(value) {
     const lane = String(value || '').toLowerCase();
@@ -100,7 +109,7 @@ export function runArticleFetchTask(url, task) {
 
     if (lane === 'p0') {
         console.log(`[FETCH LANE] START p0 burst ${origin} waitedMs=0`);
-        return Promise.resolve().then(() => laneStorage.run(context, task));
+        return foreground.run(() => laneStorage.run(context, task));
     }
 
     const reading = lane === 'p1' || lane === 'p2';

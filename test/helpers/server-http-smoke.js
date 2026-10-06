@@ -18,7 +18,6 @@ const realFetch = globalThis.fetch;
 let publisherRequests = 0;
 globalThis.fetch = async (url, options) => {
     const target = String(url);
-    if (target.startsWith('http://127.0.0.1:')) return realFetch(url, options);
     if (target === feedUrl) return new Response(`<?xml version="1.0"?><rss version="2.0"><channel><title>Fixture feed</title><item><title>Fixture article refreshed</title><link>${articleUrl}</link><description>Fixture feed excerpt</description><pubDate>${new Date().toUTCString()}</pubDate></item></channel></rss>`);
     if (target.startsWith('https://refactor.example/')) {
         publisherRequests++;

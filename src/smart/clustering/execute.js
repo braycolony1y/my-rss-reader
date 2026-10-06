@@ -1,3 +1,4 @@
+import { requestClusterWorker } from './worker-request.js';
 import { withLocalCompute } from '../../ai/local-compute.js';
 import { getArticleId } from '../articles/identity.js';
 import { SMART_CLUSTER_VERSION } from '../config.js';
@@ -11,47 +12,6 @@ export async function clusterSmartCandidates({ candidates, existingClusters, clu
   // This is required because the old ONNX ARM64 native addon cannot
   // safely be unloaded and then loaded by a replacement Worker.
   const worker = clusterWorkerFactory();
-
-  let clusteringResult = await withLocalCompute(
-    'xenova-clustering',
-    () => new Promise((resolve, reject) => {
-    let hasResult = false;
-
-    const cleanup = () => {
-      worker.off('message', onMessage);
-    };
-
-    const onMessage = msg => {
-      if (msg.type === 'progress') {
-        if (msg.progress.embeddingsReused !== undefined) Object.assign(metrics, { embeddingsReused: msg.progress.embeddingsReused, embeddingsGenerated: msg.progress.embeddingsGenerated });
-        notify(
-          msg.progress.phase === 'embeddings' ? 'smart-embeddings' : 'smart-matching',
-          msg.progress.phase === 'embeddings' ? 'Generating embeddings…' : 'Matching stories…',
-          {
-            ...msg.progress,
-            ...(Number.isFinite(Number(msg.progress.current))
-              ? { current: Number(msg.progress.current) }
-              : {}),
-            ...(Number.isFinite(Number(msg.progress.total))
-              ? { total: Number(msg.progress.total) }
-              : {})
-          }
-        );
-      } else if (msg.type === 'result') {
-        if (hasResult) return;
-        hasResult = true;
-        cleanup();
-        Object.assign(metrics, msg.result.metrics || {});
-        resolve(msg.result);
-      } else if (msg.type === 'error') {
-        if (hasResult) return;
-        hasResult = true;
-        cleanup();
-        reject(new Error(msg.error));
-      }
-    };
-
-    worker.on('message', onMessage);
 
     const reusableExistingClusters =
       clusterVersionChanged
@@ -74,7 +34,9 @@ export async function clusterSmartCandidates({ candidates, existingClusters, clu
       })
     );
 
-    worker.postMessage({
+  let clusteringResult = await withLocalCompute(
+    'xenova-clustering',
+    () => requestClusterWorker(worker, {
       type: 'cluster',
       mode:
         process.env.SMART_CLUSTERING_MODE ||
@@ -84,9 +46,24 @@ export async function clusterSmartCandidates({ candidates, existingClusters, clu
         reusableExistingClusters,
       cachePath:
         EMBEDDING_CACHE_FILE
-    });
+    }, progress => {
+        if (progress.embeddingsReused !== undefined) Object.assign(metrics, { embeddingsReused: progress.embeddingsReused, embeddingsGenerated: progress.embeddingsGenerated });
+        notify(
+          progress.phase === 'embeddings' ? 'smart-embeddings' : 'smart-matching',
+          progress.phase === 'embeddings' ? 'Generating embeddings…' : 'Matching stories…',
+          {
+            ...progress,
+            ...(Number.isFinite(Number(progress.current))
+              ? { current: Number(progress.current) }
+              : {}),
+            ...(Number.isFinite(Number(progress.total))
+              ? { total: Number(progress.total) }
+              : {})
+          }
+        );
     })
   );
+  Object.assign(metrics, clusteringResult.metrics || {});
 
   let autoMergedClusters;
   let ambiguousGroups;

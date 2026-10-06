@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 export const READER_COMPONENT_PATHS = Object.fromEntries([
     'login', 'sidebar', 'header', 'smart/navigation', 'article-list',
     'action-status', 'tooltip', 'article/overlay', 'article/overlay-header',
-    'article/summary', 'modals/add-feed', 'modals/content-filter',
+    'article/summary', 'article/card-panel', 'modals/add-feed', 'modals/content-filter',
     'modals/ai-status', 'modals/smart-sources', 'modals/edit-source',
     'modals/logs', 'modals/boards', 'modals/article-debug',
     'modals/ai-providers', 'modals/cache', 'smart/feedback-button', 'smart/feedback-picker', 'modals/filter-log'

@@ -107,7 +107,7 @@ test('all dark tokens flip together, and generated colors fit sRGB', async () =>
     }
 });
 
-test('transparent artwork retains alpha and fits inside its hero rather than becoming a rectangular plate', async () => {
+test('transparent artwork retains alpha while using the common desktop framing', async () => {
     const pixels = Buffer.alloc(64 * 64 * 4);
     for (let y = 16; y < 48; y++) for (let x = 16; x < 48; x++) pixels.set([30, 110, 190, 255], (y * 64 + x) * 4);
     const bytes = await sharp(pixels, { raw: { width: 64, height: 64, channels: 4 } }).png().toBuffer();
@@ -116,6 +116,7 @@ test('transparent artwork retains alpha and fits inside its hero rather than bec
     const hero = Buffer.from(a.assets.heroImage.split(',')[1], 'base64');
     assert.equal((await sharp(hero).metadata()).hasAlpha, true);
     const p = placeStoryHero(a, { width: 740, height: 471 });
-    assert.equal(p.placement, 'contain'); assert.equal(p.mode, 'G');
-    assert.ok(p.imageW <= p.heroW * .7 + 1e-6);
+    assert.equal(p.placement, 'editorial'); assert.equal(p.mode, 'G');
+    assert.equal(p.offsetX, 740 * .48); assert.equal(p.imageW, 740 * .66);
+    assert.equal(p.posX, a.focal.x * 100); assert.equal(p.posY, a.focal.y * 100);
 });

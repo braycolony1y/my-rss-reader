@@ -17,6 +17,7 @@ import { dedupeGoogleNewsWrappers } from '../sources/wrappers.js';
 import { normalizedVerificationArticles } from '../verification/cache.js';
 import { getEnabledVerificationProviders } from '../verification/provider-config.js';
 import { createHash } from 'node:crypto';
+import { canReuseSmartSnapshot } from './reuse-policy.js';
 
 export async function prepareSmartCandidates({ db, smartSources, getSettings, hasGeminiKey, localModel, setStatus, getProgress, notify, metrics, options, isTargeted, targetCategory, startedAt, helpers, headers, setAttemptedState }) {
   const sourceCounts =
@@ -584,16 +585,8 @@ export async function prepareSmartCandidates({ db, smartSources, getSettings, ha
     return { outcome: { ok: false, skipped: true, reason: 'unchanged_failed_verification', metrics } };
   }
 
-  if (
-    !options.forceRebuild &&
-    currentSignature ===
-    previousSignature &&
-    previousAiConfiguration ===
-    aiConfiguration &&
-    (await db.get('smartClusteringAlgorithmVersion')) === SMART_CLUSTER_VERSION &&
-    (await db.get('smartEmbeddingIdentity')) === `${EMBEDDING_MODEL}:${EMBEDDING_CACHE_VERSION}` &&
-    previousSignature
-  ) {
+  if (await canReuseSmartSnapshot({ forceRebuild: options.forceRebuild, currentSignature,
+    previousSignature, previousAiConfiguration, aiConfiguration, db })) {
     metrics.cachedDecisionsReused = existingClusters.filter(cluster => cluster.verification?.method === 'ai_fallback').length;
     metrics.embeddingsReused = candidates.length;
     metrics.existingMembershipsReused = candidates.length;

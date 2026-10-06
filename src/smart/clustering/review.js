@@ -2,7 +2,7 @@ import { pruneReviewGroup } from '../prefilter/boundaries.js';
 import { getArticleId, createGroupId } from '../articles/identity.js';
 import { verifyWithProviderChain } from '../verification/review.js';
 import { deferredReviewPartitions } from './review-groups.js';
-import { getHeapStatistics } from 'node:v8';
+import { createReviewMemoryPolicy } from '../verification/memory-policy.js';
 
 async function reviewAmbiguousEventGroups(
   ambiguousGroups,
@@ -30,15 +30,7 @@ async function reviewAmbiguousEventGroups(
     groupResults: []
   };
 
-  const configuredHeapDeferMb = Number(
-    process.env.SMART_AI_REVIEW_HEAP_DEFER_MB
-  );
-  const heapLimitBytes = Number(getHeapStatistics().heap_size_limit) || (4 * 1024 * 1024 * 1024);
-  const heapDeferBytes =
-    Number.isFinite(configuredHeapDeferMb) && configuredHeapDeferMb > 0
-      ? configuredHeapDeferMb * 1024 * 1024
-      : Math.floor(heapLimitBytes * 0.65);
-  let deferRemainingForMemoryPressure = false;
+  const memoryPolicy = createReviewMemoryPolicy();
 
   for (
     let index = 0;
@@ -72,35 +64,9 @@ async function reviewAmbiguousEventGroups(
 
     const resolvedStartIndex = resolvedGroups.length;
 
-    if (!deferRemainingForMemoryPressure) {
-      let memory = process.memoryUsage();
-      if (
-        memory.heapUsed >= heapDeferBytes &&
-        typeof global.gc === 'function'
-      ) {
-        global.gc();
-        memory = process.memoryUsage();
-      }
+    const pressure = memoryPolicy.check({ completedGroups: index, totalGroups: ambiguousGroups.length });
 
-      if (memory.heapUsed >= heapDeferBytes) {
-        deferRemainingForMemoryPressure = true;
-        console.warn(
-          '[SMART MEMORY] ai-review-pressure',
-          JSON.stringify({
-            completedGroups: index,
-            totalGroups: ambiguousGroups.length,
-            remainingGroups: ambiguousGroups.length - index,
-            rssMB: Math.round(memory.rss / 1024 / 1024),
-            heapUsedMB: Math.round(memory.heapUsed / 1024 / 1024),
-            heapTotalMB: Math.round(memory.heapTotal / 1024 / 1024),
-            heapLimitMB: Math.round(heapLimitBytes / 1024 / 1024),
-            deferThresholdMB: Math.round(heapDeferBytes / 1024 / 1024)
-          })
-        );
-      }
-    }
-
-    const result = deferRemainingForMemoryPressure
+    const result = pressure.defer
       ? {
         valid: true,
         uncertain: true,
@@ -386,8 +352,7 @@ async function reviewAmbiguousEventGroups(
       break;
     }
 
-    if ((index + 1) % 10 === 0 && typeof global.gc === 'function') {
-      global.gc();
+    if ((index + 1) % 10 === 0) {
       const memory = process.memoryUsage();
       console.log(
         '[SMART MEMORY] ai-review-progress',

@@ -1,0 +1,44 @@
+[
+  {
+    "mode": "normal",
+    "status": 200,
+    "ms": 689,
+    "timing": "data;dur=50.4, filter;dur=350.6, cards;dur=4.0",
+    "rows": 40
+  },
+  {
+    "mode": "top",
+    "status": 200,
+    "ms": 5409,
+    "timing": "rank-state-read;dur=0.000, cluster-reconciliation;dur=0.000, relevance-computation;dur=0.000, signal-computation;dur=0.000, sorting-ranking;dur=0.000, top-cutoff;dur=0.000, rank-persistence;dur=0.000, request-received;dur=0.024, persisted-read;dur=4971.424, candidate-collection;dur=9.844, ranking-total;dur=0.067, filtering;dur=216.503, snapshot-construction;dur=110.807, card-preparation;dur=15.108, serialization;dur=6.394",
+    "rows": 40
+  },
+  {
+    "mode": "classic",
+    "status": 200,
+    "ms": 3124,
+    "timing": "rank-state-read;dur=0.000, cluster-reconciliation;dur=0.000, relevance-computation;dur=0.000, signal-computation;dur=0.000, sorting-ranking;dur=0.000, top-cutoff;dur=0.000, rank-persistence;dur=0.000, request-received;dur=0.005, persisted-read;dur=3.205, candidate-collection;dur=320.794, ranking-total;dur=0.002, filtering;dur=981.792, snapshot-construction;dur=585.715, card-preparation;dur=344.237, serialization;dur=11.244, smart-data;dur=2247.000",
+    "rows": 40
+  },
+  {
+    "mode": "normal",
+    "status": 200,
+    "ms": 142,
+    "timing": "data;dur=0.2, filter;dur=30.5, cards;dur=6.5",
+    "rows": 40
+  },
+  {
+    "mode": "top",
+    "status": 200,
+    "ms": 504,
+    "timing": "rank-state-read;dur=0.000, cluster-reconciliation;dur=0.000, relevance-computation;dur=0.000, signal-computation;dur=0.000, sorting-ranking;dur=0.000, top-cutoff;dur=0.000, rank-persistence;dur=0.000, request-received;dur=0.001, persisted-read;dur=1.214, candidate-collection;dur=17.090, ranking-total;dur=0.027, filtering;dur=131.201, snapshot-construction;dur=194.946, card-preparation;dur=40.446, serialization;dur=24.792",
+    "rows": 40
+  },
+  {
+    "mode": "classic",
+    "status": 200,
+    "ms": 597,
+    "timing": "rank-state-read;dur=0.000, cluster-reconciliation;dur=0.000, relevance-computation;dur=0.000, signal-computation;dur=0.000, sorting-ranking;dur=0.000, top-cutoff;dur=0.000, rank-persistence;dur=0.000, request-received;dur=0.001, persisted-read;dur=0.224, candidate-collection;dur=0.015, ranking-total;dur=0.001, filtering;dur=187.909, snapshot-construction;dur=160.194, card-preparation;dur=89.400, serialization;dur=12.149, smart-data;dur=450.000",
+    "rows": 40
+  }
+]

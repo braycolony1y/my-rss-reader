@@ -34,7 +34,7 @@ const ReaderArticlePrefetch = {
                     for (const art of articlesToPrefetch) {
                         if (this.isRedditArticle(art)) continue;
                         const url = this.articleReaderUrl(art);
-                        if (!url || this.articleContentCache.has(url)) continue;
+                        if (!url || this.articleContentCache.has(url) || this._prefetchingArticleUrl === url) continue;
                         if (!this.prefetchQueue.some(item => this.articleReaderUrl(item) === url)) {
                             this.prefetchQueue.push(art);
                         }
@@ -59,6 +59,7 @@ const ReaderArticlePrefetch = {
                         const url = this.articleReaderUrl(art);
                         if (!url || (this.articleContentCache && this.articleContentCache.has(url))) continue;
 
+                        this._prefetchingArticleUrl = url;
                         try {
                             const params = new URLSearchParams({
                                 url,
@@ -84,6 +85,8 @@ const ReaderArticlePrefetch = {
                             }
                         } catch (e) {
                             // Silently ignore background prefetch errors
+                        } finally {
+                            this._prefetchingArticleUrl = null;
                         }
                         await new Promise(r => setTimeout(r, 350));
                     }

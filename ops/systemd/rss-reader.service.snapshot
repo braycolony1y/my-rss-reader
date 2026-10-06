@@ -44,7 +44,10 @@ TasksMax=128
 
 # /etc/systemd/system/rss-reader.service.d/ai-review-memory.conf
 [Service]
-Environment="SMART_AI_REVIEW_HEAP_DEFER_MB=1400"
+# Reserve real V8/cgroup headroom without skipping verification merely because
+# the retained article corpus exceeds the former fixed 1400 MB cap.
+Environment="SMART_AI_REVIEW_HEAP_RESERVE_MB=256"
+Environment="SMART_AI_REVIEW_MEMORY_RESERVE_MB=512"
 
 # /etc/systemd/system/rss-reader.service.d/gemini-debug.conf
 [Service]

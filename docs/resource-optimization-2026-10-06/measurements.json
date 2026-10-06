@@ -1,0 +1,1403 @@
+{
+  "before": {
+    "memorySamples": [
+      {
+        "at": 1791249323327,
+        "pid": 1946323,
+        "uptime": 3077.249785099,
+        "rss": 4031717376,
+        "heapTotal": 1953173504,
+        "heapUsed": 1850329112,
+        "external": 61693370,
+        "arrayBuffers": 19541592,
+        "cpu": {
+          "user": 922757819,
+          "system": 69557962
+        }
+      },
+      {
+        "at": 1791249328340,
+        "pid": 1946323,
+        "uptime": 3082.262429899,
+        "rss": 4035510272,
+        "heapTotal": 2018050048,
+        "heapUsed": 1923486280,
+        "external": 48267912,
+        "arrayBuffers": 6179512,
+        "cpu": {
+          "user": 925093434,
+          "system": 69701686
+        }
+      },
+      {
+        "at": 1791249333348,
+        "pid": 1946323,
+        "uptime": 3087.270409345,
+        "rss": 4078817280,
+        "heapTotal": 2004090880,
+        "heapUsed": 1813870200,
+        "external": 49526127,
+        "arrayBuffers": 4512319,
+        "cpu": {
+          "user": 929062463,
+          "system": 69930021
+        }
+      },
+      {
+        "at": 1791249338356,
+        "pid": 1946323,
+        "uptime": 3092.278992914,
+        "rss": 4096598016,
+        "heapTotal": 2061983744,
+        "heapUsed": 1977844912,
+        "external": 96756013,
+        "arrayBuffers": 45367506,
+        "cpu": {
+          "user": 933020731,
+          "system": 70147914
+        }
+      },
+      {
+        "at": 1791249343370,
+        "pid": 1946323,
+        "uptime": 3097.292991282,
+        "rss": 4131246080,
+        "heapTotal": 2057949184,
+        "heapUsed": 1862819208,
+        "external": 131075168,
+        "arrayBuffers": 69805122,
+        "cpu": {
+          "user": 938016917,
+          "system": 70412383
+        }
+      },
+      {
+        "at": 1791249348381,
+        "pid": 1946323,
+        "uptime": 3102.303672265,
+        "rss": 4164239360,
+        "heapTotal": 2044235776,
+        "heapUsed": 1934025936,
+        "external": 114546531,
+        "arrayBuffers": 47135975,
+        "cpu": {
+          "user": 942411847,
+          "system": 70534632
+        }
+      },
+      {
+        "at": 1791249353396,
+        "pid": 1946323,
+        "uptime": 3107.318864439,
+        "rss": 4128829440,
+        "heapTotal": 2039304192,
+        "heapUsed": 1848439952,
+        "external": 56902217,
+        "arrayBuffers": 8428409,
+        "cpu": {
+          "user": 946667609,
+          "system": 70756332
+        }
+      },
+      {
+        "at": 1791249358405,
+        "pid": 1946323,
+        "uptime": 3112.327514726,
+        "rss": 4135784448,
+        "heapTotal": 2098401280,
+        "heapUsed": 1977510320,
+        "external": 116713411,
+        "arrayBuffers": 47897206,
+        "cpu": {
+          "user": 950827924,
+          "system": 71089717
+        }
+      },
+      {
+        "at": 1791249363409,
+        "pid": 1946323,
+        "uptime": 3117.331900903,
+        "rss": 4169650176,
+        "heapTotal": 2110640128,
+        "heapUsed": 1995388544,
+        "external": 81122419,
+        "arrayBuffers": 20125285,
+        "cpu": {
+          "user": 955456346,
+          "system": 71309274
+        }
+      },
+      {
+        "at": 1791249368432,
+        "pid": 1946323,
+        "uptime": 3122.354600009,
+        "rss": 4173938688,
+        "heapTotal": 2078523392,
+        "heapUsed": 1980714920,
+        "external": 89940954,
+        "arrayBuffers": 36511216,
+        "cpu": {
+          "user": 960254929,
+          "system": 71485218
+        }
+      },
+      {
+        "at": 1791249373440,
+        "pid": 1946323,
+        "uptime": 3127.362584209,
+        "rss": 4131758080,
+        "heapTotal": 2060820480,
+        "heapUsed": 1907212880,
+        "external": 38255789,
+        "arrayBuffers": 9027773,
+        "cpu": {
+          "user": 965202859,
+          "system": 71695089
+        }
+      },
+      {
+        "at": 1791249378442,
+        "pid": 1946323,
+        "uptime": 3132.364246524,
+        "rss": 4195205120,
+        "heapTotal": 2164322304,
+        "heapUsed": 2040523448,
+        "external": 49831100,
+        "arrayBuffers": 10389907,
+        "cpu": {
+          "user": 969185230,
+          "system": 72156165
+        }
+      },
+      {
+        "at": 1791249383447,
+        "pid": 1946323,
+        "uptime": 3137.369926107,
+        "rss": 4197908480,
+        "heapTotal": 2137976832,
+        "heapUsed": 1882210832,
+        "external": 31691834,
+        "arrayBuffers": 7489372,
+        "cpu": {
+          "user": 974299015,
+          "system": 72570944
+        }
+      }
+    ],
+    "rssMiB": [
+      3844.9453125,
+      4003.4375
+    ],
+    "heapMiB": [
+      1729.841423034668,
+      1945.9948043823242
+    ],
+    "cpuPercent": 90.74214570858284,
+    "gcMs": 13987.227,
+    "profileSeconds": 62.429773,
+    "cpuSelf": [
+      {
+        "ms": 13987.227,
+        "functionName": "(garbage collector)",
+        "scriptId": "0",
+        "url": "",
+        "lineNumber": -1,
+        "columnNumber": -1
+      },
+      {
+        "ms": 4327.91,
+        "functionName": "(idle)",
+        "scriptId": "0",
+        "url": "",
+        "lineNumber": -1,
+        "columnNumber": -1
+      },
+      {
+        "ms": 2821.714,
+        "functionName": "(program)",
+        "scriptId": "0",
+        "url": "",
+        "lineNumber": -1,
+        "columnNumber": -1
+      },
+      {
+        "ms": 1404.581,
+        "functionName": "encode",
+        "scriptId": "476",
+        "url": "file:///home/ubuntu/my-rss-reader/src/database/json-writer.js",
+        "lineNumber": 16,
+        "columnNumber": 24
+      },
+      {
+        "ms": 1322.259,
+        "functionName": "rgbToOklab",
+        "scriptId": "537",
+        "url": "file:///home/ubuntu/my-rss-reader/public/liquid-tint.js",
+        "lineNumber": 5,
+        "columnNumber": 26
+      },
+      {
+        "ms": 740.226,
+        "functionName": "labToLinear",
+        "scriptId": "540",
+        "url": "file:///home/ubuntu/my-rss-reader/public/card-blend/color.js",
+        "lineNumber": 5,
+        "columnNumber": 27
+      },
+      {
+        "ms": 710.649,
+        "functionName": "linear",
+        "scriptId": "537",
+        "url": "file:///home/ubuntu/my-rss-reader/public/liquid-tint.js",
+        "lineNumber": 6,
+        "columnNumber": 19
+      },
+      {
+        "ms": 643.51,
+        "functionName": "parseArticleHtmlContent",
+        "scriptId": "202",
+        "url": "file:///home/ubuntu/my-rss-reader/src/sources/VozSource.js",
+        "lineNumber": 260,
+        "columnNumber": 27
+      },
+      {
+        "ms": 630.834,
+        "functionName": "_runParsingLoop",
+        "scriptId": "210",
+        "url": "file:///home/ubuntu/my-rss-reader/node_modules/cheerio/node_modules/parse5/dist/tokenizer/index.js",
+        "lineNumber": 204,
+        "columnNumber": 19
+      },
+      {
+        "ms": 626.21,
+        "functionName": "",
+        "scriptId": "0",
+        "url": "",
+        "lineNumber": -1,
+        "columnNumber": -1
+      },
+      {
+        "ms": 560.674,
+        "functionName": "_callState",
+        "scriptId": "210",
+        "url": "file:///home/ubuntu/my-rss-reader/node_modules/cheerio/node_modules/parse5/dist/tokenizer/index.js",
+        "lineNumber": 489,
+        "columnNumber": 14
+      },
+      {
+        "ms": 526.698,
+        "functionName": "",
+        "scriptId": "541",
+        "url": "file:///home/ubuntu/my-rss-reader/src/images/top-story-blend/analyze.js",
+        "lineNumber": 14,
+        "columnNumber": 17
+      },
+      {
+        "ms": 435.47,
+        "functionName": "areaLabGrid",
+        "scriptId": "540",
+        "url": "file:///home/ubuntu/my-rss-reader/public/card-blend/color.js",
+        "lineNumber": 25,
+        "columnNumber": 27
+      },
+      {
+        "ms": 434.916,
+        "functionName": "spawn",
+        "scriptId": "0",
+        "url": "",
+        "lineNumber": -1,
+        "columnNumber": -1
+      },
+      {
+        "ms": 415.228,
+        "functionName": "writeBuffer",
+        "scriptId": "0",
+        "url": "",
+        "lineNumber": -1,
+        "columnNumber": -1
+      },
+      {
+        "ms": 404.23,
+        "functionName": "normalizeArticleSourceUrl",
+        "scriptId": "133",
+        "url": "file:///home/ubuntu/my-rss-reader/src/article-source-state.js",
+        "lineNumber": 52,
+        "columnNumber": 41
+      },
+      {
+        "ms": 346.217,
+        "functionName": "get",
+        "scriptId": "475",
+        "url": "file:///home/ubuntu/my-rss-reader/src/database/store.js",
+        "lineNumber": 377,
+        "columnNumber": 17
+      },
+      {
+        "ms": 344.686,
+        "functionName": "smootherstep",
+        "scriptId": "548",
+        "url": "file:///home/ubuntu/my-rss-reader/src/images/top-story-blend/assets.js",
+        "lineNumber": 2,
+        "columnNumber": 28
+      },
+      {
+        "ms": 340.526,
+        "functionName": "buildStoryBlendAssets",
+        "scriptId": "548",
+        "url": "file:///home/ubuntu/my-rss-reader/src/images/top-story-blend/assets.js",
+        "lineNumber": 7,
+        "columnNumber": 43
+      },
+      {
+        "ms": 334.771,
+        "functionName": "normalizeStateUrl",
+        "scriptId": "135",
+        "url": "file:///home/ubuntu/my-rss-reader/src/utils/article-utils.js",
+        "lineNumber": 166,
+        "columnNumber": 26
+      },
+      {
+        "ms": 281.853,
+        "functionName": "parseArticleHtmlContent",
+        "scriptId": "493",
+        "url": "file:///home/ubuntu/my-rss-reader/src/articles/parser.js",
+        "lineNumber": 93,
+        "columnNumber": 42
+      },
+      {
+        "ms": 281.342,
+        "functionName": "HierarchicalNSW",
+        "scriptId": "0",
+        "url": "",
+        "lineNumber": -1,
+        "columnNumber": -1
+      },
+      {
+        "ms": 275.763,
+        "functionName": "gamutMap",
+        "scriptId": "540",
+        "url": "file:///home/ubuntu/my-rss-reader/public/card-blend/color.js",
+        "lineNumber": 13,
+        "columnNumber": 24
+      },
+      {
+        "ms": 266.389,
+        "functionName": "utf8Write",
+        "scriptId": "25",
+        "url": "node:internal/buffer",
+        "lineNumber": 981,
+        "columnNumber": 18
+      },
+      {
+        "ms": 265.27,
+        "functionName": "put",
+        "scriptId": "397",
+        "url": "file:///home/ubuntu/my-rss-reader/src/board/cache-service.js",
+        "lineNumber": 290,
+        "columnNumber": 16
+      },
+      {
+        "ms": 251.622,
+        "functionName": "write",
+        "scriptId": "210",
+        "url": "file:///home/ubuntu/my-rss-reader/node_modules/cheerio/node_modules/parse5/dist/tokenizer/index.js",
+        "lineNumber": 234,
+        "columnNumber": 9
+      },
+      {
+        "ms": 237.042,
+        "functionName": "get",
+        "scriptId": "475",
+        "url": "file:///home/ubuntu/my-rss-reader/src/database/store.js",
+        "lineNumber": 377,
+        "columnNumber": 17
+      },
+      {
+        "ms": 224.67,
+        "functionName": "rgb",
+        "scriptId": "540",
+        "url": "file:///home/ubuntu/my-rss-reader/public/card-blend/color.js",
+        "lineNumber": 15,
+        "columnNumber": 16
+      },
+      {
+        "ms": 215.82,
+        "functionName": "write",
+        "scriptId": "0",
+        "url": "",
+        "lineNumber": -1,
+        "columnNumber": -1
+      },
+      {
+        "ms": 215.249,
+        "functionName": "mutableLedger",
+        "scriptId": "397",
+        "url": "file:///home/ubuntu/my-rss-reader/src/board/cache-service.js",
+        "lineNumber": 501,
+        "columnNumber": 34
+      }
+    ]
+  },
+  "after": {
+    "memorySamples": [
+      {
+        "at": 1791251408487,
+        "pid": 2008312,
+        "uptime": 478.937924628,
+        "rss": 2338656256,
+        "heapTotal": 1132675072,
+        "heapUsed": 1016263456,
+        "external": 25340608,
+        "arrayBuffers": 3177362,
+        "cpu": {
+          "user": 117577363,
+          "system": 16606733
+        }
+      },
+      {
+        "at": 1791251413493,
+        "pid": 2008312,
+        "uptime": 483.944070569,
+        "rss": 2341933056,
+        "heapTotal": 1136087040,
+        "heapUsed": 1032713904,
+        "external": 26449685,
+        "arrayBuffers": 4286439,
+        "cpu": {
+          "user": 117689614,
+          "system": 16677667
+        }
+      },
+      {
+        "at": 1791251418497,
+        "pid": 2008312,
+        "uptime": 488.947958774,
+        "rss": 2341933056,
+        "heapTotal": 1136087040,
+        "heapUsed": 1032892336,
+        "external": 26449685,
+        "arrayBuffers": 4286439,
+        "cpu": {
+          "user": 117741836,
+          "system": 16746454
+        }
+      },
+      {
+        "at": 1791251423499,
+        "pid": 2008312,
+        "uptime": 493.949991285,
+        "rss": 2341933056,
+        "heapTotal": 1136087040,
+        "heapUsed": 1033357848,
+        "external": 26507448,
+        "arrayBuffers": 4344202,
+        "cpu": {
+          "user": 117796252,
+          "system": 16806631
+        }
+      },
+      {
+        "at": 1791251428505,
+        "pid": 2008312,
+        "uptime": 498.955893905,
+        "rss": 2341933056,
+        "heapTotal": 1136087040,
+        "heapUsed": 1033431928,
+        "external": 26507448,
+        "arrayBuffers": 4344202,
+        "cpu": {
+          "user": 117833172,
+          "system": 16862162
+        }
+      },
+      {
+        "at": 1791251433508,
+        "pid": 2008312,
+        "uptime": 503.958886023,
+        "rss": 2341933056,
+        "heapTotal": 1136087040,
+        "heapUsed": 1033519224,
+        "external": 26507520,
+        "arrayBuffers": 4344274,
+        "cpu": {
+          "user": 117878251,
+          "system": 16921318
+        }
+      },
+      {
+        "at": 1791251438517,
+        "pid": 2008312,
+        "uptime": 508.96861459,
+        "rss": 2341933056,
+        "heapTotal": 1136087040,
+        "heapUsed": 1033638400,
+        "external": 26507543,
+        "arrayBuffers": 4344297,
+        "cpu": {
+          "user": 117929529,
+          "system": 17002184
+        }
+      },
+      {
+        "at": 1791251443522,
+        "pid": 2008312,
+        "uptime": 513.973250841,
+        "rss": 2341933056,
+        "heapTotal": 1136087040,
+        "heapUsed": 1033834328,
+        "external": 26508595,
+        "arrayBuffers": 4345349,
+        "cpu": {
+          "user": 117995181,
+          "system": 17045531
+        }
+      },
+      {
+        "at": 1791251448524,
+        "pid": 2008312,
+        "uptime": 518.97481607,
+        "rss": 2342064128,
+        "heapTotal": 1136087040,
+        "heapUsed": 1033903024,
+        "external": 26508595,
+        "arrayBuffers": 4345349,
+        "cpu": {
+          "user": 118060272,
+          "system": 17091743
+        }
+      },
+      {
+        "at": 1791251453529,
+        "pid": 2008312,
+        "uptime": 523.980318287,
+        "rss": 2342064128,
+        "heapTotal": 1136087040,
+        "heapUsed": 1033955320,
+        "external": 26508595,
+        "arrayBuffers": 4345349,
+        "cpu": {
+          "user": 118109050,
+          "system": 17145573
+        }
+      },
+      {
+        "at": 1791251458533,
+        "pid": 2008312,
+        "uptime": 528.984434214,
+        "rss": 2342064128,
+        "heapTotal": 1136087040,
+        "heapUsed": 1034042248,
+        "external": 26508595,
+        "arrayBuffers": 4345349,
+        "cpu": {
+          "user": 118153944,
+          "system": 17226315
+        }
+      },
+      {
+        "at": 1791251463535,
+        "pid": 2008312,
+        "uptime": 533.986439647,
+        "rss": 2376724480,
+        "heapTotal": 1170968576,
+        "heapUsed": 1047971736,
+        "external": 26545169,
+        "arrayBuffers": 4381923,
+        "cpu": {
+          "user": 119037930,
+          "system": 17339361
+        }
+      },
+      {
+        "at": 1791251468541,
+        "pid": 2008312,
+        "uptime": 538.991796063,
+        "rss": 2378690560,
+        "heapTotal": 1172942848,
+        "heapUsed": 1050717600,
+        "external": 27276429,
+        "arrayBuffers": 5113183,
+        "cpu": {
+          "user": 119085639,
+          "system": 17402488
+        }
+      }
+    ],
+    "rssMiB": [
+      2230.31640625,
+      2268.49609375
+    ],
+    "heapMiB": [
+      969.1843566894531,
+      1002.0423889160156
+    ],
+    "cpuPercent": 3.8365987278116362,
+    "gcMs": 106.632,
+    "profileSeconds": 61.271281,
+    "cpuSelf": [
+      {
+        "ms": 58656.561,
+        "functionName": "(idle)",
+        "scriptId": "0",
+        "url": "",
+        "lineNumber": -1,
+        "columnNumber": -1
+      },
+      {
+        "ms": 1215.707,
+        "functionName": "_runParsingLoop",
+        "scriptId": "210",
+        "url": "file:///home/ubuntu/my-rss-reader/node_modules/cheerio/node_modules/parse5/dist/tokenizer/index.js",
+        "lineNumber": 204,
+        "columnNumber": 19
+      },
+      {
+        "ms": 184.982,
+        "functionName": "",
+        "scriptId": "403",
+        "url": "file:///home/ubuntu/my-rss-reader/src/board/cache-service.js",
+        "lineNumber": 608,
+        "columnNumber": 21
+      },
+      {
+        "ms": 178.486,
+        "functionName": "spawn",
+        "scriptId": "0",
+        "url": "",
+        "lineNumber": -1,
+        "columnNumber": -1
+      },
+      {
+        "ms": 106.632,
+        "functionName": "(garbage collector)",
+        "scriptId": "0",
+        "url": "",
+        "lineNumber": -1,
+        "columnNumber": -1
+      },
+      {
+        "ms": 86.444,
+        "functionName": "(program)",
+        "scriptId": "0",
+        "url": "",
+        "lineNumber": -1,
+        "columnNumber": -1
+      },
+      {
+        "ms": 60.758,
+        "functionName": "structuredClone",
+        "scriptId": "28",
+        "url": "node:internal/worker/js_transferable",
+        "lineNumber": 112,
+        "columnNumber": 24
+      },
+      {
+        "ms": 41.042,
+        "functionName": "_runParsingLoop",
+        "scriptId": "210",
+        "url": "file:///home/ubuntu/my-rss-reader/node_modules/cheerio/node_modules/parse5/dist/tokenizer/index.js",
+        "lineNumber": 204,
+        "columnNumber": 19
+      },
+      {
+        "ms": 38.178,
+        "functionName": "parseArticleHtmlContent",
+        "scriptId": "202",
+        "url": "file:///home/ubuntu/my-rss-reader/src/sources/VozSource.js",
+        "lineNumber": 260,
+        "columnNumber": 27
+      },
+      {
+        "ms": 20.752,
+        "functionName": "",
+        "scriptId": "403",
+        "url": "file:///home/ubuntu/my-rss-reader/src/board/cache-service.js",
+        "lineNumber": 617,
+        "columnNumber": 21
+      },
+      {
+        "ms": 19.748,
+        "functionName": "_callState",
+        "scriptId": "210",
+        "url": "file:///home/ubuntu/my-rss-reader/node_modules/cheerio/node_modules/parse5/dist/tokenizer/index.js",
+        "lineNumber": 489,
+        "columnNumber": 14
+      },
+      {
+        "ms": 16.912,
+        "functionName": "utf8Write",
+        "scriptId": "25",
+        "url": "node:internal/buffer",
+        "lineNumber": 981,
+        "columnNumber": 18
+      },
+      {
+        "ms": 14.884,
+        "functionName": "get",
+        "scriptId": "484",
+        "url": "file:///home/ubuntu/my-rss-reader/src/database/store.js",
+        "lineNumber": 379,
+        "columnNumber": 17
+      },
+      {
+        "ms": 14.8,
+        "functionName": "parseArticleHtmlContent",
+        "scriptId": "504",
+        "url": "file:///home/ubuntu/my-rss-reader/src/articles/parser.js",
+        "lineNumber": 93,
+        "columnNumber": 42
+      },
+      {
+        "ms": 10.806,
+        "functionName": "parse",
+        "scriptId": "169",
+        "url": "file:///home/ubuntu/my-rss-reader/node_modules/htmlparser2/dist/esm/Tokenizer.js",
+        "lineNumber": 626,
+        "columnNumber": 9
+      },
+      {
+        "ms": 9.771,
+        "functionName": "parse",
+        "scriptId": "0",
+        "url": "",
+        "lineNumber": -1,
+        "columnNumber": -1
+      },
+      {
+        "ms": 8.308,
+        "functionName": "encode",
+        "scriptId": "486",
+        "url": "file:///home/ubuntu/my-rss-reader/src/database/json-writer.js",
+        "lineNumber": 16,
+        "columnNumber": 24
+      },
+      {
+        "ms": 7.545,
+        "functionName": "isOpenCliBrowserFetchChallenge",
+        "scriptId": "381",
+        "url": "file:///home/ubuntu/my-rss-reader/src/opencli-reader.js",
+        "lineNumber": 66,
+        "columnNumber": 39
+      },
+      {
+        "ms": 7.266,
+        "functionName": "find",
+        "scriptId": "177",
+        "url": "file:///home/ubuntu/my-rss-reader/node_modules/cheerio-select/lib/esm/index.js",
+        "lineNumber": 229,
+        "columnNumber": 13
+      },
+      {
+        "ms": 6.881,
+        "functionName": "find",
+        "scriptId": "160",
+        "url": "file:///home/ubuntu/my-rss-reader/node_modules/domutils/lib/esm/querying.js",
+        "lineNumber": 24,
+        "columnNumber": 20
+      },
+      {
+        "ms": 6.664,
+        "functionName": "",
+        "scriptId": "404",
+        "url": "file:///home/ubuntu/my-rss-reader/src/board/live-sync.js",
+        "lineNumber": 168,
+        "columnNumber": 25
+      },
+      {
+        "ms": 6.548,
+        "functionName": "_startCharacterReference",
+        "scriptId": "869",
+        "url": "file:///home/ubuntu/my-rss-reader/node_modules/parse5/dist/tokenizer/index.js",
+        "lineNumber": 471,
+        "columnNumber": 28
+      },
+      {
+        "ms": 6.525,
+        "functionName": "isUsableArticlePage",
+        "scriptId": "502",
+        "url": "file:///home/ubuntu/my-rss-reader/src/articles/markup.js",
+        "lineNumber": 5,
+        "columnNumber": 28
+      },
+      {
+        "ms": 6.493,
+        "functionName": "appendChild",
+        "scriptId": "227",
+        "url": "file:///home/ubuntu/my-rss-reader/node_modules/parse5-htmlparser2-tree-adapter/dist/index.js",
+        "lineNumber": 60,
+        "columnNumber": 15
+      },
+      {
+        "ms": 6.4,
+        "functionName": "_stateBeforeAttributeName",
+        "scriptId": "210",
+        "url": "file:///home/ubuntu/my-rss-reader/node_modules/cheerio/node_modules/parse5/dist/tokenizer/index.js",
+        "lineNumber": 1446,
+        "columnNumber": 29
+      },
+      {
+        "ms": 6.249,
+        "functionName": "parse",
+        "scriptId": "169",
+        "url": "file:///home/ubuntu/my-rss-reader/node_modules/htmlparser2/dist/esm/Tokenizer.js",
+        "lineNumber": 626,
+        "columnNumber": 9
+      },
+      {
+        "ms": 6.226,
+        "functionName": "ensureArchive",
+        "scriptId": "403",
+        "url": "file:///home/ubuntu/my-rss-reader/src/board/cache-service.js",
+        "lineNumber": 386,
+        "columnNumber": 32
+      },
+      {
+        "ms": 6.181,
+        "functionName": "get href",
+        "scriptId": "39",
+        "url": "node:internal/url",
+        "lineNumber": 966,
+        "columnNumber": 10
+      },
+      {
+        "ms": 6.134,
+        "functionName": "isOpenCliBrowserFetchChallenge",
+        "scriptId": "381",
+        "url": "file:///home/ubuntu/my-rss-reader/src/opencli-reader.js",
+        "lineNumber": 66,
+        "columnNumber": 39
+      },
+      {
+        "ms": 6.052,
+        "functionName": "_appendCharToCurrentCharacterToken",
+        "scriptId": "210",
+        "url": "file:///home/ubuntu/my-rss-reader/node_modules/cheerio/node_modules/parse5/dist/tokenizer/index.js",
+        "lineNumber": 441,
+        "columnNumber": 38
+      }
+    ]
+  },
+  "controls": {
+    "imageBefore": {
+      "ms": 3387,
+      "cpuMs": 1736.624,
+      "allocatedMiB": 1381.0845794677734,
+      "maxRssMiB": 81.42578125,
+      "hash": "fc73be3b2ba045c0b4966a2127ec73b657a0ecec829ed6bdac6ab4ef4d9de684"
+    },
+    "imageAfter": {
+      "ms": 2625,
+      "cpuMs": 822.123,
+      "allocatedMiB": 202.57257843017578,
+      "maxRssMiB": 63.86328125,
+      "hash": "fc73be3b2ba045c0b4966a2127ec73b657a0ecec829ed6bdac6ab4ef4d9de684"
+    },
+    "vectorsBefore": {
+      "mode": "before",
+      "cpuMs": 379.836,
+      "ms": 4205.114625,
+      "maxRssMiB": 240.53515625,
+      "entries": 12000,
+      "sizeMiB": 23.598567008972168
+    },
+    "vectorsAfter": {
+      "mode": "after",
+      "cpuMs": 439.697,
+      "ms": 872.8774050000001,
+      "maxRssMiB": 83.75,
+      "entries": 12000,
+      "sizeMiB": 23.598567008972168
+    },
+    "sourcePolicy": [
+      {
+        "name": "original",
+        "ms": 5380.200548999999,
+        "cpuMs": 565.944
+      },
+      {
+        "name": "indexed",
+        "ms": 163.62344499999926,
+        "cpuMs": 21.973
+      }
+    ],
+    "postSanitation": [
+      {
+        "name": "uncached",
+        "cpuMs": 659.84,
+        "ms": 3757.8389610000013,
+        "identical": true,
+        "entries": 0,
+        "bytes": 0,
+        "maxBytes": 0,
+        "hits": 0,
+        "misses": 200
+      },
+      {
+        "name": "cached",
+        "cpuMs": 1.663,
+        "ms": 17.72100599999976,
+        "identical": true,
+        "entries": 1,
+        "bytes": 9478,
+        "maxBytes": 16777216,
+        "hits": 199,
+        "misses": 1
+      }
+    ]
+  },
+  "liveHttp": [
+    {
+      "path": "/api/data?filterType=today&page=1",
+      "status": 200,
+      "ms": 721,
+      "articleCount": 40,
+      "token": false,
+      "serverTiming": "data;dur=7.4, filter;dur=270.8, cards;dur=5.9"
+    },
+    {
+      "path": "/api/data?filterType=smart&filterValue=tech_vietnam&smartMode=top&page=1",
+      "status": 200,
+      "ms": 8007,
+      "articleCount": 40,
+      "token": true,
+      "serverTiming": "rank-state-read;dur=0.000, cluster-reconciliation;dur=0.000, relevance-computation;dur=0.000, signal-computation;dur=0.000, sorting-ranking;dur=0.000, top-cutoff;dur=0.000, rank-persistence;dur=0.000, request-received;dur=0.023, persisted-read;dur=7286.154, candidate-collection;dur=12.721, ranking-total;dur=0.056, filtering;dur=293.603, snapshot-construction;dur=213.790, card-preparation;dur=23.850, serialization;dur=8.856"
+    },
+    {
+      "path": "/api/data?filterType=smart&filterValue=tech_vietnam&smartMode=classic&page=1",
+      "status": 200,
+      "ms": 5946,
+      "articleCount": 40,
+      "token": true,
+      "serverTiming": "rank-state-read;dur=0.000, cluster-reconciliation;dur=0.000, relevance-computation;dur=0.000, signal-computation;dur=0.000, sorting-ranking;dur=0.000, top-cutoff;dur=0.000, rank-persistence;dur=0.000, request-received;dur=0.006, persisted-read;dur=593.163, candidate-collection;dur=335.893, ranking-total;dur=0.004, filtering;dur=1201.381, snapshot-construction;dur=598.458, card-preparation;dur=639.685, serialization;dur=57.543, smart-data;dur=3427.000"
+    }
+  ],
+  "postChangeHost": {
+    "at": "2026-10-06T01:57:41.287155+00:00",
+    "node": {
+      "pid": 2008312,
+      "ppid": 1,
+      "comm": "MainThread",
+      "rss": 3103866880,
+      "cpuPercent": 90.8
+    },
+    "chromiumProcessCount": 26,
+    "chromiumRssSum": 3617292288,
+    "chromiumBrowserRoots": [
+      3458817
+    ],
+    "topCpu": [
+      {
+        "pid": 2008312,
+        "ppid": 1,
+        "comm": "MainThread",
+        "rss": 3103866880,
+        "cpuPercent": 90.8
+      },
+      {
+        "pid": 2010932,
+        "ppid": 1469755,
+        "comm": "llama-server",
+        "rss": 2404118528,
+        "cpuPercent": 44.7
+      },
+      {
+        "pid": 1914849,
+        "ppid": 3458917,
+        "comm": "chrome",
+        "rss": 1301196800,
+        "cpuPercent": 23.5
+      },
+      {
+        "pid": 1732776,
+        "ppid": 1732769,
+        "comm": "codex",
+        "rss": 148004864,
+        "cpuPercent": 3.3
+      },
+      {
+        "pid": 3458953,
+        "ppid": 3458910,
+        "comm": "chrome",
+        "rss": 72843264,
+        "cpuPercent": 2.0
+      },
+      {
+        "pid": 1981592,
+        "ppid": 1474444,
+        "comm": "htop",
+        "rss": 5898240,
+        "cpuPercent": 1.3
+      },
+      {
+        "pid": 2526,
+        "ppid": 1708,
+        "comm": "node /home/ubun",
+        "rss": 60547072,
+        "cpuPercent": 1.0
+      },
+      {
+        "pid": 3148,
+        "ppid": 2526,
+        "comm": "agy-real",
+        "rss": 84561920,
+        "cpuPercent": 0.7
+      },
+      {
+        "pid": 1978109,
+        "ppid": 1978108,
+        "comm": "rustdesk",
+        "rss": 12521472,
+        "cpuPercent": 0.7
+      },
+      {
+        "pid": 3458817,
+        "ppid": 41353,
+        "comm": "chrome",
+        "rss": 262971392,
+        "cpuPercent": 0.7
+      }
+    ],
+    "topRss": [
+      {
+        "pid": 2008312,
+        "ppid": 1,
+        "comm": "MainThread",
+        "rss": 3103866880,
+        "cpuPercent": 90.8
+      },
+      {
+        "pid": 2010932,
+        "ppid": 1469755,
+        "comm": "llama-server",
+        "rss": 2404118528,
+        "cpuPercent": 44.7
+      },
+      {
+        "pid": 1914849,
+        "ppid": 3458917,
+        "comm": "chrome",
+        "rss": 1301196800,
+        "cpuPercent": 23.5
+      },
+      {
+        "pid": 3458817,
+        "ppid": 41353,
+        "comm": "chrome",
+        "rss": 262971392,
+        "cpuPercent": 0.7
+      },
+      {
+        "pid": 2018254,
+        "ppid": 3458917,
+        "comm": "chrome",
+        "rss": 244850688,
+        "cpuPercent": 0.0
+      },
+      {
+        "pid": 1997853,
+        "ppid": 3458917,
+        "comm": "chrome",
+        "rss": 191946752,
+        "cpuPercent": 0.0
+      },
+      {
+        "pid": 3459088,
+        "ppid": 3458917,
+        "comm": "chrome",
+        "rss": 187854848,
+        "cpuPercent": 0.0
+      },
+      {
+        "pid": 699437,
+        "ppid": 3458917,
+        "comm": "chrome",
+        "rss": 167493632,
+        "cpuPercent": 0.3
+      },
+      {
+        "pid": 2361463,
+        "ppid": 3458917,
+        "comm": "chrome",
+        "rss": 155353088,
+        "cpuPercent": 0.3
+      },
+      {
+        "pid": 1732776,
+        "ppid": 1732769,
+        "comm": "codex",
+        "rss": 148004864,
+        "cpuPercent": 3.3
+      }
+    ],
+    "load": [
+      10.02734375,
+      9.6630859375,
+      7.64013671875
+    ],
+    "free": "               total        used        free      shared  buff/cache   available\nMem:           11932        8034         849          47        3048        3624\nSwap:           4095        3715         380\n"
+  },
+  "latestResources": {
+    "pid": 2008312,
+    "uptime": 1207,
+    "at": 1791252136286,
+    "rss": 2763567104,
+    "heapTotal": 1458372608,
+    "heapUsed": 1249994472,
+    "external": 40106505,
+    "arrayBuffers": 17943259,
+    "cpuPercent": 15,
+    "eventLoop": {
+      "meanMs": 22.70476674034822,
+      "p99Ms": 69.795839,
+      "maxMs": 756.547583
+    },
+    "budget": {
+      "rss": 2763567104,
+      "heapTotal": 1458372608,
+      "heapUsed": 1249995456,
+      "external": 40106505,
+      "arrayBuffers": 17943259,
+      "limit": 5368709120,
+      "used": 2956984320,
+      "swap": 167460864
+    },
+    "jobs": [
+      {
+        "name": "smart-refresh",
+        "startedAt": 1791250972263,
+        "pending": false,
+        "coalesced": 0
+      }
+    ],
+    "articleQueues": {
+      "foreground": {
+        "limit": 4,
+        "active": 0,
+        "pending": 0,
+        "completed": 246
+      },
+      "other": {
+        "active": 0,
+        "pending": 0
+      },
+      "origins": 0
+    },
+    "browserBudget": {
+      "limit": 2,
+      "active": 0,
+      "pending": 0,
+      "completed": 150
+    },
+    "browser": {
+      "ownership": "shared-desktop-browser",
+      "fetchPages": 1,
+      "pendingFetches": 0,
+      "pinnedViewers": 1,
+      "readerProcesses": 0,
+      "readerJobs": 0,
+      "gemini": {
+        "slots": 2,
+        "busy": 1,
+        "trackedPages": 2
+      }
+    },
+    "ai": {
+      "reading": false,
+      "active": {
+        "total": 2,
+        "p0": 0,
+        "p1": 1,
+        "p3": 1,
+        "p4": 0,
+        "low": 1
+      },
+      "pending": 14
+    },
+    "localCompute": {
+      "active": {
+        "label": "qwen:story-briefing",
+        "priority": 1,
+        "startedAt": 1791252027639
+      },
+      "pending": []
+    },
+    "smartRunning": true,
+    "parsedCache": {
+      "entries": 2,
+      "estimatedSourceBytes": 84739720,
+      "maxBytes": 201326592,
+      "hits": 993,
+      "misses": 1018,
+      "evictions": 44
+    },
+    "postMarkupCache": {
+      "entries": 329,
+      "bytes": 4779088,
+      "maxBytes": 16777216,
+      "hits": 1732,
+      "misses": 588
+    },
+    "activeArticleRequests": 0,
+    "syncPaused": false,
+    "lastSyncCompletedAt": 1791251574992
+  },
+  "baselineHost": {
+    "rssServerCount": 1,
+    "chromiumCount": 39,
+    "browserRoots": 2,
+    "ramUsedMiB": 8326,
+    "swapUsedMiB": 3313,
+    "load": [
+      10.54,
+      7.5,
+      4.56
+    ],
+    "mainPid": 1946323,
+    "mainPpid": 1,
+    "mainRssKiB": 4309736,
+    "mainStartUtc": "2026-10-06T00:24:05Z",
+    "serviceSwapBytes": 199569408
+  },
+  "validation": {
+    "testCommand": "npm test",
+    "tests": 723,
+    "passed": 723,
+    "failed": 0,
+    "durationMs": 134729.430092,
+    "syntaxFiles": 46,
+    "workerProbe": "SMART_WORKER_PROBE_OK; 2 clustering jobs, 2 embedding pings, 0 replacements, 0 online AI calls",
+    "modifiedSourceWhitespace": "passed against pre-task backups"
+  },
+  "finalResources": {
+    "pid": 2008312,
+    "uptime": 3033,
+    "at": 1791253962462,
+    "rss": 3025805312,
+    "heapTotal": 1905635328,
+    "heapUsed": 1752208320,
+    "external": 40703431,
+    "arrayBuffers": 3124723,
+    "cpuPercent": 7,
+    "eventLoop": {
+      "meanMs": 21.480292492836675,
+      "p99Ms": 22.691839,
+      "maxMs": 1555.038207
+    },
+    "budget": {
+      "rss": 3025805312,
+      "heapTotal": 1905635328,
+      "heapUsed": 1752209304,
+      "external": 40703431,
+      "arrayBuffers": 3124723,
+      "limit": 5368709120,
+      "used": 3531755520,
+      "swap": 473681920
+    },
+    "jobs": [],
+    "articleQueues": {
+      "foreground": {
+        "limit": 4,
+        "active": 0,
+        "pending": 0,
+        "completed": 839
+      },
+      "other": {
+        "active": 0,
+        "pending": 0
+      },
+      "origins": 0
+    },
+    "browserBudget": {
+      "limit": 2,
+      "active": 0,
+      "pending": 0,
+      "completed": 524
+    },
+    "browser": {
+      "ownership": "shared-desktop-browser",
+      "fetchPages": 1,
+      "pendingFetches": 0,
+      "pinnedViewers": 1,
+      "readerProcesses": 0,
+      "readerJobs": 0,
+      "gemini": {
+        "slots": 2,
+        "busy": 1,
+        "trackedPages": 2
+      }
+    },
+    "ai": {
+      "reading": false,
+      "active": {
+        "total": 1,
+        "p0": 0,
+        "p1": 0,
+        "p3": 0,
+        "p4": 1,
+        "low": 1
+      },
+      "pending": 0
+    },
+    "localCompute": {
+      "active": null,
+      "pending": []
+    },
+    "smartRunning": false,
+    "parsedCache": {
+      "entries": 1,
+      "estimatedSourceBytes": 64109778,
+      "maxBytes": 201326592,
+      "hits": 1712,
+      "misses": 3149,
+      "evictions": 74
+    },
+    "postMarkupCache": {
+      "entries": 1000,
+      "bytes": 12045046,
+      "maxBytes": 16777216,
+      "hits": 6121,
+      "misses": 2475
+    },
+    "activeArticleRequests": 0,
+    "syncPaused": false,
+    "lastSyncCompletedAt": 1791253399257
+  },
+  "reviewGuardCorrection": {
+    "observedFalseDeferrals": 81,
+    "oldHardCapMB": 1400,
+    "observedHeapMB": 1419,
+    "observedRssMB": 3123,
+    "heapReserveMB": 256,
+    "cgroupReserveMB": 512,
+    "latchingRemoved": true,
+    "retryUnchangedMemoryDeferredWork": true
+  },
+  "correctedRunEvidence": {
+    "providerAttemptsResumed": true,
+    "geminiWebClusterVerificationSucceededAtUtc": "2026-10-06T02:51:34.703Z",
+    "geminiWebComponentVerificationSucceededAtUtc": "2026-10-06T02:52:01.372Z",
+    "localFallbackStillActive": true
+  },
+  "activatedFinalPolicy": {
+    "pid": 2073922,
+    "health": {
+      "status": "ok",
+      "uptime": 70,
+      "uptimeHuman": "0h 1m",
+      "memory": {
+        "rss": "1416.9 MB",
+        "heapUsed": "943.2 MB",
+        "heapTotal": "1057.6 MB",
+        "external": "24.4 MB"
+      },
+      "syncPaused": false,
+      "lastSyncCompletedAt": "2026-10-06T03:16:42.007Z",
+      "feedCount": 49
+    },
+    "reviewEnvironment": [
+      "SMART_AI_REVIEW_HEAP_RESERVE_MB=256",
+      "SMART_AI_REVIEW_MEMORY_RESERVE_MB=512"
+    ],
+    "heapLimitMB": 3072
+  }
+}

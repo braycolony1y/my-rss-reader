@@ -2,7 +2,7 @@ import { rememberMobileSubject } from '../mobile-photo-framing.js?v=20261004_fil
 import { updateSharedCardStyle, rememberSharedProperties } from '../../shared-card-style/runtime.js?v=20261004_fill_1';
 import { scheduleHeroExtent } from '../hero-extent.js?v=20261004_continuation_1';
 import { deriveStoryTokens } from './tokens.js';
-import { placeStoryHero, smoothMask } from './placement.js?v=20261003_organic_1';
+import { placeStoryHero, smoothMask } from './placement.js?v=20261006_requirements_2';
 import { clamp } from './palette.js';
 import { deriveStoryComposition, storyPhotoSource } from './composition.js?v=20261004_fill_1';
 import { intrinsicPhotoAnalysis } from './desktop-photo.js?v=20261003_organic_1';

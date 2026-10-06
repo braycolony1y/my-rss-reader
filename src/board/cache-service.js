@@ -1,3 +1,4 @@
+import { createMembershipReconciler } from './membership.js';
 import { createLiveSync } from './live-sync.js';
 import { createIdleReactivation } from './idle-reactivation.js';
 import { archiveExpiry } from '../articles/retention.js';
@@ -416,83 +417,7 @@ export function createBoardCache({ env, fetchPage, writeJson, directory = './art
         const members = await get('cacheMembers', {});
         for (const member of Object.values(members)) if (member.in_cache) await ensureArchive(member);
     }
-    async function reconcileMembership() {
-        return locked(async () => {
-            const prefs = await get('userPreferences', {});
-            const board = new Set((await get('boardStates', [])).map(identity));
-            const members = await get('cacheMembers', {});
-            const sharedLedger = await db.get(
-                'cacheIdentityLedger',
-                { type: 'json', shared: true }
-            ) || { initialized_at: now(), articles: {}, dismissals: {} };
-
-            let ledger = sharedLedger;
-            let ledgerChanged = false;
-
-            const mutableLedger = () => {
-                if (!ledgerChanged) {
-                    ledger = structuredClone(sharedLedger);
-                    ledgerChanged = true;
-                }
-                return ledger;
-            };
-
-            // A stale preference snapshot is not an explicit Cache dismissal.
-            // Restore missing mappings for members that are still pinned; explicit
-            // moves/removals update membership through setFolder.
-            prefs.boardFolderMappings ||= {};
-            const mapped = new Set(Object.keys(prefs.boardFolderMappings).map(identity));
-            for (const [id, member] of Object.entries(members)) {
-                if (member.in_cache && board.has(id) && !mapped.has(id)) {
-                    prefs.boardFolderMappings[member.url] = 'cache';
-                    prefs.boardFolders = [...new Set([...(prefs.boardFolders || []), 'cache'])];
-                }
-            }
-            const present = new Set();
-            const articlePool = [...await get('articles', []), ...await get('smartRawArticles', [])];
-            for (const [link, folder] of Object.entries(prefs.boardFolderMappings || {})) {
-                const id = identity(link);
-                if (!id || !isCache(folder) || !board.has(id)) continue;
-                present.add(id);
-                members[id] ||= { thread_id: id, url: canonicalUrl(link), article: articlePool.find(a => identity(a) === id) || { link, title: link }, active_caching: true, auto_added: false };
-                if (members[id].in_cache === false) members[id].active_caching = true;
-                if (members[id].in_cache === false) { members[id].left_cache_at = null; members[id].archive_expired_at = null; }
-                members[id].in_cache = true;
-            }
-            for (const [id, member] of Object.entries(members)) {
-                if (member.in_cache !== false && !present.has(id)) {
-                    member.in_cache = false;
-                    member.left_cache_at ||= new Date(now()).toISOString();
-                    member.active_caching = false;
-                    if (member.auto_added) {
-                        mutableLedger().dismissals[id] = {
-                            last_seen_at: now(),
-                            expires_at: now() + retentionMs
-                        };
-                    }
-                }
-            }
-            const protectedArchives = await protectedIds();
-            for (const [id, member] of Object.entries(members)) updateRetention(member, protectedArchives.has(id));
-            for (const [id, dismissal] of Object.entries(ledger.dismissals || {})) {
-                if (dismissal.expires_at <= now()) {
-                    delete mutableLedger().dismissals[id];
-                }
-            }
-
-            const writes = {
-                cacheMembers: JSON.stringify(members),
-                userPreferences: JSON.stringify(prefs)
-            };
-
-            if (ledgerChanged) {
-                writes.cacheIdentityLedger = JSON.stringify(ledger);
-            }
-
-            await db.putMany(writes);
-            return members;
-        });
-    }
+    const reconcileMembership = createMembershipReconciler({ locked, get, db, now, identity, isCache, canonicalUrl, retentionMs, protectedIds, updateRetention });
     async function observe(articles) {
         await reactivation.observe(articles);
         const candidates = await locked(async () => {

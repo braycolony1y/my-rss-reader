@@ -14,7 +14,8 @@ test('HTTP application integrates the extracted services in an isolated runtime'
     try {
         const { stdout, stderr } = await execFileAsync(process.execPath, [fileURLToPath(new URL('./helpers/server-http-smoke.js', import.meta.url))], {
             cwd: directory,
-            env: { ...process.env, ADMIN_PASSWORD: 'fixture-password', ANTIGRAVITY_ENABLED: 'false' },
+            env: { ...process.env, ADMIN_PASSWORD: 'fixture-password', ANTIGRAVITY_ENABLED: 'false',
+                GEMINI_WEB_ENABLED: 'false', SMART_LOCAL_AI_ENABLED: 'false' },
             timeout: 30000,
             maxBuffer: 1024 * 1024
         });

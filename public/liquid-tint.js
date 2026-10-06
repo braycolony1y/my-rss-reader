@@ -3,16 +3,8 @@ export const NEUTRAL_TINT = Object.freeze({ h1: 250, h2: 250, h3: 250, cs: .03, 
 const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
 const hue = (a, b) => (Math.atan2(b, a) * 180 / Math.PI + 360) % 360;
 const hueDelta = (a, b) => (a - b + 540) % 360 - 180;
-export function rgbToOklab(r, g, b) {
-    const linear = v => (v /= 255) <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4;
-    [r, g, b] = [r, g, b].map(linear);
-    const l = Math.cbrt(.4122214708*r + .5363325363*g + .0514459929*b);
-    const m = Math.cbrt(.2119034982*r + .6806995451*g + .1073969566*b);
-    const s = Math.cbrt(.0883024619*r + .2817188376*g + .6299787005*b);
-    return [.2104542553*l + .793617785*m - .0040720468*s,
-        1.9779984951*l - 2.428592205*m + .4505937099*s,
-        .0259040371*l + .7827717662*m - .808675766*s];
-}
+import { rgbToOklab } from './card-blend/color-conversion.js';
+export { rgbToOklab };
 export const MASK_STOPS = [[0,0],[.1,.01],[.2,.05],[.3,.13],[.4,.26],[.5,.44],[.6,.63],[.7,.80],[.8,.92],[.9,.98],[1,1]];
 export function maskVisibility(x) {
     for (let i = 1; i < MASK_STOPS.length; i++) {

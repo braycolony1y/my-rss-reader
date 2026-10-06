@@ -15,6 +15,7 @@ async fetchData(isLoadMore = false, skipPageReset = false, keepVisible = false) 
                     const topContext = this.usesTopStories ? JSON.stringify([this.selectedFilterValue,this.smartRegion,this.hideRead,this.searchQuery]) : null;
                     const retainTop = topContext && this._renderedTopContext === topContext && this.articles.length > 0;
                     const requestGeneration = ++this.articleRequestGeneration;
+                    if (!isLoadMore && !keepVisible) this.prefetchQueue = [];
                     this._articleListAbort?.abort();
                     const listController = typeof AbortController === 'function' ? new AbortController() : null;
                     this._articleListAbort = listController;
@@ -208,7 +209,9 @@ async fetchData(isLoadMore = false, skipPageReset = false, keepVisible = false) 
                             this._lastArticlePageResult = result;
                             if (typeof this.saveState === 'function') this.saveState();
                             if (!isLoadMore && this.articles && this.articles.length > 0) {
-                                setTimeout(() => this.prefetchArticlesList(this.articles.slice(0, 10), false), 250);
+                                setTimeout(() => {
+                                    if (requestGeneration === this.articleRequestGeneration) this.prefetchArticlesList(this.articles.slice(0, 10), true);
+                                }, 250);
                             }
                             return result;
                         }

@@ -1,4 +1,7 @@
 import { createBrowserFetchQueue } from './browser/fetch-queue.js';
+import { withBrowserFetchBudget } from './browser/work-budget.js';
+import { summarizeBrowserResources } from './browser/resource-state.js';
+export const getOpenCliResourceState = () => summarizeBrowserResources(openCliBrowserFetchStates, openCliBrowserFetchQueues, openCliReaderPools);
 import { getCurrentArticleFetchLaneContext, withArticleFetchLane } from './articles/fetch-lanes.js';
 import { fork } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -1482,7 +1485,7 @@ export function runOpenCliBrowserFetch(url) {
     const context = getCurrentArticleFetchLaneContext();
     const priority = Number(context.lane.slice(1)) || 0;
     const task = tracker.queue.run(url,
-        () => withArticleFetchLane(context.lane, start, context), priority);
+        () => withBrowserFetchBudget(() => withArticleFetchLane(context.lane, start, context), priority), priority);
 
     return task.finally(() => {
         tracker.pending =

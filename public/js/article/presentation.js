@@ -1,3 +1,4 @@
+const readerVietnamDateFormatter = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Ho_Chi_Minh', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
 // Owns article / presentation on the shared Alpine component.
 // Methods retain their original bodies and receive the Alpine proxy as this.
 const ReaderArticlePresentation = {
@@ -122,16 +123,7 @@ const ReaderArticlePresentation = {
                 formatVietnamDateTime(dateString) {
                     if (!dateString) return 'Time unavailable';
                     const date = new Date(dateString);
-                    if (Number.isNaN(date.getTime())) return 'Time unavailable';
-                    return new Intl.DateTimeFormat('en-GB', {
-                        timeZone: 'Asia/Ho_Chi_Minh',
-                        day: '2-digit',
-                        month: '2-digit',
-                        year: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        hour12: false
-                    }).format(date);
+                    return Number.isNaN(date.getTime()) ? 'Time unavailable' : readerVietnamDateFormatter.format(date);
                 }
         };
     }

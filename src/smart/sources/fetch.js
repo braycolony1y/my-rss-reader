@@ -1,3 +1,4 @@
+import { prefetchOpenCliOnlySmartArticles } from './prefetch.js';
 import { discardResponseBody } from '../../fetch-response.js';
 import { normalizeArticle } from '../articles/normalize.js';
 import { SMART_ITEMS_PER_SOURCE } from '../config.js';
@@ -186,43 +187,6 @@ async function fetchInBatches(
   }
 
   return results;
-}
-
-function hasOnlyOpenCliFetchMethod(methods) {
-  if (!Array.isArray(methods)) return false;
-  const normalized = [
-    ...new Set(
-      methods
-        .map(method => String(method || '').trim().toLowerCase())
-        .filter(Boolean)
-    )
-  ];
-  return normalized.length === 1 && normalized[0] === 'opencli';
-}
-
-function smartArticleIdentity(article) {
-  const value = String(article?.link || article?.url || '').trim();
-  if (!value) return '';
-  try {
-    const url = new URL(value);
-    url.hash = '';
-    return url.href;
-  } catch (error) {
-    return value;
-  }
-}
-
-async function prefetchOpenCliOnlySmartArticles(results, helpers) {
-  if (typeof helpers?.prefetchOpenCliOnlyArticles !== 'function') return;
-  const jobs = [];
-  for (const result of results || []) {
-    if (!hasOnlyOpenCliFetchMethod(result?.source?.fetchMethods)) continue;
-    const articlesToPrefetch = (result.articles || []).filter(smartArticleIdentity);
-    if (articlesToPrefetch.length) {
-      jobs.push(helpers.prefetchOpenCliOnlyArticles(articlesToPrefetch, result.source.url));
-    }
-  }
-  await Promise.all(jobs);
 }
 
 export { fetchSmartSource, fetchInBatches, prefetchOpenCliOnlySmartArticles };

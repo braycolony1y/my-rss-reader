@@ -1,4 +1,6 @@
 import { canonicalIdentity, canonicalUrl } from './thread-model.js';
+import { mapWithConcurrency } from '../utils/article-utils.js';
+import { workloadConcurrency, cpuCapacity } from '../runtime/concurrency-limiter.js';
 
 const DAY = 86400000;
 const CHECK_COOLDOWN = 5 * 60000;
@@ -107,7 +109,7 @@ export function createIdleReactivation({ get, put, locked, now, fetchQueuedPage,
             if (changed) await put('cacheMembers', members);
             return ids;
         });
-        await Promise.all(candidates.map(check));
+        await mapWithConcurrency(candidates, workloadConcurrency('RSS_IDLE_CHECK_CONCURRENCY', Math.min(2, cpuCapacity())), check);
     }
     return { check, observe };
 }
