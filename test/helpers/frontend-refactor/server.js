@@ -5,7 +5,7 @@ import path from 'node:path';
 import { createReaderAssetRenderer } from '../../../src/ui/reader-assets.js';
 import { createFixtureApi } from './fixtures.js';
 
-export async function startFixtureServer({ baseline = '' } = {}) {
+export async function startFixtureServer({ baseline = '', transformResponse = value => value, imageDelayMs = 0 } = {}) {
     const root = fileURLToPath(new URL('../../../', import.meta.url));
     const renderer = createReaderAssetRenderer();
     const api = createFixtureApi();
@@ -20,10 +20,16 @@ export async function startFixtureServer({ baseline = '' } = {}) {
                 return;
             }
             if (url.pathname.startsWith('/api/')) {
+                if (url.pathname === '/api/og-image' && imageDelayMs) {
+                    await new Promise(resolve => setTimeout(resolve, imageDelayMs));
+                    res.setHeader('Content-Type', 'image/jpeg');
+                    res.end(await readFile(path.join(root, 'public/default.jpg')));
+                    return;
+                }
                 let body = '';
                 for await (const chunk of req) body += chunk;
                 res.setHeader('Content-Type', 'application/json');
-                res.end(JSON.stringify(api(url, body ? JSON.parse(body) : {})));
+                res.end(JSON.stringify(transformResponse(api(url, body ? JSON.parse(body) : {}), url)));
                 return;
             }
             if (url.pathname === '/') {

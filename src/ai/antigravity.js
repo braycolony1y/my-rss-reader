@@ -1,3 +1,4 @@
+import { createProviderAdmission } from './provider-admission.js';
 import { execFile } from 'node:child_process';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import {
@@ -367,16 +368,7 @@ export function parseAntigravityOutput(stdout, json = false, { preserveFormattin
 // A bounded Antigravity process pool prevents bulk AI work from spawning too many
 // agent processes. Excess requests wait for a free slot; real failures use the API backup.
 export function createAntigravityProvider({ quotaRuntime = ANTIGRAVITY_QUOTA_RUNTIME, run = execFile, binary = ANTIGRAVITY_BINARY, available = antigravityAvailable, now = Date.now, cooldownMs = 60000, maxConcurrent = Number(process.env.ANTIGRAVITY_CONCURRENCY || 2) } = {}) {
-    let activeCount = 0;
-    const concurrencyLimit = Math.max(
-        1,
-        Math.min(
-            8,
-            Number.isFinite(Number(maxConcurrent))
-                ? Math.floor(Number(maxConcurrent))
-                : 2
-        )
-    );
+    const admit = createProviderAdmission(maxConcurrent);
     const retryAtByModel = new Map();
 
     /*
@@ -1246,7 +1238,7 @@ export function createAntigravityProvider({ quotaRuntime = ANTIGRAVITY_QUOTA_RUN
     }
 
 
-    return async function generate(prompt, options = {}) {
+    async function generate(prompt, options = {}) {
         const model = options.model || ANTIGRAVITY_MODEL;
         if (!available()) throw new Error('Antigravity CLI is not available');
 
@@ -1291,41 +1283,6 @@ export function createAntigravityProvider({ quotaRuntime = ANTIGRAVITY_QUOTA_RUN
                 true;
 
             throw error;
-        }
-        /*
-         * Antigravity has a small global process pool. Contention is not a
-         * provider failure: requests beyond the configured concurrency simply
-         * wait for a free slot instead of falling back to Gemini.
-         */
-        const requestContext =
-            antigravityRequestContext.getStore();
-
-        const requestIsInteractiveBriefing =
-            () =>
-                contextIsInteractiveBriefing(
-                    requestContext
-                );
-
-        /*
-         * Hard reservation:
-         *
-         * Existing Antigravity calls finish normally.
-         *
-         * Once an actively-viewed Smart briefing is waiting/running,
-         * newly free Antigravity slots are available ONLY to active-tab
-         * briefing work. All other AI remains outside the pool until the
-         * active briefing workload finishes or browser focus disappears.
-         */
-        while (
-            activeCount >= concurrencyLimit ||
-            (
-                activeBriefingReservation() &&
-                !requestIsInteractiveBriefing()
-            )
-        ) {
-            await new Promise(resolve =>
-                setTimeout(resolve, 50)
-            );
         }
         const currentSharedRetryAt =
             effectiveSharedRetryAt();
@@ -1410,7 +1367,6 @@ export function createAntigravityProvider({ quotaRuntime = ANTIGRAVITY_QUOTA_RUN
 
         if (Buffer.byteLength(input, 'utf8') > 100000) throw new Error('Antigravity prompt exceeds the CLI argument limit');
         const timeoutMs = Math.max(1000, Math.min(180000, Number(options.timeoutMs) || 30000));
-        activeCount++;
         let directory;
         const startedAt = now();
         try {
@@ -1750,8 +1706,8 @@ export function createAntigravityProvider({ quotaRuntime = ANTIGRAVITY_QUOTA_RUN
             throw error;
         } finally {
             if (directory) await rm(directory, { recursive:true, force:true }).catch(() => {});
-            activeCount = Math.max(0, activeCount - 1);
         }
-    };
+    }
+    return (...args) => admit(() => generate(...args));
 }
 export const generateWithAntigravity = createAntigravityProvider();

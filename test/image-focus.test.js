@@ -379,8 +379,9 @@ test('late detection never moves a visible fallback, and applies after it leaves
     win.fetch = () => new Promise(resolve => { finish = resolve; });
     const stop = installImageFocus(win);
     assert.equal(observers[0].options.rootMargin, '1600px 0px');
-    assert.ok(finish, 'offscreen cards already request their focal metadata');
+    assert.equal(finish, undefined, 'distant cards must not queue speculative focus work');
     observers[0].callback([{ target: img, isIntersecting: true }]);
+    assert.ok(finish, 'nearby cards request focus before their lazy image loads');
     fallback();
     assert.equal(img.dataset.focusState, 'ready');
     const originalPosition = img.style.getPropertyValue('--image-focus-x');

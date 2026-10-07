@@ -16,7 +16,7 @@ Production RSS reader served by `rss-reader.service` from `/home/ubuntu/my-rss-r
 - `ops/maintenance/`: safe maintenance utilities.
 - `ops/systemd/`: restore snapshots of the production systemd service.
 
-`database-state.json` durably stores lightweight Board updates until the next full database snapshot. Keep it alongside `database.json` when backing up or restoring live state.
+`database-state.json` durably stores lightweight Board updates until the next full database snapshot. Keep it and `database_state/` alongside `database.json` when backing up or restoring live state. The overlay manifest atomically references immutable per-key parts, so a small read-state update does not rewrite the cache-identity ledger.
 
 Runtime databases, caches, environment files, and API keys remain local and are excluded from the public GitHub backup.
 
@@ -64,4 +64,4 @@ Runtime requirements: `puppeteer-core` (installed by npm), Chromium (default
 `/snap/bin/chromium`, overridable with `PDF_CHROMIUM_PATH`), and `qpdf` for merging
 large exports without retaining the entire document in the Node heap.
 
-`smart-state.json` durably stores frequent Smart status, analysis, and editorial updates until the next Smart corpus snapshot. Include it with `smart-data.json` in backups and restores.
+`smart-state.json` durably stores frequent Smart status, analysis, and editorial updates until the next Smart corpus snapshot. Include it and `database_state/` with `smart-data.json` in backups and restores. Old single-file overlays remain readable. Before rolling back to code without keyed-overlay support, stop the service and run `node ops/maintenance/export-state-overlays.mjs` to materialize legacy overlays.

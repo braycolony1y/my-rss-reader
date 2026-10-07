@@ -15,6 +15,8 @@ const modulePaths = [
     "src/http.js",
     "src/feeds/parser-worker.js",
     "src/database/store.js",
+    "src/database/access.js",
+    "src/database/persistence.js",
     "src/observability/logs.js",
     "src/ai/settings.js",
     "src/articles/cache.js",

@@ -7,10 +7,15 @@ const ReaderAppPersistence = {
                 userPreferences: {},
                 lastSavedScrollY: 0,
                 saveState() {
-                    if (!this.isLoggedIn || !this.articles.length) return;
+                    // Persistence is a read-only snapshot, not a reactive consumer.
+                    // Walking thousands of history/preferences fields through Alpine
+                    // proxies adds tracking and wrapper work to every article click.
+                    const raw = value => window.Alpine?.raw?.(value) || value;
+                    const app = this;
+                    if (!app.isLoggedIn || !app.articles.length) return;
 
                     const sc = document.getElementById('scroll-container');
-                    if (sc) this.lastSavedScrollY = sc.scrollTop;
+                    if (sc) app.lastSavedScrollY = sc.scrollTop;
 
                     const compactArticle = (article, includeRelated = true) => {
                         const compact = {};
@@ -26,7 +31,7 @@ const ReaderAppPersistence = {
                         for (const field of fields) {
                             if (article?.[field] !== undefined) compact[field] = article[field];
                         }
-                        if (this.usesTopStories && article?.topStory) {
+                        if (app.usesTopStories && article?.topStory) {
                             compact.topStory = { rank:article.topStory.rank, isTop:article.topStory.isTop, feed:article.topStory.feed, timeline:article.topStory.timeline, conflicts:article.topStory.conflicts, latest_material_update:article.topStory.latest_material_update };
                             compact.briefing = article.briefing;
                             compact.imageCandidates = article.imageCandidates;
@@ -41,31 +46,33 @@ const ReaderAppPersistence = {
                     };
 
                     const state = {
-                        feeds: this.feeds,
-                        articles: this.articles.map(article => compactArticle(article)),
-                        readStates: Array.from(this.readStates),
-                        recentReadAt: this.recentReadAt,
-                        pendingReadLinks: Array.from(this.pendingReadLinks),
-                        pendingUnreadLinks: Array.from(this.pendingUnreadLinks),
-                        pendingRecentReadLinks: Array.from(this.pendingRecentReadLinks),
-                        pendingStateMutations: this.pendingStateMutations,
-                        savedStates: this.savedStates,
-                        boardStates: this.boardStates,
-                        hiddenStates: this.hiddenStates,
-                        userPreferences: this.userPreferences,
-                        pendingPreferences: this.pendingPreferences,
-                        categoryOrder: this.categoryOrder,
-                        unreadCounts: this.unreadCounts,
-                        smartClusterVersion: this.smartClusterVersion,
-                        smartRegion: this.smartRegion,
-                        selectedFilterType: this.selectedFilterType,
-                        selectedFilterValue: this.selectedFilterValue,
-                        currentPage: this.currentPage,
-                        hasMore: this.hasMore,
-                        expandedCategories: this.expandedCategories,
-                        scrollY: sc ? sc.scrollTop : (this.lastSavedScrollY || 0),
+                        feeds: app.feeds,
+                        articles: raw(app.articles).map(article => compactArticle(raw(article))),
+                        readStates: Array.from(app.readStates),
+                        recentReadAt: app.recentReadAt,
+                        pendingReadLinks: Array.from(app.pendingReadLinks),
+                        pendingUnreadLinks: Array.from(app.pendingUnreadLinks),
+                        pendingRecentReadLinks: Array.from(app.pendingRecentReadLinks),
+                        pendingStateMutations: app.pendingStateMutations,
+                        savedStates: app.savedStates,
+                        boardStates: app.boardStates,
+                        hiddenStates: app.hiddenStates,
+                        userPreferences: app.userPreferences,
+                        pendingPreferences: app.pendingPreferences,
+                        categoryOrder: app.categoryOrder,
+                        unreadCounts: app.unreadCounts,
+                        smartClusterVersion: app.smartClusterVersion,
+                        smartRegion: app.smartRegion,
+                        selectedFilterType: app.selectedFilterType,
+                        selectedFilterValue: app.selectedFilterValue,
+                        currentPage: app.currentPage,
+                        hasMore: app.hasMore,
+                        expandedCategories: app.expandedCategories,
+                        scrollY: sc ? sc.scrollTop : (app.lastSavedScrollY || 0),
                         savedAt: Date.now()
                     };
+
+                    for (const key of Object.keys(state)) state[key] = raw(state[key]);
 
                     let json;
                     try {

@@ -47,6 +47,7 @@ const allowedRootDirectories = new Set([
     '.vscode',
     'article_cache',
     'db_backups',
+    'database_state',
     'docs',
     'node_modules',
     'ops',

@@ -28,7 +28,7 @@
                         <div class="article-card-image absolute inset-y-0 right-0 w-[55%] md:w-[50%] z-0">
                             <img class="thumbnail-soft" alt="" aria-hidden="true" loading="lazy" decoding="async">
                             <div class="thumbnail-plate">
-                            <img :src="proxyImageUrl(article.image || '/public/default.jpg')"
+                            <img :data-thumbnail-src="proxyImageUrl(article.image || '/public/default.jpg')"
                                 @error="nextStoryImage($event, article)" loading="lazy" decoding="async"
                                 :alt="stripHtml(article.title)" referrerpolicy="no-referrer" class="thumbnail-img w-full h-full object-cover">
                             </div>

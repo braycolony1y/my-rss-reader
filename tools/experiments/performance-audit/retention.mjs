@@ -13,4 +13,7 @@ try {
  const {profile}=await send('HeapProfiler.stopSampling');const rows=[];
  const walk=(n,parents=[])=>{if(n.selfSize)rows.push({bytes:n.selfSize,frame:n.callFrame,parents:parents.slice(-4)});for(const child of n.children)walk(child,[...parents,n.callFrame.functionName]);};walk(profile.head);
  await writeFile(process.argv[2]||'/tmp/rss-audit-20261006/retention.json',JSON.stringify({samples,rows:rows.sort((a,b)=>b.bytes-a.bytes)},null,2));
-} finally {ws.close();}
+} finally {
+ if(process.argv.includes('--close-inspector'))await send('Runtime.evaluate',{expression:"setTimeout(() => process.getBuiltinModule('node:inspector').close(), 250); undefined"}).catch(()=>{});
+ ws.close();
+}

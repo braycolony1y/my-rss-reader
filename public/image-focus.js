@@ -1,4 +1,5 @@
 import { collectImageFocusMutations } from './image-focus-mutations.js';
+import { installThumbnailLoading } from './thumbnail-loading.js?v=20261008_visible_card';
 import { fitCardImageViewport, visiblePhotoHeight } from './card-image-layout.js?v=2';
 import { applyImageColors } from './card-blend/legacy-color.js?v=1';
 import { applyTopStoryImage } from './top-story-card/blend/runtime.js?v=20261006_requirements_2';
@@ -107,7 +108,7 @@ export function installImageFocus(win) {
     }
 
     function onScreen(img) {
-        const rect = img.getBoundingClientRect();
+        const rect = (img.closest('.article-card') || img).getBoundingClientRect();
         const scroll = img.closest('#scroll-container')?.getBoundingClientRect();
         const top = Math.max(0, scroll?.top || 0);
         const bottom = Math.min(win.innerHeight, scroll?.bottom || win.innerHeight);
@@ -180,7 +181,7 @@ export function installImageFocus(win) {
                 apply(img, state);
             }, 2500);
         }
-        if (state.requested) return;
+        if (state.requested || !state.near) return;
         state.requested = true;
         if (source.startsWith('/public/') || source.startsWith('data:') || source.startsWith('blob:')) {
             state.settled = true;
@@ -188,7 +189,7 @@ export function installImageFocus(win) {
             apply(img, state);
             return;
         }
-        // Start for every rendered card, even while its lazy image is unloaded.
+        // Resolve focus ahead of the viewport without queuing the entire feed.
         getFocus(source).then(focus => {
             if (stopped || !img.isConnected || states.get(img) !== state || state.source !== source || sourceOf(img) !== source) return;
             win.clearTimeout(state.timer);
@@ -208,22 +209,24 @@ export function installImageFocus(win) {
     }) : null;
     const nearby = typeof win.IntersectionObserver === 'function' ? new win.IntersectionObserver(entries => {
         for (const entry of entries) {
-            const state = states.get(entry.target);
-            if (state) { state.near = entry.isIntersecting; update(entry.target); }
+            const img = entry.target.matches(selector) ? entry.target : entry.target.querySelector(selector);
+            const state = states.get(img);
+            if (state) { state.near = entry.isIntersecting; update(img); }
         }
     }, { rootMargin: '1600px 0px' }) : null;
     const visibility = typeof win.IntersectionObserver === 'function' ? new win.IntersectionObserver(entries => {
-        for (const entry of entries) if (!entry.isIntersecting) update(entry.target);
+        for (const entry of entries) if (!entry.isIntersecting) update(entry.target.matches(selector) ? entry.target : entry.target.querySelector(selector));
     }) : null;
 
     function watch(img) {
         if (states.has(img) || !img.matches?.(selector)) return;
         const card = img.closest('.article-card');
         const observed = [img, card, card?.querySelector('.article-card-header'), card?.querySelector('.article-card-heading')].filter(Boolean);
-        states.set(img, { focus: center, near: !nearby, requested: false, observed });
+        const visibilityTarget = card || img;
+        states.set(img, { focus: center, near: !nearby, requested: false, observed, visibilityTarget });
         observed.forEach(el => resize?.observe(el));
-        nearby?.observe(img);
-        visibility?.observe(img);
+        nearby?.observe(visibilityTarget);
+        visibility?.observe(visibilityTarget);
         update(img);
     }
     function scan(node) {
@@ -249,7 +252,7 @@ export function installImageFocus(win) {
             if (!img.isConnected) {
                 win.clearTimeout(state.timer);
                 state.observed.forEach(el => resize?.unobserve(el));
-                nearby?.unobserve(img); visibility?.unobserve(img); states.delete(img);
+                nearby?.unobserve(state.visibilityTarget); visibility?.unobserve(state.visibilityTarget); states.delete(img);
             }
         }
     });
@@ -269,6 +272,8 @@ export function installImageFocus(win) {
 }
 
 if (typeof window !== 'undefined') {
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => installThumbnailLoading(window), { once: true });
+    else installThumbnailLoading(window);
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => installImageFocus(window), { once: true });
     else installImageFocus(window);
 }

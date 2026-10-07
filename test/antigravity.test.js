@@ -42,27 +42,30 @@ test('failed requests enter a bounded cooldown and never expose the prompt in er
  await assert.rejects(generate('sensitive prompt'),/cooling down/);assert.equal(calls,1);
  time=60101;await assert.rejects(generate('sensitive prompt'),/request failed/);assert.equal(calls,2);
 });
-test('interactive briefings reserve provider slots until focus is cleared', async () => {
- const callbacks = [];
+test('provider slots respect the limit without assuming callback arrival order', {timeout:5000}, async () => {
+ const callbacks = new Map();
  const generate = createAntigravityProvider({available: () => true, maxConcurrent: 2,
-  run: (_binary, _args, _options, callback) => {callbacks.push(callback); return {pid: 0};}});
- const waitFor = async count => {
-  for (let i = 0; callbacks.length < count && i < 200; i++) await new Promise(resolve => setTimeout(resolve, 5));
-  assert.equal(callbacks.length, count);
+  run: (_binary, args, _options, callback) => {callbacks.set(args.at(-1).split('\n\n').at(-1), callback); return {pid: 0};}});
+ const waitFor = async label => {
+  const deadline = Date.now() + 1000;
+  while (!callbacks.has(label) && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 5));
+  assert.ok(callbacks.has(label), `Provider did not start ${label}`);
  };
  const first = generate('old-a'), second = generate('old-b');
- await waitFor(2);
+ await Promise.all([waitFor('old-a'), waitFor('old-b')]);
  touchAntigravityBriefingFocus('test-viewer');
  const briefing = withAntigravityRequestContext({type: 'story-briefing', isInteractive: () => true}, () => generate('visible-briefing'));
  const other = generate('other-ai');
  try {
-  callbacks[0](null, success); await first;
-  await waitFor(3);
-  callbacks[1](null, success); await second;
-  assert.equal(callbacks.length,3);
-  callbacks[2](null, success);await briefing;
-  clearAntigravityBriefingFocus('test-viewer');
-  await waitFor(4);callbacks[3](null, success);
+  callbacks.get('old-b')(null, success); await second;
+  await waitFor('visible-briefing');
+  assert.equal(callbacks.has('other-ai'), false);
+  callbacks.get('old-a')(null, success); await first;
+  // Global scheduling owns priority; focus must not create a second private
+  // reservation that can deadlock an already-admitted global AI task.
+  await waitFor('other-ai');
+  callbacks.get('other-ai')(null, success);
+  callbacks.get('visible-briefing')(null, success);
   await Promise.all([briefing, other]);
  } finally { clearAntigravityBriefingFocus('test-viewer'); }
 });

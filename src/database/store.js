@@ -1,3 +1,8 @@
+import {createDatabaseTransactionQueue} from './transaction-queue.js';
+import {createKeyedOverlay} from './keyed-overlay.js';
+import {createDatabasePersistence} from './persistence.js';
+import {createDatabaseAccess} from './access.js';
+import {encodeStoredSnapshot,decodeStoredValue,isSerializedValue,storedSnapshotState} from './stored-value.js';
 import { createParsedCache } from './parsed-cache.js';
 import { PERSONAL_STATE_KEY } from '../smart/feedback/store.js';
 import { FILTER_STATE_KEY } from '../smart/prefilter/policy.js';
@@ -20,6 +25,8 @@ export function createDatabaseStore() {
     const STATE_KEYS = new Set([PERSONAL_STATE_KEY, 'readStates', 'savedStates', 'hiddenStates', 'boardStates', 'recentReadAt', 'userPreferences', 'cacheMembers', 'cacheIdentityLedger', 'smartAiProviderHealth', 'articleFetchStrategyStats', 'googleNewsUrlCache']);
     let stateRevision = 0;
     let stateOverlay = {};
+    const stateFiles = createKeyedOverlay({filename:STATE_FILE,allowedKeys:STATE_KEYS,writeJson:_writeJsonAtomic});
+    const smartStateFiles = createKeyedOverlay({filename:SMART_STATE_FILE,allowedKeys:SMART_STATE_KEYS,writeJson:_writeJsonAtomic});
 
 
     const SMART_KEYS = new Set([FILTER_STATE_KEY, 'smartClusters', 'smartRawArticles', 'smartCandidateLinks', 'smartCandidateSignature', 'smartAiConfig', 'smartClusterVersion', 'smartStatus', 'smartEmbeddingIdentity', 'smartVerificationFailures', 'smartClusteringInputs', 'smartClusteringFailedAttempt', 'smartClusteringAlgorithmVersion', 'smartClusterState', 'smartEventVerificationCache', 'smartEditorialAssessmentCache', 'smartClusteringCounters', 'smartDeferredReviewGroups', 'smartProgressivePublication', 'smartProgressiveClusterState', 'storyBriefings', 'topStoriesPublished']);
@@ -59,13 +66,13 @@ export function createDatabaseStore() {
     // The in-memory cache is the source of truth. Disk writes are best-effort persistence.
     // This eliminates ALL race conditions and file corruption issues permanently.
 
-    let _dbCache = null;
+    const databaseState = {value: null};
 
     // In-memory database (source of truth once loaded)
     const _jsonParsedCache = createParsedCache();
 
     // Version -> clusters history to prevent mid-session flickering on Smart tab
-    let _dbMutexQueue = Promise.resolve();
+    const transactionQueue = createDatabaseTransactionQueue();
 
     let _lastRecoverySnapshotAt = 0;
 
@@ -73,21 +80,16 @@ export function createDatabaseStore() {
 
     // Separate redundant backup for feeds
 
-    function withDbLock(fn) {
-        let release;
-        const prev = _dbMutexQueue;
-        _dbMutexQueue = new Promise(r => release = r);
-        return prev.then(fn).finally(release);
-    }
+    const withDbLock = transactionQueue.run;
 
     function _parseStoredArray(snapshot, key) {
         const value = snapshot?.[key];
         if (Array.isArray(value)) return value;
-        if (typeof value !== 'string') return null;
+        if (!isSerializedValue(value)) return null;
         const cached = _jsonParsedCache.get(key, value);
         if (Array.isArray(cached?.parsed)) return cached.parsed;
         try {
-            const parsed = JSON.parse(value);
+            const parsed = JSON.parse(decodeStoredValue(value));
             return Array.isArray(parsed) ? parsed : null;
         } catch (e) {
             return null;
@@ -223,11 +225,11 @@ export function createDatabaseStore() {
         }
         smartStateRevision = Number(mainSnapshot.__smartStateRevision) || 0;
         try {
-            const overlay = JSON.parse(await fs.readFile(SMART_STATE_FILE, 'utf8'));
+            const overlay = await smartStateFiles.load(smartStateRevision);
             if (!Number.isSafeInteger(overlay.revision) || !overlay.values ||
                 Object.keys(overlay.values).some(key => !SMART_STATE_KEYS.has(key))) throw new Error('Invalid Smart state overlay');
             if (overlay.revision > smartStateRevision) {
-                smartStateOverlay = overlay.values;
+                smartStateOverlay = encodeStoredSnapshot(overlay.values);
                 smartStateRevision = overlay.revision;
                 Object.assign(mainSnapshot, smartStateOverlay);
             }
@@ -255,16 +257,16 @@ export function createDatabaseStore() {
         // revision prevents an old overlay replaying over a newer full snapshot.
         stateRevision = Number(mainSnapshot.__stateRevision) || 0;
         try {
-            const overlay = JSON.parse(await fs.readFile(STATE_FILE, 'utf8'));
+            const overlay = await stateFiles.load(stateRevision);
             if (!Number.isSafeInteger(overlay.revision) || !overlay.values ||
                 Object.keys(overlay.values).some(key => !STATE_KEYS.has(key))) throw new Error('Invalid state overlay');
             if (overlay.revision > stateRevision) {
-                stateOverlay = overlay.values;
+                stateOverlay = encodeStoredSnapshot(overlay.values);
                 stateRevision = overlay.revision;
                 Object.assign(mainSnapshot, stateOverlay);
             }
         } catch (error) { if (error.code !== 'ENOENT') throw error; }
-        return mainSnapshot;
+        return encodeStoredSnapshot(mainSnapshot);
     }
 
     async function _createRecoverySnapshot(snapshot) {
@@ -281,75 +283,14 @@ export function createDatabaseStore() {
         }
     }
 
-    async function _persistToDisk(data, previousData, updatedKeys = null, options = {}) {
-        const changedKeys = Array.isArray(updatedKeys)
-            ? updatedKeys
-            : (updatedKeys ? [updatedKeys] : []);
-        if (changedKeys.length && changedKeys.every(key => SMART_STATE_KEYS.has(key))) {
-            const values = { ...smartStateOverlay };
-            for (const key of changedKeys) values[key] = data[key];
-            const revision = smartStateRevision + 1;
-            await _writeJsonAtomic(SMART_STATE_FILE, { revision, values });
-            smartStateOverlay = values;
-            smartStateRevision = revision;
-            return;
-        }
-        // Both single and batch state updates use the durable overlay. A caller
-        // should not have to opt in to avoid rewriting the article corpus.
-        if (changedKeys.length && changedKeys.every(key => STATE_KEYS.has(key))) {
-            const values = { ...stateOverlay };
-            for (const key of changedKeys) values[key] = data[key];
-            const revision = stateRevision + 1;
-            await _writeJsonAtomic(STATE_FILE, { revision, values });
-            stateOverlay = values;
-            stateRevision = revision;
-            return;
-        }
-        const smartChanged = changedKeys.some(key => SMART_KEYS.has(key));
-        const mainChanged = changedKeys.length === 0 || changedKeys.some(key => !SMART_KEYS.has(key));
-
-        if (smartChanged) {
-            const smartData = {};
-            for (const k of SMART_KEYS) if (k in data && data[k] !== undefined) smartData[k] = data[k];
-            smartData.__smartStateRevision = smartStateRevision;
-            if (previousData) {
-                const prevSmartData = {};
-                for (const k of SMART_KEYS) if (k in previousData && previousData[k] !== undefined) prevSmartData[k] = previousData[k];
-                prevSmartData.__smartStateRevision = smartStateRevision;
-                if (Object.keys(prevSmartData).length > 0) {
-                    await _writeJsonAtomic(SMART_DB_FILE + '.backup', prevSmartData).catch(() => {});
-                }
-            }
-            await _writeJsonAtomic(SMART_DB_FILE, smartData);
-            smartStateOverlay = {};
-            await fs.unlink(SMART_STATE_FILE).catch(error => { if (error.code !== 'ENOENT') console.warn('[DB SMART STATE]', error.message); });
-            if (!mainChanged) return;
-        }
-
-        const mainData = {};
-        for (const k in data) if (!SMART_KEYS.has(k) && !NON_PERSISTED_DB_KEYS.has(k) && data[k] !== undefined) mainData[k] = data[k];
-
-        mainData.__stateRevision = stateRevision;
-        const validation = _validateDatabaseSnapshot(mainData, true);
-        if (!validation.ok) throw new Error(`Refusing unsafe database write: ${validation.reason}`);
-
-        if (previousData) {
-            const prevMainData = {};
-            for (const k in previousData) if (!SMART_KEYS.has(k) && !NON_PERSISTED_DB_KEYS.has(k) && previousData[k] !== undefined) prevMainData[k] = previousData[k];
-            prevMainData.__stateRevision = stateRevision;
-            if (_validateDatabaseSnapshot(prevMainData, true).ok) {
-                await _writeJsonAtomic(DB_FILE + '.backup', prevMainData);
-                await _createRecoverySnapshot(prevMainData).catch(error => {
-                    console.error('[DB WARNING] Could not create rotating recovery snapshot:', error.message);
-                });
-            }
-        }
-        await _writeJsonAtomic(DB_FILE, mainData);
-        // The full snapshot now contains all overlay values. A crash before
-        // unlink is safe because readers compare revisions before replaying.
-        stateOverlay = {};
-        await fs.unlink(STATE_FILE).catch(error => { if (error.code !== 'ENOENT') console.warn('[DB STATE]', error.message); });
-    }
+    const _persistToDisk = createDatabasePersistence({SMART_STATE_KEYS,STATE_KEYS,SMART_KEYS,NON_PERSISTED_DB_KEYS,SMART_DB_FILE,DB_FILE,stateFiles,smartStateFiles,
+        getOverlayState: () => ({stateRevision,stateOverlay,smartStateRevision,smartStateOverlay}),
+        commitOverlayState: update => {
+            if ('stateRevision' in update) stateRevision = update.stateRevision;
+            if ('stateOverlay' in update) stateOverlay = update.stateOverlay;
+            if ('smartStateRevision' in update) smartStateRevision = update.smartStateRevision;
+            if ('smartStateOverlay' in update) smartStateOverlay = update.smartStateOverlay;
+        }, _writeJsonAtomic,_validateDatabaseSnapshot,_createRecoverySnapshot});
 
     // Separately backup feeds to a dedicated file for extra safety
     async function _backupFeeds(feedsStr, previousFeedsStr = null) {
@@ -376,110 +317,7 @@ export function createDatabaseStore() {
     }
 
     const env = {
-        RSS_DATA: {
-            get: async (key, opts) => {
-                if (!_dbCache) {
-                    await withDbLock(async () => {
-                        if (!_dbCache) _dbCache = await _loadDBFromDisk();
-                    });
-                }
-                let val = _dbCache[key];
-                if (!val) return null;
-                if (opts && opts.type === 'json' && typeof val === 'string') {
-                    const cached = _jsonParsedCache.get(key, val);
-                    if (cached) return opts.shared ? cached.parsed : structuredClone(cached.parsed);
-                    const parsed = JSON.parse(val);
-                    // Mutable one-off readers already own this parse. Retaining
-                    // it AND cloning it doubled every background corpus read.
-                    if (opts.shared) _jsonParsedCache.set(key, val, parsed);
-                    return parsed;
-                }
-                return val;
-            },
-            put: (key, value, options = {}) => withDbLock(async () => {
-                if (!_dbCache) _dbCache = await _loadDBFromDisk();
-                if (typeof value === 'string' && _dbCache[key] === value) return;
-                const previous = _dbCache;
-                const next = { ...previous, [key]: value };
-
-                if (['feeds', 'articles', 'smartRawArticles', 'smartClusters', 'blockedArticleKeywords'].includes(key)) {
-                    const oldItems = _parseStoredArray(previous, key) || [];
-                    const newItems = _parseStoredArray(next, key);
-                    if (!newItems) throw new Error(`[DB SAFETY] ${key} write is not a valid array`);
-                    if (oldItems.length > 0 && newItems.length === 0 && !(key === 'blockedArticleKeywords' && options.allowLargeReduction)) {
-                        throw new Error(`[DB SAFETY] Refusing to wipe ${oldItems.length} ${key}`);
-                    }
-                    const destructiveDrop = oldItems.length >= 20 && newItems.length < Math.ceil(oldItems.length * 0.1);
-                    if (destructiveDrop && !options.allowLargeReduction) {
-                        throw new Error(`[DB SAFETY] Refusing unexpected ${key} reduction from ${oldItems.length} to ${newItems.length}`);
-                    }
-                }
-
-                if (key === 'feeds') {
-                    const oldFeeds = _parseStoredArray(previous, key) || [];
-                    const newFeeds = _parseStoredArray(next, key) || [];
-                    const destructiveDrop = oldFeeds.length >= 3 && newFeeds.length < Math.ceil(oldFeeds.length * 0.5);
-                    if (destructiveDrop && !options.allowLargeReduction) {
-                        throw new Error(`[DB SAFETY] Refusing unexpected feed reduction from ${oldFeeds.length} to ${newFeeds.length}`);
-                    }
-                    await _backupFeeds(JSON.stringify(newFeeds), oldFeeds.length ? JSON.stringify(oldFeeds) : null);
-                }
-
-                _dbCache = next;
-                try {
-                    await _persistToDisk(next, previous, key, { ...options, lightweight: STATE_KEYS.has(key) });
-                    _jsonParsedCache.invalidate(key, value);
-                } catch (err) {
-                    _dbCache = previous; // rollback on failure
-                    throw err;
-                }
-            }),
-            putMany: (keyValuePairs, options = {}) => withDbLock(async () => {
-                if (!_dbCache) _dbCache = await _loadDBFromDisk();
-                keyValuePairs = Object.fromEntries(Object.entries(keyValuePairs).filter(
-                    ([key, value]) => typeof value !== 'string' || _dbCache[key] !== value
-                ));
-                if (!Object.keys(keyValuePairs).length) return;
-                const previous = _dbCache;
-                let next = { ...previous };
-
-                for (const [key, value] of Object.entries(keyValuePairs)) {
-                    next[key] = value;
-
-                    if (['feeds', 'articles', 'smartRawArticles', 'smartClusters', 'blockedArticleKeywords'].includes(key)) {
-                        const oldItems = _parseStoredArray(previous, key) || [];
-                        const newItems = _parseStoredArray(next, key);
-                        if (!newItems) throw new Error(`[DB SAFETY] ${key} write is not a valid array`);
-                        if (oldItems.length > 0 && newItems.length === 0 && !(key === 'blockedArticleKeywords' && options.allowLargeReduction)) {
-                            throw new Error(`[DB SAFETY] Refusing to wipe ${oldItems.length} ${key}`);
-                        }
-                        const destructiveDrop = oldItems.length >= 20 && newItems.length < Math.ceil(oldItems.length * 0.1);
-                        if (destructiveDrop && !options.allowLargeReduction) {
-                            throw new Error(`[DB SAFETY] Refusing unexpected ${key} reduction from ${oldItems.length} to ${newItems.length}`);
-                        }
-                    }
-
-                    if (key === 'feeds') {
-                        const oldFeeds = _parseStoredArray(previous, key) || [];
-                        const newFeeds = _parseStoredArray(next, key) || [];
-                        const destructiveDrop = oldFeeds.length >= 3 && newFeeds.length < Math.ceil(oldFeeds.length * 0.5);
-                        if (destructiveDrop && !options.allowLargeReduction) {
-                            throw new Error(`[DB SAFETY] Refusing unexpected feed reduction from ${oldFeeds.length} to ${newFeeds.length}`);
-                        }
-                        await _backupFeeds(JSON.stringify(newFeeds), oldFeeds.length ? JSON.stringify(oldFeeds) : null);
-                    }
-                }
-
-                try {
-                    await _persistToDisk(next, previous, Object.keys(keyValuePairs), options);
-                    _dbCache = next;
-                    for (const key of Object.keys(keyValuePairs)) _jsonParsedCache.invalidate(key, next[key]);
-                } catch (err) {
-                    _dbCache = previous; // rollback on failure
-                    throw err;
-                }
-            })
-        },
+        RSS_DATA: createDatabaseAccess({state: databaseState, withDbLock, _loadDBFromDisk, _jsonParsedCache, _parseStoredArray, _backupFeeds, _persistToDisk, STATE_KEYS}),
         ADMIN_PASSWORD: process.env.ADMIN_PASSWORD
     };
 
@@ -494,8 +332,8 @@ export function createDatabaseStore() {
     // otherwise be paid by the first foreground /api/data request.
     async function warmGlobalDatabaseMemory() {
         await withDbLock(async () => {
-            if (!_dbCache) {
-                _dbCache = await _loadDBFromDisk();
+            if (!databaseState.value) {
+                databaseState.value = await _loadDBFromDisk();
             }
 
             const hotJsonKeys = [
@@ -512,17 +350,17 @@ export function createDatabaseStore() {
             ];
 
             for (const key of hotJsonKeys) {
-                const raw = _dbCache[key];
+                const raw = databaseState.value[key];
 
                 if (
-                    typeof raw !== 'string'
+                    !isSerializedValue(raw)
                     || _jsonParsedCache.get(key, raw)
                 ) {
                     continue;
                 }
 
                 try {
-                    _jsonParsedCache.set(key, raw, JSON.parse(raw));
+                    _jsonParsedCache.set(key, raw, JSON.parse(decodeStoredValue(raw)));
                 } catch (error) {
                     console.warn(
                         `[DB WARM] Could not preparse ${key}:`,
@@ -552,7 +390,7 @@ export function createDatabaseStore() {
 
     return {
         releaseParsedCache() { _jsonParsedCache.clear(); },
-        getResourceState: () => _jsonParsedCache.state(),
+        getResourceState: () => ({..._jsonParsedCache.state(), persistentValues:storedSnapshotState(databaseState.value), transactions:transactionQueue.state()}),
         initializeWriterLock,
         env,
         _writeJsonAtomic,

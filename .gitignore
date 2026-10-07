@@ -126,3 +126,6 @@ qwen-keys.txt
 
 smart-state.json
 smart-state.json.tmp-*
+
+# Durable per-key state overlay parts
+/database_state/

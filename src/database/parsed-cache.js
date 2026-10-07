@@ -1,3 +1,4 @@
+import {isSerializedValue} from './stored-value.js';
 import { createWeakParses } from './weak-parses.js';
 const MB = 1024 * 1024;
 
@@ -45,7 +46,7 @@ export function createParsedCache({
             weak.set(key, raw, parsed);
             // String storage is a cheap, conservative sizing proxy. Object
             // overhead varies by corpus, so the metric names this estimate.
-            const size = typeof raw === 'string' ? raw.length * 2 : 0;
+            const size = isSerializedValue(raw) ? raw.length * 2 : 0;
             if (size > maxBytes || maxEntries < 1) return;
             entries.set(key, { raw, parsed, bytes: size, at: now() }); bytes += size;
             while (bytes > maxBytes || entries.size > maxEntries) {

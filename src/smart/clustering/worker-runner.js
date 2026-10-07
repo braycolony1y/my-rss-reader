@@ -1,5 +1,5 @@
 import { clearEmbeddingCache, embeddingCacheKey, exportEmbeddingCache, importEmbeddingCache, prepareEmbeddings } from '../embeddings/index.js';
-import { loadEmbeddingSubset, mergeEmbeddingCache } from '../embeddings/disk-cache.js';
+import { createEmbeddingCheckpoint } from '../embeddings/checkpoint.js';
 import { deterministicGroups } from './components.js';
 import { updateBatchStopTokens } from '../text/normalize.js';
 import { runIncrementalHnswClustering } from '../../../smart-hnsw-clustering.js';
@@ -8,11 +8,12 @@ export async function runClusterJob(message, send) {
     const articles = Array.isArray(message.articles) ? message.articles : [];
     const existingClusters = Array.isArray(message.existingClusters) ? message.existingClusters : [];
     let diskCount = 0;
+    const cacheCheckpoint = message.cachePath ? createEmbeddingCheckpoint({filename:message.cachePath,importEntries:importEmbeddingCache,exportEntries:exportEmbeddingCache}) : null;
     try {
         if (message.cachePath) {
             const keys = new Set(articles.map(embeddingCacheKey));
             try {
-                const loaded = await loadEmbeddingSubset(message.cachePath, keys, importEmbeddingCache);
+                const loaded = await cacheCheckpoint.load(keys);
                 diskCount = loaded.entries;
                 console.log('[SMART EMBEDDING CACHE]', JSON.stringify({ ...loaded, required: keys.size }));
             } catch (error) {
@@ -21,7 +22,7 @@ export async function runClusterJob(message, send) {
         } else importEmbeddingCache(message.embeddingCache || {});
         updateBatchStopTokens(articles);
         const checkpoint = async () => {
-            if (message.cachePath) diskCount = await mergeEmbeddingCache(message.cachePath, exportEmbeddingCache());
+            if (cacheCheckpoint) diskCount = await cacheCheckpoint.save();
         };
         await prepareEmbeddings(articles, progress => send({ type: 'progress', progress }), checkpoint);
         const grouped = message.mode === 'full-deterministic'

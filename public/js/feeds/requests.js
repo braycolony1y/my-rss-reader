@@ -15,6 +15,8 @@ async fetchData(isLoadMore = false, skipPageReset = false, keepVisible = false) 
                     const topContext = this.usesTopStories ? JSON.stringify([this.selectedFilterValue,this.smartRegion,this.hideRead,this.searchQuery]) : null;
                     const retainTop = topContext && this._renderedTopContext === topContext && this.articles.length > 0;
                     const requestGeneration = ++this.articleRequestGeneration;
+                    this.articleListError = '';
+                    this._lastArticlePageResult = { pending: true };
                     if (!isLoadMore && !keepVisible) this.prefetchQueue = [];
                     this._articleListAbort?.abort();
                     const listController = typeof AbortController === 'function' ? new AbortController() : null;
@@ -50,7 +52,8 @@ async fetchData(isLoadMore = false, skipPageReset = false, keepVisible = false) 
                     }
 
                     const requestedPage = this.currentPage;
-                    const timeout = setTimeout(() => listController?.abort(), 30000);
+                    let timedOut = false;
+                    const timeout = setTimeout(() => { timedOut = true; listController?.abort(); }, 30000);
                     const pageLimit = this.isMobile ? 15 : 40;
                     const params = new URLSearchParams({
                         page: this.currentPage,
@@ -215,10 +218,18 @@ async fetchData(isLoadMore = false, skipPageReset = false, keepVisible = false) 
                             }
                             return result;
                         }
-                        return { failed: true };
+                        throw Object.assign(new Error(`Server returned HTTP ${res.status}`), { status: res.status });
                     } catch (e) {
+                        if (requestGeneration !== this.articleRequestGeneration) return { cancelled: true };
                         if (e?.name !== 'AbortError') console.error("Failed to load data:", e);
-                        return { failed: true };
+                        if (!timedOut && e?.name === 'AbortError') return { cancelled: true };
+                        this.articleListError = timedOut
+                            ? 'Loading took too long. Please try again.'
+                            : e?.status ? `The server could not load these articles (HTTP ${e.status}). Please try again.`
+                            : 'Could not connect to load these articles. Check your connection and try again.';
+                        const result = { failed: true, reason: timedOut ? 'timeout' : e?.status ? 'server' : 'network' };
+                        this._lastArticlePageResult = result;
+                        return result;
                     } finally {
                         clearTimeout(timeout);
                         if (requestGeneration === this.articleRequestGeneration) {

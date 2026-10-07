@@ -1,8 +1,10 @@
 import { isInvalidImage, isRedditUrl } from '../utils/article-utils.js';
 import { getArticleThumbnail } from './thumbnail.js';
+import { withArticleFetchLane } from './fetch-lanes.js';
 
 export function createArticleImages({
     getLastKnownCachedArticle,
+    getLastKnownCachedArticleImage = async url => getArticleThumbnail(url, await getLastKnownCachedArticle(url)),
     getArticleFetchPolicy,
     fetchParsedArticleByStrategy,
     cacheArticleResult,
@@ -10,8 +12,7 @@ export function createArticleImages({
     const pending = new Map();
 
     async function resolveImage(targetUrl, rssFallback) {
-        const cached = await getLastKnownCachedArticle(targetUrl);
-        const cachedImage = getArticleThumbnail(targetUrl, cached);
+        const cachedImage = await getLastKnownCachedArticleImage(targetUrl);
         if (cachedImage) return cachedImage;
         if (rssFallback && !isInvalidImage(rssFallback)) return rssFallback;
 
@@ -20,7 +21,9 @@ export function createArticleImages({
         const policy = await getArticleFetchPolicy(targetUrl);
         for (const strategy of policy.strategyOrder) {
             try {
-                const result = await fetchParsedArticleByStrategy(strategy, targetUrl, policy);
+                const result = await withArticleFetchLane('p2',
+                    () => fetchParsedArticleByStrategy(strategy, targetUrl, policy),
+                    { source: 'card-thumbnail' });
                 if (!result?.content || result.isDeletedSource || result.sourceDeleted) continue;
                 const image = getArticleThumbnail(targetUrl, result);
                 await cacheArticleResult(targetUrl, { ...result, ...(image ? { image } : {}) });

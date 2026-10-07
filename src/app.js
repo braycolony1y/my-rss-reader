@@ -139,6 +139,7 @@ export async function createApplication({ isMainModule = false } = {}) {
 
     const images = createArticleImages({
         getLastKnownCachedArticle: cache.getLastKnownCachedArticle,
+        getLastKnownCachedArticleImage: cache.getLastKnownCachedArticleImage,
         getArticleFetchPolicy: policy.getArticleFetchPolicy,
         fetchParsedArticleByStrategy: pipeline.fetchParsedArticleByStrategy,
         cacheArticleResult: cache.cacheArticleResult

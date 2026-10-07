@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createArticleImages } from '../src/articles/images.js';
 import { getArticleThumbnail } from '../src/articles/thumbnail.js';
+import { getCurrentArticleFetchLaneContext } from '../src/articles/fetch-lanes.js';
 
 const url = 'https://voz.vn/t/story.123';
 const cover = 'https://images.example.com/cover.jpg';
@@ -26,6 +27,7 @@ test('thumbnails follow the source policy in order without legacy direct/proxy f
         getLastKnownCachedArticle: async () => null,
         getArticleFetchPolicy: async target => { assert.equal(target, url); return policy; },
         fetchParsedArticleByStrategy: async (method, target, receivedPolicy) => {
+            assert.equal(getCurrentArticleFetchLaneContext().lane, 'p2');
             calls.push(method);
             assert.equal(target, url);
             assert.equal(receivedPolicy, policy);
@@ -37,6 +39,15 @@ test('thumbnails follow the source policy in order without legacy direct/proxy f
     assert.equal(await images.getBestImage(url + '/unread', () => assert.fail('Legacy fetch must not run')), cover);
     assert.deepEqual(calls, policy.strategyOrder);
     assert.equal(cached[0].image, cover);
+});
+
+test('cached card image bypasses full article normalization and all extraction', async () => {
+    const images = createArticleImages({
+        getLastKnownCachedArticleImage: async () => cover,
+        getLastKnownCachedArticle: () => assert.fail('Card lookup must not normalize an entire cached thread'),
+        getArticleFetchPolicy: () => assert.fail('Cached image needs no remote extraction')
+    });
+    assert.equal(await images.getBestImage(url), cover);
 });
 
 for (const methods of [['opencli'], ['jina'], ['direct'], []]) {

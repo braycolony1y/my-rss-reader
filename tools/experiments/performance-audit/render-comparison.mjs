@@ -3,9 +3,10 @@ import {readFile,writeFile} from 'node:fs/promises';
 import {startFixtureServer} from '../../../test/helpers/frontend-refactor/server.js';
 import {createReaderAssetRenderer} from '../../../src/ui/reader-assets.js';
 const server=await startFixtureServer(),renderer=createReaderAssetRenderer();
-const beforeHtml=await readFile('/tmp/rss-audit-20261006/rendered-before-panel.html','utf8');
+const followup=process.argv.includes('--followup'),out=followup?'/tmp/rss-audit-followup-20261007':'/tmp/rss-audit-20261006';
+const beforeHtml=await readFile(followup?out+'/client-before.html':'/tmp/rss-audit-20261006/rendered-before-panel.html','utf8');
 const afterScript=await renderer.script();
-const beforeScript=afterScript.replace(/^const readerVietnamDateFormatter = .*\n/m,'').replace("return Number.isNaN(date.getTime()) ? 'Time unavailable' : readerVietnamDateFormatter.format(date);", "return Number.isNaN(date.getTime()) ? 'Time unavailable' : new Intl.DateTimeFormat('en-GB', {timeZone:'Asia/Ho_Chi_Minh',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:false}).format(date);");
+const beforeScript=followup?await readFile(out+'/client-before.js','utf8'):afterScript.replace(/^const readerVietnamDateFormatter = .*\n/m,'').replace("return Number.isNaN(date.getTime()) ? 'Time unavailable' : readerVietnamDateFormatter.format(date);", "return Number.isNaN(date.getTime()) ? 'Time unavailable' : new Intl.DateTimeFormat('en-GB', {timeZone:'Asia/Ho_Chi_Minh',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:false}).format(date);");
 const focus=await readFile(new URL('../../../public/image-focus.js',import.meta.url),'utf8');
 const originalObserver=`        const affected = new Set();
         for (const record of records) {
@@ -25,9 +26,9 @@ const originalObserver=`        const affected = new Set();
         affected.forEach(update);
 `;
 const from=focus.indexOf('        const { images, added, removed }'),to=focus.indexOf('        for (const [img, state] of states)',from);
-const beforeFocus=(focus.slice(0,from)+originalObserver+focus.slice(to)).replace(/^import \{ collectImageFocusMutations \}.*\n/m,'');
+const beforeFocus=followup?focus.replace('state.requested || !state.near','state.requested'):(focus.slice(0,from)+originalObserver+focus.slice(to)).replace(/^import \{ collectImageFocusMutations \}.*\n/m,'');
 const hero=await readFile(new URL('../../../public/top-story-card/hero-extent.js',import.meta.url),'utf8');
-const beforeHero=hero.replace('card.isConnected && win.innerWidth >= 768','card.isConnected && win.innerWidth >= 768 && card.clientWidth >= 640').replace(" === 'editorial'\n        && card.clientWidth >= 640;", " === 'editorial';");
+const beforeHero=followup?hero:hero.replace('card.isConnected && win.innerWidth >= 768','card.isConnected && win.innerWidth >= 768 && card.clientWidth >= 640').replace(" === 'editorial'\n        && card.clientWidth >= 640;", " === 'editorial';");
 const browser=await chromium.launch({headless:true,args:['--no-sandbox']});const report=[];
 try {
  for(const width of [1440,390])for(const theme of ['classic','glass-light'])for(const mode of ['feed','top'])for(const variant of ['before','after']) {
@@ -49,7 +50,7 @@ try {
   await page.waitForTimeout(400);
   const state=await page.evaluate(()=>({cards:[...document.querySelectorAll('.article-card')].map(c=>{const r=c.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height,title:c.querySelector('h2')?.textContent};}),dom:document.querySelectorAll('*').length,tasks:window.tasks,heap:performance.memory?.usedJSHeapSize}));
   report.push({width,theme,mode,variant,samples,...state});console.log(JSON.stringify({width,theme,mode,variant,medianMs:[...samples].sort((a,b)=>a-b)[2],dom:state.dom,tasks:state.tasks.length}));
-  await page.screenshot({path:`/tmp/rss-audit-20261006/${width}-${theme}-${mode}-${variant}.png`});await context.close();
+  await page.screenshot({path:`${out}/${width}-${theme}-${mode}-${variant}.png`});await context.close();
  }
- await writeFile('/tmp/rss-audit-20261006/render-comparison.json',JSON.stringify(report,null,2));
+ await writeFile(out+'/render-comparison.json',JSON.stringify(report,null,2));
 }finally{await browser.close();server.close();}

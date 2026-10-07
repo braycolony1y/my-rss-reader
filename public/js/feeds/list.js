@@ -13,6 +13,7 @@ const ReaderFeedsList = {
                 isLoadingMore: false,
                 isLoadingArticles: false,
                 loadingArticleStatus: '',
+                articleListError: '',
                 articleRequestGeneration: 0,
                 unreadCounts: { feeds: {}, categories: {}, total: 0 },
 
