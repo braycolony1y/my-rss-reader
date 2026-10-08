@@ -72,6 +72,8 @@ Sixteen controlled before/after production-card cases retained exact card geomet
 
 Full suite after the Forum fix: **749/749 passed**, `final-suite.log`. The additional publication-batching change has its own focused regression and a subsequent full-suite run recorded in `batch-full-suite.log`; activation status is recorded below after validation.
 
+Publication batching: **750/750 passed**, zero failures or skipped tests. Activated with a controlled service restart on 8 October; `/health` returned `ok`, systemd `active/running`, `NRestarts=0`, PID 61926. The inspector port remained closed. Initial heap was 380 MiB; this startup value is not evidence of improved long-term retention.
+
 Browser-assisted VOZ extraction was checked before the earlier activation: 198,549 bytes returned with title and posts. Existing page identity, resume, source strategy, and history semantics were retained. No new provider calls or ranking shortcuts were introduced.
 
 ## Rollback and outstanding acceptance

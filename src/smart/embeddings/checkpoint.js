@@ -1,4 +1,4 @@
-import {loadEmbeddingSubset, mergeEmbeddingCache} from './disk-cache.js';
+import {loadIncrementalEmbeddingSubset as loadEmbeddingSubset, mergeIncrementalEmbeddingCache as mergeEmbeddingCache} from './incremental-cache.js';
 
 // This job already imports only its required vectors. Keep their compact encoded
 // values until the job completes so an unchanged checkpoint performs no rewrite.

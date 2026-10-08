@@ -1,5 +1,6 @@
 import { personalSignature } from '../smart/feedback/store.js';
-import { filterPersonalView } from '../smart/feedback/pipeline.js';
+import { publicationDestination } from './publication-section.js';
+import { createPersonalViewCache } from './personal-view-cache.js';
 import { indexStoriesById } from './story-index.js';
 import { smartDestination } from '../utils/smart-destinations.js';
 import { createTopStoriesSnapshots } from './top-stories-snapshot.js';
@@ -26,6 +27,7 @@ export function createArticlePresentation({
 } = {}) {
     // Cache for parsed JSON strings (e.g. smartClusters) to avoid CPU-heavy parsing on tab clicks
     let _smartClustersHistory = {};
+    const filterNavigationView = createPersonalViewCache();
 
     async function prepareArticleForClient(article, isSubItem = false) {
         const prepared = { ...article, title: normalizeArticleTitle(article.title) };
@@ -1012,7 +1014,7 @@ export function createArticlePresentation({
 
         let smartClusterVersion = '', filteredArticles, publishedArticles, classicInput, cacheHit = false;
         if (isTop) {
-            const snapshot = await topSnapshots.get();
+            const snapshot = await topSnapshots.get(publicationDestination(filterValue, smartRegion));
             mark('persisted-read');
             cacheHit = Boolean(snapshot);
 
@@ -1281,7 +1283,7 @@ export function createArticlePresentation({
         //
         // Top remains unchanged: its ranking is already precomputed in the
         // published Top snapshot.
-        filteredArticles = await filterPersonalView(env.RSS_DATA, filteredArticles, filterValue, 'pre_classic_ranking');
+        filteredArticles = await filterNavigationView(env.RSS_DATA, filteredArticles, filterValue, 'pre_classic_ranking');
         const ranked =
             !isTop && reusableView
                 ? priorView.articles
@@ -1329,7 +1331,7 @@ export function createArticlePresentation({
         mark("filtering");
 
         let smartViewToken = req.query.smartView;
-        filteredArticles = await filterPersonalView(env.RSS_DATA, reusableView ? priorView.articles : ranked, filterValue, 'cached_smart_view');
+        filteredArticles = await filterNavigationView(env.RSS_DATA, reusableView ? priorView.articles : ranked, filterValue, 'cached_smart_view');
         if (!reusableView) {
             smartViewToken = `${Date.now()}-${++storyViewSequence}`;
             storyViews.set(smartViewToken, {

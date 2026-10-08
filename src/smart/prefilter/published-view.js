@@ -19,7 +19,7 @@ export async function filterPublishedView(db, snapshot) {
     if (!cache) { cache = new WeakMap(); views.set(db, cache); }
     const previous = cache.get(snapshot);
     const state = personal?.state, revision = system?.revision;
-    if (previous && previous.state === state && previous.revision === revision
+    if (previous && previous.state?.deref() === state && previous.revision === revision
         && previous.personalOn === personalOn && previous.systemOn === systemOn) return previous.result;
     // Persist one publication pass together. Per-story filtering cloned and
     // rewrote the complete personal decision history for every new exclusion.
@@ -49,6 +49,9 @@ export async function filterPublishedView(db, snapshot) {
     // A filter pass can durably add personal decisions. Never cache across a
     // state change, including an undo arriving while the pass is in progress.
     if (personal?.state === state && system?.revision === revision)
-        cache.set(snapshot, { state, revision, personalOn, systemOn, result });
+        // Pinned publications can outlive many personal transactions. The view
+        // needs identity equality, not ownership of each historical decision
+        // graph (and its matching indexes). Keep only the current store strong.
+        cache.set(snapshot, { state: state ? new WeakRef(state) : undefined, revision, personalOn, systemOn, result });
     return result;
 }

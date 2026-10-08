@@ -22,12 +22,12 @@ const ReaderBoardFolders = {
                 },
                 isOnBoard(article) {
                     const id = this.boardIdentity(article);
-                    return !!id && this.boardStates.some(url => this.boardIdentity(url) === id);
+                    return !!id && ReaderBoardLookup.members(this.boardStates, url => this.boardIdentity(url)).has(id);
                 },
                 boardFolderFor(article) {
                     const id = this.boardIdentity(article);
                     if (!id) return null;
-                    return Object.entries(this.userPreferences.boardFolderMappings || {}).find(([url]) => this.boardIdentity(url) === id)?.[1] || null;
+                    return ReaderBoardLookup.folders(this.userPreferences.boardFolderMappings || {}, url => this.boardIdentity(url)).get(id) || null;
                 },
                 openBoardModal(article) {
                     if (this.boardSavePending) return;
@@ -43,7 +43,7 @@ const ReaderBoardFolders = {
                         if (Object.hasOwn(data, 'folder')) folder = data.folder;
                         const existing = this.boardStates.find(url => this.boardIdentity(url) === id);
                         if (folder === null) this.boardStates = this.boardStates.filter(url => this.boardIdentity(url) !== id);
-                        else if (!existing) this.boardStates.push(data.url);
+                        else if (!existing) this.boardStates = [...this.boardStates, data.url];
                         const mappings = { ...(this.userPreferences.boardFolderMappings || {}) };
                         for (const url of Object.keys(mappings)) if (this.boardIdentity(url) === id) delete mappings[url];
                         if (folder !== null) mappings[data.url] = folder;

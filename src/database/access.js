@@ -1,4 +1,5 @@
 import {encodeStoredValue,encodeStoredSnapshot,decodeStoredValue,isSerializedValue,sameStoredValue,storedByteLength} from './stored-value.js';
+import {measureDatabaseRead} from './read-timing.js';
 
 // Public database access and mutation transaction boundaries. The caller owns
 // persistence, locking and recovery; callers still receive the original API types.
@@ -13,9 +14,10 @@ export function createDatabaseAccess({state,withDbLock,_loadDBFromDisk,_jsonPars
                 let val = state.value[key];
                 if (!val) return null;
                 if (opts && opts.type === 'json' && isSerializedValue(val)) {
-                    const cached = _jsonParsedCache.get(key, val);
-                    if (cached) return opts.shared ? cached.parsed : structuredClone(cached.parsed);
-                    const parsed = JSON.parse(decodeStoredValue(val));
+                    const cached = measureDatabaseRead(key,'lookup',()=>_jsonParsedCache.get(key, val));
+                    if (cached) return opts.shared ? cached.parsed : measureDatabaseRead(key,'clone',()=>structuredClone(cached.parsed));
+                    const decoded = measureDatabaseRead(key,'decode',()=>decodeStoredValue(val));
+                    const parsed = measureDatabaseRead(key,'parse',()=>JSON.parse(decoded));
                     // Mutable one-off readers already own this parse. Retaining
                     // it AND cloning it doubled every background corpus read.
                     if (opts.shared) _jsonParsedCache.set(key, val, parsed);

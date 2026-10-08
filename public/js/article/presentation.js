@@ -12,13 +12,13 @@ const ReaderArticlePresentation = {
                     if (minutes < 1) return 'Just now';
                     if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`;
                     if (minutes < 120) return '1 hour ago';
-                    const time = new Intl.DateTimeFormat('en-US', {hour:'numeric', minute:'2-digit'}).format(date);
+                    const time = ReaderSourceTimeFormat.time.format(date);
                     const calendarDay = d => Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
                     const days = (calendarDay(now) - calendarDay(date)) / 86400000;
                     if (days === 0) return `Today at ${time}`;
                     if (days === 1) return `Yesterday at ${time}`;
-                    if (days > 1 && days < 7) return `${new Intl.DateTimeFormat('en-US', {weekday:'long'}).format(date)} at ${time}`;
-                    return new Intl.DateTimeFormat('en-US', {year:'numeric', month:'short', day:'numeric'}).format(date);
+                    if (days > 1 && days < 7) return `${ReaderSourceTimeFormat.weekday.format(date)} at ${time}`;
+                    return ReaderSourceTimeFormat.date.format(date);
                 },
                 formatSourceTimeMarkup(content) {
                     if (!content || !content.includes('data-source-time')) return content;
@@ -30,7 +30,7 @@ const ReaderArticlePresentation = {
                     root.querySelectorAll('time[data-source-time]').forEach(el => {
                         const date = new Date(el.dataset.sourceTime);
                         if (!Number.isFinite(date.getTime())) return;
-                        const exact = new Intl.DateTimeFormat('en-US', { year:'numeric', month:'short', day:'numeric', hour:'numeric', minute:'2-digit' }).format(date);
+                        const exact = ReaderSourceTimeFormat.exact.format(date);
                         el.textContent = el.dataset.showExact === 'true' ? exact : this.formatPostTime(date);
                         el.title = exact;
                         el.setAttribute('aria-label', exact);

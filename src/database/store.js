@@ -1,4 +1,5 @@
 import {createDatabaseTransactionQueue} from './transaction-queue.js';
+import {SMART_INCREMENTAL_KEYS} from './state-policy.js';
 import {createKeyedOverlay} from './keyed-overlay.js';
 import {createDatabasePersistence} from './persistence.js';
 import {createDatabaseAccess} from './access.js';
@@ -18,11 +19,11 @@ export function createDatabaseStore() {
 
     const SMART_DB_FILE = './smart-data.json';
     const SMART_STATE_FILE = './smart-state.json';
-    const SMART_STATE_KEYS = new Set([FILTER_STATE_KEY, 'storyBriefings', 'smartStatus', 'smartClusteringCounters', 'smartEventVerificationCache', 'smartEditorialAssessmentCache']);
+    const SMART_STATE_KEYS = new Set([...SMART_INCREMENTAL_KEYS, FILTER_STATE_KEY, 'storyBriefings', 'smartStatus', 'smartClusteringCounters', 'smartEventVerificationCache', 'smartEditorialAssessmentCache']);
     let smartStateRevision = 0;
     let smartStateOverlay = {};
     const STATE_FILE = './database-state.json';
-    const STATE_KEYS = new Set([PERSONAL_STATE_KEY, 'readStates', 'savedStates', 'hiddenStates', 'boardStates', 'recentReadAt', 'userPreferences', 'cacheMembers', 'cacheIdentityLedger', 'smartAiProviderHealth', 'articleFetchStrategyStats', 'googleNewsUrlCache']);
+    const STATE_KEYS = new Set(['topStoriesState', PERSONAL_STATE_KEY, 'readStates', 'savedStates', 'hiddenStates', 'boardStates', 'recentReadAt', 'userPreferences', 'cacheMembers', 'cacheIdentityLedger', 'smartAiProviderHealth', 'articleFetchStrategyStats', 'googleNewsUrlCache']);
     let stateRevision = 0;
     let stateOverlay = {};
     const stateFiles = createKeyedOverlay({filename:STATE_FILE,allowedKeys:STATE_KEYS,writeJson:_writeJsonAtomic});

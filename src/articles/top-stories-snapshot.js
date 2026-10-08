@@ -6,6 +6,7 @@ import { getHeapStatistics } from 'node:v8';
 import { storyText } from './story-ranking.js';
 import { TOP_STORIES_DEFAULTS } from './top-stories.js';
 import { storyMembers } from './story-ranking.js';
+import { publicationSection } from './publication-section.js';
 
 const POLICY = 2;
 const MB = 1024 * 1024;
@@ -469,7 +470,7 @@ const migrated={policy:POLICY,articles,createdAt:now(),signature:'legacy',cluste
         scheduled.unref?.();
     }
     return {
-        async get() { await load(); if (!current) { await migrate(); if (!current) await refresh(); } return filterPublishedSnapshot(db, current); },
+        async get(destination) { await load(); if (!current) { await migrate(); if (!current) await refresh(); } return filterPublishedSnapshot(db, publicationSection(current, destination)); },
         schedule,
         releaseInputCache() { lastInputFingerprint = null; },
         async revalidate() { await load(); return refresh(); },

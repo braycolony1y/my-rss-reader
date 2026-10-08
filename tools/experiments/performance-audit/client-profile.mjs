@@ -3,6 +3,7 @@ import {writeFile} from 'node:fs/promises';
 const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
 try {
  const context=await browser.newContext({viewport:{width:1440,height:900}});
+ if(process.argv.includes('--glass'))await context.addInitScript(()=>localStorage.setItem('theme','glass-light'));
  await context.addCookies([{name:'auth',value:'true',url:'http://127.0.0.1:3000'}]);
  await context.route('**/api/**',r=>r.request().method()==='GET'?r.continue():r.fulfill({status:200,contentType:'application/json',body:'{}'}));
  const page=await context.newPage(), cdp=await context.newCDPSession(page);
