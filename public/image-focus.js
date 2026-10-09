@@ -1,5 +1,4 @@
 import { collectImageFocusMutations } from './image-focus-mutations.js';
-import { shouldApplyImageFocus, imageFocusIntersectionOptions } from './image-focus-visibility.js';
 import { installThumbnailLoading } from './thumbnail-loading.js?v=20261008_visible_card';
 import { fitCardImageViewport, visiblePhotoHeight } from './card-image-layout.js?v=2';
 import { applyImageColors } from './card-blend/legacy-color.js?v=1';
@@ -117,7 +116,6 @@ export function installImageFocus(win) {
     }
 
     function apply(img, state) {
-        if (!shouldApplyImageFocus(state,img)) return;
         fitCardImageViewport(img);
         const ready = img.complete && img.naturalWidth && img.clientWidth && img.clientHeight;
         const isDefault = /^\/public\/default\.jpg(?:[?#]|$)/.test(state.source || '');
@@ -215,7 +213,7 @@ export function installImageFocus(win) {
             const state = states.get(img);
             if (state) { state.near = entry.isIntersecting; update(img); }
         }
-    }, imageFocusIntersectionOptions(doc)) : null;
+    }, { rootMargin: '1600px 0px' }) : null;
     const visibility = typeof win.IntersectionObserver === 'function' ? new win.IntersectionObserver(entries => {
         for (const entry of entries) if (!entry.isIntersecting) update(entry.target.matches(selector) ? entry.target : entry.target.querySelector(selector));
     }) : null;
