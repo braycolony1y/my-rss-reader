@@ -3,6 +3,7 @@ const ReaderFeedRequests = {
 async fetchData(isLoadMore = false, skipPageReset = false, keepVisible = false) {
                     // Background revalidation must neither reset the page nor supersede navigation.
                     if (keepVisible && (this.isLoadingMore || this.isLoadingArticles)) return { skipped: true };
+                    if (!keepVisible) ReaderPrefetchLifecycle.cancel(this);
                     if (keepVisible) skipPageReset = true;
                     if (this.selectedFilterType === 'smart') {
                         this.selectedFilterValue = this.normalizeSmartDestination(this.selectedFilterValue);

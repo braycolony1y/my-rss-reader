@@ -1,4 +1,5 @@
 import { parseK, parseBaoMoi, parseMorningstar, parseTechcombank, parseUOB, parseUOBVN } from './source-parsers.js';
+import { createCacheObservationBatch } from './cache-observation-batch.js';
 import { publisherIcon, isInvalidImage, cleanUrl, normalizeStateUrl, isRedditUrl } from '../utils/article-utils.js';
 import sourceRegistry from '../sources/index.js';
 import { discardResponseBody } from '../fetch-response.js';
@@ -156,6 +157,7 @@ export function createFeedSync({
         }
 
         let newArticles = [];
+        const cacheObservations = createCacheObservationBatch(observeCacheArticles);
         let syncLogs = [];
         let feedsToSync = targetFeedUrl ? feeds.filter(f => f.url === targetFeedUrl) : targetCategory ? feeds.filter(f => (f.category || 'Others') === targetCategory) : feeds;
 
@@ -862,7 +864,7 @@ export function createFeedSync({
                             }));
                         }
                     }
-                    await observeCacheArticles(cacheArticles);
+                    cacheObservations.add(cacheArticles);
                     await Promise.all(eagerImageTasks);
                     await prefetchOpenCliOnlyArticles(openCliOnlyArticlesToPrefetch, feed.url);
                     recordFetch(feed.url, feed.title || feed.url, 'success', `${feedData.items.length} articles`, Date.now() - feedFetchStart);
@@ -887,6 +889,7 @@ export function createFeedSync({
             await new Promise(r => setTimeout(r, 500));
         }
         await Promise.all(activePromises);
+        await cacheObservations.flush().catch(error => console.error('[RSS CACHE OBSERVATION]', error.message));
 
         let allArticles = [...newArticles, ...existingArticles];
 

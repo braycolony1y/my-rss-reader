@@ -6,6 +6,7 @@ function fixture(fetch) {
     const context = vm.createContext({ performance, URLSearchParams, AbortController, console,
         setTimeout:()=>0, clearTimeout(){}, setInterval:()=>0, clearInterval(){},
         window:{history:{replaceState(){}}}, document:{getElementById:()=>({scrollTo(){}})},fetch });
+    vm.runInContext(fs.readFileSync(new URL('../public/js/article/prefetch-lifecycle.js',import.meta.url),'utf8'),context);
     for(const file of ['requests','pagination','list'])vm.runInContext(fs.readFileSync(new URL(`../public/js/feeds/${file}.js`,import.meta.url),'utf8'),context);
     const app=vm.runInContext('ReaderFeedsList.create()',context);
     Object.assign(app,{selectedFilterType:'category',selectedFilterValue:'Forums',usesTopStories:false,isMobile:true,

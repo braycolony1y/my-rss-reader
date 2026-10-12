@@ -93,7 +93,7 @@ const ReaderFeedsList = {
                         this.activeHoverPrefetches = (this.activeHoverPrefetches || 0) + 1;
                         if (!this.articleContentCache) this.articleContentCache = new Map();
                         
-                        fetch('/api/article-content?' + new URLSearchParams({
+                        ReaderPrefetchLifecycle.read(this, '/api/article-content?' + new URLSearchParams({
                             url,
                             title: article.title || '',
                             description: String(article.content || '').slice(0, 1200),
@@ -102,7 +102,7 @@ const ReaderFeedsList = {
                             feedIcon: article.feedIcon || '',
                             prefetch: '1',
                             _t: Date.now().toString()
-                        }).toString()).then(res => res.ok ? res.json() : null).then(data => {
+                        }).toString()).then(data => {
                             if (data && !data.error && data.content) {
                                 if (!this.articleContentCache) this.articleContentCache = new Map();
                                 this.articleContentCache.set(url, data);

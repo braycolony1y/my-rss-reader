@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {readFileSync} from 'node:fs';
 const source=readFileSync(new URL('../public/js/feeds/requests.js',import.meta.url),'utf8');
+const lifecycle=readFileSync(new URL('../public/js/article/prefetch-lifecycle.js',import.meta.url),'utf8');
 function fixture(fetch){
  let timeout;
- const methods=vm.runInNewContext(source+';ReaderFeedRequests',{URLSearchParams,AbortController,performance,console:{error(){}},window:{},setTimeout:fn=>(timeout=fn,1),setInterval:()=>1,clearTimeout(){},clearInterval(){},fetch});
+ const methods=vm.runInNewContext(lifecycle+';'+source+';ReaderFeedRequests',{URLSearchParams,AbortController,performance,console:{error(){}},window:{},setTimeout:fn=>(timeout=fn,1),setInterval:()=>1,clearTimeout(){},clearInterval(){},fetch});
  const app={selectedFilterType:'feed',selectedFilterValue:'fixture',articleRequestGeneration:0,articles:[],topStories:[],currentPage:1,isMobile:true,scheduleBriefingRefresh(){}};
  return {app,run:()=>methods.fetchData.call(app),expire:()=>timeout()};
 }

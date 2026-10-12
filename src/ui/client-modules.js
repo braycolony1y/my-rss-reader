@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 // No browser imports, extra requests, transpilation or build step are involved.
 export const READER_CLIENT_MODULES = [
     'app/component.js',
+    'article/prefetch-lifecycle.js',
     'ui/layout.js',
     'feeds/management.js',
     'app/bootstrap.js',

@@ -49,7 +49,7 @@ const ReaderArticlePrefetch = {
                     this.isProcessingPrefetch = true;
 
                     while (this.prefetchQueue && this.prefetchQueue.length > 0) {
-                        if (this.isLoadingOverlay && this.articleOverlayOpen && !this.overlayContent) {
+                        if (this.isLoadingArticles || (this.isLoadingOverlay && this.articleOverlayOpen && !this.overlayContent)) {
                             await new Promise(r => setTimeout(r, 400));
                             continue;
                         }
@@ -71,9 +71,8 @@ const ReaderArticlePrefetch = {
                                 prefetch: '1',
                                 _t: Date.now().toString()
                             });
-                            const res = await fetch('/api/article-content?' + params.toString());
-                            if (res.ok) {
-                                const data = await res.json();
+                            const data = await ReaderPrefetchLifecycle.read(this, '/api/article-content?' + params.toString());
+                            if (data) {
                                 if (!data.error && data.content) {
                                     if (!this.articleContentCache) this.articleContentCache = new Map();
                                     this.articleContentCache.set(url, data);

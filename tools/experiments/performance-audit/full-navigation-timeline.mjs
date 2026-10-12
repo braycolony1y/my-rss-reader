@@ -1,13 +1,16 @@
 import {chromium} from 'playwright';
 import {writeFile} from 'node:fs/promises';
+import {protectBrowserApiWrites} from './read-only-browser.mjs';
 const output=process.argv[2],browser=await chromium.launch({headless:true,args:['--no-sandbox']});
 const rows=[];
+const rounds=Math.max(0,Math.min(16,Number(process.argv.find(value=>value.startsWith('--rounds='))?.split('=')[1])||0));
+const targets=rounds?Array.from({length:rounds},()=>[3,'top']).flat():[3,'top',4,'top',5,'top',3,'top'];
 try {
     for(const theme of ['classic','glass-light']) {
         const context=await browser.newContext({viewport:{width:1440,height:900},extraHTTPHeaders:{'X-Reader-Trace':'1'}});
         await context.addCookies([{name:'auth',value:'true',url:'http://127.0.0.1:3000'}]);
         await context.addInitScript(theme=>localStorage.setItem('theme',theme),theme);
-        await context.route('**/api/**',r=>r.request().method()==='GET'?r.continue():r.fulfill({status:200,contentType:'application/json',body:'{}'}));
+        await protectBrowserApiWrites(context);
         const page=await context.newPage(),cdp=await context.newCDPSession(page),network=new Map();
         await cdp.send('Network.enable');
         cdp.on('Network.requestWillBeSent',e=>network.set(e.requestId,{path:new URL(e.request.url).pathname,at:e.wallTime*1000,timestamp:e.timestamp}));
@@ -33,7 +36,10 @@ try {
             Object.defineProperty(raw,'articles',{configurable:true,enumerable:true,get(){return articles;},set(value){if(window.auditActive&&value?.length)window.auditActive.stateAssigned=performance.now();articles=value;}});
             new MutationObserver(()=>{const sample=window.auditActive;if(sample?.stateAssigned&&!sample.firstDomMutation)sample.firstDomMutation=performance.now();}).observe(document.getElementById('scroll-container'),{childList:true,subtree:true});
         });
-        for(const target of [3,'top',4,'top',5,'top',3,'top']) {
+        for(const target of targets) {
+            const resource=await(await fetch('http://127.0.0.1:3000/api/resources',{headers:{Cookie:'auth=true'}})).json();
+            const workload={sampleAt:resource.at,pid:resource.pid,heapUsed:resource.heapUsed,eventLoop:resource.eventLoop,jobs:resource.jobs,
+                smartRunning:resource.smartRunning,articleQueues:resource.articleQueues,transactions:resource.parsedCache?.transactions};
             const action=await page.evaluate(async target=>{
                 const app=Alpine.$data(document.body),sample={target,wall:Date.now(),action:performance.now()};window.auditActive=sample;
                 app.setFilter(target==='top'?'smart':'feed',target==='top'?'tech_vietnam':app.feeds[target].url);
@@ -45,7 +51,7 @@ try {
                 sample.resources=performance.getEntriesByType('resource').filter(r=>r.startTime>=sample.action&&r.name.includes('/api/data?')).map(r=>({fetch:r.fetchStart,request:r.requestStart,firstByte:r.responseStart,complete:r.responseEnd,transferBytes:r.transferSize,decodedBytes:r.decodedBodySize,server:r.serverTiming.map(t=>({name:t.name,ms:t.duration}))}));
                 window.auditActive=null;return sample;
             },target);
-            rows.push({theme,...action,network:[...network.values()].filter(n=>n.at>=action.wall&&n.at<action.wall+action.stable-action.action)});
+            rows.push({theme,...action,workload,network:[...network.values()].filter(n=>n.at>=action.wall&&n.at<action.wall+action.stable-action.action)});
             await writeFile(output,JSON.stringify(rows,null,2));console.log(JSON.stringify({theme,target,ms:action.stable-action.action,cards:action.cards,error:action.error}));
             if(action.error||!action.cards)throw Error('Navigation failed');
         }

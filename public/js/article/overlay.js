@@ -434,6 +434,7 @@ const ReaderArticleOverlay = {
                 },
 
                 async openArticleOverlay(article, options = {}) {
+                    ReaderPrefetchLifecycle.cancel(this);
                     if (this.isRedditArticle(article)) {
                         window.open(this.articleReaderUrl(article), '_blank', 'noopener,noreferrer');
                         this.markAsReadExplicit(article.originalLink || article.link);
