@@ -1,5 +1,6 @@
 import { parseK, parseBaoMoi, parseMorningstar, parseTechcombank, parseUOB, parseUOBVN } from './source-parsers.js';
 import { createCacheObservationBatch } from './cache-observation-batch.js';
+import { extractVozThreadListMetadata } from './voz-thread-metadata.js';
 import { publisherIcon, isInvalidImage, cleanUrl, normalizeStateUrl, isRedditUrl } from '../utils/article-utils.js';
 import sourceRegistry from '../sources/index.js';
 import { discardResponseBody } from '../fetch-response.js';
@@ -78,30 +79,8 @@ export function createFeedSync({
                 if (res.ok) {
                     const html = await res.text();
 
-                    // Split into individual thread blocks using the structItem divs
-                    const blockRegex = /<div class="structItem[^"]*js-threadListItem-(\d+)"[\s\S]{0,5000}?(?=<div class="structItem[^"]*js-threadListItem-|$)/g;
-                    let blockMatch;
-                    while ((blockMatch = blockRegex.exec(html)) !== null) {
-                        const threadId = blockMatch[1];
-                        const block = blockMatch[0];
-
-                        // Skip sticky/pinned threads
-                        if (block.includes('structItem-status--sticky')) {
-                            continue;
-                        }
-
-                        // Extract createDate from <time> tag
-                        const timeMatch = block.match(/<time[^>]*datetime="([^"]+)"/);
-                        // Extract replies (first <dd>) and views (second <dd> in structItem-minor)
-                        const statsMatch = block.match(/<dl class="pairs pairs--justified">[\s\S]{0,500}?<dd>([\d,KBM]+)<\/dd>[\s\S]{0,500}?<dl class="pairs pairs--justified structItem-minor">[\s\S]{0,500}?<dd>([\d,KBM]+)<\/dd>/);
-
-                        if (timeMatch && statsMatch) {
-                            threadMap.set(threadId, {
-                                createDate: timeMatch[1],
-                                replies: parseK(statsMatch[1]),
-                                views: parseK(statsMatch[2])
-                            });
-                        }
+                    for (const [id, metadata] of extractVozThreadListMetadata(html)) {
+                        threadMap.set(id, metadata);
                     }
                 }
             } catch (e) {
@@ -732,9 +711,9 @@ export function createFeedSync({
 
                         if (isVoz && threadId && scrapedViewsMap.has(threadId)) {
                             const stats = scrapedViewsMap.get(threadId);
-                            item.viewCount = stats.views;
-                            item.createDate = stats.createDate;
-                            if (stats.replies > (item.replyCount || 0)) {
+                            if (stats.views != null) item.viewCount = stats.views;
+                            if (stats.createDate) item.createDate = stats.createDate;
+                            if (stats.replies != null && stats.replies > (item.replyCount || 0)) {
                                 item.replyCount = stats.replies;
                             }
                         }
