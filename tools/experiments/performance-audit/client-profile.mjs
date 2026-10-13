@@ -16,12 +16,20 @@ try {
  if(articleMode){
   await page.evaluate(async()=>{const app=Alpine.$data(document.body);window.auditArticle=app.articles.find(a=>a.link.includes('voz.vn'))||app.articles[0];await app.openArticleOverlay(window.auditArticle);if(!app.overlayContent)throw Error(app.overlayError||'No readable content');app.closeArticleOverlay({closeAll:true});});
   await page.waitForTimeout(400);
+  await page.evaluate(()=>{
+   const original=window.fetch;window.auditArticleRequests=[];
+   window.fetch=(input,init)=>{
+    const url=new URL(typeof input==='string'?input:input.url,location.href),app=Alpine.$data(document.body);
+    if(url.origin===location.origin&&url.pathname.startsWith('/api/'))window.auditArticleRequests.push({path:url.pathname,openedArticle:url.searchParams.get('url')===app.articleReaderUrl(window.auditArticle)});
+    return original(input,init);
+   };
+  });
  }
  await cdp.send('Profiler.enable');await cdp.send('Profiler.start');
  if(articleMode){
   for(let i=0;i<runs;i++){
    const started=Date.now();
-   const sample=await page.evaluate(async()=>{const app=Alpine.$data(document.body),at=performance.now();await app.openArticleOverlay(window.auditArticle);const assigned=performance.now();await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));return {ms:performance.now()-at,openMethodMs:assigned-at,readable:!!app.overlayContent,bytes:app.overlayContent?.length};});
+   const sample=await page.evaluate(async()=>{const app=Alpine.$data(document.body),at=performance.now(),cacheBefore=app.articleContentCache?.has(app.articleReaderUrl(window.auditArticle));window.auditArticleRequests=[];await app.openArticleOverlay(window.auditArticle);const assigned=performance.now();await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));return {ms:performance.now()-at,openMethodMs:assigned-at,cacheBefore,articleRequests:window.auditArticleRequests,readable:!!app.overlayContent,bytes:app.overlayContent?.length};});
    sample.requests=requests.filter(request=>request.at>=started);samples.push(sample);console.log(JSON.stringify(sample));
    await page.evaluate(()=>Alpine.$data(document.body).closeArticleOverlay({closeAll:true}));await page.waitForTimeout(300);
   }

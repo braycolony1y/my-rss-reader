@@ -1,4 +1,4 @@
-import { collectImageFocusMutations } from './image-focus-mutations.js';
+import { applyImageFocusMutations } from './image-focus-mutations.js';
 import { installThumbnailLoading } from './thumbnail-loading.js?v=20261008_visible_card';
 import { fitCardImageViewport, visiblePhotoHeight } from './card-image-layout.js?v=2';
 import { applyImageColors } from './card-blend/legacy-color.js?v=1';
@@ -236,26 +236,16 @@ export function installImageFocus(win) {
     }
     const onLoad = event => { if (event.target.matches?.(selector)) { watch(event.target); update(event.target); } };
     const onResize = () => { for (const [img,state] of states) { update(img); } };
-    const mutations = new win.MutationObserver(records => {
-        const { images, added, removed } = collectImageFocusMutations(records, selector);
-        for (const record of records) {
-            if (['src', 'srcset'].includes(record.attributeName) && images.has(record.target)) {
-                const state = states.get(record.target);
-                if (state) state.source = null;
-                watch(record.target);
-            }
+    const mutations = new win.MutationObserver(records => applyImageFocusMutations(records, {
+        selector, states, watch, scan, update,
+        release(img, state) {
+            win.clearTimeout(state.timer);
+            state.observed.forEach(el => resize?.unobserve(el));
+            nearby?.unobserve(state.visibilityTarget);
+            visibility?.unobserve(state.visibilityTarget);
+            states.delete(img);
         }
-        added.forEach(scan);
-        images.forEach(update);
-        if (!removed) return;
-        for (const [img, state] of states) {
-            if (!img.isConnected) {
-                win.clearTimeout(state.timer);
-                state.observed.forEach(el => resize?.unobserve(el));
-                nearby?.unobserve(state.visibilityTarget); visibility?.unobserve(state.visibilityTarget); states.delete(img);
-            }
-        }
-    });
+    }));
     mutations.observe(doc.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['src', 'srcset', 'class', 'style', 'data-image-layout'] });
     doc.addEventListener('load', onLoad, true);
     win.addEventListener('resize', onResize);

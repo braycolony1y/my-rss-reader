@@ -170,7 +170,8 @@ const ReaderFeedsReadingState = {
                             if (this.unreadCounts.categories[cat] > 0) this.unreadCounts.categories[cat]--;
                         }
 
-                        if (typeof this.saveState === 'function') this.saveState();
+                        if (typeof ReaderPaintPersistence === 'undefined') this.saveState?.();
+                        else ReaderPaintPersistence.save(this);
 
                         try {
                             const res = await fetch('/api/toggle', {
@@ -272,7 +273,8 @@ const ReaderFeedsReadingState = {
                     if (!normalized) return;
                     this.recentReadAt = { ...this.recentReadAt, [normalized]: Date.now() };
                     this.pendingRecentReadLinks.add(normalized);
-                    if (typeof this.saveState === 'function') this.saveState();
+                    if (typeof ReaderPaintPersistence === 'undefined') this.saveState?.();
+                    else ReaderPaintPersistence.save(this);
                     try {
                         const res = await fetch('/api/recently-read', {
                             method: 'POST', keepalive: true,
