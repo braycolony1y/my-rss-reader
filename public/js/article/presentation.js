@@ -47,7 +47,8 @@ const ReaderArticlePresentation = {
                 },
                 cardSourceTime(article, exactOnly = false) {
                     const member = this.cacheMember(article);
-                    const isVozThread = /(^|\\.)voz\\.vn$/i.test((() => { try { return new URL(article?.link || member?.url || '').hostname; } catch { return ''; } })()) && /\\/(?:t|threads)\\//i.test((() => { try { return new URL(article?.link || member?.url || '').pathname; } catch { return ''; } })());
+                    const threadUrl = (() => { try { return new URL(article?.link || member?.url || ''); } catch { return null; } })();
+                    const isVozThread = Boolean(threadUrl && (threadUrl.hostname === 'voz.vn' || threadUrl.hostname.endsWith('.voz.vn')) && (threadUrl.pathname.startsWith('/t/') || threadUrl.pathname.startsWith('/threads/')));
                     // RSS pubDate tracks the latest reply for VOZ threads, not creation.
                     // Never present it (or a cache timestamp) as the thread's age.
                     const source = member?.source_created_at || article.source_created_at || article.createDate || (isVozThread ? null : article.pubDate);
