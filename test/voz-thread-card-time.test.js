@@ -47,7 +47,7 @@ test('card uses VOZ thread creation even when newer reply date exists', () => {
     const thread = {link:'https://voz.vn/t/example-thread.123/', pubDate:latest, createDate:original};
     assert.equal(app.cardSourceTime(thread), '12d');
     assert.equal(app.cardSourceTime({...thread,createDate:null}), 'Creation time unavailable');
-    assert.equal(app.cardSourceTime({link:'https://example.org/news',pubDate:latest}), '1h');
+    assert.equal(app.cardSourceTime({link:'https://example.org/news',pubDate:latest}), '60m');
     app.cacheMember = () => ({source_created_at:original,cached_at:latest});
     assert.equal(app.cardSourceTime({...thread,createDate:null}), '12d');
 });
