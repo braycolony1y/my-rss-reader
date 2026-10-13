@@ -47,8 +47,12 @@ const ReaderArticlePresentation = {
                 },
                 cardSourceTime(article, exactOnly = false) {
                     const member = this.cacheMember(article);
-                    const source = member ? member.source_created_at || article.source_created_at || article.createDate : article.source_created_at || article.createDate || article.pubDate;
-                    const value = source || member?.cached_at;
+                    const threadUrl = (() => { try { return new URL(article?.link || member?.url || ''); } catch { return null; } })();
+                    const isVozThread = Boolean(threadUrl && (threadUrl.hostname === 'voz.vn' || threadUrl.hostname.endsWith('.voz.vn')) && (threadUrl.pathname.startsWith('/t/') || threadUrl.pathname.startsWith('/threads/')));
+                    // RSS pubDate tracks the latest reply for VOZ threads, not creation.
+                    // Never present it (or a cache timestamp) as the thread's age.
+                    const source = member?.source_created_at || article.source_created_at || article.createDate || (isVozThread ? null : article.pubDate);
+                    const value = source || (isVozThread ? null : member?.cached_at);
                     if (!value || !Number.isFinite(new Date(value).getTime())) return 'Creation time unavailable';
                     const exact = this.formatVietnamDateTime(value);
                     return exactOnly ? exact : this.timeAgo(value);
