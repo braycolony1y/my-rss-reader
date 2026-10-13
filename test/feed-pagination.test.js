@@ -15,6 +15,22 @@ function fixture(fetch) {
     return app;
 }
 const response = data => ({ok:true,json:async()=>data});
+test('background refresh retains card identity while updating fields and preserving visible membership',async()=>{
+    const app=fixture(async()=>response({articles:[
+        {link:'b',title:'Fresh B',image:'/new-b.jpg'},
+        {id:'stable-a',link:'canonical-a',title:'Fresh A',briefing:{status:'ready'}},
+        {link:'new',title:'Do not insert during revalidation'}
+    ]}));
+    const a={id:'stable-a',link:'old-a',title:'Old A',localField:'preserved'},b={link:'b'},missing={link:'missing'};
+    app.articles=[a,b,missing];
+    const keys=app.articles.map((article,index)=>app.articleRowKey(article,index));
+    await app.fetchData(false,true,true);
+    assert.equal(app.articles[0],a);assert.equal(app.articles[1],b);assert.equal(app.articles[2],missing);
+    assert.deepEqual(Array.from(app.articles,(article,index)=>app.articleRowKey(article,index)),keys);
+    assert.equal(a.title,'Fresh A');assert.equal(a.link,'canonical-a');assert.equal(a.localField,'preserved');
+    assert.equal(a.briefing.status,'ready');assert.equal(b.image,'/new-b.jpg');
+    assert.equal(app.articles.length,3);
+});
 test('background refresh preserves page cursor and membership, so Next requests the next forum page',async()=>{
     const pages=[]; const app=fixture(async url=>{const page=+new URL(url,'http://reader').searchParams.get('page');pages.push(page);return response({articles:[{link:`page-${page}`}],hasMore:true});});
     app.currentPage=3;app.articles=[{link:'page-3'}];

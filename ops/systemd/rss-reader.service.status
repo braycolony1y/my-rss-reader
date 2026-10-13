@@ -1,4 +1,4 @@
-ExecStart={ path=/usr/bin/node ; argv[]=/usr/bin/node --max-old-space-size=3072 --expose-gc /home/ubuntu/my-rss-reader/server.js ; ignore_errors=no ; start_time=[Tue 2026-10-13 01:13:45 UTC] ; stop_time=[n/a] ; pid=1880091 ; code=(null) ; status=0/0 }
+ExecStart={ path=/usr/bin/node ; argv[]=/usr/bin/node --max-old-space-size=3072 --expose-gc /home/ubuntu/my-rss-reader/server.js ; ignore_errors=no ; start_time=[Tue 2026-10-13 18:07:53 UTC] ; stop_time=[n/a] ; pid=2776321 ; code=(null) ; status=0/0 }
 WorkingDirectory=/home/ubuntu/my-rss-reader
 User=ubuntu
 Group=

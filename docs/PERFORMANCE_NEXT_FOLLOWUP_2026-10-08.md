@@ -214,3 +214,47 @@ For the corrected 13 October navigation run, measured origin median was 80.5 ms 
 | Compression interval | 33.3 | 36.5 |
 
 The first Classic Top in that run took 937.7 ms at the origin, including 357.0 ms persisted read, 263.3 ms filtering, 113.1 ms snapshot construction, 168.2 ms card preparation, 10.2 ms serialization, and 24.0 ms compression. This was the first request in the test, not a controlled process-cold measurement. Older cold results remain an acceptance concern.
+
+
+### Activated build and interruption follow-up
+
+After 773 passing tests and successful WebKit checks, the build was activated as PID 1880091 with NRestarts=0 and health OK. The attempted twelve-hour collector was **not executed** because automatic approval review encountered a usage limit. On continuation at approximately 13:08 Vietnam time, the retry succeeded: `rss-performance-soak-20261013` now collects twelve hours into `soak-oct13-activated.jsonl`. Its results are pending.
+
+An intervening orderly service restart at 12:13 Vietnam time changed the PID to 2177213. Read-only inspection found separate VOZ metadata/presentation changes during the gap; these were preserved. Current checks show active/running, NRestarts=0, health OK, and no listener on port 9229. The full suite is being repeated against this combined workspace.
+
+The post-activation 32-switch run **still failed latency acceptance**. Eight samples per destination/theme gave:
+
+| Destination/theme | Total median / p75 / p95=max, ms | Origin median | Browser wait median | After-transfer median |
+|---|---|---:|---:|---:|
+| Classic feed | 2834 / 3173 / 3893 | 77.0 | 3.9 | 2439.5 |
+| Classic Top | 5163 / 5784 / 8728 | 200.1 | 5.3 | 3875.0 |
+| Glass feed | 6806 / 8478 / 13752 | 93.5 | 3.9 | 6658.0 |
+| Glass Top | 6566 / 7134 / 10991 | 582.1 | 5.0 | 5751.1 |
+
+This run started just after activation, during startup/background work; it is not workload-matched to the earlier warm run. It cannot establish a causal regression percentage, but it plainly demonstrates unresolved user-visible stalls. Response completion to rendering remains the dominant interval. Evidence: `tabs-oct13-activated.json`.
+
+The subsequent current-build cached-article run recorded 16 opens: median **348.9 ms**, p75 **498.2 ms**, p95/max **598.7 ms**. Through-open-method median/p75/max was **98.4/114.1/141.4 ms**. All 16 had a client cache entry before opening. Six content requests occurred during the intervals, two matching the opened article URL; their initiators still require classification before calling them redundant. No sub-400 ms tail claim is justified.
+
+Linux WebKit checks passed both themes with zero JavaScript errors, repeated open/back DOM count 2006, and successful offline recovery. Classic Top took 5940 ms and cached-open median/max was 1445/1810 ms. Glass Top took 6315 ms and cached median/max was 3532/4386 ms. This is actual Linux WebKit with an iPhone viewport, **not physical iPhone/iOS Safari validation**, and these timings remain unacceptable as performance evidence.
+
+
+The full suite against the workspace including the intervening VOZ changes passed **776 tests, 0 failures, 0 skipped**, in **333.366 seconds**. Those separate changes were not overwritten or attributed to this performance work.
+
+
+### Browser rendering trace
+
+A current-build Chromium timeline trace across four Glass switches recorded 1001 style recalculations totaling 19.71 seconds, 420 layout events totaling 10.43 seconds, and paint totaling 0.568 seconds. Image decoding was approximately 1.96 seconds. Instrumented actions took 7.6–25.7 seconds: tracing adds overhead, so these are diagnostic costs, not ordinary navigation benchmarks.
+
+Attribution to enclosing browser callbacks places 10.02 seconds of layout and 8.49 seconds of style recalculation under the image MutationObserver, and another 6.72 seconds of style recalculation under the image ResizeObserver. Hero-extent callbacks accounted for 0.92 seconds of style and 0.21 seconds of layout. Inclusive JavaScript event durations overlap these values. This strengthens the diagnosis of repeated image-driven style/layout work; merely reducing server response time cannot resolve the remaining stall. Evidence: `render-oct13.json` and its summary.
+
+
+The two-core host also had a separate model process using substantial CPU during these measurements. No unrelated process was stopped or reconfigured. Background contention remains an explicit limitation on live before/after inference.
+
+A further isolated layout candidate removed an unused header-height write and bypassed legacy blend measurement for Smart Top. It was **rejected and never applied to production**. Eight samples per mode/variant in ABBA blocks gave feed median 6626 ms before / 6406 ms candidate, but Top median 7644 / 9281 ms. Card boxes and jointly rendered photo geometry matched and no page errors occurred, yet there was no repeatable latency benefit. Evidence: `layout-update-replay.json`. Future work should target the remaining read/write ordering and observer-driven style recalculation, not claim this experiment as a fix.
+
+The collector was strengthened without restarting the reader: it now records scalar Smart completion timestamps and progress, so a coalesced next job cannot hide a previous completion merely because `smartRunning` stays true. Completion timestamp changes are markers, not proof of successful outcome; correlate them with status/logs. It no longer labels lack of observed active work as full quiescence: RSS active state is not exposed, and pending AI/browser/article/compute queues must also be checked. The updated field is `observedIdleCandidate`. The diagnostic unit was restarted and continues appending to the same output; records before that restart use the older schema. Rechecking the earlier six-hour run found exactly one Smart start generation, so its zero-Smart-completion conclusion is unchanged.
+
+
+Final cached caller run: all 16 opens had client cache entries; **zero content requests for the opened URL** were observed before the measured readable-frame checkpoint. Timing was median **944.1 ms**, p75 **1087.4 ms**, p95/max **1667.1 ms**. This is another explicit latency failure. It confirms that a foreground backend fetch is not necessary to explain the tail, while later VOZ freshness checks remain a supported behavior and were not disabled. These live runs cannot be compared as a matched before/after percentage. Evidence: `cached-oct13-callers.cpuprofile.samples.json`.
+
+Current handoff: active modular changes include speculative cancellation, RSS-cycle ledger batching, synchronous duplicate image-pass removal, and post-paint history snapshots, in addition to the earlier fixes documented above. The additional legacy-layout candidate remains unapplied. Production code has 776 passing tests; diagnostic-script syntax checks passed. The twelve-hour collector remains running, with completion and post-job memory analysis pending. **Acceptance is not complete**: both themes can still suffer multi-second tab switches under load; cached article tails are inconsistent; whole-service retained-memory floors and matched service-wide physical writes/hour remain unproven; physical iPhone validation is unavailable.

@@ -189,7 +189,9 @@ async fetchData(isLoadMore = false, skipPageReset = false, keepVisible = false) 
                                         const refreshed = [existing.id, existing.guid, existing.originalLink, existing.link]
                                             .map(key => key ? refreshedByIdentity.get(String(key)) : null)
                                             .find(Boolean);
-                                        return refreshed ? { ...existing, ...refreshed } : existing;
+                                        // Row keys belong to the article object. Keep that object
+                                        // so Alpine updates bindings without remounting its photo.
+                                        return refreshed ? Object.assign(existing, refreshed) : existing;
                                     });
                                 } else {
                                     this.hideTooltip();
