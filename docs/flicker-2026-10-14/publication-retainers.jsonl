@@ -1,0 +1,5 @@
+{"cycle":0,"rss":209514496,"heapTotal":203345920,"heapUsed":64348672,"external":5045424,"arrayBuffers":1062402,"retainedGenerations":1}
+{"cycle":1,"rss":257564672,"heapTotal":202297344,"heapUsed":66308744,"external":5048163,"arrayBuffers":1062409,"retainedGenerations":1}
+{"cycle":2,"rss":267280384,"heapTotal":218288128,"heapUsed":66325168,"external":5046572,"arrayBuffers":1062409,"retainedGenerations":1}
+{"cycle":3,"rss":279769088,"heapTotal":202559488,"heapUsed":66327120,"external":5046572,"arrayBuffers":1062402,"retainedGenerations":1}
+{"cycle":4,"rss":293486592,"heapTotal":218550272,"heapUsed":66311472,"external":5046565,"arrayBuffers":1062402,"retainedGenerations":1}

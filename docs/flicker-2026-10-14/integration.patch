@@ -1,0 +1,80 @@
+--- a/public/js/feeds/requests.js
++++ b/public/js/feeds/requests.js
+@@ -195,7 +195,8 @@
+                                     });
+                                 } else {
+                                     this.hideTooltip();
+-                                    this.articles = newArticles;
++                                    this.articles = this.usesTopStories && (keepVisible || retainTop)
++                                        ? ReaderSmartRefresh.reconcile(this.articles, newArticles) : newArticles;
+                                 }
+                                 
+                                 this.userPreferences = { ...(data.userPreferences || {}), ...this.pendingPreferences };
+--- a/public/js/smart/top-stories.js
++++ b/public/js/smart/top-stories.js
+@@ -644,43 +644,7 @@
+                 },
+                 uniqueCitations(citations) { return [...new Map((citations || []).map(c => [c.link, c])).values()]; },
+                 scheduleBriefingRefresh(attempt = 0, delay = 300000) {
+-                    if (this.briefingRefreshTimer) clearTimeout(this.briefingRefreshTimer);
+-                    if (!this.usesTopStories) return;
+-                    const tab = this.selectedFilterValue;
+-                    const token = this.smartViewToken;
+-                    this.briefingRefreshTimer = setTimeout(async () => {
+-                        if (!this.usesTopStories || this.selectedFilterValue !== tab || this.smartViewToken !== token) return;
+-
+-                        /*
+-                         * Do not download/parse a full Smart payload while
+-                         * the browser tab is hidden.
+-                         */
+-                        if (document.hidden) {
+-                            this.scheduleBriefingRefresh(
+-                                attempt,
+-                                60000
+-                            );
+-                            return;
+-                        }
+-
+-                        try {
+-                            const page = (attempt % Math.max(1,this.currentPage)) + 1;
+-                            const response = await fetch('/api/data?' + new URLSearchParams({ filterType: 'smart', filterValue: tab, smartMode: 'top', smartRegion: this.smartRegion, smartView: token, briefingRefresh: '1', page, limit: this.isMobile ? 15 : 40, hideRead: this.hideRead, searchQuery: this.searchQuery || '' }));
+-                            if (!response.ok) throw new Error('Briefing refresh unavailable');
+-                            const latest = await response.json();
+-                            if (!this.usesTopStories || this.selectedFilterValue !== tab || this.smartViewToken !== token) return;
+-                            if (latest.viewReset) {
+-                                this.topUpdatesAvailable = true;
+-                                this.scheduleBriefingRefresh(attempt + 1);
+-                                return;
+-                            }
+-                            this.rankingPending = latest.rankingPending;
+-                            this.topUpdatesAvailable = latest.updatesAvailable === true;
+-                            const byId = new Map((latest.articles || []).map(s => [s.clusterId || s.link, s]));
+-                            for (const article of this.articles) { const updated = byId.get(article.clusterId || article.link); if (updated) Object.assign(article, updated); }
+-                        } catch { }
+-                        this.scheduleBriefingRefresh(attempt + 1);
+-                    }, delay);
++                    return ReaderSmartRefresh.schedule(this, attempt, delay);
+                 },
+         };
+     }
+--- a/src/ui/client-modules.js
++++ b/src/ui/client-modules.js
+@@ -11,6 +11,7 @@
+     'feeds/management.js',
+     'app/bootstrap.js',
+     'feeds/navigation.js',
++    'smart/refresh.js',
+     'feeds/requests.js',
+     'feeds/pagination.js',
+     'feeds/list.js',
+--- a/index.html
++++ b/index.html
+@@ -119,7 +119,7 @@
+ <!-- reader:include tooltip -->
+ <!-- reader:include modals/ai-providers -->
+ <!-- reader:include modals/cache -->
+-    <script src="/script.js?v=20261014_revalidation_1"></script>
++    <script src="/script.js?v=20261014_flicker_1"></script>
+ </body>
+ 
+ </html>

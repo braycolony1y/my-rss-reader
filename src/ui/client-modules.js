@@ -11,6 +11,7 @@ export const READER_CLIENT_MODULES = [
     'feeds/management.js',
     'app/bootstrap.js',
     'feeds/navigation.js',
+    'smart/refresh.js',
     'feeds/requests.js',
     'feeds/pagination.js',
     'feeds/list.js',

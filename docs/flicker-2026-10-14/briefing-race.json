@@ -1,0 +1,12 @@
+[
+  {
+    "variant": "before",
+    "pushedPreserved": false,
+    "status": "queued"
+  },
+  {
+    "variant": "after",
+    "pushedPreserved": true,
+    "status": "evaluated"
+  }
+]

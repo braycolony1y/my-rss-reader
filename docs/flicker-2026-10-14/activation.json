@@ -1,0 +1,22 @@
+{
+  "at": "2026-10-14T13:09:52.535Z",
+  "scriptMatches": true,
+  "servedSha256": "80e8420adbef862ff7fe2bafce4c6faaf8b5a126e628aa62bf1f35e09f14bb3f",
+  "helperRegistered": true,
+  "authoritativeRemoval": true,
+  "versionPresent": true,
+  "health": {
+    "status": "ok",
+    "uptime": 23751,
+    "uptimeHuman": "6h 35m",
+    "memory": {
+      "rss": "3955.6 MB",
+      "heapUsed": "2657.1 MB",
+      "heapTotal": "2780.9 MB",
+      "external": "326.5 MB"
+    },
+    "syncPaused": false,
+    "lastSyncCompletedAt": "2026-10-14T13:05:37.391Z",
+    "feedCount": 50
+  }
+}

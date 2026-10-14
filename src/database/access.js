@@ -1,3 +1,4 @@
+import { serializedRankingInput } from '../articles/ranking-input.js';
 import {encodeStoredValue,encodeStoredSnapshot,decodeStoredValue,isSerializedValue,sameStoredValue,storedByteLength} from './stored-value.js';
 import {measureDatabaseRead} from './read-timing.js';
 
@@ -13,6 +14,7 @@ export function createDatabaseAccess({state,withDbLock,_loadDBFromDisk,_jsonPars
                 }
                 let val = state.value[key];
                 if (!val) return null;
+                if (opts?.fingerprint) return serializedRankingInput(val);
                 if (opts && opts.type === 'json' && isSerializedValue(val)) {
                     const cached = measureDatabaseRead(key,'lookup',()=>_jsonParsedCache.get(key, val));
                     if (cached) return opts.shared ? cached.parsed : measureDatabaseRead(key,'clone',()=>structuredClone(cached.parsed));

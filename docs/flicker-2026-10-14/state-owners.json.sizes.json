@@ -1,0 +1,170 @@
+[
+  {
+    "key": "topStoriesPublished",
+    "bytes": 52216406
+  },
+  {
+    "key": "smartClusters",
+    "bytes": 46492479
+  },
+  {
+    "key": "smartTopPrefilterState",
+    "bytes": 41450882
+  },
+  {
+    "key": "cacheIdentityLedger",
+    "bytes": 39968952
+  },
+  {
+    "key": "topStoriesState",
+    "bytes": 32327007
+  },
+  {
+    "key": "smartEditorialAssessmentCache",
+    "bytes": 30913787
+  },
+  {
+    "key": "googleNewsUrlCache",
+    "bytes": 16169078
+  },
+  {
+    "key": "articles",
+    "bytes": 10312591
+  },
+  {
+    "key": "smartPersonalFilters",
+    "bytes": 10167653
+  },
+  {
+    "key": "storyBriefings",
+    "bytes": 6911307
+  },
+  {
+    "key": "smartEventVerificationCache",
+    "bytes": 5236482
+  },
+  {
+    "key": "smartRawArticles",
+    "bytes": 2240064
+  },
+  {
+    "key": "smartClusteringInputs",
+    "bytes": 2080569
+  },
+  {
+    "key": "smartCandidateLinks",
+    "bytes": 1230884
+  },
+  {
+    "key": "smartVerificationFailures",
+    "bytes": 687323
+  },
+  {
+    "key": "articleFetchStrategyStats",
+    "bytes": 423712
+  },
+  {
+    "key": "userPreferences",
+    "bytes": 284546
+  },
+  {
+    "key": "cacheMembers",
+    "bytes": 272791
+  },
+  {
+    "key": "recentReadAt",
+    "bytes": 141293
+  },
+  {
+    "key": "smartSources",
+    "bytes": 70388
+  },
+  {
+    "key": "readStates",
+    "bytes": 62727
+  },
+  {
+    "key": "smartDeferredReviewGroups",
+    "bytes": 27574
+  },
+  {
+    "key": "boardStates",
+    "bytes": 13566
+  },
+  {
+    "key": "unavailableSourceUrls",
+    "bytes": 10860
+  },
+  {
+    "key": "universalPrefetchTargets",
+    "bytes": 10736
+  },
+  {
+    "key": "feeds",
+    "bytes": 9786
+  },
+  {
+    "key": "smartAiProviderHealth",
+    "bytes": 3869
+  },
+  {
+    "key": "savedStates",
+    "bytes": 1982
+  },
+  {
+    "key": "smartStatus",
+    "bytes": 1927
+  },
+  {
+    "key": "smartClusteringCounters",
+    "bytes": 1697
+  },
+  {
+    "key": "smartAiConfig",
+    "bytes": 803
+  },
+  {
+    "key": "blockedArticleKeywords",
+    "bytes": 563
+  },
+  {
+    "key": "smartProgressiveClusterState",
+    "bytes": 323
+  },
+  {
+    "key": "hiddenStates",
+    "bytes": 266
+  },
+  {
+    "key": "smartClusterState",
+    "bytes": 249
+  },
+  {
+    "key": "cacheAutoRules",
+    "bytes": 198
+  },
+  {
+    "key": "smartClusteringAlgorithmVersion",
+    "bytes": 64
+  },
+  {
+    "key": "smartEmbeddingIdentity",
+    "bytes": 54
+  },
+  {
+    "key": "smartClusterVersion",
+    "bytes": 35
+  },
+  {
+    "key": "smartCandidateSignature",
+    "bytes": 6
+  },
+  {
+    "key": "smartClusteringFailedAttempt",
+    "bytes": 4
+  },
+  {
+    "key": "smartProgressivePublication",
+    "bytes": 4
+  }
+]

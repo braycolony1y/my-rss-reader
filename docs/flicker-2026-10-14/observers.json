@@ -1,0 +1,58 @@
+[
+  {
+    "variant": "before",
+    "reused": 0,
+    "context": {
+      "filter": "smart",
+      "usesTopStories": true
+    },
+    "observers": [
+      {
+        "kind": "MutationObserver",
+        "callbacks": 13,
+        "reads": 136,
+        "ms": 99.40000009536743
+      },
+      {
+        "kind": "ResizeObserver",
+        "callbacks": 1,
+        "reads": 120,
+        "ms": 21.700000047683716
+      },
+      {
+        "kind": "IntersectionObserver",
+        "callbacks": 2,
+        "reads": 240,
+        "ms": 30
+      }
+    ]
+  },
+  {
+    "variant": "after",
+    "reused": 8,
+    "context": {
+      "filter": "smart",
+      "usesTopStories": true
+    },
+    "observers": [
+      {
+        "kind": "MutationObserver",
+        "callbacks": 8,
+        "reads": 120,
+        "ms": 22.899999856948853
+      },
+      {
+        "kind": "ResizeObserver",
+        "callbacks": 0,
+        "reads": 0,
+        "ms": 0
+      },
+      {
+        "kind": "IntersectionObserver",
+        "callbacks": 0,
+        "reads": 0,
+        "ms": 0
+      }
+    ]
+  }
+]

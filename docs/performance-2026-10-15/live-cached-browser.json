@@ -1,0 +1,24 @@
+[
+  {
+    "theme": "classic",
+    "errors": [],
+    "actions": [],
+    "cachedOpen": {
+      "tested": true,
+      "readable": true,
+      "cached": true,
+      "error": null
+    }
+  },
+  {
+    "theme": "glass-light",
+    "errors": [],
+    "actions": [],
+    "cachedOpen": {
+      "tested": true,
+      "readable": true,
+      "cached": true,
+      "error": null
+    }
+  }
+]

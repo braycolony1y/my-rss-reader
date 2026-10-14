@@ -1,0 +1,147 @@
+--- a/src/articles/top-stories-snapshot.js
++++ b/src/articles/top-stories-snapshot.js
+@@ -1,3 +1,4 @@
++import { rankingInputs } from './ranking-input.js';
+ import { prefilterWorkerState, filterPublishedSnapshot } from '../smart/prefilter/publication.js';
+ import { Worker } from 'node:worker_threads';
+ import { boundedWorkerOptions, hasWorkerHeadroom } from '../observability/memory-budget.js';
+@@ -103,7 +104,6 @@
+ export function createTopStoriesSnapshots({ db, config, compute = rankInWorker, now = Date.now, report = console.warn, memoryUsage = process.memoryUsage, heapStatistics = getHeapStatistics, workerHeadroom = hasWorkerHeadroom } = {}) {
+     let current, loading, pending, scheduled, checked, retryAt = 0;
+     const serializedWorker = compute === rankInWorker;
+-    let lastInputFingerprint;
+     const load = async () => {
+         if (!loading) {
+             loading = db
+@@ -272,16 +272,15 @@
+ 
+         // Read canonical JSON strings on the production path: no parsed cache,
+         // structured clone, or candidate graph is retained by the HTTP server.
+-        const inputOptions = serializedWorker ? undefined : {type:'json',shared:true};
++        const inputOptions = serializedWorker ? {fingerprint: true} : {type:'json',shared:true};
+         let [publication, rawInput, sources] = await Promise.all([
+             db.get(progressiveActive ? 'smartProgressivePublication' : 'smartClusters', inputOptions),
+             db.get('smartRawArticles', inputOptions),
+             db.get('smartSources', {type:'json',shared:true})
+         ]);
+-        let clusters, raw, publicationJson, rawJson;
++        let clusters, raw, publicationJson, rawJson, inputs;
+         if (serializedWorker) {
+-            publicationJson = typeof publication === 'string' ? publication : JSON.stringify(publication || []);
+-            rawJson = typeof rawInput === 'string' ? rawInput : JSON.stringify(rawInput || []);
++            inputs = rankingInputs(publication, rawInput);
+         } else {
+             if (progressiveActive && (
+                 publication?.version !== progressiveVersion ||
+@@ -314,17 +313,6 @@
+                 source.excludeFromSmart
+             ])
+         )).digest('hex').slice(0,24);
+-        // Cluster version/revision is the authoritative heavy-input identity.
+-        // Do not JSON.stringify every cluster + raw article merely to decide
+-        // whether ranking needs to run; that transient string caused multi-GB
+-        // old-space spikes after Smart publication.
+-        if (serializedWorker && (!lastInputFingerprint ||
+-            lastInputFingerprint.publication !== publicationJson || lastInputFingerprint.raw !== rawJson)) {
+-            lastInputFingerprint = {
+-                publication: publicationJson, raw: rawJson,
+-                digest: createHash('sha256').update(publicationJson).update(rawJson).digest('hex')
+-            };
+-        }
+         const prefilter = await prefilterWorkerState(db);
+         const signature = createHash('sha256').update(JSON.stringify([
+             ...prefilter.signature,
+@@ -334,7 +322,7 @@
+             progressiveRevision,
+             sourceFingerprint,
+             serializedWorker
+-                ? lastInputFingerprint.digest
++                ? inputs.digest
+                 : raw.length,
+             timeBucket
+         ])).digest('hex');
+@@ -387,6 +375,10 @@
+             return current;
+         }
+ 
++        if (serializedWorker) {
++            ({ publicationJson, rawJson } = inputs.read());
++            inputs = null;
++        }
+         const result = await compute({
+             prefilterState: prefilter.state,
+             ...(serializedWorker
+@@ -472,7 +464,7 @@
+     return {
+         async get(destination) { await load(); if (!current) { await migrate(); if (!current) await refresh(); } return filterPublishedSnapshot(db, publicationSection(current, destination)); },
+         schedule,
+-        releaseInputCache() { lastInputFingerprint = null; },
++        releaseInputCache() { /* Input ownership now ends with each rebuild. */ },
+         async revalidate() { await load(); return refresh(); },
+         dispose() { clearTimeout(scheduled); scheduled = null; },
+         get pending() { return Boolean(pending || scheduled); }
+--- a/src/database/access.js
++++ b/src/database/access.js
+@@ -1,3 +1,4 @@
++import { serializedRankingInput } from '../articles/ranking-input.js';
+ import {encodeStoredValue,encodeStoredSnapshot,decodeStoredValue,isSerializedValue,sameStoredValue,storedByteLength} from './stored-value.js';
+ import {measureDatabaseRead} from './read-timing.js';
+ 
+@@ -13,6 +14,7 @@
+                 }
+                 let val = state.value[key];
+                 if (!val) return null;
++                if (opts?.fingerprint) return serializedRankingInput(val);
+                 if (opts && opts.type === 'json' && isSerializedValue(val)) {
+                     const cached = measureDatabaseRead(key,'lookup',()=>_jsonParsedCache.get(key, val));
+                     if (cached) return opts.shared ? cached.parsed : measureDatabaseRead(key,'clone',()=>structuredClone(cached.parsed));
+--- a/src/database/stored-value.js
++++ b/src/database/stored-value.js
+@@ -1,3 +1,5 @@
++import { createHash } from 'node:crypto';
++const digests = new WeakMap();
+ // Large serialized values are UTF-8 bytes in the database owner. Public reads
+ // and the durable JSON format remain strings; parsed cache identity stays stable.
+ const THRESHOLD = 256 * 1024;
+@@ -5,6 +7,10 @@
+     #bytes;
+     constructor(text) { this.#bytes = Buffer.from(text, 'utf8'); this.length = text.length; Object.freeze(this); }
+     toJSON() { return this.#bytes.toString('utf8'); }
++    digest() {
++        if (!digests.has(this)) digests.set(this, createHash('sha256').update(this.#bytes).digest('hex'));
++        return digests.get(this);
++    }
+     equals(other) { return other instanceof StoredJson && this.#bytes.equals(other.#bytes); }
+     get byteLength() { return this.#bytes.length; }
+ }
+@@ -27,3 +33,7 @@
+         unbufferedStringChars: entries.reduce((sum,[,value])=>sum+(typeof value==='string'?value.length:0),0)
+     };
+ }
++
++// No decoded string is retained; memoization follows immutable byte ownership.
++export const storedDigest = value => isStoredJson(value) ? value.digest()
++    : createHash('sha256').update(value).digest('hex');
+--- /dev/null
++++ b/src/articles/ranking-input.js
+@@ -0,0 +1,20 @@
++import { createHash } from 'node:crypto';
++import { isSerializedValue, decodeStoredValue, storedDigest } from '../database/stored-value.js';
++
++// A request-scoped handle to immutable database bytes. The database memoizes
++// their full digest weakly; cache hits never decode or serialize the corpus.
++export function serializedRankingInput(value) {
++    const raw = isSerializedValue(value) ? value : JSON.stringify(value || []);
++    return Object.freeze({ digest: storedDigest(raw), read: () => decodeStoredValue(raw) });
++}
++
++export function rankingInputs(publication, raw) {
++    const handle = value => typeof value?.read === 'function' && typeof value.digest === 'string'
++        ? value : serializedRankingInput(value);
++    const left = handle(publication), right = handle(raw);
++    return {
++        // Fixed-length digests preserve input boundaries as well as all bytes.
++        digest: createHash('sha256').update(left.digest).update(right.digest).digest('hex'),
++        read: () => ({ publicationJson: left.read(), rawJson: right.read() })
++    };
++}

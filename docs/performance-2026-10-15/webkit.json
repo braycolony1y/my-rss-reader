@@ -1,0 +1,46 @@
+[
+  {
+    "engine": "webkit",
+    "mobile": true,
+    "theme": "classic",
+    "mode": "top",
+    "removed": 0,
+    "inserted": 0,
+    "errors": [],
+    "frames": 37,
+    "minimumRetained": 8
+  },
+  {
+    "engine": "webkit",
+    "mobile": true,
+    "theme": "classic",
+    "mode": "feed",
+    "removed": 0,
+    "inserted": 0,
+    "errors": [],
+    "frames": 38,
+    "minimumRetained": 8
+  },
+  {
+    "engine": "webkit",
+    "mobile": true,
+    "theme": "glass-light",
+    "mode": "top",
+    "removed": 0,
+    "inserted": 0,
+    "errors": [],
+    "frames": 38,
+    "minimumRetained": 8
+  },
+  {
+    "engine": "webkit",
+    "mobile": true,
+    "theme": "glass-light",
+    "mode": "feed",
+    "removed": 0,
+    "inserted": 0,
+    "errors": [],
+    "frames": 37,
+    "minimumRetained": 8
+  }
+]

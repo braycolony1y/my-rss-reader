@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+const digests = new WeakMap();
 // Large serialized values are UTF-8 bytes in the database owner. Public reads
 // and the durable JSON format remain strings; parsed cache identity stays stable.
 const THRESHOLD = 256 * 1024;
@@ -5,6 +7,10 @@ class StoredJson {
     #bytes;
     constructor(text) { this.#bytes = Buffer.from(text, 'utf8'); this.length = text.length; Object.freeze(this); }
     toJSON() { return this.#bytes.toString('utf8'); }
+    digest() {
+        if (!digests.has(this)) digests.set(this, createHash('sha256').update(this.#bytes).digest('hex'));
+        return digests.get(this);
+    }
     equals(other) { return other instanceof StoredJson && this.#bytes.equals(other.#bytes); }
     get byteLength() { return this.#bytes.length; }
 }
@@ -27,3 +33,7 @@ export function storedSnapshotState(snapshot) {
         unbufferedStringChars: entries.reduce((sum,[,value])=>sum+(typeof value==='string'?value.length:0),0)
     };
 }
+
+// No decoded string is retained; memoization follows immutable byte ownership.
+export const storedDigest = value => isStoredJson(value) ? value.digest()
+    : createHash('sha256').update(value).digest('hex');

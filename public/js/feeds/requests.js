@@ -195,7 +195,8 @@ async fetchData(isLoadMore = false, skipPageReset = false, keepVisible = false) 
                                     });
                                 } else {
                                     this.hideTooltip();
-                                    this.articles = newArticles;
+                                    this.articles = this.usesTopStories && (keepVisible || retainTop)
+                                        ? ReaderSmartRefresh.reconcile(this.articles, newArticles) : newArticles;
                                 }
                                 
                                 this.userPreferences = { ...(data.userPreferences || {}), ...this.pendingPreferences };

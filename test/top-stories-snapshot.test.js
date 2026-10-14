@@ -143,7 +143,7 @@ test('source reconciliation ranks the durable clusters with fresh raw articles d
 test('client boot retains cached Top cards while fetching, then installs the authoritative ordering atomically; Classic keeps its merge behavior',async()=>{
  const vm=await import('node:vm');
  const source=await readReaderClientSource();
- const method=source.slice(source.indexOf('const ReaderFeedRequests ='),source.indexOf('const ReaderFeedPagination ='));
+ const method=source.slice(source.indexOf('const ReaderSmartRefresh ='),source.indexOf('const ReaderFeedPagination ='));
  for(const isTop of [true,false]){
   let release;const gate=new Promise(r=>release=r);
   const latest=[{link:'b',topStory:{rank:1,isTop:true}},{link:'a',topStory:{rank:2,isTop:false}}];

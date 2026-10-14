@@ -1,0 +1,39 @@
+{
+  "seconds": 60,
+  "observedFileBytes": 57026769,
+  "scope": "File revisions are logical file lengths, not physical writes; watcher window differs from resource sample",
+  "byFamily": {
+    "article_cache": {
+      "count": 2,
+      "bytes": 501788
+    },
+    "database_state/database-state.json/cacheMembers.json": {
+      "count": 2,
+      "bytes": 617288
+    },
+    "database-state.json": {
+      "count": 4,
+      "bytes": 1156
+    },
+    "database_state/smart-state.json/smartTopPrefilterState.json": {
+      "count": 1,
+      "bytes": 44333092
+    },
+    "smart-state.json": {
+      "count": 1,
+      "bytes": 239
+    },
+    "database_state/database-state.json/articleFetchStrategyStats.json": {
+      "count": 1,
+      "bytes": 470154
+    },
+    "database_state/database-state.json/smartPersonalFilters.json": {
+      "count": 1,
+      "bytes": 11098597
+    },
+    "database_state/database-state.json/smartAiProviderHealth.json": {
+      "count": 1,
+      "bytes": 4455
+    }
+  }
+}

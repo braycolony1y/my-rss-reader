@@ -10,6 +10,7 @@ const browser = await chromium.launch({headless: true, args: ['--no-sandbox']});
 try {
  const context = await browser.newContext({viewport: {width:1440,height:900}});
  await context.addCookies([{name:'auth',value:'true',url:server.url}]);
+ if(process.env.READER_BUNDLE){const body=await readFile(process.env.READER_BUNDLE,'utf8');await context.route('**/script.js*',route=>route.fulfill({contentType:'text/javascript',body}));}
  if(process.env.READER_REVALIDATION_BASELINE==='1') {
   const body=(await createReaderAssetRenderer().script()).replace('return refreshed ? Object.assign(existing, refreshed) : existing;','return refreshed ? { ...existing, ...refreshed } : existing;');
   await context.route('**/script.js*',route=>route.fulfill({contentType:'text/javascript',body}));
@@ -59,7 +60,7 @@ try {
   await page.waitForFunction(()=>!Alpine.$data(document.body).isLoadingArticles);
  }
  await page.waitForTimeout(1500);
- await page.evaluate(revalidate=>{window.probe.callbacks=[];window.probe.reads={};window.probe.writes={};window.probeCards=[...document.querySelectorAll('.article-card')];const app=Alpine.$data(document.body);window.probe.context={filter:app.selectedFilterType,usesTopStories:app.usesTopStories};return revalidate?app.fetchData(false,true,true):app.setFilter('smart','tech_vietnam');},process.argv.includes('--revalidate'));
+ await page.evaluate(revalidate=>{window.probe.callbacks=[];window.probe.reads={};window.probe.writes={};window.probeCards=[...document.querySelectorAll('.article-card')];const app=Alpine.$data(document.body);window.probe.context={filter:app.selectedFilterType,usesTopStories:app.usesTopStories};return revalidate?app.fetchData(false,true,true):app.setFilter('smart','tech_vietnam');},process.argv.includes('--revalidate')||process.argv.includes('--smart-revalidate'));
  await page.waitForTimeout(2500);
  await writeFile(output,JSON.stringify(await page.evaluate(()=>({...window.probe,reused:[...document.querySelectorAll('.article-card')].filter(c=>window.probeCards.includes(c)).length})),null,2));
 } finally {await browser.close();server.close();}

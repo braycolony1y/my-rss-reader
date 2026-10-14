@@ -644,43 +644,7 @@ const ReaderSmartTopStories = {
                 },
                 uniqueCitations(citations) { return [...new Map((citations || []).map(c => [c.link, c])).values()]; },
                 scheduleBriefingRefresh(attempt = 0, delay = 300000) {
-                    if (this.briefingRefreshTimer) clearTimeout(this.briefingRefreshTimer);
-                    if (!this.usesTopStories) return;
-                    const tab = this.selectedFilterValue;
-                    const token = this.smartViewToken;
-                    this.briefingRefreshTimer = setTimeout(async () => {
-                        if (!this.usesTopStories || this.selectedFilterValue !== tab || this.smartViewToken !== token) return;
-
-                        /*
-                         * Do not download/parse a full Smart payload while
-                         * the browser tab is hidden.
-                         */
-                        if (document.hidden) {
-                            this.scheduleBriefingRefresh(
-                                attempt,
-                                60000
-                            );
-                            return;
-                        }
-
-                        try {
-                            const page = (attempt % Math.max(1,this.currentPage)) + 1;
-                            const response = await fetch('/api/data?' + new URLSearchParams({ filterType: 'smart', filterValue: tab, smartMode: 'top', smartRegion: this.smartRegion, smartView: token, briefingRefresh: '1', page, limit: this.isMobile ? 15 : 40, hideRead: this.hideRead, searchQuery: this.searchQuery || '' }));
-                            if (!response.ok) throw new Error('Briefing refresh unavailable');
-                            const latest = await response.json();
-                            if (!this.usesTopStories || this.selectedFilterValue !== tab || this.smartViewToken !== token) return;
-                            if (latest.viewReset) {
-                                this.topUpdatesAvailable = true;
-                                this.scheduleBriefingRefresh(attempt + 1);
-                                return;
-                            }
-                            this.rankingPending = latest.rankingPending;
-                            this.topUpdatesAvailable = latest.updatesAvailable === true;
-                            const byId = new Map((latest.articles || []).map(s => [s.clusterId || s.link, s]));
-                            for (const article of this.articles) { const updated = byId.get(article.clusterId || article.link); if (updated) Object.assign(article, updated); }
-                        } catch { }
-                        this.scheduleBriefingRefresh(attempt + 1);
-                    }, delay);
+                    return ReaderSmartRefresh.schedule(this, attempt, delay);
                 },
         };
     }

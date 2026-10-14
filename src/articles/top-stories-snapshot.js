@@ -1,3 +1,4 @@
+import { rankingInputs } from './ranking-input.js';
 import { prefilterWorkerState, filterPublishedSnapshot } from '../smart/prefilter/publication.js';
 import { Worker } from 'node:worker_threads';
 import { boundedWorkerOptions, hasWorkerHeadroom } from '../observability/memory-budget.js';
@@ -103,7 +104,6 @@ const rankInWorker = input => new Promise((resolve, reject) => {
 export function createTopStoriesSnapshots({ db, config, compute = rankInWorker, now = Date.now, report = console.warn, memoryUsage = process.memoryUsage, heapStatistics = getHeapStatistics, workerHeadroom = hasWorkerHeadroom } = {}) {
     let current, loading, pending, scheduled, checked, retryAt = 0;
     const serializedWorker = compute === rankInWorker;
-    let lastInputFingerprint;
     const load = async () => {
         if (!loading) {
             loading = db
@@ -272,16 +272,15 @@ const migrated={policy:POLICY,articles,createdAt:now(),signature:'legacy',cluste
 
         // Read canonical JSON strings on the production path: no parsed cache,
         // structured clone, or candidate graph is retained by the HTTP server.
-        const inputOptions = serializedWorker ? undefined : {type:'json',shared:true};
+        const inputOptions = serializedWorker ? {fingerprint: true} : {type:'json',shared:true};
         let [publication, rawInput, sources] = await Promise.all([
             db.get(progressiveActive ? 'smartProgressivePublication' : 'smartClusters', inputOptions),
             db.get('smartRawArticles', inputOptions),
             db.get('smartSources', {type:'json',shared:true})
         ]);
-        let clusters, raw, publicationJson, rawJson;
+        let clusters, raw, publicationJson, rawJson, inputs;
         if (serializedWorker) {
-            publicationJson = typeof publication === 'string' ? publication : JSON.stringify(publication || []);
-            rawJson = typeof rawInput === 'string' ? rawInput : JSON.stringify(rawInput || []);
+            inputs = rankingInputs(publication, rawInput);
         } else {
             if (progressiveActive && (
                 publication?.version !== progressiveVersion ||
@@ -314,17 +313,6 @@ const migrated={policy:POLICY,articles,createdAt:now(),signature:'legacy',cluste
                 source.excludeFromSmart
             ])
         )).digest('hex').slice(0,24);
-        // Cluster version/revision is the authoritative heavy-input identity.
-        // Do not JSON.stringify every cluster + raw article merely to decide
-        // whether ranking needs to run; that transient string caused multi-GB
-        // old-space spikes after Smart publication.
-        if (serializedWorker && (!lastInputFingerprint ||
-            lastInputFingerprint.publication !== publicationJson || lastInputFingerprint.raw !== rawJson)) {
-            lastInputFingerprint = {
-                publication: publicationJson, raw: rawJson,
-                digest: createHash('sha256').update(publicationJson).update(rawJson).digest('hex')
-            };
-        }
         const prefilter = await prefilterWorkerState(db);
         const signature = createHash('sha256').update(JSON.stringify([
             ...prefilter.signature,
@@ -334,7 +322,7 @@ const migrated={policy:POLICY,articles,createdAt:now(),signature:'legacy',cluste
             progressiveRevision,
             sourceFingerprint,
             serializedWorker
-                ? lastInputFingerprint.digest
+                ? inputs.digest
                 : raw.length,
             timeBucket
         ])).digest('hex');
@@ -387,6 +375,10 @@ const migrated={policy:POLICY,articles,createdAt:now(),signature:'legacy',cluste
             return current;
         }
 
+        if (serializedWorker) {
+            ({ publicationJson, rawJson } = inputs.read());
+            inputs = null;
+        }
         const result = await compute({
             prefilterState: prefilter.state,
             ...(serializedWorker
@@ -472,7 +464,7 @@ const migrated={policy:POLICY,articles,createdAt:now(),signature:'legacy',cluste
     return {
         async get(destination) { await load(); if (!current) { await migrate(); if (!current) await refresh(); } return filterPublishedSnapshot(db, publicationSection(current, destination)); },
         schedule,
-        releaseInputCache() { lastInputFingerprint = null; },
+        releaseInputCache() { /* Input ownership now ends with each rebuild. */ },
         async revalidate() { await load(); return refresh(); },
         dispose() { clearTimeout(scheduled); scheduled = null; },
         get pending() { return Boolean(pending || scheduled); }

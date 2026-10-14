@@ -46,9 +46,15 @@ test('real worker ranks above the old memory threshold without parsing the corpu
     assert.deepEqual(f.writes, ['topStoriesState', 'topStoriesPublished']);
     await snapshots.revalidate();
     assert.equal(f.writes.length, 2, 'unchanged input is not reranked');
+    f.values.smartClusters = f.values.smartClusters.replace('rates new', 'rates NOW');
+    await snapshots.revalidate();
+    assert.equal(f.writes.length, 4, 'same-length internal content changes invalidate ranking');
+    snapshots.releaseInputCache();
+    await snapshots.revalidate();
+    assert.equal(f.writes.length, 4, 'release does not invalidate an unchanged publication');
     f.values.smartRawArticles = JSON.stringify([article('fresh')]);
     await snapshots.revalidate();
-    assert.equal(f.writes.length, 4, 'fresh raw articles invalidate the ranking immediately');
+    assert.equal(f.writes.length, 6, 'fresh raw articles invalidate the ranking immediately');
 });
 
 test('critical pressure preserves cached cards and retries automatically after memory recovers', async t => {
