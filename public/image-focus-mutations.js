@@ -6,7 +6,11 @@ export function collectImageFocusMutations(records, selector) {
     for (const record of records) {
         const target = record.target;
         if (record.type === 'attributes') {
-            if (target.matches?.(selector) && ['src', 'srcset'].includes(record.attributeName)) {
+            // Browser setters can emit mutations for the same value. Load and
+            // resize events still handle selected-source and geometry changes.
+            if (['src', 'srcset', 'sizes'].includes(record.attributeName)
+                && record.oldValue !== undefined && record.oldValue === target.getAttribute(record.attributeName)) continue;
+            if (target.matches?.(selector) && ['src', 'srcset', 'sizes'].includes(record.attributeName)) {
                 images.add(target);
             } else if (!target.closest?.('.article-card-image') && !(record.attributeName === 'style' && target.matches?.('.article-card'))) {
                 const image = target.closest?.('.article-card')?.querySelector(selector);
@@ -29,11 +33,9 @@ export function applyImageFocusMutations(records, { selector, states, watch, sca
     const { images, added, removed } = collectImageFocusMutations(records, selector);
     const existing = [...images].filter(img => states.has(img));
     const sources = new Set(records.filter(record =>
-        ['src', 'srcset'].includes(record.attributeName) && images.has(record.target)
+        ['src', 'srcset', 'sizes'].includes(record.attributeName) && images.has(record.target)
     ).map(record => record.target));
     for (const img of sources) {
-        const state = states.get(img);
-        if (state) state.source = null;
         watch(img);
     }
     added.forEach(scan);

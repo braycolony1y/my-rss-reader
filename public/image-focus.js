@@ -1,8 +1,10 @@
-import { applyImageFocusMutations } from './image-focus-mutations.js';
+import { createImageVisualLifecycle } from './image-visual-state.js?v=20261015_lifecycle_1';
+import { prepareImageVisualAssets } from './image-visual-assets.js?v=20261015_lifecycle_1';
+import { applyImageFocusMutations } from './image-focus-mutations.js?v=20261015_lifecycle_1';
 import { installThumbnailLoading } from './thumbnail-loading.js?v=20261008_visible_card';
 import { fitCardImageViewport, visiblePhotoHeight } from './card-image-layout.js?v=2';
 import { applyImageColors } from './card-blend/legacy-color.js?v=1';
-import { applyTopStoryImage } from './top-story-card/blend/runtime.js?v=20261006_requirements_2';
+import { applyTopStoryImage } from './top-story-card/blend/runtime.js?v=20261015_lifecycle_1';
 
 const clamp = (value, low = 0, high = 1) => Math.max(low, Math.min(high, value));
 const center = { x: 0.5, y: 0.5 };
@@ -107,14 +109,6 @@ export function installImageFocus(win) {
         return url.origin === win.location.origin ? url.pathname + url.search : url.href;
     }
 
-    function onScreen(img) {
-        const rect = (img.closest('.article-card') || img).getBoundingClientRect();
-        const scroll = img.closest('#scroll-container')?.getBoundingClientRect();
-        const top = Math.max(0, scroll?.top || 0);
-        const bottom = Math.min(win.innerHeight, scroll?.bottom || win.innerHeight);
-        return rect.bottom > top && rect.top < bottom && rect.right > 0 && rect.left < win.innerWidth;
-    }
-
     function apply(img, state) {
         fitCardImageViewport(img);
         const ready = img.complete && img.naturalWidth && img.clientWidth && img.clientHeight;
@@ -156,52 +150,8 @@ export function installImageFocus(win) {
         }
     }
 
-    function update(img) {
-        const state = states.get(img);
-        if (!state) return;
-        const source = sourceOf(img);
-        if (state.source !== source) {
-            win.clearTimeout(state.timer);
-            Object.assign(state, { source, focus: saved.get(source) || center, palette: saved.get(source)?.palette, tint: saved.get(source)?.tint, blend: saved.get(source)?.blend, paletteSampled: false, settled: saved.has(source), requested: false, shown: false, deferred: null, timer: null });
-            img.dataset.focusState = 'pending';
-        }
-        if (state.deferred && !onScreen(img)) {
-            state.focus = state.deferred;
-            state.deferred = null;
-        }
-        if (state.near) img.loading = 'eager';
-        apply(img, state);
-        if (!source) return;
-        if (state.near && !state.settled && !state.timer) {
-            // Slow/offline detection must not leave a blank photo indefinitely.
-            // Once this fallback is visible, don't move it under the reader.
-            state.timer = win.setTimeout(() => {
-                if (states.get(img) !== state || state.source !== source) return;
-                state.settled = true;
-                apply(img, state);
-            }, 2500);
-        }
-        if (state.requested || !state.near) return;
-        state.requested = true;
-        if (source.startsWith('/public/') || source.startsWith('data:') || source.startsWith('blob:')) {
-            state.settled = true;
-            win.clearTimeout(state.timer);
-            apply(img, state);
-            return;
-        }
-        // Resolve focus ahead of the viewport without queuing the entire feed.
-        getFocus(source).then(focus => {
-            if (stopped || !img.isConnected || states.get(img) !== state || state.source !== source || sourceOf(img) !== source) return;
-            win.clearTimeout(state.timer);
-            state.palette = focus.palette;
-            state.tint = focus.tint;
-            state.blend = focus.blend;
-            if (state.shown && onScreen(img)) state.deferred = focus;
-            else state.focus = focus;
-            state.settled = true;
-            update(img);
-        });
-    }
+    const { update } = createImageVisualLifecycle({ win, states, saved, sourceOf, getFocus, apply,
+        stopped: () => stopped, prepare: prepareImageVisualAssets });
 
     const resize = typeof win.ResizeObserver === 'function' ? new win.ResizeObserver(entries => {
         const images = new Set(entries.map(({ target }) => target.matches(selector) ? target : target.closest('.article-card')?.querySelector(selector)));
@@ -214,10 +164,6 @@ export function installImageFocus(win) {
             if (state) { state.near = entry.isIntersecting; update(img); }
         }
     }, { rootMargin: '1600px 0px' }) : null;
-    const visibility = typeof win.IntersectionObserver === 'function' ? new win.IntersectionObserver(entries => {
-        for (const entry of entries) if (!entry.isIntersecting) update(entry.target.matches(selector) ? entry.target : entry.target.querySelector(selector));
-    }) : null;
-
     function watch(img) {
         if (states.has(img) || !img.matches?.(selector)) return;
         const card = img.closest('.article-card');
@@ -226,7 +172,6 @@ export function installImageFocus(win) {
         states.set(img, { focus: center, near: !nearby, requested: false, observed, visibilityTarget });
         observed.forEach(el => resize?.observe(el));
         nearby?.observe(visibilityTarget);
-        visibility?.observe(visibilityTarget);
         update(img);
     }
     function scan(node) {
@@ -242,17 +187,16 @@ export function installImageFocus(win) {
             win.clearTimeout(state.timer);
             state.observed.forEach(el => resize?.unobserve(el));
             nearby?.unobserve(state.visibilityTarget);
-            visibility?.unobserve(state.visibilityTarget);
             states.delete(img);
         }
     }));
-    mutations.observe(doc.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['src', 'srcset', 'class', 'style', 'data-image-layout'] });
+    mutations.observe(doc.body, { childList: true, subtree: true, attributes: true, attributeOldValue: true, attributeFilter: ['src', 'srcset', 'sizes', 'class', 'style', 'data-image-layout'] });
     doc.addEventListener('load', onLoad, true);
     win.addEventListener('resize', onResize);
     scan(doc.body);
     return () => {
         stopped = true;
-        mutations.disconnect(); resize?.disconnect(); nearby?.disconnect(); visibility?.disconnect();
+        mutations.disconnect(); resize?.disconnect(); nearby?.disconnect();
         doc.removeEventListener('load', onLoad, true); win.removeEventListener('resize', onResize);
         for (const state of states.values()) win.clearTimeout(state.timer);
         states.clear(); cache.clear(); 

@@ -1,0 +1,50 @@
+[
+  {
+    "destination": "news_vietnam",
+    "status": 200,
+    "count": 8,
+    "correctDestination": true,
+    "rankingPending": false,
+    "error": null
+  },
+  {
+    "destination": "news_global",
+    "status": 200,
+    "count": 8,
+    "correctDestination": true,
+    "rankingPending": true,
+    "error": null
+  },
+  {
+    "destination": "finance_vietnam",
+    "status": 200,
+    "count": 8,
+    "correctDestination": true,
+    "rankingPending": true,
+    "error": null
+  },
+  {
+    "destination": "finance_global",
+    "status": 200,
+    "count": 8,
+    "correctDestination": true,
+    "rankingPending": true,
+    "error": null
+  },
+  {
+    "destination": "tech_vietnam",
+    "status": 200,
+    "count": 8,
+    "correctDestination": true,
+    "rankingPending": true,
+    "error": null
+  },
+  {
+    "destination": "tech_global",
+    "status": 200,
+    "count": 8,
+    "correctDestination": true,
+    "rankingPending": true,
+    "error": null
+  }
+]

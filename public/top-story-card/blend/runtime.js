@@ -1,3 +1,4 @@
+import { updateStoryPhoto } from './source-readiness.js?v=20261015_lifecycle_1';
 import { rememberMobileSubject } from '../mobile-photo-framing.js?v=20261004_fill_1';
 import { updateSharedCardStyle, rememberSharedProperties } from '../../shared-card-style/runtime.js?v=20261004_fill_1';
 import { scheduleHeroExtent } from '../hero-extent.js?v=20261004_continuation_1';
@@ -89,24 +90,14 @@ export function applyTopStoryImage(img, state, { ready = true, isDefault = false
     if (shared) rememberSharedProperties(card, css);
     for (const [key, value] of Object.entries(css)) set(card, key, value);
     const soft = card.querySelector('.thumbnail-soft');
-    if (soft) {
-        if (!soft.dataset.storyBlendWatched) {
-            soft.dataset.storyBlendWatched = 'true';
-            soft.addEventListener('load', () => {
-                const current = cards.get(card);
-                if (current) applyTopStoryImage(current.img, current.state, { ready: current.img.complete && current.img.naturalWidth > 0,
-                    isDefault: current.isDefault, forceLight: current.forceLight });
-            });
-        }
-        const next = state.near !== false && !isDefault ? storyPhotoSource(img, analysis, hero) : '';
-        // The existing soft layer is hidden until its decoded asset is ready.
-        // Lazy loading cannot start for a hidden image, so load nearby assets
-        // eagerly while retaining the viewport gate for offscreen cards.
-        if (next) soft.loading = 'eager';
-        if (next && soft.getAttribute('src') !== next) soft.src = next;
-        else if (!next && soft.hasAttribute('src')) soft.removeAttribute('src');
-    }
-    card.dataset.storyBlend = hero && soft?.getAttribute('src') && soft.complete && soft.naturalWidth ? 'ready' : 'fallback';
+    const next = state.near !== false && !isDefault ? storyPhotoSource(img, analysis, hero) : '';
+    const photoReady = soft && updateStoryPhoto(soft, next, `${source}:${state.generation || 0}`, () => {
+        const current = cards.get(card);
+        if (current && current.img.isConnected) applyTopStoryImage(current.img, current.state, {
+            ready: current.img.complete && current.img.naturalWidth > 0,
+            isDefault: current.isDefault, forceLight: current.forceLight });
+    });
+    card.dataset.storyBlend = hero && photoReady ? 'ready' : 'fallback';
     card.dataset.storyBlendStyle = tokens.style;
     card.dataset.storyHeroMode = p.mode;
     card.dataset.storyHeroPlacement = p.placement;

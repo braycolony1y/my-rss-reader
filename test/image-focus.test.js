@@ -364,7 +364,7 @@ test('analysis starts before lazy image loading and the first reveal uses the fi
     stopAgain(); dom.window.close();
 });
 
-test('late detection never moves a visible fallback, and applies after it leaves view', async () => {
+test('late detection corrects a visible fallback without waiting for viewport exit', async () => {
     const dom = new JSDOM('<div class="article-card-image"><img class="thumbnail-img" src="https://example.com/slow.jpg"></div>', { url: 'https://reader.example.com' });
     const win = dom.window;
     const img = win.document.querySelector('img');
@@ -387,9 +387,8 @@ test('late detection never moves a visible fallback, and applies after it leaves
     const originalPosition = img.style.getPropertyValue('--image-focus-x');
     finish({ ok: true, json: async () => ({ x: 0.9, y: 0.4 }) });
     await new Promise(resolve => setTimeout(resolve, 0));
-    assert.equal(img.style.getPropertyValue('--image-focus-x'), originalPosition, 'do not visibly recrop a slow fallback');
-    top = 2000;
-    observers[1].callback([{ target: img, isIntersecting: false }]);
+    assert.notEqual(img.style.getPropertyValue('--image-focus-x'), originalPosition, 'late authoritative focus must finish while visible');
+    assert.equal(observers.length, 1, 'no viewport-exit observer is needed for deferred focus');
     assert.equal(img.style.getPropertyValue('--image-focus-x'), '100.000%');
     stop(); dom.window.close();
 });

@@ -613,11 +613,7 @@ const ReaderSmartTopStories = {
                 },
 
                 nextStoryImage(event, article) {
-                    if (!this.usesTopStories) { event.target.src = '/public/default.jpg'; return; }
-                    const candidates = [...new Set([article.image, ...(article.imageCandidates || []), article.feedIcon, '/public/default.jpg'].filter(Boolean))];
-                    const next = Number(event.target.dataset.fallback || 0) + 1;
-                    event.target.dataset.fallback = next;
-                    if (next < candidates.length) event.target.src = this.proxyImageUrl(candidates[next]);
+                    return ReaderStoryImageFallback.next(this, event, article);
                 },
                 topStoryError: '',
                 briefingRefreshTimer: null,

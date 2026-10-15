@@ -1,0 +1,10 @@
+{
+  "at": "2026-10-15T15:10:44.100Z",
+  "version": "20261015_lifecycle_1",
+  "focusVersionPresent": true,
+  "scriptVersionPresent": true,
+  "fallbackBeforeApp": true,
+  "scriptMatches": true,
+  "scriptHash": "ef159f92842accc59f23606ac2e6423cf93100de3005338d5741157df9fab136",
+  "fallbackMatches": true
+}

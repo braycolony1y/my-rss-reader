@@ -25,7 +25,17 @@ test('insertion and source mutations paint a new photo once; existing content st
  assert.deepEqual(painted,[img]);assert.equal(states.get(img).source,'current');
  painted.length=0;
  applyImageFocusMutations([attr(img,'src'),attr(heading,'class')],options);
- assert.deepEqual(painted,[img]);assert.equal(states.get(img).source,null);
+ assert.deepEqual(painted,[img]);assert.equal(states.get(img).source,'current');
  card.remove();applyImageFocusMutations([{type:'childList',target:doc.querySelector('main'),addedNodes:[],removedNodes:[card]}],options);
  assert.equal(states.size,0);dom.window.close();
+});
+
+test('identical source assignments do no image work, while sizes changes remain observable', () => {
+ const dom = new JSDOM('<img class="thumbnail-img" src="a.jpg" srcset="a.jpg 1x" sizes="50vw">');
+ const img = dom.window.document.querySelector('img');
+ const records = ['src','srcset','sizes'].map(attributeName => ({type:'attributes',target:img,attributeName,oldValue:img.getAttribute(attributeName)}));
+ assert.equal(collectImageFocusMutations(records,'.thumbnail-img').images.size,0);
+ records[2].oldValue='100vw';
+ assert.ok(collectImageFocusMutations(records,'.thumbnail-img').images.has(img));
+ dom.window.close();
 });
