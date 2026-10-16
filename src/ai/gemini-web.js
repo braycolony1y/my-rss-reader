@@ -2467,7 +2467,14 @@ function buildInput(prompt, options) {
 async function resetGeminiJobPage(page) {
     const currentUrl = await page.evaluate(() => location.href);
     await page.cdp('Emulation.setFocusEmulationEnabled', { enabled: true });
-    if (!/^https:\/\/gemini\.google\.com\//i.test(currentUrl || '')) {
+    // /u/0 and /u/1 can be different Google accounts. An already-open
+    // Gemini tab is reusable only when it belongs to the configured account.
+    const targetAccount = new URL(GEMINI_WEB_URL).pathname.match(/^\/u\/(\d+)\//)?.[1];
+    const currentAccount = /^https:\/\/gemini\.google\.com\//i.test(currentUrl || '')
+        ? new URL(currentUrl).pathname.match(/^\/u\/(\d+)\//)?.[1]
+        : null;
+    if (!/^https:\/\/gemini\.google\.com\//i.test(currentUrl || '') ||
+        (targetAccount !== undefined && currentAccount !== targetAccount)) {
         await page.goto(GEMINI_WEB_URL);
         await waitForGeminiPage(page, 20000);
     }
