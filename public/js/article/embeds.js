@@ -50,6 +50,30 @@ const ReaderArticleEmbeds = {
                     return window.__rssTwitterWidgetsPromise;
                 },
 
+                hydrateMicrosoftAiFigures(root = document) {
+                    const scope = root?.querySelectorAll ? root : document;
+                    scope.querySelectorAll('.microsoft-ai-figure[data-microsoft-ai-data]').forEach(holder => {
+                        if (holder.querySelector('iframe')) return;
+                        const encoded = holder.getAttribute('data-microsoft-ai-data') || '';
+                        if (!/^PG1ldGEg[A-Za-z0-9+/]+=*$/.test(encoded) || encoded.length > 400000) return;
+                        const frame = document.createElement('iframe');
+                        // The publisher's embedded document is untrusted code:
+                        // never grant same-origin access, forms or top navigation.
+                        frame.setAttribute('sandbox', 'allow-scripts');
+                        frame.setAttribute('loading', 'lazy');
+                        frame.setAttribute('referrerpolicy', 'no-referrer');
+                        frame.setAttribute('title', 'Microsoft AI interactive figure');
+                        frame.style.setProperty('display', 'block');
+                        frame.style.setProperty('width', '100%');
+                        frame.style.setProperty('height', window.innerWidth < 600 ? '430px' : '560px');
+                        frame.style.setProperty('border', '0');
+                        frame.style.setProperty('border-radius', '8px');
+                        frame.src = 'data:text/html;base64,' + encoded;
+                        holder.removeAttribute('data-microsoft-ai-data');
+                        holder.prepend(frame);
+                    });
+                },
+
                 hydrateTwitterEmbeds(root = document) {
                     this.updateSourceTimes();
                     const scope = root?.querySelectorAll ? root : document;
