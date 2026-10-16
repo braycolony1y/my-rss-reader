@@ -7,6 +7,7 @@ import MicrosoftAiSource, {
 } from '../src/sources/MicrosoftAiSource.js';
 import TechmemeSource from '../src/sources/TechmemeSource.js';
 import { parseJinaReaderText, parseOpenCliMarkdown } from '../src/articles/reader-markdown.js';
+import { sanitizePostMarkup } from '../src/articles/post-markup-sanitizer.js';
 
 const articleUrl = 'https://microsoft.ai/news/frontier-pre-training-at-microsoft-ai/';
 const figure = Buffer.from('<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'unsafe-inline\';">'
@@ -54,6 +55,9 @@ test('both Jina and OpenCLI preserve Microsoft AI chart figures after Markdown c
         assert.doesNotMatch(result.content, /RSSMICROSOFTAIFIGURE\d+PLACEHOLDER/);
     }
     assert.equal(new MicrosoftAiSource().cleanCachedArticleContent(outputs[0].content, { url: articleUrl }), outputs[0].content);
+    const sanitized = sanitizePostMarkup(outputs[0].content);
+    assert.equal((sanitized.match(/data-microsoft-ai-data="/g) || []).length, 2);
+    assert.doesNotMatch(sanitized, /<script\b/i);
 });
 
 test('Techmeme preserves Microsoft AI figures across nested article and cached reads', async () => {
