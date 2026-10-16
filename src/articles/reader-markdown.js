@@ -493,6 +493,7 @@ function parseOpenCliMarkdown(markdown, url, options = {}) {
             url,
             source: 'opencli',
             title,
+            microsoftAiFigures: sourceMetadata.microsoftAiFigures || [],
             chartUrls: sourceMetadata.chartUrls || [],
             latestArticles: sourceMetadata.latestArticles || null
         });
