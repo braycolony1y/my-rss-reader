@@ -1,0 +1,26 @@
+[
+  {
+    "variant": "without-predecode",
+    "outcome": "loaded",
+    "failure": null,
+    "errors": []
+  },
+  {
+    "variant": "old-blend",
+    "outcome": "failed",
+    "failure": "page.goto: Page crashed\nCall log:\n\u001b[2m  - navigating to \"http://127.0.0.1:45617/\", waiting until \"load\"\u001b[22m\n",
+    "errors": []
+  },
+  {
+    "variant": "after",
+    "outcome": "loaded",
+    "failure": null,
+    "errors": []
+  },
+  {
+    "variant": "before",
+    "outcome": "loaded",
+    "failure": null,
+    "errors": []
+  }
+]

@@ -10,12 +10,12 @@ const modelIds = [
 ];
 const fixture = () => {
     const dom = new JSDOM(`<div data-test-id="gem-mode-menu">
-      <div role="menuitem" data-test-id="${modelIds[0]}">3.5 Flash-Lite Fastest answers</div>
-      <div role="menuitem" data-test-id="${modelIds[1]}" class="selected">3.8 Flash All-around help</div>
-      <div role="menuitem" data-test-id="${modelIds[2]}">3.1 Pro Advanced reasoning</div>
-      <div role="menuitem">Low Quick and efficient</div>
-      <div role="menuitem">Medium Balanced depth</div>
-      <div role="menuitem" class="selected">High Extra thorough</div>
+      <div role="menuitem" data-test-id="${modelIds[0]}"><span class="label">3.5 Flash-Lite</span> Fastest answers</div>
+      <div role="menuitem" data-test-id="${modelIds[1]}" class="selected"><span class="label">3.8 Flash</span> All-around help</div>
+      <div role="menuitem" data-test-id="${modelIds[2]}"><span class="label">3.1 Pro</span> Advanced reasoning</div>
+      <div role="menuitem"><span class="label">Low</span> Quick and efficient</div>
+      <div role="menuitem"><span class="label">Medium</span> Balanced depth</div>
+      <div role="menuitem" class="selected"><span class="label">High</span> Extra thorough</div>
     </div>`, { runScripts: 'outside-only' });
     const { window } = dom;
     // JSDOM does not calculate layout geometry; simulate a visible menu.
