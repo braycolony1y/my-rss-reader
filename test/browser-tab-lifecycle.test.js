@@ -121,7 +121,7 @@ test('each Gemini job uses New chat then Temporary Chat; failure never reloads o
         const calls = [];
         const reset = vm.runInNewContext('(' + fn + ')', {
             URL,
-        GEMINI_WEB_URL: 'https://gemini.google.com/u/1/app',
+            GEMINI_WEB_URL: 'https://gemini.google.com/u/1/app',
             returnToGeminiChatHome: async () => {
                 calls.push('new-chat');
                 if (failedNewChat) {
@@ -155,6 +155,7 @@ test('outside Gemini, initial navigation is allowed but normal chat reset still 
     const fn = source.slice(start, source.indexOf('\n\nasync function runOnSlot', start));
     const calls = [];
     const reset = vm.runInNewContext('(' + fn + ')', {
+        URL,
         GEMINI_WEB_URL: 'https://gemini.google.com/u/1/app',
         returnToGeminiChatHome: async () => calls.push('new-chat'),
         waitForGeminiPage: async () => calls.push('ready'),
