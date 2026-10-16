@@ -44,6 +44,76 @@ try {
     assert.ok(navigations <= 1, 'the second job must use New chat without reloading');
     assert.equal(submitted, 2, 'Each job must submit once');
     console.log('GEMINI_LIVE_SMOKE_PASS: second Temporary Chat replied in the original tab');
+} catch (error) {
+    console.error('GEMINI_LIVE_SMOKE_FAIL:', error.code || error.name, error.message);
+    if (error.code === 'GEMINI_WEB_MODEL_NOT_FOUND') {
+        try {
+            // Model picker is normally closed by ensureModel's finally.
+            // Reopen it for read-only diagnostics; do not pick an option.
+            const diagnostic = await page.evaluate(() => {
+                const picker = document.querySelector('[data-test-id="bard-mode-menu-button"]');
+                const button = picker?.querySelector('button') || picker;
+                if (!button) return { pickerFound: false };
+                const expanded = button.getAttribute('aria-expanded') === 'true' ||
+                    picker?.getAttribute('aria-expanded') === 'true';
+                if (!expanded) button.click();
+                return {
+                    pickerFound: true,
+                    pickerTag: picker.tagName.toLowerCase(),
+                    pickerText: String(picker.innerText || picker.textContent || '')
+                        .replace(/\s+/g, ' ').trim().slice(0, 140)
+                };
+            });
+            await new Promise(resolve => setTimeout(resolve, 500));
+            const details = await page.evaluate(() => {
+                const visible = element => {
+                    const style = getComputedStyle(element);
+                    const rect = element.getBoundingClientRect();
+                    return style.display !== 'none' &&
+                        style.visibility !== 'hidden' &&
+                        rect.width > 0 && rect.height > 0;
+                };
+                const roots = [...document.querySelectorAll(
+                    '[data-test-id="gem-mode-menu"],gem-menu,.cdk-overlay-pane,[role="menu"]'
+                )].filter(visible);
+                const items = [...document.querySelectorAll(
+                    'gem-menu-item,[role="menuitem"],[role="menuitemradio"],[role="option"],[data-test-id^="bard-mode-option-"]'
+                )].filter(item => visible(item) &&
+                    roots.some(root => root === item || root.contains(item)));
+                return {
+                    menuRoots: roots.slice(0, 12).map(root => ({
+                        tag: root.tagName.toLowerCase(),
+                        testId: root.getAttribute('data-test-id'),
+                        role: root.getAttribute('role'),
+                        itemCount: items.filter(item => root.contains(item)).length
+                    })),
+                    options: [...new Set(items)].slice(0, 32).map(item => ({
+                        tag: item.tagName.toLowerCase(),
+                        id: item.getAttribute('data-test-id'),
+                        modeId: item.getAttribute('data-mode-id'),
+                        value: item.getAttribute('value'),
+                        role: item.getAttribute('role'),
+                        label: String(item.querySelector('.label')?.textContent ||
+                            item.innerText || item.textContent || '')
+                            .replace(/\s+/g, ' ').trim().slice(0, 150),
+                        selected: item.classList.contains('selected') ||
+                            item.getAttribute('aria-selected') === 'true' ||
+                            Boolean(item.querySelector('[aria-label="Selected"]')),
+                        disabled: item.getAttribute('aria-disabled') === 'true' ||
+                            item.hasAttribute('disabled')
+                    }))
+                };
+            });
+            console.log('GEMINI_LIVE_MODEL_DIAGNOSTIC', JSON.stringify({
+                ...diagnostic, ...details
+            }, null, 2));
+        } catch (diagnosticError) {
+            console.error('GEMINI_LIVE_DIAGNOSTIC_ERROR:',
+                diagnosticError.code || diagnosticError.name,
+                diagnosticError.message);
+        }
+    }
+    process.exitCode = 1;
 } finally {
     await page.closeTab().catch(error => console.warn('GEMINI_LIVE_CLEANUP_WARNING:', error.message));
 }
