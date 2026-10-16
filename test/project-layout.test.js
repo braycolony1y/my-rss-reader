@@ -64,9 +64,16 @@ test('project root contains only documented production and workspace entries', a
         // The live database writer briefly stages these atomic runtime files.
         .filter(entry => !/^smart-embeddings-worker\.json\.tmp-\d+$/.test(entry.name))
         .filter(entry => !/^(?:database\.json|database-state\.json|smart-state\.json|smart-data\.json|feeds_backup\.json)(?:\.backup)?\.tmp-\d+-[a-z0-9]+$/.test(entry.name))
-        .filter((entry) => entry.isDirectory()
-            ? !allowedRootDirectories.has(entry.name)
-            : !allowedRootFiles.has(entry.name))
+        // A linked Git worktree stores .git as a regular file rather than a
+        // directory. Local test worktrees may also symlink node_modules to the
+        // checked-out installation. Neither is a stray project-root artifact.
+        .filter(entry => {
+            if (entry.name === '.git' && (entry.isDirectory() || entry.isFile())) return false;
+            if (entry.name === 'node_modules' && (entry.isDirectory() || entry.isSymbolicLink())) return false;
+            return entry.isDirectory()
+                ? !allowedRootDirectories.has(entry.name)
+                : !allowedRootFiles.has(entry.name);
+        })
         .map((entry) => entry.name)
         .sort();
 
