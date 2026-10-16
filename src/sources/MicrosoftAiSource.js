@@ -1,8 +1,51 @@
-// Microsoft AI embeds interactive figures as Base64-encoded HTML documents.
-// Some text readers expose the entire encoded iframe document as article text.
-// Remove only this known embedded-document signature, preserving the surrounding
-// prose and captions. Do not decode or execute third-party HTML.
 const ENCODED_HTML_DOCUMENT = /(?:data:text\/html(?:;charset=[^;,\s"'<>]+)?;base64,)?PG1ldGEg[A-Za-z0-9+/]{500,}={0,2}/g;
+
+// Dedicated Microsoft AI extractor. The publisher embeds SVG charts, images,
+// and tables as self-contained Base64 HTML documents. Preserve those figures
+// inside isolated reader frames instead of displaying or deleting their bytes.
+const MAX_FIGURES = 25;
+const MAX_FIGURE_BYTES = 400_000;
+const MAX_TOTAL_FIGURE_BYTES = 1_500_000;
+const tokenFor = index => 'RSSMICROSOFTAIFIGURE' + index + 'PLACEHOLDER';
+
+function validFigurePayload(base64) {
+    if (!base64 || base64.length > MAX_FIGURE_BYTES) return false;
+    const doc = Buffer.from(base64, 'base64').toString('utf8');
+    return /^<meta\s+http-equiv=["']Content-Security-Policy["']/i.test(doc)
+        && /default-src\s+['"]none['"]/i.test(doc.slice(0, 600))
+        && /<(?:svg|table|img|div)\b/i.test(doc);
+}
+
+export function extractMicrosoftAiFigures(markdown = '') {
+    const figures = [];
+    let bytes = 0;
+    const cleaned = String(markdown || '').replace(ENCODED_HTML_DOCUMENT, value => {
+        const base64 = value.replace(/^data:text\/html(?:;charset=[^;,\s"'<>]+)?;base64,/i, '');
+        if (figures.length >= MAX_FIGURES || bytes + base64.length > MAX_TOTAL_FIGURE_BYTES
+            || !validFigurePayload(base64)) return '';
+        const number = figures.length;
+        figures.push(base64);
+        bytes += base64.length;
+        return '\n\n' + tokenFor(number) + '\n\n';
+    });
+    return { markdown: cleaned, figures };
+}
+
+export function restoreMicrosoftAiFigures(html = '', figures = []) {
+    let source = String(html || '');
+    for (let i = 0; i < figures.length; i++) {
+        const data = figures[i];
+        if (!validFigurePayload(data)) continue;
+        const replacement = '<div class="microsoft-ai-figure" data-microsoft-ai-data="' + data + '">'
+            + '<span class="microsoft-ai-figure__fallback">Figure ' + (i + 1) + ' — '
+            + '<a href="https://microsoft.ai/news/frontier-pre-training-at-microsoft-ai/" '
+            + 'target="_blank" rel="noopener noreferrer">View interactive figure at Microsoft AI</a>'
+            + '</span></div>';
+        source = source.replace(new RegExp('<p>\\s*' + tokenFor(i) + '\\s*<\\/p>', 'g'), replacement)
+            .replaceAll(tokenFor(i), replacement);
+    }
+    return stripMicrosoftAiEncodedFigures(source);
+}
 
 export function isMicrosoftAiArticleUrl(value = '') {
     try {
@@ -18,7 +61,11 @@ export function isMicrosoftAiArticleUrl(value = '') {
 export function stripMicrosoftAiEncodedFigures(content = '') {
     const text = String(content || '');
     if (!text.includes('PG1ldGEg')) return text;
-    return text.replace(ENCODED_HTML_DOCUMENT, '');
+    // Only strip unexpected figure bytes in TEXT nodes, not in our own
+    // sanitized data attributes; cached figures must survive another read.
+    return text.split(/(<[^>]*>)/g).map((part, index) =>
+        index % 2 === 0 ? part.replace(ENCODED_HTML_DOCUMENT, '') : part
+    ).join('');
 }
 
 export default class MicrosoftAiSource {
@@ -28,17 +75,19 @@ export default class MicrosoftAiSource {
 
     parseJinaReaderText(markdown, context = {}) {
         if (!isMicrosoftAiArticleUrl(context.url)) return null;
-        return { markdown: stripMicrosoftAiEncodedFigures(markdown) };
+        const parsed = extractMicrosoftAiFigures(markdown);
+        return { markdown: parsed.markdown, microsoftAiFigures: parsed.figures };
     }
 
     parseOpenCliMarkdown(markdown, context = {}) {
         if (!isMicrosoftAiArticleUrl(context.url)) return null;
-        return { markdown: stripMicrosoftAiEncodedFigures(markdown) };
+        const parsed = extractMicrosoftAiFigures(markdown);
+        return { markdown: parsed.markdown, microsoftAiFigures: parsed.figures };
     }
 
     cleanCachedArticleContent(content, context = {}) {
         return isMicrosoftAiArticleUrl(context.url)
-            ? stripMicrosoftAiEncodedFigures(content)
+            ? restoreMicrosoftAiFigures(content, context.microsoftAiFigures)
             : content;
     }
 
