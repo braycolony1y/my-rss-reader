@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import MicrosoftAiSource, {
@@ -75,4 +76,14 @@ test('Techmeme preserves Microsoft AI figures across nested article and cached r
     const cached = source.cleanCachedArticleContent(expanded.content, { url });
     assert.match(cached, /data-microsoft-ai-data="PG1ldGEg/);
     assert.equal(source.cleanCachedArticleContent(cached, { url }), cached);
+});
+
+test('Microsoft AI figure hydration uses lazy opaque-origin sandbox frames', () => {
+    const embeds = readFileSync(new URL('../public/js/article/embeds.js', import.meta.url), 'utf8');
+    const overlay = readFileSync(new URL('../public/js/article/overlay.js', import.meta.url), 'utf8');
+    assert.match(embeds, /hydrateMicrosoftAiFigures\(root = document\)/);
+    assert.match(embeds, /frame\.setAttribute\('sandbox', 'allow-scripts'\)/);
+    assert.match(embeds, /frame\.setAttribute\('loading', 'lazy'\)/);
+    assert.match(embeds, /frame\.src = 'data:text\/html;base64,' \+ encoded/);
+    assert.equal((overlay.match(/this\.hydrateMicrosoftAiFigures\(/g) || []).length, 2);
 });
