@@ -75,12 +75,19 @@ export async function readGeminiWebModeState(page) {
         }
         const models = [...menu.querySelectorAll(
             '[data-test-id^="bard-mode-option-"]'
-        )].filter(visible).map(element => ({
-            id: element.getAttribute('data-test-id'),
-            name: label(element),
-            selected: selected(element),
-            disabled: disabled(element)
-        }));
+        )].filter(visible).map(element => {
+            const id = element.getAttribute('data-test-id') || '';
+            const modeId = element.getAttribute('data-mode-id') || '';
+            const upsell = /upsell[_-]/i.test(id) || /upsell[_-]/i.test(modeId);
+            return {
+                id,
+                modeId,
+                name: label(element),
+                selected: selected(element),
+                upsell,
+                disabled: disabled(element) || upsell
+            };
+        });
         const trigger = [...menu.querySelectorAll(
             '[value="thinking_level"],[role="menuitem"]'
         )].find(element => /^Thinking level\b/i.test(label(element)));
@@ -103,13 +110,14 @@ export async function readGeminiWebModeState(page) {
             thinking,
             thinkingExpanded: trigger?.getAttribute('aria-expanded') === 'true',
             selectedModelId: models.find(item => item.selected)?.id || null,
+            selectedModelName: models.find(item => item.selected)?.name || null,
             selectedThinking: thinking.find(item => item.selected)?.level || null
         };
     });
 }
 
 async function clickMenuOption(page, choice) {
-    return page.evaluate(({ id, level }) => {
+    return page.evaluate(({ modelName, level }) => {
         const visible = element => {
             if (!element) return false;
             const style = getComputedStyle(element);
@@ -120,10 +128,14 @@ async function clickMenuOption(page, choice) {
         const menu = document.querySelector('[data-test-id="gem-mode-menu"]');
         if (!visible(menu)) return false;
         let option;
-        if (id) {
+        if (modelName) {
             option = [...menu.querySelectorAll('[data-test-id^="bard-mode-option-"]')]
-                .find(element => visible(element) &&
-                    element.getAttribute('data-test-id') === id);
+                .find(element => {
+                    const name = String(element.querySelector('.label')?.textContent ||
+                        element.innerText || element.textContent || '')
+                        .replace(/\s+/g, ' ').trim().toLowerCase();
+                    return visible(element) && name === modelName.toLowerCase();
+                });
         } else {
             option = [...document.querySelectorAll(
                 'gem-menu-item,[role="menuitem"],[role="menuitemradio"],[role="option"]'
@@ -134,7 +146,9 @@ async function clickMenuOption(page, choice) {
                 ).replace(/\s+/g, ' ').trim().toLowerCase() === level);
         }
         if (!option || option.getAttribute('aria-disabled') === 'true' ||
-            option.hasAttribute('disabled')) return false;
+            option.hasAttribute('disabled') ||
+            /upsell[_-]/i.test(option.getAttribute('data-test-id') || '') ||
+            /upsell[_-]/i.test(option.getAttribute('data-mode-id') || '')) return false;
         option.click();
         return true;
     }, choice);
@@ -224,19 +238,30 @@ export async function selectGeminiWebMode(page, requestedMode, { openMenu, close
     try {
         await openMenu();
         let state = await readGeminiWebModeState(page);
-        const model = state.models.find(item => item.id === target.modelId);
+        // Menu IDs are account-specific and can change. Match the displayed
+        // model label; never use a stale hard-coded ID to choose a different model.
+        const sameModel = item => String(item.name || '')
+            .replace(/\s+/g, ' ').trim().toLowerCase() === target.modelName.toLowerCase();
+        const model = state.models.find(sameModel);
         if (!model || model.disabled) {
-            throw fail('GEMINI_WEB_MODEL_NOT_FOUND',
-                target.modelName + ' is missing or disabled in Gemini Web');
+            const available = state.models.map(item => item.name +
+                (item.upsell ? ' (upgrade required)' :
+                    item.disabled ? ' (disabled)' : '')).join(', ') || '(none)';
+            throw fail(model?.upsell ? 'GEMINI_WEB_MODEL_UPSELL' :
+                    'GEMINI_WEB_MODEL_NOT_FOUND',
+                target.modelName + (model?.upsell ? ' requires an account upgrade' :
+                    ' is not offered as a selectable model') +
+                '. Visible options: ' + available +
+                '. Check GEMINI_WEB_URL and the OpenCLI browser profile; no model was substituted.');
         }
-        if (state.selectedModelId !== target.modelId) {
-            if (!await clickMenuOption(page, { id: target.modelId })) {
+        if (!state.models.some(item => item.selected && sameModel(item))) {
+            if (!await clickMenuOption(page, { modelName: target.modelName })) {
                 throw fail('GEMINI_WEB_MODEL_SELECT_FAILED',
                     'Could not click ' + target.modelName);
             }
             state = await waitForSelection({
                 page, openMenu, sleep,
-                match: value => value.selectedModelId === target.modelId,
+                match: value => value.models.some(item => item.selected && sameModel(item)),
                 code: 'GEMINI_WEB_MODEL_NOT_CONFIRMED',
                 message: 'Could not verify ' + target.modelName
             });
@@ -256,7 +281,7 @@ export async function selectGeminiWebMode(page, requestedMode, { openMenu, close
             }
             await waitForSelection({
                 page, openMenu, sleep, thinking: true,
-                match: value => value.selectedModelId === target.modelId &&
+                match: value => value.models.some(item => item.selected && sameModel(item)) &&
                     value.selectedThinking === target.thinkingLevel,
                 code: 'GEMINI_WEB_THINKING_NOT_CONFIRMED',
                 message: 'Could not verify ' + target.thinkingLevel + ' thinking'
@@ -265,7 +290,7 @@ export async function selectGeminiWebMode(page, requestedMode, { openMenu, close
 
         await openThinkingLevel(page, openMenu, sleep);
         const verified = await readGeminiWebModeState(page);
-        if (verified.selectedModelId !== target.modelId ||
+        if (!verified.models.some(item => item.selected && sameModel(item)) ||
             verified.selectedThinking !== target.thinkingLevel) {
             throw fail('GEMINI_WEB_MODEL_NOT_CONFIRMED',
                 'Expected ' + target.modelName + '/' + target.thinkingLevel +
