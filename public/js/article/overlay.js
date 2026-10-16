@@ -143,6 +143,8 @@ const ReaderArticleOverlay = {
                     ].filter(Boolean))];
                     this.$nextTick(() => {
                         this.hydrateTwitterEmbeds(document.getElementById('overlay-scroll-container'));
+
+                        this.hydrateMicrosoftAiFigures(document.getElementById('overlay-scroll-container'));
                         if (window.Hls) {
                             document.querySelectorAll('.article-rendered-content video').forEach(video => {
                                 let src = video.getAttribute('src');
@@ -411,6 +413,8 @@ const ReaderArticleOverlay = {
                     this.$nextTick(() => {
                         const articleScroll = document.getElementById('overlay-scroll-container');
                         this.hydrateTwitterEmbeds(articleScroll);
+
+                        this.hydrateMicrosoftAiFigures(articleScroll);
                         if (articleScroll) articleScroll.scrollTop = snapshot.scrollTop || 0;
                     });
                 },
