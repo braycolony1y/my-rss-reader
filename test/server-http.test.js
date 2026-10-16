@@ -16,7 +16,10 @@ test('HTTP application integrates the extracted services in an isolated runtime'
             cwd: directory,
             env: { ...process.env, ADMIN_PASSWORD: 'fixture-password', ANTIGRAVITY_ENABLED: 'false',
                 GEMINI_WEB_ENABLED: 'false', SMART_LOCAL_AI_ENABLED: 'false' },
-            timeout: 30000,
+            // Cold startup can spend >10s probing Antigravity quotas even in
+            // an isolated fixture. Parallel suite load must not kill a valid
+            // HTTP integration run after only 30s.
+            timeout: 90000,
             maxBuffer: 1024 * 1024
         });
         assert.match(stdout, /HTTP_SMOKE_OK/);

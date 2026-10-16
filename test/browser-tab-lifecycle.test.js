@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
+import { JSDOM } from 'jsdom';
 import { readFileSync } from 'node:fs';
 import { createLeaseBoundPageClass } from '../src/browser/opencli-page.js';
 import { patchBackgroundTabCreation, patchBackgroundLeaseReuse } from '../ops/maintenance/opencli-background-tabs.mjs';
@@ -111,25 +112,131 @@ async function container() {
     }
 });
 
-test('each Gemini job uses New chat then Temporary Chat, reloading only for recovery', async () => {
+test('each Gemini job uses New chat then Temporary Chat; failure never reloads or submits', async () => {
     const source = readFileSync(new URL('../src/ai/gemini-web.js', import.meta.url), 'utf8');
     const start = source.indexOf('async function resetGeminiJobPage(');
     const fn = source.slice(start, source.indexOf('\n\nasync function runOnSlot', start));
-    for (const failOnce of [false, true]) {
-        const calls = []; let attempts = 0;
-        const reset = vm.runInNewContext(`(${fn})`, {
-            console: { warn() {} }, GEMINI_WEB_URL: 'https://gemini.google.com/u/1/app',
+
+    for (const failedNewChat of [false, true]) {
+        const calls = [];
+        const reset = vm.runInNewContext('(' + fn + ')', {
+            URL,
+            GEMINI_WEB_URL: 'https://gemini.google.com/u/1/app',
             returnToGeminiChatHome: async () => {
                 calls.push('new-chat');
-                if (failOnce && !attempts++) throw Object.assign(Error('retry'), { code: 'GEMINI_WEB_NEW_CHAT_FAILED' });
+                if (failedNewChat) {
+                    throw Object.assign(Error('no confirmed new chat'), {
+                        code: 'GEMINI_WEB_NEW_CHAT_FAILED'
+                    });
+                }
             },
             waitForGeminiPage: async () => calls.push('ready'),
             resetFreshTemporaryChat: async () => calls.push('temporary-on')
         });
-        await reset({ evaluate: async () => 'https://gemini.google.com/u/1/app',
-            cdp: async () => calls.push('emulated'), goto: async () => calls.push('reload') });
-        assert.deepEqual(calls, failOnce
-            ? ['emulated', 'new-chat', 'reload', 'ready', 'new-chat', 'temporary-on']
-            : ['emulated', 'new-chat', 'temporary-on']);
+        const page = {
+            evaluate: async () => 'https://gemini.google.com/u/1/app',
+            cdp: async () => calls.push('emulated'),
+            goto: async () => calls.push('reload')
+        };
+        if (failedNewChat) {
+            await assert.rejects(reset(page), error =>
+                error.code === 'GEMINI_WEB_NEW_CHAT_FAILED');
+            assert.deepEqual(calls, ['emulated', 'new-chat']);
+        } else {
+            await reset(page);
+            assert.deepEqual(calls, ['emulated', 'new-chat', 'temporary-on']);
+        }
     }
+});
+
+test('outside Gemini, initial navigation is allowed but normal chat reset still uses UI', async () => {
+    const source = readFileSync(new URL('../src/ai/gemini-web.js', import.meta.url), 'utf8');
+    const start = source.indexOf('async function resetGeminiJobPage(');
+    const fn = source.slice(start, source.indexOf('\n\nasync function runOnSlot', start));
+    const calls = [];
+    const reset = vm.runInNewContext('(' + fn + ')', {
+        URL,
+        GEMINI_WEB_URL: 'https://gemini.google.com/u/1/app',
+        returnToGeminiChatHome: async () => calls.push('new-chat'),
+        waitForGeminiPage: async () => calls.push('ready'),
+        resetFreshTemporaryChat: async () => calls.push('temporary-on')
+    });
+    await reset({
+        evaluate: async () => 'about:blank',
+        cdp: async () => calls.push('emulated'),
+        goto: async () => calls.push('initial-navigation')
+    });
+    assert.deepEqual(calls, [
+        'emulated', 'initial-navigation', 'ready', 'new-chat', 'temporary-on'
+    ]);
+});
+
+
+test('Temporary Chat reads either mat-icon text or data-mat-icon-name', async () => {
+    const source = readFileSync(new URL('../src/ai/gemini-web.js', import.meta.url), 'utf8');
+    const start = source.indexOf('async function temporaryChatState(page)');
+    assert.ok(start >= 0);
+    const fn = source.slice(start, source.indexOf(
+        '\n\nasync function waitForTemporaryChatControl', start
+    ));
+    const readState = vm.runInNewContext('(' + fn + ')');
+
+    for (const iconVariant of ['text', 'attribute']) {
+        const iconHtml = iconVariant === 'text'
+            ? '<mat-icon>gemini_chat_temp</mat-icon>'
+            : '<mat-icon data-mat-icon-name="gemini_chat_temp"></mat-icon>';
+        const dom = new JSDOM(
+            '<chat-window></chat-window>' +
+            '<button aria-label="Temporary chat">' + iconHtml + '</button>',
+            { url: 'https://gemini.google.com/u/0/app', runScripts: 'outside-only' }
+        );
+        const window = dom.window;
+        window.HTMLElement.prototype.getBoundingClientRect = () =>
+            ({ x: 0, y: 0, width: 80, height: 20 });
+        const page = { evaluate: fn => window.eval('(' + fn.toString() + ')()') };
+
+        const inactive = await readState(page);
+        assert.equal(inactive.canEnable, true, iconVariant);
+        assert.equal(inactive.enabled, false, iconVariant);
+        assert.equal(inactive.conversationEmpty, true, iconVariant);
+
+        window.document.querySelector('chat-window')
+            .classList.add('is-temporary-chat');
+        const icon = window.document.querySelector('mat-icon');
+        if (iconVariant === 'text') {
+            icon.textContent = 'close';
+        } else {
+            icon.setAttribute('data-mat-icon-name', 'close');
+        }
+        const active = await readState(page);
+        assert.equal(active.iconName, 'close', iconVariant);
+        assert.equal(active.activeTemporaryDom, true, iconVariant);
+        assert.equal(active.enabled, true, iconVariant);
+        window.close();
+    }
+});
+
+test('Gemini tab on account /u/0 switches to configured /u/1 before UI reset', async () => {
+    const source = readFileSync(new URL('../src/ai/gemini-web.js', import.meta.url), 'utf8');
+    const start = source.indexOf('async function resetGeminiJobPage(');
+    const fn = source.slice(start, source.indexOf('\n\nasync function runOnSlot', start));
+    const calls = [];
+    const reset = vm.runInNewContext('(' + fn + ')', {
+        URL,
+        GEMINI_WEB_URL: 'https://gemini.google.com/u/1/app',
+        returnToGeminiChatHome: async () => calls.push('new-chat'),
+        waitForGeminiPage: async () => calls.push('ready'),
+        resetFreshTemporaryChat: async () => calls.push('temporary-on')
+    });
+    await reset({
+        evaluate: async () => 'https://gemini.google.com/u/0/app',
+        cdp: async () => calls.push('emulated'),
+        goto: async url => {
+            assert.equal(url, 'https://gemini.google.com/u/1/app');
+            calls.push('switch-account');
+        }
+    });
+    assert.deepEqual(calls, [
+        'emulated', 'switch-account', 'ready', 'new-chat', 'temporary-on'
+    ]);
 });
