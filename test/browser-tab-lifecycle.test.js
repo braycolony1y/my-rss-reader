@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
+import { JSDOM } from 'jsdom';
 import { readFileSync } from 'node:fs';
 import { createLeaseBoundPageClass } from '../src/browser/opencli-page.js';
 import { patchBackgroundTabCreation, patchBackgroundLeaseReuse } from '../ops/maintenance/opencli-background-tabs.mjs';
@@ -166,4 +167,49 @@ test('outside Gemini, initial navigation is allowed but normal chat reset still 
     assert.deepEqual(calls, [
         'emulated', 'initial-navigation', 'ready', 'new-chat', 'temporary-on'
     ]);
+});
+
+
+test('Temporary Chat reads either mat-icon text or data-mat-icon-name', async () => {
+    const source = readFileSync(new URL('../src/ai/gemini-web.js', import.meta.url), 'utf8');
+    const start = source.indexOf('async function temporaryChatState(page)');
+    assert.ok(start >= 0);
+    const fn = source.slice(start, source.indexOf(
+        '\n\nasync function waitForTemporaryChatControl', start
+    ));
+    const readState = vm.runInNewContext('(' + fn + ')');
+
+    for (const iconVariant of ['text', 'attribute']) {
+        const iconHtml = iconVariant === 'text'
+            ? '<mat-icon>gemini_chat_temp</mat-icon>'
+            : '<mat-icon data-mat-icon-name="gemini_chat_temp"></mat-icon>';
+        const dom = new JSDOM(
+            '<chat-window></chat-window>' +
+            '<button aria-label="Temporary chat">' + iconHtml + '</button>',
+            { url: 'https://gemini.google.com/u/0/app', runScripts: 'outside-only' }
+        );
+        const window = dom.window;
+        window.HTMLElement.prototype.getBoundingClientRect = () =>
+            ({ x: 0, y: 0, width: 80, height: 20 });
+        const page = { evaluate: fn => window.eval('(' + fn.toString() + ')()') };
+
+        const inactive = await readState(page);
+        assert.equal(inactive.canEnable, true, iconVariant);
+        assert.equal(inactive.enabled, false, iconVariant);
+        assert.equal(inactive.conversationEmpty, true, iconVariant);
+
+        window.document.querySelector('chat-window')
+            .classList.add('is-temporary-chat');
+        const icon = window.document.querySelector('mat-icon');
+        if (iconVariant === 'text') {
+            icon.textContent = 'close';
+        } else {
+            icon.setAttribute('data-mat-icon-name', 'close');
+        }
+        const active = await readState(page);
+        assert.equal(active.iconName, 'close', iconVariant);
+        assert.equal(active.activeTemporaryDom, true, iconVariant);
+        assert.equal(active.enabled, true, iconVariant);
+        window.close();
+    }
 });
