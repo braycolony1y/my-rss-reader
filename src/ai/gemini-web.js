@@ -880,149 +880,62 @@ async function waitForTemporaryChatState(
 }
 
 
-async function clickGeminiNewChatControl(
-    page,
-    timeoutMs = 5000
-) {
-    const deadline =
-        Date.now() + timeoutMs;
-
+async function clickGeminiNewChatControl(page, timeoutMs = 5000) {
+    const deadline = Date.now() + timeoutMs;
+    let sidebarOpened = false;
     while (Date.now() < deadline) {
-        const result =
-            await page.evaluate(() => {
-                const visible = element => {
-                    if (!element) {
-                        return false;
-                    }
-
-                    const style =
-                        getComputedStyle(
-                            element
-                        );
-
-                    const rect =
-                        element
-                            .getBoundingClientRect();
-
-                    return (
-                        style.display !==
-                            'none' &&
-                        style.visibility !==
-                            'hidden' &&
-                        rect.width > 0 &&
-                        rect.height > 0
-                    );
-                };
-
-                const controls = [
-                    ...document
-                        .querySelectorAll(
-                            'a[aria-label],button[aria-label],[role="button"][aria-label]'
-                        )
-                ]
-                    .filter(visible)
-                    .filter(element =>
-                        /^new chat$/i.test(
-                            String(
-                                element
-                                    .getAttribute(
-                                        'aria-label'
-                                    ) ||
-                                ''
-                            )
-                                .replace(
-                                    /\s+/g,
-                                    ' '
-                                )
-                                .trim()
-                        )
-                    );
-
-                /*
-                 * Gemini currently exposes more than one visible
-                 * "New chat" element.
-                 *
-                 * Prefer the /app control. The other observed control
-                 * points at "/" and is the sparkle/home control.
-                 */
-                const preferred =
-                    controls.find(
-                        element => {
-                            const href =
-                                String(
-                                    element.getAttribute(
-                                        'href'
-                                    ) ||
-                                    ''
-                                );
-
-                            if (!href) {
-                                return false;
-                            }
-
-                            try {
-                                const pathname =
-                                    new URL(
-                                        href,
-                                        location.href
-                                    ).pathname;
-
-                                return /\/app\/?$/.test(
-                                    pathname
-                                );
-                            }
-                            catch {
-                                return false;
-                            }
-                        }
-                    );
-
-                const control =
-                    preferred ||
-                    controls[0];
-
-                if (!control) {
-                    return null;
-                }
-
-                const href =
-                    String(
-                        control.getAttribute(
-                            'href'
-                        ) ||
-                        ''
-                    );
-
-                control.click();
-
-                return {
-                    clicked: true,
-                    href,
-                    preferred:
-                        control === preferred
-                };
-            }).catch(
-                () => null
+        const result = await page.evaluate(() => {
+            const visible = element => {
+                if (!element) return false;
+                const style = getComputedStyle(element);
+                const rect = element.getBoundingClientRect();
+                return style.display !== 'none' && style.visibility !== 'hidden' &&
+                    rect.width > 0 && rect.height > 0;
+            };
+            const name = element => String(
+                element.getAttribute('aria-label') || ''
+            ).replace(/\s+/g, ' ').trim();
+            const links = [...document.querySelectorAll(
+                'a[aria-label="New chat"],button[aria-label="New chat"],[role="button"][aria-label="New chat"]'
+            )].filter(visible);
+            const preferred = links.find(element => {
+                const href = element.getAttribute('href');
+                if (!href) return false;
+                try {
+                    const url = new URL(href, location.href);
+                    return url.origin === location.origin &&
+                        /\/app\/?$/.test(url.pathname);
+                } catch { return false; }
+            });
+            // Never click the sparkle/home link at "/" as a substitute.
+            if (preferred) {
+                preferred.click();
+                return { clicked: true, href: preferred.getAttribute('href') };
+            }
+            const menu = [...document.querySelectorAll('button')].find(element =>
+                visible(element) && (
+                    /^main menu$/i.test(name(element)) ||
+                    [...element.querySelectorAll('mat-icon')].some(icon =>
+                        /^(menu|menu_open)$/.test(String(
+                            icon.getAttribute('fonticon') ||
+                            icon.getAttribute('data-mat-icon-name') ||
+                            icon.textContent || ''
+                        ).trim())
+                    )
+                )
             );
-
-        if (result?.clicked) {
-            console.log(
-                `[GEMINI WEB] New chat control selected href=${result.href || '(none)'}${
-                    result.preferred
-                        ? ' (preferred /app New chat control)'
-                        : ''
-                }`
-            );
-
-            return true;
-        }
-
-        await sleep(200);
+            if (menu) {
+                menu.click();
+                return { openedSidebar: true };
+            }
+            return { missing: true };
+        });
+        if (result.clicked) return true;
+        if (result.openedSidebar) sidebarOpened = true;
+        await sleep(sidebarOpened ? 250 : 200);
     }
-
     return false;
 }
-
 
 async function waitForFreshNormalChat(
     page,
@@ -1064,93 +977,23 @@ async function waitForFreshNormalChat(
 
 
 async function returnToGeminiChatHome(page) {
-    /*
-     * Ctrl+Shift+O is the primary New Chat mechanism.
-     *
-     * Live results showed the visible New Chat control usually
-     * does not produce a state we can confirm as fresh:
-     *
-     *   16 real-control attempts
-     *   15 confirmation failures
-     *
-     * Keep the visible control only as a final compatibility
-     * fallback.
-     */
-    for (
-        let attempt = 1;
-        attempt <= 2;
-        attempt += 1
-    ) {
-        try {
-            await page.pressKey(
-                'Escape'
-            );
+    // Verified 2026-10-16: real New chat control works with both collapsed
+    // and expanded sidebar, including reactivation from Temporary Chat.
+    // Avoid Ctrl+Shift+O and reload-based resets for routine jobs.
+    for (let attempt = 1; attempt <= 2; attempt++) {
+        const clicked = await clickGeminiNewChatControl(page, 5000);
+        if (clicked) {
+            const fresh = await waitForFreshNormalChat(page, 10000);
+            if (fresh) return fresh;
         }
-        catch {
-            // Nothing to close.
-        }
-
-        await sleep(150);
-
-        console.log(
-            `[GEMINI WEB] New chat via Ctrl+Shift+O (attempt ${attempt})`
-        );
-
-        await page.pressKey(
-            'Control+Shift+O'
-        );
-
-        const fresh =
-            await waitForFreshNormalChat(
-                page,
-                10000
-            );
-
-        if (fresh) {
-            return fresh;
-        }
-
-        console.warn(
-            `[GEMINI WEB] Ctrl+Shift+O attempt ${attempt} did not reach a confirmed fresh normal chat`
-        );
+        console.warn('[GEMINI WEB] New chat UI confirmation failed, attempt ' + attempt);
     }
-
-    /*
-     * Final compatibility fallback.
-     */
-    console.warn(
-        '[GEMINI WEB] New chat shortcut failed; trying real New chat control once'
-    );
-
-    const clicked =
-        await clickGeminiNewChatControl(
-            page,
-            3000
-        );
-
-    if (clicked) {
-        console.log(
-            '[GEMINI WEB] New chat via real New chat control fallback'
-        );
-
-        const fresh =
-            await waitForFreshNormalChat(
-                page,
-                10000
-            );
-
-        if (fresh) {
-            return fresh;
-        }
-    }
-
     return providerError(
         page,
-        'Gemini could not reach a confirmed fresh normal chat',
+        'Gemini could not reach a confirmed fresh normal chat using New chat',
         'GEMINI_WEB_NEW_CHAT_FAILED'
     );
 }
-
 
 async function resetFreshTemporaryChat(page) {
     let state =
@@ -1201,18 +1044,14 @@ async function resetFreshTemporaryChat(page) {
         );
     }
 
-    /*
-     * ON can now be confirmed by either:
-     *
-     * - toolbar icon = close
-     * - chat-window.is-temporary-chat
-     * - .chat-history.temporary-chat
-     */
-    await waitForTemporaryChatState(
-        page,
-        true,
-        10000
-    );
+    await waitForTemporaryChatState(page, true, 10000);
+    // Fail closed: require BOTH independently observed live indicators.
+    const verified = await temporaryChatState(page);
+    if (!verified.activeTemporaryDom || verified.iconName !== 'close') {
+        return providerError(page,
+            'Temporary Chat activation requires both active chat DOM and close icon',
+            'GEMINI_WEB_TEMP_CHAT_NOT_CONFIRMED');
+    }
 }
 
 
@@ -2623,28 +2462,17 @@ function buildInput(prompt, options) {
 }
 
 async function resetGeminiJobPage(page) {
-    // Keep the physical tab inactive, but allow Gemini's visibility-gated UI
-    // and response rendering to run. This does not select or focus Chrome.
     const currentUrl = await page.evaluate(() => location.href);
     await page.cdp('Emulation.setFocusEmulationEnabled', { enabled: true });
     if (!/^https:\/\/gemini\.google\.com\//i.test(currentUrl || '')) {
         await page.goto(GEMINI_WEB_URL);
         await waitForGeminiPage(page, 20000);
     }
-    // Normal reuse is New chat -> confirm an empty conversation -> Temporary
-    // Chat ON. Reload this same tab only to recover a failed new-chat action.
-    try {
-        await returnToGeminiChatHome(page);
-    } catch (error) {
-        if (error.code !== 'GEMINI_WEB_NEW_CHAT_FAILED') throw error;
-        console.warn('[GEMINI WEB] New chat failed; reloading the same tab for recovery');
-        await page.goto(GEMINI_WEB_URL);
-        await waitForGeminiPage(page, 20000);
-        await returnToGeminiChatHome(page);
-    }
+    // No page reload/new tab as a fallback: fail closed rather than
+    // risk submitting a job into an existing or non-temporary chat.
+    await returnToGeminiChatHome(page);
     await resetFreshTemporaryChat(page);
 }
-
 
 async function runOnSlot(
     slot,
@@ -2686,7 +2514,7 @@ async function runOnSlot(
             }
 
             console.warn(
-                `[GEMINI WEB] Slot ${slot.id}: mode picker missing; reloading same tab once`
+                `[GEMINI WEB] Slot ${slot.id}: mode picker missing; retrying fresh chat on same tab`
             );
 
             await resetGeminiJobPage(page);
@@ -2695,6 +2523,14 @@ async function runOnSlot(
                 options?.geminiWebMode ||
                     '3.8'
             );
+        }
+
+        const ready = await temporaryChatState(page);
+        if (!ready.activeTemporaryDom || ready.iconName !== 'close' ||
+            !ready.freshRoute || !ready.conversationEmpty) {
+            return providerError(page,
+                'Temporary Chat was not confirmed immediately before submission',
+                'GEMINI_WEB_TEMP_CHAT_NOT_CONFIRMED');
         }
 
         const before =
