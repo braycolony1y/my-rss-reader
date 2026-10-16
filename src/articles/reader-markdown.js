@@ -419,6 +419,9 @@ function parseJinaReaderText(text, url) {
     const validImage = allImages.find(img => !isInvalidImage(img) && !img.includes('avplayer.com')) || allImages.find(img => !isInvalidImage(img)) || '';
     let content = normalizeArticleMediaMarkup(cleanArticleMarkup(jinaMarkdownToHtml(markdown, url)), url);
     const sourceHandler = sourceRegistry.getHandler(url);
+    if (sourceMetadata.microsoftAiFigures?.length && sourceHandler?.cleanCachedArticleContent) {
+        content = sourceHandler.cleanCachedArticleContent(content, { url, title, source: 'jina-reader', microsoftAiFigures: sourceMetadata.microsoftAiFigures });
+    }
     if (readerType === 'techmeme-story' && sourceHandler?.cleanCachedArticleContent) {
         content = sourceHandler.cleanCachedArticleContent(content, { url, title, source: 'jina-reader' });
     }
