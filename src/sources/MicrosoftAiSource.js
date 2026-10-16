@@ -68,6 +68,14 @@ export function stripMicrosoftAiEncodedFigures(content = '') {
     ).join('');
 }
 
+function upgradeMicrosoftAiContent(content = '', figures = []) {
+    if (figures?.length) return restoreMicrosoftAiFigures(content, figures);
+    const original = String(content || '');
+    if (original.includes('data-microsoft-ai-data=')) return stripMicrosoftAiEncodedFigures(original);
+    const extracted = extractMicrosoftAiFigures(original);
+    return restoreMicrosoftAiFigures(extracted.markdown, extracted.figures);
+}
+
 export default class MicrosoftAiSource {
     match(hostname) {
         return hostname === 'microsoft.ai';
@@ -93,7 +101,7 @@ export default class MicrosoftAiSource {
 
     enhanceArticleResult(result, context = {}) {
         if (!result || !isMicrosoftAiArticleUrl(context.url || result.url)) return result;
-        const content = stripMicrosoftAiEncodedFigures(result.content);
+        const content = upgradeMicrosoftAiContent(result.content);
         return content === result.content ? result : { ...result, content };
     }
 }
