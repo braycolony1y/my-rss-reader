@@ -616,9 +616,7 @@ async function temporaryChatState(page) {
             );
 
         const icon =
-            temporaryButton?.querySelector(
-                'mat-icon[data-mat-icon-name],mat-icon[fonticon]'
-            );
+            temporaryButton?.querySelector('mat-icon');
 
         const iconName =
             String(
@@ -628,8 +626,9 @@ async function temporaryChatState(page) {
                 icon?.getAttribute(
                     'fonticon'
                 ) ||
+                icon?.textContent ||
                 ''
-            ).trim();
+            ).replace(/\s+/g, ' ').trim();
 
         const toolbarEnabled =
             iconName === 'close';
