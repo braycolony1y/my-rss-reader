@@ -64,9 +64,22 @@ test('project root contains only documented production and workspace entries', a
         // The live database writer briefly stages these atomic runtime files.
         .filter(entry => !/^smart-embeddings-worker\.json\.tmp-\d+$/.test(entry.name))
         .filter(entry => !/^(?:database\.json|database-state\.json|smart-state\.json|smart-data\.json|feeds_backup\.json)(?:\.backup)?\.tmp-\d+-[a-z0-9]+$/.test(entry.name))
-        .filter((entry) => entry.isDirectory()
-            ? !allowedRootDirectories.has(entry.name)
-            : !allowedRootFiles.has(entry.name))
+        // Git worktrees use a .git pointer file, and isolated test worktrees
+        // may symlink node_modules to the production checkout's dependencies.
+        // These are known workspace entries, not stray project files.
+        .filter(entry => {
+            if (entry.name === '.git' &&
+                (entry.isDirectory() || entry.isFile() || entry.isSymbolicLink())) {
+                return false;
+            }
+            if (entry.name === 'node_modules' &&
+                (entry.isDirectory() || entry.isSymbolicLink())) {
+                return false;
+            }
+            return entry.isDirectory()
+                ? !allowedRootDirectories.has(entry.name)
+                : !allowedRootFiles.has(entry.name);
+        })
         .map((entry) => entry.name)
         .sort();
 
