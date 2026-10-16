@@ -108,3 +108,56 @@ for (const layout of ['wide', 'narrow']) {
         assert.equal((await readGeminiWebModeState(context.page)).selectedModelId, ids[1]);
     });
 }
+
+test('changed Gemini model IDs still select by actual visible model label', async () => {
+    const context = fixture('narrow');
+    const item = context.dom.window.document.querySelector(
+        '[data-test-id="' + ids[3] + '"]'
+    );
+    item.setAttribute('data-test-id', 'bard-mode-option-new-random-id');
+    item.setAttribute('data-mode-id', 'new-random-id');
+    const result = await selectGeminiWebMode(
+        context.page, '4-argon-medium', context
+    );
+    assert.equal(result.model, '4 Argon');
+    const state = await readGeminiWebModeState(context.page);
+    assert.equal(state.selectedModelName, '4 Argon');
+    assert.equal(state.selectedModelId, 'bard-mode-option-new-random-id');
+});
+
+test('an upsell mode is not selectable even if aria-disabled is false', async () => {
+    const context = fixture('wide');
+    const item = context.dom.window.document.querySelector(
+        '[data-test-id="' + ids[3] + '"]'
+    );
+    item.setAttribute('data-test-id',
+        'bard-mode-option-upsell_MODE_CATEGORY_ULTRA');
+    item.setAttribute('data-mode-id', 'upsell_MODE_CATEGORY_ULTRA');
+    item.setAttribute('aria-disabled', 'false');
+    const before = await readGeminiWebModeState(context.page);
+    assert.equal(before.models.find(option => option.name === '4 Argon').upsell, true);
+    assert.equal(before.models.find(option => option.name === '4 Argon').disabled, true);
+    await assert.rejects(
+        selectGeminiWebMode(context.page, '4-argon-medium', context),
+        error => error.code === 'GEMINI_WEB_MODEL_UPSELL' &&
+            /upgrade required/i.test(error.message)
+    );
+    assert.equal((await readGeminiWebModeState(context.page)).selectedModelId, ids[1]);
+});
+
+test('Auto does not silently replace requested 3.8 Flash when unavailable', async () => {
+    const context = fixture('narrow');
+    const item = context.dom.window.document.querySelector(
+        '[data-test-id="' + ids[1] + '"]'
+    );
+    item.textContent = 'Auto';
+    item.setAttribute('data-test-id', 'bard-mode-option-cf41b0e0dd7d53e5');
+    item.setAttribute('data-mode-id', 'cf41b0e0dd7d53e5');
+    await assert.rejects(
+        selectGeminiWebMode(context.page, '3.8', context),
+        error => error.code === 'GEMINI_WEB_MODEL_NOT_FOUND' &&
+            /Visible options:.*Auto/.test(error.message) &&
+            /no model was substituted/.test(error.message)
+    );
+    assert.equal((await readGeminiWebModeState(context.page)).selectedModelName, 'Auto');
+});
