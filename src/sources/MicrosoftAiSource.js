@@ -95,7 +95,7 @@ export default class MicrosoftAiSource {
 
     cleanCachedArticleContent(content, context = {}) {
         return isMicrosoftAiArticleUrl(context.url)
-            ? restoreMicrosoftAiFigures(content, context.microsoftAiFigures)
+            ? upgradeMicrosoftAiContent(content, context.microsoftAiFigures)
             : content;
     }
 
