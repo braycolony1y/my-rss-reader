@@ -1,6 +1,7 @@
 import * as cheerio from 'cheerio/slim';
 import { decodeHTML } from 'entities';
 import { cleanBloombergArticleHtml } from './BloombergSource.js';
+import { isMicrosoftAiArticleUrl, stripMicrosoftAiEncodedFigures } from './MicrosoftAiSource.js';
 
 function escapeHtml(value = '') {
     return String(value).replace(/[&<>"']/g, character => ({
@@ -475,6 +476,14 @@ function cleanNestedPrimaryArticle(markup = '', context = {}) {
         });
     }
 
+    if (isMicrosoftAiArticleUrl(primaryUrl)) {
+        story.find('.techmeme-primary-article__content').each((_, element) => {
+            const body = $(element);
+            const cleaned = stripMicrosoftAiEncodedFigures(body.html() || '');
+            if (cleaned !== body.html()) body.html(cleaned);
+        });
+    }
+
     return root.html().trim();
 }
 
@@ -547,6 +556,9 @@ export default class TechmemeSource {
             primary = await context.fetchPrimaryArticle(primaryUrl);
         } catch (error) {
             primary = null;
+        }
+        if (primary?.content && isMicrosoftAiArticleUrl(primaryUrl)) {
+            primary = { ...primary, content: stripMicrosoftAiEncodedFigures(primary.content) };
         }
         const primaryText = cleanText(primary?.content || '');
         if (!primary?.content || primaryText.length < 400 || looksLikePublisherChallenge(primary.content)) {
