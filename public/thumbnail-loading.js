@@ -57,7 +57,7 @@ export function installThumbnailLoading(win) {
             }
         }
         drain();
-    }, {rootMargin: '400px 0px'}) : null;
+    }, {rootMargin: '1200px 0px'}) : null;
     // Separate in-viewport observation makes fast iPhone scrolling prioritize
     // cards on screen instead of older cards still in the preload margin.
     const viewportObserver = typeof win.IntersectionObserver === 'function' ? new win.IntersectionObserver(entries => {
