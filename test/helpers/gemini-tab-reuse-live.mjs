@@ -8,7 +8,9 @@ import { Page } from '../../src/browser/opencli-page.js';
 import { readGeminiWebModeState, selectGeminiWebMode } from '../../src/ai/gemini-web-mode.js';
 import { sendCommand } from '../../node_modules/@jackwener/opencli/dist/src/browser/daemon-client.js';
 
-process.env.GEMINI_WEB_URL ||= 'https://gemini.google.com/u/0/app';
+// Match the production provider's default account route; override explicitly
+// with GEMINI_WEB_URL if the intended signed-in account is different.
+process.env.GEMINI_WEB_URL ||= 'https://gemini.google.com/u/1/app';
 const source = readFileSync(new URL('../../src/ai/gemini-web.js', import.meta.url), 'utf8')
     .replace(/^import .+;\r?\n/gm, '').replace(/^export /gm, '');
 const { runOnSlot, cleanResponse, temporaryChatState } = vm.runInNewContext(
@@ -25,6 +27,10 @@ let originalId;
 let navigations = 0;
 let submitted = 0;
 const mode = process.env.GEMINI_LIVE_SMOKE_MODE || '3.8';
+console.log('GEMINI_LIVE_SMOKE_CONFIG', JSON.stringify({
+    targetUrl: process.env.GEMINI_WEB_URL, mode,
+    profileConfigured: Boolean(profile)
+}));
 const originalGoto = page.goto.bind(page);
 page.goto = async (...args) => { navigations++; return originalGoto(...args); };
 
@@ -46,7 +52,7 @@ try {
     console.log('GEMINI_LIVE_SMOKE_PASS: second Temporary Chat replied in the original tab');
 } catch (error) {
     console.error('GEMINI_LIVE_SMOKE_FAIL:', error.code || error.name, error.message);
-    if (error.code === 'GEMINI_WEB_MODEL_NOT_FOUND') {
+    if (error.code === 'GEMINI_WEB_MODEL_NOT_FOUND' || error.code === 'GEMINI_WEB_MODEL_UPSELL') {
         try {
             // Model picker is normally closed by ensureModel's finally.
             // Reopen it for read-only diagnostics; do not pick an option.
@@ -59,6 +65,7 @@ try {
                 if (!expanded) button.click();
                 return {
                     pickerFound: true,
+                    pageUrl: location.href,
                     pickerTag: picker.tagName.toLowerCase(),
                     pickerText: String(picker.innerText || picker.textContent || '')
                         .replace(/\s+/g, ' ').trim().slice(0, 140)
