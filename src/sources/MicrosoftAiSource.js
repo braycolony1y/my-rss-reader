@@ -8,6 +8,25 @@ const MAX_FIGURE_BYTES = 400_000;
 const MAX_TOTAL_FIGURE_BYTES = 1_500_000;
 const tokenFor = index => 'RSSMICROSOFTAIFIGURE' + index + 'PLACEHOLDER';
 
+// Publisher HTML documents end in a closing script/div. Because OpenCLI can
+// concatenate the next paragraph without whitespace, the Base64 regex may
+// swallow its initial letters ("We", "Scaling", "Activation", etc.).
+// Identify the LAST encoded closing tag and return that prose to the reader.
+function splitFigureDocument(value) {
+    const source = String(value || '');
+    const prefix = source.match(/^data:text\/html(?:;charset=[^;,\s"'<>]+)?;base64,/i)?.[0] || '';
+    const encoded = source.slice(prefix.length);
+    const ends = ['L3NjcmlwdD4=', 'L2Rpdj4=', 'PC9zY3JpcHQ+', 'PC9kaXY+'];
+    let boundary = 0;
+    for (const ending of ends) {
+        const at = encoded.lastIndexOf(ending);
+        if (at >= 500) boundary = Math.max(boundary, at + ending.length);
+    }
+    if (!boundary || boundary === encoded.length) return { encoded, trailingText: '' };
+    return { encoded: encoded.slice(0, boundary), trailingText: encoded.slice(boundary) };
+}
+
+
 function validFigurePayload(base64) {
     if (!base64 || base64.length > MAX_FIGURE_BYTES) return false;
     const doc = Buffer.from(base64, 'base64').toString('utf8');
@@ -20,13 +39,13 @@ export function extractMicrosoftAiFigures(markdown = '') {
     const figures = [];
     let bytes = 0;
     const cleaned = String(markdown || '').replace(ENCODED_HTML_DOCUMENT, value => {
-        const base64 = value.replace(/^data:text\/html(?:;charset=[^;,\s"'<>]+)?;base64,/i, '');
+        const { encoded: base64, trailingText } = splitFigureDocument(value);
         if (figures.length >= MAX_FIGURES || bytes + base64.length > MAX_TOTAL_FIGURE_BYTES
-            || !validFigurePayload(base64)) return '';
+            || !validFigurePayload(base64)) return trailingText;
         const number = figures.length;
         figures.push(base64);
         bytes += base64.length;
-        return '\n\n' + tokenFor(number) + '\n\n';
+        return '\n\n' + tokenFor(number) + '\n\n' + trailingText;
     });
     return { markdown: cleaned, figures };
 }
@@ -64,7 +83,8 @@ export function stripMicrosoftAiEncodedFigures(content = '') {
     // Only strip unexpected figure bytes in TEXT nodes, not in our own
     // sanitized data attributes; cached figures must survive another read.
     return text.split(/(<[^>]*>)/g).map((part, index) =>
-        index % 2 === 0 ? part.replace(ENCODED_HTML_DOCUMENT, '') : part
+        index % 2 === 0 ? part.replace(ENCODED_HTML_DOCUMENT, value =>
+            splitFigureDocument(value).trailingText) : part
     ).join('');
 }
 
