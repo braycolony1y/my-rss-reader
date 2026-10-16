@@ -120,7 +120,8 @@ test('each Gemini job uses New chat then Temporary Chat; failure never reloads o
     for (const failedNewChat of [false, true]) {
         const calls = [];
         const reset = vm.runInNewContext('(' + fn + ')', {
-            GEMINI_WEB_URL: 'https://gemini.google.com/u/1/app',
+            URL,
+        GEMINI_WEB_URL: 'https://gemini.google.com/u/1/app',
             returnToGeminiChatHome: async () => {
                 calls.push('new-chat');
                 if (failedNewChat) {
@@ -212,4 +213,29 @@ test('Temporary Chat reads either mat-icon text or data-mat-icon-name', async ()
         assert.equal(active.enabled, true, iconVariant);
         window.close();
     }
+});
+
+test('Gemini tab on account /u/0 switches to configured /u/1 before UI reset', async () => {
+    const source = readFileSync(new URL('../src/ai/gemini-web.js', import.meta.url), 'utf8');
+    const start = source.indexOf('async function resetGeminiJobPage(');
+    const fn = source.slice(start, source.indexOf('\n\nasync function runOnSlot', start));
+    const calls = [];
+    const reset = vm.runInNewContext('(' + fn + ')', {
+        URL,
+        GEMINI_WEB_URL: 'https://gemini.google.com/u/1/app',
+        returnToGeminiChatHome: async () => calls.push('new-chat'),
+        waitForGeminiPage: async () => calls.push('ready'),
+        resetFreshTemporaryChat: async () => calls.push('temporary-on')
+    });
+    await reset({
+        evaluate: async () => 'https://gemini.google.com/u/0/app',
+        cdp: async () => calls.push('emulated'),
+        goto: async url => {
+            assert.equal(url, 'https://gemini.google.com/u/1/app');
+            calls.push('switch-account');
+        }
+    });
+    assert.deepEqual(calls, [
+        'emulated', 'switch-account', 'ready', 'new-chat', 'temporary-on'
+    ]);
 });
