@@ -115,7 +115,7 @@ test('adjacent article prose is preserved when unpadded figure Base64 touches th
         const extracted = extractMicrosoftAiFigures(input);
         assert.equal(extracted.figures.length, 1);
         assert.equal(extracted.figures[0], encoded);
-        assert.match(extracted.markdown, new RegExp(nextProse.replace(/[.*+?^$()|[\]{}\\]/g, '\\$&')));
+        assert.ok(extracted.markdown.includes(nextProse));
         assert.match(stripMicrosoftAiEncodedFigures(input), /Figure caption\. (We|Activation|Scaling)/);
         assert.ok(extracted.markdown.includes(nextProse + ' More context.'));
     }
