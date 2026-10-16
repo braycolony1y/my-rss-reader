@@ -91,3 +91,32 @@ test('Microsoft AI figure hydration uses lazy opaque-origin sandbox frames', () 
     assert.match(embeds, /frame\.src = 'data:text\/html;base64,' \+ encoded/);
     assert.equal((overlay.match(/this\.hydrateMicrosoftAiFigures\(/g) || []).length, 2);
 });
+
+
+test('adjacent article prose is preserved when unpadded figure Base64 touches the next word', () => {
+    const construct = (endTag, expectedEnding) => {
+        for (let offset = 0; offset < 3; offset++) {
+            const doc = '<meta http-equiv="Content-Security-Policy" content="default-src \'none\';">'
+                + '<div><svg viewBox="0 0 300 120"><text>Plot</text></svg>'
+                + 'x'.repeat(700 + offset) + '</div>'
+                + (endTag === '</script>' ? '<script>window.figure=1;</script>' : '');
+            const encoded = Buffer.from(doc, 'utf8').toString('base64');
+            if (encoded.endsWith(expectedEnding)) return encoded;
+        }
+        throw new Error('Could not generate a figure ending with ' + expectedEnding);
+    };
+    const cases = [
+        [construct('</div>', 'PC9kaXY+'), 'We compare pre-trained models.'],
+        [construct('</script>', 'PC9zY3JpcHQ+'), 'Activation gradient clipping helps.'],
+        [construct('</div>', 'PC9kaXY+'), 'Scaling DataMAI-Base-2 uses more tokens.']
+    ];
+    for (const [encoded, nextProse] of cases) {
+        const input = 'Figure caption. ' + encoded + nextProse + ' More context.';
+        const extracted = extractMicrosoftAiFigures(input);
+        assert.equal(extracted.figures.length, 1);
+        assert.equal(extracted.figures[0], encoded);
+        assert.match(extracted.markdown, new RegExp(nextProse.replace(/[.*+?^$()|[\]{}\\]/g, '\\$&')));
+        assert.match(stripMicrosoftAiEncodedFigures(input), /Figure caption\. (We|Activation|Scaling)/);
+        assert.ok(extracted.markdown.includes(nextProse + ' More context.'));
+    }
+});
