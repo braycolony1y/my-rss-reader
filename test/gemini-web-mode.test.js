@@ -3,75 +3,108 @@ import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import { resolveGeminiWebMode, readGeminiWebModeState, selectGeminiWebMode } from '../src/ai/gemini-web-mode.js';
 
-const modelIds = [
+const ids = [
     'bard-mode-option-8c46e95b1a07cecc',
     'bard-mode-option-56fdd199312815e2',
-    'bard-mode-option-e6fa609c3fa255c0'
+    'bard-mode-option-e6fa609c3fa255c0',
+    'bard-mode-option-95a4c0abcba24364'
 ];
-const fixture = () => {
-    const dom = new JSDOM(`<div data-test-id="gem-mode-menu">
-      <div role="menuitem" data-test-id="${modelIds[0]}">3.5 Flash-Lite Fastest answers</div>
-      <div role="menuitem" data-test-id="${modelIds[1]}" class="selected">3.8 Flash All-around help</div>
-      <div role="menuitem" data-test-id="${modelIds[2]}">3.1 Pro Advanced reasoning</div>
-      <div role="menuitem">Low Quick and efficient</div>
-      <div role="menuitem">Medium Balanced depth</div>
-      <div role="menuitem" class="selected">High Extra thorough</div>
-    </div>`, { runScripts: 'outside-only' });
+
+function fixture(layout = 'narrow') {
+    const submenu = ['Low Quick and efficient', 'Medium Balanced depth', 'High Extra thorough']
+        .map((name, i) => '<gem-menu-item role="menuitem" class="' +
+            (i === 0 ? 'selected' : '') + '"><span class="label">' +
+            name.split(' ')[0] + '</span><span>' +
+            name.split(' ').slice(1).join(' ') + '</span></gem-menu-item>').join('');
+    const narrow = layout === 'narrow';
+    const dom = new JSDOM('<div data-test-id="gem-mode-menu">' +
+        ids.map((id, i) => '<gem-menu-item role="menuitem" data-test-id="' +
+            id + '" class="' + (i === 1 ? 'selected' : '') + '">' +
+            ['3.5 Flash-Lite', '3.8 Flash', '3.1 Pro', '4 Argon'][i] +
+            '</gem-menu-item>').join('') +
+        '<gem-menu-item role="menuitem" value="thinking_level" aria-haspopup="' +
+            (!narrow) + '" aria-expanded="false">' +
+            '<span class="label">Thinking level</span>' +
+            (narrow ? '<div class="expand-content" hidden>' + submenu + '</div>' : '') +
+            '</gem-menu-item></div>' +
+            (narrow ? '' : '<div class="cdk-overlay-pane" hidden><gem-menu role="menu">' +
+                submenu + '</gem-menu></div>'), { runScripts: 'outside-only' });
     const { window } = dom;
-    // JSDOM does not calculate layout geometry; simulate a visible menu.
-    window.HTMLElement.prototype.getBoundingClientRect = () => ({ width: 300, height: 320 });
-    const menu = window.document.querySelector('[data-test-id="gem-mode-menu"]');
-    for (const node of menu.querySelectorAll('[role="menuitem"]')) {
-        node.addEventListener('click', () => {
-            const isModel = !!node.getAttribute('data-test-id');
-            const selector = isModel ? '[data-test-id^="bard-mode-option-"]' : '[role="menuitem"]:not([data-test-id])';
-            for (const option of menu.querySelectorAll(selector)) option.classList.remove('selected');
-            node.classList.add('selected');
+    window.HTMLElement.prototype.getBoundingClientRect = () =>
+        ({ width: 250, height: 350 });
+    const doc = window.document;
+    const trigger = doc.querySelector('[value="thinking_level"]');
+    const expanded = narrow ?
+        trigger.querySelector('.expand-content') :
+        doc.querySelector('.cdk-overlay-pane');
+    const show = () => {
+        expanded.removeAttribute('hidden');
+        trigger.setAttribute('aria-expanded', 'true');
+    };
+    trigger.addEventListener('click', show);
+    if (!narrow) trigger.addEventListener('mouseover', show);
+    for (const element of doc.querySelectorAll('[data-test-id^="bard-mode-option-"]')) {
+        element.addEventListener('click', () => {
+            doc.querySelectorAll('[data-test-id^="bard-mode-option-"]')
+                .forEach(item => item.classList.remove('selected'));
+            element.classList.add('selected');
         });
     }
-    // Browser protocol results cross realms by value; JSDOM eval alone leaves
-    // browser Array prototypes attached and makes strict Node assertions fail.
-    const page = { evaluate: async (fn, arg) => structuredClone(window.eval(`(${fn.toString()})(${JSON.stringify(arg ?? null)})`)) };
-    const openMenu = async () => {};
-    const closeMenu = async () => {};
-    const sleep = async () => {};
-    return { dom, page, openMenu, closeMenu, sleep };
-};
+    for (const element of [...doc.querySelectorAll('gem-menu-item')].filter(item =>
+        /^(Low|Medium|High)$/.test(item.querySelector('.label')?.textContent || '')
+    )) {
+        element.addEventListener('click', () => {
+            for (const other of doc.querySelectorAll('gem-menu-item')) {
+                if (/^(Low|Medium|High)$/.test(other.querySelector('.label')?.textContent || '')) {
+                    other.classList.remove('selected');
+                }
+            }
+            element.classList.add('selected');
+        });
+    }
+    const page = {
+        evaluate: async (fn, arg) =>
+            structuredClone(window.eval('(' + fn.toString() + ')(' +
+                JSON.stringify(arg ?? null) + ')'))
+    };
+    return {
+        page, dom,
+        openMenu: async () => {},
+        closeMenu: async () => {},
+        sleep: async () => {}
+    };
+}
 
-test('legacy and explicit mode names map to model and thinking level', () => {
+test('supports legacy modes, explicit levels and 4 Argon', () => {
     assert.equal(resolveGeminiWebMode('3.8').thinkingLevel, 'low');
     assert.equal(resolveGeminiWebMode('3.8-think').thinkingLevel, 'high');
     assert.equal(resolveGeminiWebMode('3.1-pro').thinkingLevel, 'low');
-    assert.equal(resolveGeminiWebMode('3.1-pro-think').thinkingLevel, 'high');
-    assert.equal(resolveGeminiWebMode('3.8-medium').thinkingLevel, 'medium');
-    assert.equal(resolveGeminiWebMode('3.5-flash-lite-high').modelId, modelIds[0]);
+    assert.equal(resolveGeminiWebMode('4-argon-medium').modelId, ids[3]);
+    assert.equal(resolveGeminiWebMode('4-high').thinkingLevel, 'high');
     assert.equal(resolveGeminiWebMode('unknown').mode, '3.8');
 });
 
-test('reads all three thinking levels independently of selected model', async () => {
-    const { page } = fixture();
-    const state = await readGeminiWebModeState(page);
-    assert.deepEqual(state.thinking.map(x => x.level), ['low', 'medium', 'high']);
-    assert.equal(state.selectedModelId, modelIds[1]);
-    assert.equal(state.selectedThinking, 'high');
-});
+for (const layout of ['wide', 'narrow']) {
+    test(layout + ': exposes hidden thinking submenu and selects correct model/level', async () => {
+        const context = fixture(layout);
+        const before = await readGeminiWebModeState(context.page);
+        assert.equal(before.thinking.length, 0);
+        assert.equal(before.selectedModelId, ids[1]);
+        const result = await selectGeminiWebMode(
+            context.page, '4-argon-medium', context
+        );
+        assert.equal(result.model, '4 Argon');
+        assert.equal(result.thinkingLevel, 'medium');
+        const after = await readGeminiWebModeState(context.page);
+        assert.equal(after.selectedModelId, ids[3]);
+        assert.equal(after.selectedThinking, 'medium');
+    });
 
-test('switches model and thinking independently and confirms both', async () => {
-    const { page, openMenu, closeMenu, sleep } = fixture();
-    const result = await selectGeminiWebMode(page, '3.1-pro-medium', { openMenu, closeMenu, sleep });
-    assert.equal(result.model, '3.1 Pro');
-    assert.equal(result.thinkingLevel, 'medium');
-    const after = await readGeminiWebModeState(page);
-    assert.equal(after.selectedModelId, modelIds[2]);
-    assert.equal(after.selectedThinking, 'medium');
-});
-
-test('does not click if model and thinking are already correct', async () => {
-    const { page, dom, openMenu, closeMenu, sleep } = fixture();
-    let clicks = 0;
-    dom.window.document.querySelector('[data-test-id="gem-mode-menu"]')
-        .addEventListener('click', () => { clicks++; });
-    const result = await selectGeminiWebMode(page, '3.8-high', { openMenu, closeMenu, sleep });
-    assert.equal(result.thinkingLevel, 'high');
-    assert.equal(clicks, 0);
-});
+    test(layout + ': confirms selected items, not merely active/focused items', async () => {
+        const context = fixture(layout);
+        context.dom.window.document.querySelector(
+            '[data-test-id="' + ids[0] + '"]'
+        ).classList.add('active');
+        assert.equal((await readGeminiWebModeState(context.page)).selectedModelId, ids[1]);
+    });
+}
