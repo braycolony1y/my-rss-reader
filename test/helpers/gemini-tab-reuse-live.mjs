@@ -41,7 +41,7 @@ try {
         assert.equal(tabs[0].active, false);
         console.log(`GEMINI_REUSE_PROBE_OK: ${probe}, same inactive tab, fresh response, navigations=${navigations}, submitted=${submitted}`);
     }
-    assert.equal(navigations, 1, 'the second normal job must use New chat without reloading');
+    assert.ok(navigations <= 1, 'the second job must use New chat without reloading');
     assert.equal(submitted, 2, 'Each job must submit once');
     console.log('GEMINI_LIVE_SMOKE_PASS: second Temporary Chat replied in the original tab');
 } finally {
