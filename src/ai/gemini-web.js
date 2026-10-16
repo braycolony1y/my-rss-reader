@@ -1099,7 +1099,9 @@ async function openModelMenu(page) {
         const state = await readGeminiWebModeState(page);
         if (state.open) return state;
         await page.evaluate(() => {
-            const button = document.querySelector('[data-test-id="bard-mode-menu-button"]');
+            const holder = document.querySelector('[data-test-id="bard-mode-menu-button"]');
+            // Narrow Gemini renders a gem-button wrapper, not a native button.
+            const button = holder?.matches('button') ? holder : holder?.querySelector('button');
             if (button && button.getAttribute('aria-expanded') !== 'true') {
                 button.click();
             }
@@ -1112,8 +1114,10 @@ async function openModelMenu(page) {
 
 async function closeModelMenu(page) {
     await page.evaluate(() => {
-        const button = document.querySelector('[data-test-id="bard-mode-menu-button"]');
-        if (button?.getAttribute('aria-expanded') === 'true') button.click();
+        const holder = document.querySelector('[data-test-id="bard-mode-menu-button"]');
+        const button = holder?.matches('button') ? holder : holder?.querySelector('button');
+        if (button && (button.getAttribute('aria-expanded') === 'true' ||
+            holder?.getAttribute('aria-expanded') === 'true')) button.click();
     }).catch(() => {});
     await sleep(150);
 }
