@@ -1,7 +1,7 @@
 import { createImageVisualLifecycle } from './image-visual-state.js?v=20261015_lifecycle_1';
 import { prepareImageVisualAssets } from './image-visual-assets.js?v=20261015_lifecycle_1';
 import { applyImageFocusMutations } from './image-focus-mutations.js?v=20261015_lifecycle_1';
-import { installThumbnailLoading } from './thumbnail-loading.js?v=20261008_visible_card';
+import { installThumbnailLoading } from './thumbnail-loading.js?v=20261017_scroll_2';
 import { fitCardImageViewport, visiblePhotoHeight } from './card-image-layout.js?v=2';
 import { applyImageColors } from './card-blend/legacy-color.js?v=1';
 import { applyTopStoryImage } from './top-story-card/blend/runtime.js?v=20261015_lifecycle_1';

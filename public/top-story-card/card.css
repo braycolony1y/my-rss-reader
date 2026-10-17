@@ -89,7 +89,9 @@
     transform: none;
     transition: opacity 150ms ease;
 }
-html[data-image-focus] :where(.theme-glass-light #scroll-container) .article-card:is([data-image-layout="top"], [data-mobile-clean="1"]) img.thumbnail-img:not([data-focus-state="ready"]) { opacity: 0; }
+/* The source image is visible as soon as decoded; AI focus/tint can refine it
+   later. Waiting for 2.5s metadata fallback causes blank photos on scroll. */
+html[data-image-focus] :where(.theme-glass-light #scroll-container) .article-card:is([data-image-layout="top"], [data-mobile-clean="1"]) img.thumbnail-img:not([data-focus-state="ready"]) { opacity: 1; }
 :where(.theme-glass-light #scroll-container) .article-card:is([data-image-layout="top"], [data-mobile-clean="1"]) .article-metadata > :is(span:first-child, a) {
     display: inline-flex;
     align-items: center;
