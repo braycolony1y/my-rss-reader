@@ -7,10 +7,16 @@ export const MOBILE_TOP = Object.freeze({
     TITLE_LIFT: 20, TITLE_TOP_PADDING: 14, COVERAGE_GAP: 8,
 });
 const selector = '.theme-glass-light #scroll-container .article-card[data-story-blend]:is([data-image-layout="top"], [data-image-layout="standard"])';
+// The same responsive card dimensions share the same mask artwork. Generating
+// 48-path SVGs per card is expensive during initial feed paint on WebKit.
+const maskCache = new Map();
+const MAX_MASK_SIZES = 24;
 const set = (node, key, value) => {
     if (node.style.getPropertyValue(key) !== value) node.style.setProperty(key, value);
 };
 export function directImageMask(width, height) {
+    const key = `${width}/${height}`;
+    if (maskCache.has(key)) return maskCache.get(key);
     const c = MOBILE_TOP, edge = height * c.IMAGE_FEATHER_EDGE / 100;
     const wave = height * c.IMAGE_FEATHER_WAVE / 100;
     // Nested alpha contours approximate a soft blur without SVG filter clipping at
@@ -27,7 +33,10 @@ export function directImageMask(width, height) {
         previous = alpha;
     }
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${paths}</svg>`;
-    return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+    const value = `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+    if (maskCache.size >= MAX_MASK_SIZES) maskCache.delete(maskCache.keys().next().value);
+    maskCache.set(key, value);
+    return value;
 }
 function classify(metadata) {
     for (const node of metadata.querySelectorAll('span, a, div, button')) {
@@ -45,10 +54,20 @@ export function mountMobileTopLayout(root = document.querySelector('#scroll-cont
     if (!root) return () => {};
     const win = root.ownerDocument.defaultView;
     const media = win.matchMedia(`(max-width: ${MOBILE_TOP.MOBILE_BREAKPOINT}px)`);
-    const active = new Set(), masks = new WeakMap();
-    let frame = 0;
-    const schedule = () => { if (!frame) frame = win.requestAnimationFrame(update); };
-    const resize = new ResizeObserver(schedule);
+    const active = new Set(), masks = new WeakMap(), dirty = new Set();
+    let frame = 0, fullScan = true;
+    const schedule = (card = null) => {
+        if (card) dirty.add(card);
+        else fullScan = true;
+        if (!frame) frame = win.requestAnimationFrame(update);
+    };
+    const resize = new ResizeObserver(entries => {
+        for (const entry of entries) {
+            const card = entry.target.closest('.article-card');
+            if (card) dirty.add(card);
+        }
+        if (dirty.size) schedule([...dirty][0]);
+    });
     function clear(card) {
         delete card.dataset.mobileClean;
         delete card.dataset.mobileFramed;
@@ -56,19 +75,29 @@ export function mountMobileTopLayout(root = document.querySelector('#scroll-cont
         for (const node of card.querySelectorAll('[data-mobile-meta-role]')) delete node.dataset.mobileMetaRole;
         resize.unobserve(card);
         for (const node of card.querySelectorAll('.article-metadata, .story-coverage-orbs')) resize.unobserve(node);
-        active.delete(card); masks.delete(card);
+        active.delete(card); dirty.delete(card); masks.delete(card);
     }
     function update() {
         frame = 0;
         for (const card of active) if (!media.matches || !card.isConnected || !card.matches(selector)) clear(card);
-        if (!media.matches) return;
-        for (const card of root.querySelectorAll(selector)) {
-            if (!active.has(card)) {
-                active.add(card); card.dataset.mobileClean = '1'; resize.observe(card);
-                for (const [key, value] of Object.entries(MOBILE_TOP)) {
-                    set(card, `--mobile-${key.toLowerCase().replaceAll('_', '-')}`, `${value}px`);
+        if (!media.matches) { dirty.clear(); fullScan = true; return; }
+        if (fullScan) {
+            for (const card of root.querySelectorAll(selector)) {
+                if (!active.has(card)) {
+                    active.add(card); card.dataset.mobileClean = '1'; resize.observe(card);
+                    for (const [key, value] of Object.entries(MOBILE_TOP)) {
+                        set(card, `--mobile-${key.toLowerCase().replaceAll('_', '-')}`, `${value}px`);
+                    }
+                    dirty.add(card);
                 }
             }
+            fullScan = false;
+        }
+        // Only cards with changed content, dimensions or presentation get
+        // synchronous geometry reads. Other cards stay untouched on scroll.
+        const pending = [...dirty]; dirty.clear();
+        for (const card of pending) {
+            if (!active.has(card) || !card.isConnected || !card.matches(selector)) continue;
             const header = card.querySelector('.article-card-header');
             const metadata = card.querySelector('.article-metadata');
             const hero = card.querySelector('.article-card-image');
@@ -108,17 +137,37 @@ export function mountMobileTopLayout(root = document.querySelector('#scroll-cont
         }
     }
     const observer = new MutationObserver(records => {
-        if (records.some(r => r.type !== 'attributes' || r.attributeName !== 'style'
-            || r.target.closest('.article-metadata, .story-coverage-orbs'))) schedule();
+        let scan = false;
+        for (const record of records) {
+            const target = record.target;
+            const card = target.closest?.('.article-card');
+            if (record.type === 'childList') {
+                // The inserted/removed article rows can change the card set.
+                if (record.addedNodes.length || record.removedNodes.length) {
+                    if (!card || [...record.addedNodes, ...record.removedNodes].some(node =>
+                        node.nodeType === 1 && (node.matches?.('.article-card') || node.querySelector?.('.article-card')))) scan = true;
+                    if (card) dirty.add(card);
+                }
+            } else if (record.type === 'characterData') {
+                if (card) dirty.add(card);
+            } else if (record.attributeName !== 'style'
+                || target.closest?.('.article-metadata, .story-coverage-orbs')) {
+                if (card) dirty.add(card);
+                else scan = true;
+            }
+        }
+        if (scan) schedule();
+        else if (dirty.size) schedule([...dirty][0]);
     });
     observer.observe(root, { subtree: true, childList: true, characterData: true,
         attributes: true, attributeFilter: ['data-image-layout', 'data-story-blend', 'data-focus-state', 'class', 'style'] });
     // Theme changes are outside the card tree.
-    const theme = new MutationObserver(schedule);
+    const theme = new MutationObserver(() => schedule());
     theme.observe(root.ownerDocument.body, { attributes: true, attributeFilter: ['class'] });
-    media.addEventListener('change', schedule);
+    const onMediaChange = () => schedule();
+    media.addEventListener('change', onMediaChange);
     schedule();
-    return () => { observer.disconnect(); theme.disconnect(); resize.disconnect(); media.removeEventListener('change', schedule); win.cancelAnimationFrame(frame); for (const card of active) clear(card); };
+    return () => { observer.disconnect(); theme.disconnect(); resize.disconnect(); media.removeEventListener('change', onMediaChange); win.cancelAnimationFrame(frame); for (const card of active) clear(card); };
 }
 if (typeof document !== 'undefined') {
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => mountMobileTopLayout(), { once: true });
