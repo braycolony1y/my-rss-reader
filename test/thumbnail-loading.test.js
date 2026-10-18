@@ -45,8 +45,8 @@ test('desktop Glass watches the visible card even when its source image is hidde
   near([{target:cards[0],isIntersecting:false}]);
   assert.ok(images[0].getAttribute('src'),'an in-flight image must not be cancelled solely by leaving the preload margin');
   visible([{target:cards[2],isIntersecting:true}]);
-  assert.equal(images[0].hasAttribute('src'),false,'an offscreen request yields its slot to a visible card');
-  assert.ok(images[2].src,'visible work must not wait for an offscreen stalled request');
+  assert.ok(images[0].hasAttribute('src'),'visible admission must not blank an existing source');
+  assert.ok(images[2].src,'a visible request uses the bounded reserve behind slow preloads');
  }finally{stop();win.close();}
 });
 

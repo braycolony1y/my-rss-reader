@@ -36,6 +36,9 @@ export function createArticleImages({
     async function getBestImage(targetUrl, _fetchFn, rssFallback = null) {
         if (isRedditUrl(targetUrl)) return rssFallback || '';
         targetUrl = targetUrl.replace(/\/unread\/?$/, '');
+        // /og-image receives rss="" from feed URLs; /image-focus resolves the
+        // same missing fallback as null. They must share the same extraction.
+        rssFallback = rssFallback || null;
         const key = JSON.stringify([targetUrl, rssFallback]);
         if (!pending.has(key)) {
             pending.set(key, resolveImage(targetUrl, rssFallback).finally(() => pending.delete(key)));

@@ -18,13 +18,17 @@ function fixture({ layout = 'top', theme = 'theme-glass-light' } = {}) {
 }
 test('a hidden lazy soft layer loads nearby baked assets and activates after decode', () => {
     const f = fixture(); f.state.blend = { story:f.analysis };
+    f.state.near = false; applyTopStoryImage(f.img, f.state);
+    assert.equal(f.soft.hasAttribute('src'), false, 'Never-viewed offscreen cards retain the asset gate');
+    f.state.near = true;
     applyTopStoryImage(f.img, f.state);
     assert.equal(f.soft.loading, 'eager', 'Hidden layers cannot begin browser lazy loading');
     assert.equal(f.card.dataset.storyBlend, 'fallback');
     f.decode();
     assert.equal(f.card.dataset.storyBlend, 'ready');
     f.state.near = false; applyTopStoryImage(f.img, f.state);
-    assert.equal(f.soft.hasAttribute('src'), false, 'Offscreen cards retain the asset gate');
+    assert.equal(f.soft.getAttribute('src'), f.analysis.assets.heroImage, 'A decoded surface survives viewport exit');
+    assert.equal(f.card.dataset.storyBlend, 'ready');
 });
 test('late analysis replaces the generic palette even when legacy focal placement is deferred', () => {
     const f = fixture(); applyTopStoryImage(f.img, f.state);
