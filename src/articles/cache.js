@@ -1,3 +1,4 @@
+import { createCachedThreadCreationLookup } from './voz-creation-time.js';
 import { CONTENT_RETENTION_MS, deletionTime, archiveExpiry } from './retention.js';
 import { getArticleThumbnail } from './thumbnail.js';
 import { canonicalIdentity } from '../board/thread-model.js';
@@ -35,6 +36,10 @@ export function createArticleCache({
     function articleCacheFilename(url) {
         return path.join(ARTICLE_CACHE_DIR, articleCacheBasename(url));
     }
+
+    const getCachedThreadCreationTime = createCachedThreadCreationLookup({
+        filename: articleCacheFilename, readCached: readLastKnownCachedArticle
+    });
 
     async function _initArticleCacheIndex() {
         if (_articleCacheIndex !== null) return;
@@ -337,6 +342,7 @@ export function createArticleCache({
     }
 
     return {
+        getCachedThreadCreationTime,
         getCachedArticleMetadata,
         getLastKnownCachedArticleImage,
         getLastKnownCachedArticle,

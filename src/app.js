@@ -316,6 +316,7 @@ export async function createApplication({ isMainModule = false } = {}) {
         resolveGoogleNewsUrl: googleNews.resolveGoogleNewsUrl,
         getLastKnownCachedArticle: cache.getLastKnownCachedArticle,
         getLastKnownCachedArticleImage: cache.getLastKnownCachedArticleImage,
+        getCachedThreadCreationTime: cache.getCachedThreadCreationTime,
         env: database.env
     });
 
