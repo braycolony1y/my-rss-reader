@@ -27,14 +27,14 @@ test('production repair checks hashes, preserves local data, is idempotent, and 
 test('unknown edits abort before any integration or rollback writes',async()=>{
  const root=await fixture();
  try{
-  const entry=repairBundle.files[0],file=path.join(root,entry.path);
+  const existing=repairBundle.files.filter(e=>e.before!==null),entry=existing[0],other=existing[1],file=path.join(root,entry.path);
   await writeFile(file,'new user edit');
   await assert.rejects(applyRepair(root),/Unrecognized local edits/);
-  assert.equal(await readFile(path.join(root,repairBundle.files[1].path),'utf8'),repairBundle.files[1].before);
+  assert.equal(await readFile(path.join(root,other.path),'utf8'),other.before);
   await writeFile(file,entry.before);
   const applied=await applyRepair(root);
   await writeFile(file,'later user edit');
   await assert.rejects(rollbackRepair(applied.backup),/Later edits would be overwritten/);
-  assert.equal(await readFile(path.join(root,repairBundle.files[1].path),'utf8'),repairBundle.files[1].after);
+  assert.equal(await readFile(path.join(root,other.path),'utf8'),other.after);
  }finally{await rm(root,{recursive:true,force:true});}
 });

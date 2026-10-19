@@ -40,6 +40,7 @@ test('VOZ creation date survives missing statistics; latest reply cannot replace
 
 test('card uses VOZ thread creation even when newer reply date exists', () => {
     const sandbox = vm.createContext({Intl, Date, URL});
+    vm.runInContext(readFileSync(new URL('../public/js/article/card-source-time.js', import.meta.url), 'utf8'), sandbox);
     vm.runInContext(readFileSync(new URL('../public/js/article/presentation.js', import.meta.url), 'utf8'), sandbox);
     const app = vm.runInContext('ReaderArticlePresentation.create()', sandbox);
     app.clockNow = Date.parse('2026-10-13T05:00:00Z');

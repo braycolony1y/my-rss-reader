@@ -1,0 +1,48 @@
+[
+  {
+    "theme": "classic",
+    "engine": "Chromium",
+    "race": {
+      "destination": "current",
+      "correct": true,
+      "reused": 8,
+      "cards": 8
+    },
+    "idle": {
+      "seconds": 60,
+      "replacements": 0,
+      "domBefore": 2274,
+      "domAfter": 2274
+    },
+    "lifecycle": {
+      "reused": 8,
+      "overlayClosed": true,
+      "rejections": []
+    },
+    "errors": [],
+    "diagnosticEventCount": 487
+  },
+  {
+    "theme": "glass-light",
+    "engine": "Chromium",
+    "race": {
+      "destination": "current",
+      "correct": true,
+      "reused": 8,
+      "cards": 8
+    },
+    "idle": {
+      "seconds": 60,
+      "replacements": 0,
+      "domBefore": 2274,
+      "domAfter": 2274
+    },
+    "lifecycle": {
+      "reused": 8,
+      "overlayClosed": true,
+      "rejections": []
+    },
+    "errors": [],
+    "diagnosticEventCount": 490
+  }
+]

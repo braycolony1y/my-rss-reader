@@ -4,7 +4,7 @@
   "cleanTimings": [
     {
       "case": "1440:glass-light:top",
-      "environment": "Chromium 149 headless, Linux ARM64 VPS, software rendering, DPR 1, 24 cards, nominal 6s, cold context",
+      "environment": "Chromium 149 headless, Linux ARM64 VPS, software rendering, DPR 1, 24 cards, nominal 6s, cold context; actual production source snapshot plus final runtime patch only",
       "before": {
         "duration": 6716.299999999999,
         "frames": 14,
@@ -28,31 +28,31 @@
         }
       },
       "after": {
-        "duration": 6233,
-        "frames": 22,
-        "avg": 283.3181818181818,
-        "p95": 350,
-        "p99": 383.3000000000002,
-        "over16_7": 21,
-        "overBudget": 21,
-        "over33": 21,
-        "over50": 20,
-        "longTasks": 7,
-        "longTaskMs": 475,
+        "duration": 6049.7,
+        "frames": 20,
+        "avg": 302.485,
+        "p95": 383.39999999999964,
+        "p99": 450,
+        "over16_7": 19,
+        "overBudget": 18,
+        "over33": 18,
+        "over50": 18,
+        "longTasks": 0,
+        "longTaskMs": 0,
         "browserCpuMs": {
-          "LayoutDuration": 29.527,
-          "RecalcStyleDuration": 457.971,
-          "DevToolsCommandDuration": 1.639,
-          "ScriptDuration": 433.325,
+          "LayoutDuration": 25.904,
+          "RecalcStyleDuration": 374.375,
+          "DevToolsCommandDuration": 1.506,
+          "ScriptDuration": 331.865,
           "V8CompileDuration": 0,
-          "TaskDuration": 1273.4990000000003,
-          "TaskOtherDuration": 351.037
+          "TaskDuration": 1054.713,
+          "TaskOtherDuration": 321.063
         }
       }
     },
     {
       "case": "390:glass-light:top",
-      "environment": "Chromium 149 headless, Linux ARM64 VPS, software rendering, DPR 1, 24 cards, nominal 6s, cold context",
+      "environment": "Chromium 149 headless, Linux ARM64 VPS, software rendering, DPR 1, 24 cards, nominal 6s, cold context; actual production source snapshot plus final runtime patch only",
       "before": {
         "duration": 6016.4,
         "frames": 224,
@@ -76,31 +76,31 @@
         }
       },
       "after": {
-        "duration": 6016.370000000001,
-        "frames": 257,
-        "avg": 23.410000000000004,
-        "p95": 33.400000000001455,
+        "duration": 6016.4,
+        "frames": 262,
+        "avg": 22.96335877862595,
+        "p95": 33.400000000000546,
         "p99": 50,
-        "over16_7": 134,
-        "overBudget": 94,
-        "over33": 79,
+        "over16_7": 129,
+        "overBudget": 87,
+        "over33": 68,
         "over50": 2,
         "longTasks": 0,
         "longTaskMs": 0,
         "browserCpuMs": {
-          "LayoutDuration": 16.858,
-          "RecalcStyleDuration": 233.799,
-          "DevToolsCommandDuration": 1.84,
-          "ScriptDuration": 237.71200000000002,
+          "LayoutDuration": 14.819,
+          "RecalcStyleDuration": 269.086,
+          "DevToolsCommandDuration": 1.392,
+          "ScriptDuration": 239.339,
           "V8CompileDuration": 0,
-          "TaskDuration": 919.712,
-          "TaskOtherDuration": 429.50300000000004
+          "TaskDuration": 959.704,
+          "TaskOtherDuration": 435.068
         }
       }
     },
     {
       "case": "1440:glass-light:feed",
-      "environment": "Chromium 149 headless, Linux ARM64 VPS, software rendering, DPR 1, 24 cards, nominal 6s, cold context",
+      "environment": "Chromium 149 headless, Linux ARM64 VPS, software rendering, DPR 1, 24 cards, nominal 6s, cold context; actual production source snapshot plus final runtime patch only",
       "before": {
         "duration": 6383.100000000002,
         "frames": 13,
@@ -124,31 +124,31 @@
         }
       },
       "after": {
-        "duration": 6082.999999999999,
-        "frames": 60,
-        "avg": 101.38333333333331,
-        "p95": 133.3000000000011,
-        "p99": 216.69999999999982,
-        "over16_7": 56,
-        "overBudget": 56,
-        "over33": 56,
-        "over50": 56,
+        "duration": 6016.5,
+        "frames": 58,
+        "avg": 103.73275862068965,
+        "p95": 150,
+        "p99": 233.30000000000018,
+        "over16_7": 57,
+        "overBudget": 55,
+        "over33": 55,
+        "over50": 55,
         "longTasks": 0,
         "longTaskMs": 0,
         "browserCpuMs": {
-          "LayoutDuration": 20.552,
-          "RecalcStyleDuration": 169.767,
-          "DevToolsCommandDuration": 3.704,
-          "ScriptDuration": 167.92000000000002,
+          "LayoutDuration": 19.531,
+          "RecalcStyleDuration": 142.33,
+          "DevToolsCommandDuration": 1.448,
+          "ScriptDuration": 146.965,
           "V8CompileDuration": 0,
-          "TaskDuration": 674.101,
-          "TaskOtherDuration": 312.1580000000001
+          "TaskDuration": 568.143,
+          "TaskOtherDuration": 257.869
         }
       }
     },
     {
       "case": "390:glass-light:feed",
-      "environment": "Chromium 149 headless, Linux ARM64 VPS, software rendering, DPR 1, 24 cards, nominal 6s, cold context",
+      "environment": "Chromium 149 headless, Linux ARM64 VPS, software rendering, DPR 1, 24 cards, nominal 6s, cold context; actual production source snapshot plus final runtime patch only",
       "before": {
         "duration": 6016.400000000001,
         "frames": 272,
@@ -172,78 +172,166 @@
         }
       },
       "after": {
-        "duration": 6016.4,
-        "frames": 348,
-        "avg": 17.288505747126436,
-        "p95": 16.800000000000182,
-        "p99": 33.399999999999636,
-        "over16_7": 84,
-        "overBudget": 13,
-        "over33": 8,
+        "duration": 6016.500000000001,
+        "frames": 358,
+        "avg": 16.805865921787714,
+        "p95": 16.799999999999272,
+        "p99": 16.80000000000109,
+        "over16_7": 87,
+        "overBudget": 3,
+        "over33": 3,
         "over50": 0,
         "longTasks": 0,
         "longTaskMs": 0,
         "browserCpuMs": {
-          "LayoutDuration": 19.407,
-          "RecalcStyleDuration": 174.429,
-          "DevToolsCommandDuration": 1.42,
-          "ScriptDuration": 283.72999999999996,
+          "LayoutDuration": 15.965,
+          "RecalcStyleDuration": 188.28900000000002,
+          "DevToolsCommandDuration": 1.404,
+          "ScriptDuration": 274.729,
           "V8CompileDuration": 0,
-          "TaskDuration": 885.833,
-          "TaskOtherDuration": 406.84700000000004
+          "TaskDuration": 869.8820000000001,
+          "TaskOtherDuration": 389.49500000000006
         }
       }
     }
   ],
   "traceTimings": [
     {
-      "phase": "traced-before",
-      "case": "390-glass-light-feed",
-      "aggregateTraceEventMs": {
-        "Paint": 64.752,
-        "Layout": 31.815,
-        "UpdateLayoutTree": 311.227,
-        "Layerize": 36.157
-      },
-      "note": "Separate diagnostic trace; not clean timing results; aggregate events are not compositor presentation timings."
-    },
-    {
-      "phase": "traced-before",
-      "case": "1440-glass-light-top",
+      "phase": "before",
+      "case": "1440:glass-light:top",
       "aggregateTraceEventMs": {
         "Paint": 37.997,
         "Layout": 49.041,
         "UpdateLayoutTree": 706.7,
         "Layerize": 69.142
       },
-      "note": "Separate diagnostic trace; not clean timing results; aggregate events are not compositor presentation timings."
+      "frameIntervals": {
+        "duration": 4066.4999999999995,
+        "frames": 17,
+        "avg": 239.20588235294116,
+        "p95": 366.6999999999998,
+        "p99": 366.6999999999998,
+        "over16_7": 16,
+        "overBudget": 15,
+        "over33": 15,
+        "over50": 15,
+        "longTasks": 5,
+        "longTaskMs": 323,
+        "browserCpuMs": {
+          "LayoutDuration": 59.884,
+          "RecalcStyleDuration": 733.8789999999999,
+          "DevToolsCommandDuration": 2.876,
+          "ScriptDuration": 394.571,
+          "V8CompileDuration": 0,
+          "TaskDuration": 1487.801,
+          "TaskOtherDuration": 296.591
+        }
+      },
+      "note": "Diagnostic four-second trace, separate from clean runs; no GPU presented-time, decode-time, or GC-time conclusion."
     },
     {
-      "phase": "traced-after",
-      "case": "390-glass-light-feed",
+      "phase": "before",
+      "case": "390:glass-light:feed",
       "aggregateTraceEventMs": {
-        "Paint": 51.101,
-        "Layout": 18.841,
-        "UpdateLayoutTree": 172.795,
-        "Layerize": 37.915
+        "Paint": 64.752,
+        "Layout": 31.815,
+        "UpdateLayoutTree": 311.227,
+        "Layerize": 36.157
       },
-      "note": "Separate diagnostic trace; not clean timing results; aggregate events are not compositor presentation timings."
+      "frameIntervals": {
+        "duration": 4016.5000000000005,
+        "frames": 228,
+        "avg": 17.616228070175442,
+        "p95": 16.800000000000182,
+        "p99": 33.399999999999636,
+        "over16_7": 48,
+        "overBudget": 11,
+        "over33": 9,
+        "over50": 0,
+        "longTasks": 0,
+        "longTaskMs": 0,
+        "browserCpuMs": {
+          "LayoutDuration": 40.091,
+          "RecalcStyleDuration": 324.138,
+          "DevToolsCommandDuration": 2.814,
+          "ScriptDuration": 370.27500000000003,
+          "V8CompileDuration": 0,
+          "TaskDuration": 1191.6409999999998,
+          "TaskOtherDuration": 454.323
+        }
+      },
+      "note": "Diagnostic four-second trace, separate from clean runs; no GPU presented-time, decode-time, or GC-time conclusion."
     },
     {
-      "phase": "traced-after",
-      "case": "1440-glass-light-top",
+      "phase": "after",
+      "case": "1440:glass-light:top",
       "aggregateTraceEventMs": {
-        "Paint": 28.808,
-        "Layout": 27.007,
-        "UpdateLayoutTree": 386.727,
-        "Layerize": 49.605
+        "Paint": 26.697,
+        "Layout": 32.229,
+        "UpdateLayoutTree": 361.992,
+        "Layerize": 61.377
       },
-      "note": "Separate diagnostic trace; not clean timing results; aggregate events are not compositor presentation timings."
+      "frameIntervals": {
+        "duration": 4116.4,
+        "frames": 15,
+        "avg": 274.4266666666666,
+        "p95": 383.3000000000002,
+        "p99": 383.3000000000002,
+        "over16_7": 13,
+        "overBudget": 13,
+        "over33": 13,
+        "over50": 13,
+        "longTasks": 1,
+        "longTaskMs": 57,
+        "browserCpuMs": {
+          "LayoutDuration": 39.467,
+          "RecalcStyleDuration": 379.461,
+          "DevToolsCommandDuration": 2.872,
+          "ScriptDuration": 287.54600000000005,
+          "V8CompileDuration": 0,
+          "TaskDuration": 962.221,
+          "TaskOtherDuration": 252.87500000000003
+        }
+      },
+      "note": "Diagnostic four-second trace, separate from clean runs; no GPU presented-time, decode-time, or GC-time conclusion."
+    },
+    {
+      "phase": "after",
+      "case": "390:glass-light:feed",
+      "aggregateTraceEventMs": {
+        "Paint": 44.575,
+        "Layout": 18.721,
+        "UpdateLayoutTree": 168.282,
+        "Layerize": 38.197
+      },
+      "frameIntervals": {
+        "duration": 4016.4700000000003,
+        "frames": 238,
+        "avg": 16.8759243697479,
+        "p95": 16.800000000000182,
+        "p99": 33.30000000000018,
+        "over16_7": 47,
+        "overBudget": 3,
+        "over33": 3,
+        "over50": 0,
+        "longTasks": 0,
+        "longTaskMs": 0,
+        "browserCpuMs": {
+          "LayoutDuration": 22.393,
+          "RecalcStyleDuration": 172.741,
+          "DevToolsCommandDuration": 2.18,
+          "ScriptDuration": 248.60999999999999,
+          "V8CompileDuration": 0,
+          "TaskDuration": 846.763,
+          "TaskOtherDuration": 400.839
+        }
+      },
+      "note": "Diagnostic four-second trace, separate from clean runs; no GPU presented-time, decode-time, or GC-time conclusion."
     }
   ],
   "cachedTimings": [
     {
-      "phase": "cached-before",
+      "phase": "before",
       "case": "1440:glass-light:top",
       "avg": 255.2,
       "p95": 683.3999999999996,
@@ -251,7 +339,7 @@
       "serverImageRequestsDuringScroll": 0
     },
     {
-      "phase": "cached-before",
+      "phase": "before",
       "case": "390:glass-light:feed",
       "avg": 33.7515462184874,
       "p95": 66.70000000000073,
@@ -259,19 +347,19 @@
       "serverImageRequestsDuringScroll": 0
     },
     {
-      "phase": "cached-after",
+      "phase": "after",
       "case": "1440:glass-light:top",
-      "avg": 268.74375000000003,
-      "p95": 350,
-      "p99": 350,
+      "avg": 347.2083333333333,
+      "p95": 666.7000000000007,
+      "p99": 666.7000000000007,
       "serverImageRequestsDuringScroll": 0
     },
     {
-      "phase": "cached-after",
+      "phase": "after",
       "case": "390:glass-light:feed",
-      "avg": 19.310576923076926,
-      "p95": 33.399999999999636,
-      "p99": 50,
+      "avg": 17.85066666666667,
+      "p95": 33.29999999999927,
+      "p99": 33.399999999999636,
       "serverImageRequestsDuringScroll": 0
     }
   ],
@@ -628,27 +716,36 @@
       "rows": [
         {
           "cycle": 0,
-          "heapUsed": 12747088,
+          "heapUsed": 12791780,
           "documents": 4,
-          "nodes": 23341,
+          "nodes": 23343,
           "jsEventListeners": 664,
           "cards": 12
         },
         {
           "cycle": 5,
-          "heapUsed": 13675528,
+          "heapUsed": 13742388,
           "documents": 4,
-          "nodes": 23341,
+          "nodes": 23343,
           "jsEventListeners": 677,
           "cards": 12
         },
         {
           "cycle": 10,
-          "heapUsed": 13788636,
+          "heapUsed": 13830832,
           "documents": 4,
-          "nodes": 23341,
+          "nodes": 23343,
           "jsEventListeners": 677,
           "cards": 12
+        },
+        {
+          "idleMs": 180506,
+          "heapUsed": 13904848,
+          "documents": 4,
+          "nodes": 23343,
+          "jsEventListeners": 677,
+          "cards": 12,
+          "retained": true
         }
       ]
     }
@@ -664,7 +761,8 @@
     "passed": 820,
     "failed": 0,
     "skipped": 0,
-    "durationMs": 322623.149226
+    "durationMs": 322623.149226,
+    "scope": "Earlier production source snapshot before final pending-image guard; not final exact PR tree."
   },
   "threeMinuteIdle": {
     "engine": "chromium",
@@ -674,33 +772,33 @@
     "rows": [
       {
         "cycle": 0,
-        "heapUsed": 12747148,
+        "heapUsed": 12791780,
         "documents": 4,
-        "nodes": 23341,
+        "nodes": 23343,
         "jsEventListeners": 664,
         "cards": 12
       },
       {
         "cycle": 5,
-        "heapUsed": 13698656,
+        "heapUsed": 13742388,
         "documents": 4,
-        "nodes": 23341,
+        "nodes": 23343,
         "jsEventListeners": 677,
         "cards": 12
       },
       {
         "cycle": 10,
-        "heapUsed": 13798760,
+        "heapUsed": 13830832,
         "documents": 4,
-        "nodes": 23341,
+        "nodes": 23343,
         "jsEventListeners": 677,
         "cards": 12
       },
       {
-        "idleMs": 180198,
-        "heapUsed": 13872504,
+        "idleMs": 180506,
+        "heapUsed": 13904848,
         "documents": 4,
-        "nodes": 23341,
+        "nodes": 23343,
         "jsEventListeners": 677,
         "cards": 12,
         "retained": true
@@ -736,6 +834,156 @@
     "passed": 811,
     "failed": 0,
     "skipped": 0,
-    "durationMs": 357240.787637
+    "durationMs": 357240.787637,
+    "scope": "Earlier exact PR checkout before current-main merge and final pending-image guard."
+  },
+  "finalMergedPrTests": {
+    "passed": 820,
+    "failed": 0,
+    "skipped": 0,
+    "durationMs": 326439.268468,
+    "scope": "Final code merged with main 88368e38862bee16329797fd751dcd32fda7f9d9; includes pending-image stylesheet and new browser assertions; all ten runtime files match the measured production-source candidate."
+  },
+  "longFeed": [
+    {
+      "width": 390,
+      "theme": "classic",
+      "visitedArticles": 60,
+      "pagination": "explicit mobile pages",
+      "retainedFromFirstPage": 0,
+      "nominalScrollPxPerSecond": [
+        350,
+        750,
+        2400
+      ],
+      "cards": 15,
+      "retainedAfterReversals": 15,
+      "primarySourceClears": 0,
+      "hasMore": false,
+      "errors": []
+    },
+    {
+      "width": 390,
+      "theme": "glass",
+      "visitedArticles": 60,
+      "pagination": "explicit mobile pages",
+      "retainedFromFirstPage": 0,
+      "nominalScrollPxPerSecond": [
+        350,
+        750,
+        2400
+      ],
+      "cards": 15,
+      "retainedAfterReversals": 15,
+      "primarySourceClears": 0,
+      "hasMore": false,
+      "errors": []
+    },
+    {
+      "width": 390,
+      "theme": "glass-light",
+      "visitedArticles": 60,
+      "pagination": "explicit mobile pages",
+      "retainedFromFirstPage": 0,
+      "nominalScrollPxPerSecond": [
+        350,
+        750,
+        2400
+      ],
+      "cards": 15,
+      "retainedAfterReversals": 15,
+      "primarySourceClears": 0,
+      "hasMore": false,
+      "errors": []
+    },
+    {
+      "width": 1440,
+      "theme": "classic",
+      "visitedArticles": 80,
+      "pagination": "desktop infinite scroll",
+      "retainedFromFirstPage": 40,
+      "nominalScrollPxPerSecond": [
+        350,
+        750,
+        2400
+      ],
+      "cards": 80,
+      "retainedAfterReversals": 80,
+      "primarySourceClears": 0,
+      "hasMore": false,
+      "errors": []
+    },
+    {
+      "width": 1440,
+      "theme": "glass",
+      "visitedArticles": 80,
+      "pagination": "desktop infinite scroll",
+      "retainedFromFirstPage": 40,
+      "nominalScrollPxPerSecond": [
+        350,
+        750,
+        2400
+      ],
+      "cards": 80,
+      "retainedAfterReversals": 80,
+      "primarySourceClears": 0,
+      "hasMore": false,
+      "errors": []
+    },
+    {
+      "width": 1440,
+      "theme": "glass-light",
+      "visitedArticles": 80,
+      "pagination": "desktop infinite scroll",
+      "retainedFromFirstPage": 40,
+      "nominalScrollPxPerSecond": [
+        350,
+        750,
+        2400
+      ],
+      "cards": 80,
+      "retainedAfterReversals": 80,
+      "primarySourceClears": 0,
+      "hasMore": false,
+      "errors": []
+    }
+  ],
+  "pendingImageGuard": {
+    "engines": [
+      "chromium",
+      "webkit"
+    ],
+    "reservedHeight": true,
+    "unassignedAltHidden": true,
+    "assignedVisible": true,
+    "srcsetOnlyVisible": true,
+    "productionMarkupQueuedVerticalBounds": [
+      [
+        331.03125,
+        535.78125
+      ],
+      [
+        711.75,
+        916.5
+      ]
+    ],
+    "boundsUnchangedByGuard": true
+  },
+  "productionIntegration": {
+    "runtimeFiles": 10,
+    "regressionFiles": 7,
+    "paths": 17,
+    "compatibleDryRun": true,
+    "applied": false,
+    "serviceRestarted": false,
+    "dependenciesBeforeEntry": true,
+    "entryWrittenLast": true
+  },
+  "previousMergedPrTests": {
+    "passed": 813,
+    "failed": 0,
+    "skipped": 0,
+    "durationMs": 334349.641576,
+    "scope": "Final code merged with main 459a0390b313625ec32e4254a93cc3516cdefb56; includes pending-image stylesheet and new browser assertions."
   }
 }

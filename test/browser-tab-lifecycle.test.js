@@ -111,14 +111,14 @@ async function container() {
     }
 });
 
-test('each Gemini job uses New chat then Temporary Chat, reloading only for recovery', async () => {
+test('each Gemini job uses New chat then Temporary Chat and fails closed without reloading', async () => {
     const source = readFileSync(new URL('../src/ai/gemini-web.js', import.meta.url), 'utf8');
     const start = source.indexOf('async function resetGeminiJobPage(');
     const fn = source.slice(start, source.indexOf('\n\nasync function runOnSlot', start));
     for (const failOnce of [false, true]) {
         const calls = []; let attempts = 0;
         const reset = vm.runInNewContext(`(${fn})`, {
-            console: { warn() {} }, GEMINI_WEB_URL: 'https://gemini.google.com/u/1/app',
+            URL, console: { warn() {} }, GEMINI_WEB_URL: 'https://gemini.google.com/u/1/app',
             returnToGeminiChatHome: async () => {
                 calls.push('new-chat');
                 if (failOnce && !attempts++) throw Object.assign(Error('retry'), { code: 'GEMINI_WEB_NEW_CHAT_FAILED' });
@@ -126,10 +126,12 @@ test('each Gemini job uses New chat then Temporary Chat, reloading only for reco
             waitForGeminiPage: async () => calls.push('ready'),
             resetFreshTemporaryChat: async () => calls.push('temporary-on')
         });
-        await reset({ evaluate: async () => 'https://gemini.google.com/u/1/app',
-            cdp: async () => calls.push('emulated'), goto: async () => calls.push('reload') });
+        const page = { evaluate: async () => 'https://gemini.google.com/u/1/app',
+            cdp: async () => calls.push('emulated'), goto: async () => calls.push('reload') };
+        if (failOnce) await assert.rejects(reset(page), { code: 'GEMINI_WEB_NEW_CHAT_FAILED' });
+        else await reset(page);
         assert.deepEqual(calls, failOnce
-            ? ['emulated', 'new-chat', 'reload', 'ready', 'new-chat', 'temporary-on']
+            ? ['emulated', 'new-chat']
             : ['emulated', 'new-chat', 'temporary-on']);
     }
 });

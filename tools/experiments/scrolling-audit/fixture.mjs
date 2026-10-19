@@ -3,7 +3,7 @@ import path from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 
-export async function startScrollFixture(root, {count=40,imageDelay=50,focusDelay=20}={}) {
+export async function startScrollFixture(root, {count=40,imageDelay=50,focusDelay=20,pageSize=0}={}) {
     const {createReaderAssetRenderer}=await import(pathToFileURL(root+'/src/ui/reader-assets.js'));
     const {createFixtureApi,articles}=await import(pathToFileURL(root+'/test/helpers/frontend-refactor/fixtures.js'));
     const renderer=createReaderAssetRenderer(),api=createFixtureApi(),bytes=await readFile(root+'/public/default.jpg');
@@ -28,7 +28,9 @@ export async function startScrollFixture(root, {count=40,imageDelay=50,focusDela
                 let value=api(url,body?JSON.parse(body):{});
                 if(url.pathname==='/api/data'){
                     const feed=url.searchParams.get('filterType')==='feed',list=Array.from({length:count},(_,i)=>({...articles[i%8],id:`scroll-${i}`,link:`https://example.test/scroll-${i}`,clusterId:`scroll-${i}`,title:`Story ${i+1}: ${articles[i%8].title}`,image:`/api/og-image?url=https%3A%2F%2Fexample.test%2Fphoto-${i}`,topStory:{...articles[i%8].topStory,rank:i+1},...(feed?{briefing:null,isCluster:false,relatedArticles:[],sourceCount:1}:{})}));
-                    value={...value,articles:list,topStories:list};
+                    const start=pageSize?Math.max(0,(Number(url.searchParams.get('page'))||1)-1)*pageSize:0;
+                    const page=pageSize?list.slice(start,start+pageSize):list;
+                    value={...value,articles:page,topStories:page,hasMore:pageSize?start+pageSize<list.length:false};
                 }
                 res.setHeader('Content-Type','application/json');res.end(JSON.stringify(value));return;
             }

@@ -22,6 +22,7 @@ export const READER_CLIENT_MODULES = [
     'app/persistence.js',
     'board/cache.js',
     'article/source-time-format.js',
+    'article/card-source-time.js',
     'article/presentation.js',
     'feeds/content-filter.js',
     'ai/status.js',

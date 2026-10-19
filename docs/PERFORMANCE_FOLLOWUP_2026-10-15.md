@@ -50,7 +50,7 @@ Two current isolated replays ran with explicit diagnostic GC only in their own p
 
 ## Validation and limitations
 
-Validation results and activation evidence are appended below after completion. The initial full suite passed **797 tests, zero failures, zero skipped** in 366.10 seconds, before the final identical-assignment regression and observer removal. It is not the final-source test result.
+The October 15 final full suite passed **799 tests, zero failures, zero skipped** in 405.20 seconds, including syntax checks. This supersedes the initial 797-test run and intermediate timeout run described below. The October 16 user deployment changed Gemini modules afterward; its verification is recorded separately below.
 
 The required extended temporal matrix remains broader than delayed metadata tests: physical iPhone Safari, browser-tab suspension, arbitrarily long idle, all real publisher decode failures, and every real responsive candidate/fallback combination require additional evidence. Linux WebKit is not physical iPhone validation. Diagnostics remain opt-in; generated fixture recordings contain no production article content. Instrumented timings are not ordinary navigation benchmarks.
 
@@ -94,3 +94,56 @@ Instrumented assignment-to-two-frame distributions, **under varying production/t
 Classic tails worsened in this small loaded experiment. No fixed-p95 or broad speedup claim follows. Raw scalar results: [identical-images.json](performance-followup-2026-10-15/identical-images.json).
 
 The concurrent intermediate full run completed with 796/798 passing, two timeouts, and zero skipped. Both timed-out tests passed sequentially with unchanged limits: publication retention in 15.66 seconds and HTTP application smoke in 12.61 seconds. This history is retained; the isolated reruns do not substitute for a clean final full suite.
+
+## Browser results and October 16 user deployment
+
+* Chromium delayed-focus matrix: all 28 desktop/mobile × Classic/Glass × response-delay/failure combinations passed. Delays included 100, 500, 1000, 2400, 3000 and 6000 ms, plus a failed request. Results: [focus-chromium.json](performance-followup-2026-10-15/focus-chromium.json).
+* Final source-generation replay: all four desktop/mobile × theme combinations passed stale-result rejection, responsive-source replacement, successive failed primaries D/E each selecting their own first fallback, resize and removed-node cleanup; no page errors. Results: [generation-chromium.json](performance-followup-2026-10-15/generation-chromium.json).
+* Both themes retained all eight cards across out-of-order refresh, 60 seconds idle with repeated Top revalidation, and five article open/back cycles with scrolling/resizing. No idle replacements, stable 2,274-node count, no rejected transitions or page errors. This bounded fixture does not prove the original intermittent production flashing is eliminated. Results: [flicker-scenarios.json](performance-followup-2026-10-15/flicker-scenarios.json).
+* Linux WebKit completed some delayed-focus cases, but repeated page-load crashes prevented full acceptance. A fresh-browser before/after/after/before comparison loaded both baseline runs and one updated run; the other updated run crashed. **SUSPECTED regression / UNRESOLVED**, not established environmental noise. Results: [webkit-load-comparison.json](performance-followup-2026-10-15/webkit-load-comparison.json). Physical iPhone Safari remains **NOT TESTED**.
+
+The user reported restarting for a separate deployment on October 16. Current service verification found PID 1110850, active/running, started **06:19:30 UTC**, with `NRestarts=0`. Health returned OK. This manual restart begins a new observation window; it does not erase the earlier crash history or establish retained-heap improvement. Smart processing was still active during the sampled startup memory readings.
+
+Expanded journal inspection confirmed **two additional OOMs before that manual restart**: October 15 **18:32:16 UTC** (PID 191049, automatic restart counter 2), and October 16 **05:43:38 UTC** (PID 618408, automatic restart counter 3). In Vietnam these are October 16 01:32:16 and 12:43:38. Both reported ineffective mark-compacts near the heap limit. The manual stop at 06:19:24 UTC and start at 06:19:30 are separate from these failures. The earlier three October 14 crashes plus these three October 15–16 events remain the known crash history; the new `NRestarts=0` is not a lifetime count.
+
+The only source files found modified since October 16 00:00 UTC under src/public/test/docs at inspection were `src/ai/gemini-web-mode.js` and `src/ai/gemini-web.js`. They implement Gemini model/thinking-level selection and were preserved. The supplied shared-chat URL exposed only a login page through the reader, and the fallback fetch failed; the chat's full deployment scope could not be verified.
+
+Post-restart live Chromium checks passed feed and Smart Top rendering in Classic and Glass (23 feed articles and 40 Top articles per theme). Cached article opening was actually exercised in both: readable content, cache-hit flag true, no overlay error; no page errors. These are correctness smoke checks, not matched latency measurements. Results: [live-smoke-oct16.json](performance-followup-2026-10-15/live-smoke-oct16.json). Service and health evidence: [service-oct16.txt](performance-followup-2026-10-15/service-oct16.txt), [health-oct16.json](performance-followup-2026-10-15/health-oct16.json).
+
+The assembled client was rechecked after restart and exactly matched the local renderer, SHA-256 `ef159f92842accc59f23606ac2e6423cf93100de3005338d5741157df9fab136`. The fallback helper also matched disk and loaded before the application; cache-busting version was present. Results: [served-assets-oct16.json](performance-followup-2026-10-15/served-assets-oct16.json).
+
+The first October 16 full run completed in 325.81 seconds: **796/799 passed, three failures, zero skipped**. All three were outdated Gemini test expectations after the separate deployment: menu fixtures omitted the `.label` elements used for exact model matching; the tab-reset test expected the removed reload recovery and lacked the URL global used by account checking. Updated only those test modules, preserving deployed Gemini code. The reset test now asserts a failed New Chat stops before Temporary Chat and never reloads; model/thinking assertions are preserved. Both affected test files then passed all **12 tests** in isolation (10.50 seconds). A final full run is required separately from that targeted result.
+
+Fixture-only WebKit ablation subsequently loaded with predecode bypassed, crashed with only the old blend runtime restored, and loaded another unchanged updated run and baseline run. Browser debug output did not identify a renderer fault or application exception. These single runs do not identify a causal module or justify removing readiness checks. No ablation was installed in production. Results: [webkit-ablation.json](performance-followup-2026-10-15/webkit-ablation.json).
+
+## Acceptance inventory
+
+| Requested area | Status and evidence |
+|---|---|
+| Build/service health and activation | CONFIRMED at the recorded times; served client verified after the user's restart. No backend implementation changed or restart performed by this continuation. |
+| October 15 ranking fix | PRESERVED; full SHA-256 and WeakMap ownership, 60-second interval. |
+| Collector and OOM history | CONFIRMED; complete original collector analyzed, three further October 15–16 OOMs in journal. |
+| Dominant retained V8 owner and memory fix | UNRESOLVED; bounded isolated owners measured, no new memory fix justified. |
+| Retained heap/external/CPU/event-loop improvement | NOT ESTABLISHED; unmatched collector values and isolated owner measurements only. |
+| Focus lifecycle, delayed focus, palette/tint/blend | FIXED in implementation and controlled Chromium cases; full cross-browser acceptance incomplete. |
+| Soft hero ownership and fallback counter | FIXED; stale-generation and successive-primary failure checks pass. |
+| Observer optimization | CONFIRMED fewer image passes on identical assignments; geometry preserved; latency tails not uniformly improved. |
+| Idle/navigation/scroll flicker | Bounded Chromium replay passes; original intermittent production complaint remains UNRESOLVED. |
+| Smart scheduling and actual worker counts | Scheduling preserved; execution-count optimization NOT VERIFIED. |
+| Physical writes and persistence recovery | UNRESOLVED attribution; persistence unchanged, new interruption/SIGKILL tests NOT APPLICABLE. |
+| Feed/Top/cached opening latency | UNRESOLVED matched latency targets; live correctness smoke passes including actual cached opens. |
+| Desktop/mobile Chromium | Controlled matrix and generation tests pass; physical mobile hardware NOT TESTED. |
+| Linux WebKit | Partial coverage with renderer crashes; SUSPECTED regression, UNRESOLVED. |
+| VOZ | Existing source/parser/page-identity regression coverage retained; no new dedicated live thread-pagination session in this continuation. |
+| New tests | Six lifecycle/readiness/fallback tests plus identical-attribute regression; old deferral tests updated. Gemini fixtures/expectations aligned with the separate deployment. |
+| Remaining actions | Isolated representative full-cycle retaining-path capture, complete-cycle writer attribution, WebKit isolation/physical iPhone validation, and matched T0–T17 navigation measurements. |
+
+Overall status remains **INCOMPLETE** even if the final unit/integration suite passes.
+
+## Final October 16 verification
+
+After updating the deployment-stale tests, the complete `npm test` run passed **799 tests, zero failures, zero skipped, zero cancelled**, in **298.03 seconds**. Both subsequent syntax checks also passed. No browser diagnostics ran concurrently with this final full run. Raw log: `/tmp/rss-oct15-followup/full-suite-oct16-final.log`.
+
+The latest health recheck during verification returned OK at uptime 964 seconds, PID 1110850, active/running, `NRestarts=0`; RSS 2553.5 MB, heap used 618.0 MB, external 400.0 MB. This is a startup-period point measurement, not a completed-workload floor or evidence of an OOM fix.
+
+Final acceptance remains **INCOMPLETE**: the implemented image fixes have targeted proof, but the dominant heap-retaining owner, write amplification, matched navigation/cached-open targets, intermittent production flashing and full WebKit/physical-iPhone acceptance remain open.

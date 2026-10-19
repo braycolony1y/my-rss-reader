@@ -1,0 +1,12 @@
+{
+  "command": "npm test",
+  "tests": 799,
+  "pass": 799,
+  "fail": 0,
+  "skipped": 0,
+  "cancelled": 0,
+  "durationMs": 298029.147529,
+  "exitCode": 0,
+  "syntaxChecksPassed": true,
+  "log": "/tmp/rss-oct15-followup/full-suite-oct16-final.log"
+}
