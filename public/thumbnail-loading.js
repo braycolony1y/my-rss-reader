@@ -1,3 +1,4 @@
+import { selectThumbnailAdmissions } from './thumbnail-admission.js?v=20261019_scroll_1';
 // Bound expensive same-origin image requests so native HTTP/1 image loading
 // cannot occupy every connection needed by feed and article navigation.
 export function installThumbnailLoading(win) {
@@ -13,21 +14,10 @@ export function installThumbnailLoading(win) {
         if (!state.active) return;
         state.active = false; active--;
     };
-    // A request already underway should survive a brief scroll out of range.
-    // Only preempt it when an actually visible image is waiting for a slot.
+    // Retain assigned sources across scroll reversals, including slow loads.
+    // Visible work uses a bounded reserve instead of resetting another image.
     function drain() {
-        const pending = [...states].filter(([img, state]) => img.isConnected && state.near && !state.started)
-            .sort((a, b) => Number(b[1].visible) - Number(a[1].visible));
-        for (const [img, state] of pending) {
-            if (active >= 2) {
-                if (!state.visible) break;
-                const victim = [...states].find(([, other]) => other.active && !other.visible);
-                if (!victim) break;
-                const [oldImg, oldState] = victim;
-                release(oldState);
-                oldState.started = false;
-                oldImg.removeAttribute('src');
-            }
+        for (const [img, state] of selectThumbnailAdmissions(states, active)) {
             if (!img.isConnected || !state.near || state.started) continue;
             state.started = true; state.active = true; active++;
             img.loading = 'eager'; img.src = state.source;
@@ -45,7 +35,7 @@ export function installThumbnailLoading(win) {
         // Desktop Glass hides the source img and renders a separate hero layer.
         // Its visible card, rather than the hidden source, owns admission.
         const target = img.closest('.article-card') || img;
-        state = {source, target, near: !observer, visible: !viewportObserver, started: false, active: false};
+        state = {source, target, near: !observer, visible: false, started: false, active: false};
         targets.set(target,img); states.set(img, state);
         observer?.observe(target); viewportObserver?.observe(target); drain();
     }
@@ -57,7 +47,7 @@ export function installThumbnailLoading(win) {
             }
         }
         drain();
-    }, {rootMargin: '1200px 0px'}) : null;
+    }, {root: doc.getElementById('scroll-container'), rootMargin: '1200px 0px'}) : null;
     // Separate in-viewport observation makes fast iPhone scrolling prioritize
     // cards on screen instead of older cards still in the preload margin.
     const viewportObserver = typeof win.IntersectionObserver === 'function' ? new win.IntersectionObserver(entries => {
@@ -66,7 +56,7 @@ export function installThumbnailLoading(win) {
             if (state) state.visible = entry.isIntersecting;
         }
         drain();
-    }) : null;
+    }, {root: doc.getElementById('scroll-container')}) : null;
     const scan = node => {
         if (node.nodeType !== 1) return;
         if (node.matches(selector)) watch(node);

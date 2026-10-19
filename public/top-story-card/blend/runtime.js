@@ -1,7 +1,7 @@
 import { updateStoryPhoto } from './source-readiness.js?v=20261015_lifecycle_1';
 import { rememberMobileSubject } from '../mobile-photo-framing.js?v=20261004_fill_1';
 import { updateSharedCardStyle, rememberSharedProperties } from '../../shared-card-style/runtime.js?v=20261004_fill_1';
-import { scheduleHeroExtent } from '../hero-extent.js?v=20261004_continuation_1';
+import { scheduleHeroExtent } from '../hero-extent.js?v=20261019_scroll_1';
 import { deriveStoryTokens } from './tokens.js';
 import { placeStoryHero, smoothMask } from './placement.js?v=20261006_requirements_2';
 import { clamp } from './palette.js';
@@ -90,21 +90,26 @@ export function applyTopStoryImage(img, state, { ready = true, isDefault = false
     if (shared) rememberSharedProperties(card, css);
     for (const [key, value] of Object.entries(css)) set(card, key, value);
     const soft = card.querySelector('.thumbnail-soft');
-    const next = state.near !== false && !isDefault ? storyPhotoSource(img, analysis, hero) : '';
+    const keepPhoto = state.near !== false || (previous?.source === source && soft?.hasAttribute('src'));
+    const next = keepPhoto && !isDefault ? storyPhotoSource(img, analysis, hero) : '';
     const photoReady = soft && updateStoryPhoto(soft, next, `${source}:${state.generation || 0}`, () => {
         const current = cards.get(card);
         if (current && current.img.isConnected) applyTopStoryImage(current.img, current.state, {
             ready: current.img.complete && current.img.naturalWidth > 0,
             isDefault: current.isDefault, forceLight: current.forceLight });
     });
-    card.dataset.storyBlend = hero && photoReady ? 'ready' : 'fallback';
-    card.dataset.storyBlendStyle = tokens.style;
-    card.dataset.storyHeroMode = p.mode;
-    card.dataset.storyHeroPlacement = p.placement;
-    card.dataset.storyPhoto = analysis.crop?.some(value => value > 0) ? 'cropped' : 'original';
-    card.dataset.storyBlendNear = String(state.near !== false);
-    card.dataset.storyImageMissing = String(img.complete && !img.naturalWidth);
-    if (ready && state.settled) { img.dataset.focusState = 'ready'; state.shown = true; }
+    const attributes = {
+        storyBlend: hero && photoReady ? 'ready' : 'fallback', storyBlendStyle: tokens.style,
+        storyHeroMode: p.mode, storyHeroPlacement: p.placement,
+        storyPhoto: analysis.crop?.some(value => value > 0) ? 'cropped' : 'original',
+        storyBlendNear: String(state.near !== false),
+        storyImageMissing: String(Boolean(img.getAttribute('src')) && img.complete && !img.naturalWidth)
+    };
+    for (const [key, value] of Object.entries(attributes)) if (card.dataset[key] !== value) card.dataset[key] = value;
+    if (ready && state.settled) {
+        if (img.dataset.focusState !== 'ready') img.dataset.focusState = 'ready';
+        state.shown = true;
+    }
     cards.set(card, { analysis, source, geometry: g, tokens, avatarZoneLum: avatarLum, img, state, isDefault, forceLight });
     return true;
 }

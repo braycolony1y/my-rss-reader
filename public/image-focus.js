@@ -1,10 +1,10 @@
 import { createImageVisualLifecycle } from './image-visual-state.js?v=20261015_lifecycle_1';
 import { prepareImageVisualAssets } from './image-visual-assets.js?v=20261015_lifecycle_1';
-import { applyImageFocusMutations } from './image-focus-mutations.js?v=20261015_lifecycle_1';
-import { installThumbnailLoading } from './thumbnail-loading.js?v=20261017_scroll_2';
+import { applyImageFocusMutations } from './image-focus-mutations.js?v=20261019_scroll_1';
+import { installThumbnailLoading } from './thumbnail-loading.js?v=20261019_scroll_1';
 import { fitCardImageViewport, visiblePhotoHeight } from './card-image-layout.js?v=2';
 import { applyImageColors } from './card-blend/legacy-color.js?v=1';
-import { applyTopStoryImage } from './top-story-card/blend/runtime.js?v=20261015_lifecycle_1';
+import { applyTopStoryImage } from './top-story-card/blend/runtime.js?v=20261019_scroll_1';
 
 const clamp = (value, low = 0, high = 1) => Math.max(low, Math.min(high, value));
 const center = { x: 0.5, y: 0.5 };
@@ -55,6 +55,7 @@ export function installImageFocus(win) {
     const selector = '.article-card-image img.thumbnail-img';
     const storageKey = 'rss-image-focus-v12';
     const states = new Map();
+    const mutationValues = new WeakMap();
     const cache = new Map();
     const saved = new Map();
     const queue = [];
@@ -161,9 +162,14 @@ export function installImageFocus(win) {
         for (const entry of entries) {
             const img = entry.target.matches(selector) ? entry.target : entry.target.querySelector(selector);
             const state = states.get(img);
-            if (state) { state.near = entry.isIntersecting; update(img); }
+            if (state) {
+                state.near = entry.isIntersecting;
+                // Leaving the preload region does not change a photograph's
+                // presentation. Keep the decoded source and resolved crop.
+                if (state.near) update(img);
+            }
         }
-    }, { rootMargin: '1600px 0px' }) : null;
+    }, { root: doc.getElementById('scroll-container'), rootMargin: '1600px 0px' }) : null;
     function watch(img) {
         if (states.has(img) || !img.matches?.(selector)) return;
         const card = img.closest('.article-card');
@@ -182,7 +188,7 @@ export function installImageFocus(win) {
     const onLoad = event => { if (event.target.matches?.(selector)) { watch(event.target); update(event.target); } };
     const onResize = () => { for (const [img,state] of states) { update(img); } };
     const mutations = new win.MutationObserver(records => applyImageFocusMutations(records, {
-        selector, states, watch, scan, update,
+        selector, states, watch, scan, update, previousValues: mutationValues,
         release(img, state) {
             win.clearTimeout(state.timer);
             state.observed.forEach(el => resize?.unobserve(el));
@@ -190,7 +196,7 @@ export function installImageFocus(win) {
             states.delete(img);
         }
     }));
-    mutations.observe(doc.body, { childList: true, subtree: true, attributes: true, attributeOldValue: true, attributeFilter: ['src', 'srcset', 'sizes', 'class', 'style', 'data-image-layout'] });
+    mutations.observe(doc.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['src', 'srcset', 'sizes', 'class', 'style', 'data-image-layout'] });
     doc.addEventListener('load', onLoad, true);
     win.addEventListener('resize', onResize);
     scan(doc.body);

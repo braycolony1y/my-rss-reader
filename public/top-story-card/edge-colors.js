@@ -8,10 +8,9 @@ export function applyBottomEdgeColor(card) {
     const soft=card.querySelector('.thumbnail-soft');
     const img=card.dataset.storyPhoto==='cropped' && soft?.complete && soft.naturalWidth ? soft : card.querySelector('.thumbnail-img');
     const panel=card.querySelector('.story-analysis-shell');
-    delete card.dataset.edgeColor;
-    if(!img?.complete || !img.naturalWidth || !panel)return;
+    if(!img?.complete || !img.naturalWidth || !panel){delete card.dataset.edgeColor;return;}
     const box=img.getBoundingClientRect(), cr=card.getBoundingClientRect();
-    if(!box.width || !box.height)return;
+    if(!box.width || !box.height){delete card.dataset.edgeColor;return;}
     const position=card.ownerDocument.defaultView.getComputedStyle(img).objectPosition.split(' ').map(parseFloat);
     const scale=Math.max(box.width/img.naturalWidth,box.height/img.naturalHeight);
     const offsetX=(box.width-img.naturalWidth*scale)*(position[0]/100);
@@ -31,13 +30,13 @@ export function applyBottomEdgeColor(card) {
             const value=bottomEdgeGradient(data,32,4,
                 (Math.max(box.left,cr.left)-cr.left)/cr.width*100,
                 (Math.min(box.right,cr.right)-cr.left)/cr.width*100);
-            if(!value)return;
+            if(!value){delete card.dataset.edgeColor;return;}
             color={key,value};cache.set(img,color);
-        } catch { return; } // Cross-origin/undecoded sources retain the existing palette.
+        } catch { delete card.dataset.edgeColor;return; } // Cross-origin/undecoded sources retain the existing palette.
     }
     set(card,'--edge-bottom-gradient',color.value);
     set(card,'--edge-color-start',`${(box.bottom-cr.top-10).toFixed(3)}px`);
     set(card,'--edge-color-left',`${Math.max(0,box.left-cr.left).toFixed(3)}px`);
     set(card,'--edge-color-solid',`${Math.min(cr.width,(box.left-cr.left)+box.width*.42).toFixed(3)}px`);
-    card.dataset.edgeColor='ready';
+    if(card.dataset.edgeColor!=='ready')card.dataset.edgeColor='ready';
 }

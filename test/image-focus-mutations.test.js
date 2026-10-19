@@ -39,3 +39,27 @@ test('identical source assignments do no image work, while sizes changes remain 
  assert.ok(collectImageFocusMutations(records,'.thumbnail-img').images.has(img));
  dom.window.close();
 });
+
+test('identical card/content attributes do not repeat focus layout, while real changes do', () => {
+ const dom=new JSDOM('<article class="article-card" data-image-layout="top"><h2 class="title">Title</h2><img class="thumbnail-img"></article>');
+ const card=dom.window.document.querySelector('article'), heading=card.querySelector('h2'),img=card.querySelector('img');
+ const unchanged=[{target:card,attributeName:'class'},{target:card,attributeName:'data-image-layout'},{target:heading,attributeName:'class'}]
+  .map(record=>({...record,type:'attributes',oldValue:record.target.getAttribute(record.attributeName)}));
+ assert.equal(collectImageFocusMutations(unchanged,'.thumbnail-img').images.size,0);
+ heading.className='title expanded';
+ assert.deepEqual([...collectImageFocusMutations(unchanged,'.thumbnail-img').images],[img]);
+ dom.window.close();
+});
+
+test('focus mutation deduplication needs no retained inline style old values', () => {
+ const dom=new JSDOM('<article class="article-card"><h2 class="title">Title</h2><div class="article-card-image"><img class="thumbnail-img"></div></article>');
+ const card=dom.window.document.querySelector('article'),heading=card.querySelector('h2'),img=card.querySelector('img'),values=new WeakMap();
+ const record={type:'attributes',target:heading,attributeName:'class'};
+ assert.deepEqual([...collectImageFocusMutations([record],'.thumbnail-img',values).images],[img]);
+ assert.equal(collectImageFocusMutations([record],'.thumbnail-img',values).images.size,0);
+ heading.classList.add('expanded');
+ assert.deepEqual([...collectImageFocusMutations([record],'.thumbnail-img',values).images],[img]);
+ collectImageFocusMutations([{type:'attributes',target:card,attributeName:'style'},{type:'attributes',target:img,attributeName:'style'}],'.thumbnail-img',values);
+ assert.equal(values.has(card),false);assert.equal(values.has(img),false);
+ dom.window.close();
+});
