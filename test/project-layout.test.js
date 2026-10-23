@@ -8,6 +8,7 @@ const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url))
 
 const allowedRootFiles = new Set([
     '.env',
+    '.git', // A linked Git worktree stores its pointer as a file, not a directory.
     '.gitignore',
     'README.md',
     'article-media.js',

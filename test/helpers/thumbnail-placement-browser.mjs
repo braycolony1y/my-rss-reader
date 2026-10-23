@@ -36,11 +36,14 @@ try {
     await page.addStyleTag({ content: '.review-controls,.review-caption{display:none} body{height:auto!important;overflow:auto!important} #scroll-container{display:block!important;padding:12px!important;height:auto!important;overflow:visible!important}' });
     await page.evaluate(() => window.topStoryReview.entries.splice(1).forEach(entry => entry.card.closest('section').remove()));
     // Exercise the actual production fact markup, with readable fixture content.
-    const component = await fs.readFile(new URL('../../public/components/article-card.html', import.meta.url), 'utf8');
+    // Facts live in the separately composed card-panel partial, not the raw
+    // article-card template; exercise the actual production partial.
+    const component = await fs.readFile(new URL('../../public/components/article/card-panel.html', import.meta.url), 'utf8');
     await page.evaluate(component => {
         const root = document.createElement('template'); root.innerHTML = component;
-        const articleTemplate = root.content.querySelector('template').content;
-        const source = articleTemplate.querySelector('.story-key-facts template').content.querySelector('.story-key-fact');
+        const factTemplate = root.content.querySelector('.story-key-facts template');
+        if (!factTemplate) throw new Error('Production card-panel key-fact template is missing');
+        const source = factTemplate.content.querySelector('.story-key-fact');
         const facts = document.querySelector('.story-key-facts'); facts.style.display = '';
         for (const [value, label] of [['18%', 'Growth'], ['3', 'Publishers'], ['2026', 'Year']]) {
             const fact = source.cloneNode(true);

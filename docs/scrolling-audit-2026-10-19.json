@@ -1,0 +1,989 @@
+{
+  "dateClient": "2026-10-19",
+  "status": "Targeted defects verified; complete desktop and physical Safari acceptance remains open. Production not changed.",
+  "cleanTimings": [
+    {
+      "case": "1440:glass-light:top",
+      "environment": "Chromium 149 headless, Linux ARM64 VPS, software rendering, DPR 1, 24 cards, nominal 6s, cold context; actual production source snapshot plus final runtime patch only",
+      "before": {
+        "duration": 6716.299999999999,
+        "frames": 14,
+        "avg": 479.7357142857142,
+        "p95": 1250,
+        "p99": 1250,
+        "over16_7": 13,
+        "overBudget": 12,
+        "over33": 12,
+        "over50": 12,
+        "longTasks": 16,
+        "longTaskMs": 2154,
+        "browserCpuMs": {
+          "LayoutDuration": 64.146,
+          "RecalcStyleDuration": 1767.307,
+          "DevToolsCommandDuration": 3.921,
+          "ScriptDuration": 1028.877,
+          "V8CompileDuration": 0,
+          "TaskDuration": 3608.2450000000003,
+          "TaskOtherDuration": 743.994
+        }
+      },
+      "after": {
+        "duration": 6049.7,
+        "frames": 20,
+        "avg": 302.485,
+        "p95": 383.39999999999964,
+        "p99": 450,
+        "over16_7": 19,
+        "overBudget": 18,
+        "over33": 18,
+        "over50": 18,
+        "longTasks": 0,
+        "longTaskMs": 0,
+        "browserCpuMs": {
+          "LayoutDuration": 25.904,
+          "RecalcStyleDuration": 374.375,
+          "DevToolsCommandDuration": 1.506,
+          "ScriptDuration": 331.865,
+          "V8CompileDuration": 0,
+          "TaskDuration": 1054.713,
+          "TaskOtherDuration": 321.063
+        }
+      }
+    },
+    {
+      "case": "390:glass-light:top",
+      "environment": "Chromium 149 headless, Linux ARM64 VPS, software rendering, DPR 1, 24 cards, nominal 6s, cold context; actual production source snapshot plus final runtime patch only",
+      "before": {
+        "duration": 6016.4,
+        "frames": 224,
+        "avg": 26.85892857142857,
+        "p95": 50.099999999999454,
+        "p99": 83.30000000000018,
+        "over16_7": 137,
+        "overBudget": 93,
+        "over33": 72,
+        "over50": 13,
+        "longTasks": 5,
+        "longTaskMs": 381,
+        "browserCpuMs": {
+          "LayoutDuration": 34.971000000000004,
+          "RecalcStyleDuration": 721.128,
+          "DevToolsCommandDuration": 3.062,
+          "ScriptDuration": 374.01800000000003,
+          "V8CompileDuration": 0,
+          "TaskDuration": 1690.55,
+          "TaskOtherDuration": 557.3710000000001
+        }
+      },
+      "after": {
+        "duration": 6016.4,
+        "frames": 262,
+        "avg": 22.96335877862595,
+        "p95": 33.400000000000546,
+        "p99": 50,
+        "over16_7": 129,
+        "overBudget": 87,
+        "over33": 68,
+        "over50": 2,
+        "longTasks": 0,
+        "longTaskMs": 0,
+        "browserCpuMs": {
+          "LayoutDuration": 14.819,
+          "RecalcStyleDuration": 269.086,
+          "DevToolsCommandDuration": 1.392,
+          "ScriptDuration": 239.339,
+          "V8CompileDuration": 0,
+          "TaskDuration": 959.704,
+          "TaskOtherDuration": 435.068
+        }
+      }
+    },
+    {
+      "case": "1440:glass-light:feed",
+      "environment": "Chromium 149 headless, Linux ARM64 VPS, software rendering, DPR 1, 24 cards, nominal 6s, cold context; actual production source snapshot plus final runtime patch only",
+      "before": {
+        "duration": 6383.100000000002,
+        "frames": 13,
+        "avg": 491.0076923076925,
+        "p95": 999.8999999999978,
+        "p99": 999.8999999999978,
+        "over16_7": 12,
+        "overBudget": 10,
+        "over33": 10,
+        "over50": 10,
+        "longTasks": 21,
+        "longTaskMs": 2728,
+        "browserCpuMs": {
+          "LayoutDuration": 139.34,
+          "RecalcStyleDuration": 2222.2050000000004,
+          "DevToolsCommandDuration": 6.63,
+          "ScriptDuration": 909.06,
+          "V8CompileDuration": 0,
+          "TaskDuration": 4289.72,
+          "TaskOtherDuration": 1012.4850000000001
+        }
+      },
+      "after": {
+        "duration": 6016.5,
+        "frames": 58,
+        "avg": 103.73275862068965,
+        "p95": 150,
+        "p99": 233.30000000000018,
+        "over16_7": 57,
+        "overBudget": 55,
+        "over33": 55,
+        "over50": 55,
+        "longTasks": 0,
+        "longTaskMs": 0,
+        "browserCpuMs": {
+          "LayoutDuration": 19.531,
+          "RecalcStyleDuration": 142.33,
+          "DevToolsCommandDuration": 1.448,
+          "ScriptDuration": 146.965,
+          "V8CompileDuration": 0,
+          "TaskDuration": 568.143,
+          "TaskOtherDuration": 257.869
+        }
+      }
+    },
+    {
+      "case": "390:glass-light:feed",
+      "environment": "Chromium 149 headless, Linux ARM64 VPS, software rendering, DPR 1, 24 cards, nominal 6s, cold context; actual production source snapshot plus final runtime patch only",
+      "before": {
+        "duration": 6016.400000000001,
+        "frames": 272,
+        "avg": 22.119117647058825,
+        "p95": 50,
+        "p99": 83.39999999999964,
+        "over16_7": 137,
+        "overBudget": 58,
+        "over33": 41,
+        "over50": 9,
+        "longTasks": 0,
+        "longTaskMs": 0,
+        "browserCpuMs": {
+          "LayoutDuration": 34.742000000000004,
+          "RecalcStyleDuration": 496.48199999999997,
+          "DevToolsCommandDuration": 1.38,
+          "ScriptDuration": 479.939,
+          "V8CompileDuration": 0,
+          "TaskDuration": 1598.3039999999999,
+          "TaskOtherDuration": 585.761
+        }
+      },
+      "after": {
+        "duration": 6016.500000000001,
+        "frames": 358,
+        "avg": 16.805865921787714,
+        "p95": 16.799999999999272,
+        "p99": 16.80000000000109,
+        "over16_7": 87,
+        "overBudget": 3,
+        "over33": 3,
+        "over50": 0,
+        "longTasks": 0,
+        "longTaskMs": 0,
+        "browserCpuMs": {
+          "LayoutDuration": 15.965,
+          "RecalcStyleDuration": 188.28900000000002,
+          "DevToolsCommandDuration": 1.404,
+          "ScriptDuration": 274.729,
+          "V8CompileDuration": 0,
+          "TaskDuration": 869.8820000000001,
+          "TaskOtherDuration": 389.49500000000006
+        }
+      }
+    }
+  ],
+  "traceTimings": [
+    {
+      "phase": "before",
+      "case": "1440:glass-light:top",
+      "aggregateTraceEventMs": {
+        "Paint": 37.997,
+        "Layout": 49.041,
+        "UpdateLayoutTree": 706.7,
+        "Layerize": 69.142
+      },
+      "frameIntervals": {
+        "duration": 4066.4999999999995,
+        "frames": 17,
+        "avg": 239.20588235294116,
+        "p95": 366.6999999999998,
+        "p99": 366.6999999999998,
+        "over16_7": 16,
+        "overBudget": 15,
+        "over33": 15,
+        "over50": 15,
+        "longTasks": 5,
+        "longTaskMs": 323,
+        "browserCpuMs": {
+          "LayoutDuration": 59.884,
+          "RecalcStyleDuration": 733.8789999999999,
+          "DevToolsCommandDuration": 2.876,
+          "ScriptDuration": 394.571,
+          "V8CompileDuration": 0,
+          "TaskDuration": 1487.801,
+          "TaskOtherDuration": 296.591
+        }
+      },
+      "note": "Diagnostic four-second trace, separate from clean runs; no GPU presented-time, decode-time, or GC-time conclusion."
+    },
+    {
+      "phase": "before",
+      "case": "390:glass-light:feed",
+      "aggregateTraceEventMs": {
+        "Paint": 64.752,
+        "Layout": 31.815,
+        "UpdateLayoutTree": 311.227,
+        "Layerize": 36.157
+      },
+      "frameIntervals": {
+        "duration": 4016.5000000000005,
+        "frames": 228,
+        "avg": 17.616228070175442,
+        "p95": 16.800000000000182,
+        "p99": 33.399999999999636,
+        "over16_7": 48,
+        "overBudget": 11,
+        "over33": 9,
+        "over50": 0,
+        "longTasks": 0,
+        "longTaskMs": 0,
+        "browserCpuMs": {
+          "LayoutDuration": 40.091,
+          "RecalcStyleDuration": 324.138,
+          "DevToolsCommandDuration": 2.814,
+          "ScriptDuration": 370.27500000000003,
+          "V8CompileDuration": 0,
+          "TaskDuration": 1191.6409999999998,
+          "TaskOtherDuration": 454.323
+        }
+      },
+      "note": "Diagnostic four-second trace, separate from clean runs; no GPU presented-time, decode-time, or GC-time conclusion."
+    },
+    {
+      "phase": "after",
+      "case": "1440:glass-light:top",
+      "aggregateTraceEventMs": {
+        "Paint": 26.697,
+        "Layout": 32.229,
+        "UpdateLayoutTree": 361.992,
+        "Layerize": 61.377
+      },
+      "frameIntervals": {
+        "duration": 4116.4,
+        "frames": 15,
+        "avg": 274.4266666666666,
+        "p95": 383.3000000000002,
+        "p99": 383.3000000000002,
+        "over16_7": 13,
+        "overBudget": 13,
+        "over33": 13,
+        "over50": 13,
+        "longTasks": 1,
+        "longTaskMs": 57,
+        "browserCpuMs": {
+          "LayoutDuration": 39.467,
+          "RecalcStyleDuration": 379.461,
+          "DevToolsCommandDuration": 2.872,
+          "ScriptDuration": 287.54600000000005,
+          "V8CompileDuration": 0,
+          "TaskDuration": 962.221,
+          "TaskOtherDuration": 252.87500000000003
+        }
+      },
+      "note": "Diagnostic four-second trace, separate from clean runs; no GPU presented-time, decode-time, or GC-time conclusion."
+    },
+    {
+      "phase": "after",
+      "case": "390:glass-light:feed",
+      "aggregateTraceEventMs": {
+        "Paint": 44.575,
+        "Layout": 18.721,
+        "UpdateLayoutTree": 168.282,
+        "Layerize": 38.197
+      },
+      "frameIntervals": {
+        "duration": 4016.4700000000003,
+        "frames": 238,
+        "avg": 16.8759243697479,
+        "p95": 16.800000000000182,
+        "p99": 33.30000000000018,
+        "over16_7": 47,
+        "overBudget": 3,
+        "over33": 3,
+        "over50": 0,
+        "longTasks": 0,
+        "longTaskMs": 0,
+        "browserCpuMs": {
+          "LayoutDuration": 22.393,
+          "RecalcStyleDuration": 172.741,
+          "DevToolsCommandDuration": 2.18,
+          "ScriptDuration": 248.60999999999999,
+          "V8CompileDuration": 0,
+          "TaskDuration": 846.763,
+          "TaskOtherDuration": 400.839
+        }
+      },
+      "note": "Diagnostic four-second trace, separate from clean runs; no GPU presented-time, decode-time, or GC-time conclusion."
+    }
+  ],
+  "cachedTimings": [
+    {
+      "phase": "before",
+      "case": "1440:glass-light:top",
+      "avg": 255.2,
+      "p95": 683.3999999999996,
+      "p99": 683.3999999999996,
+      "serverImageRequestsDuringScroll": 0
+    },
+    {
+      "phase": "before",
+      "case": "390:glass-light:feed",
+      "avg": 33.7515462184874,
+      "p95": 66.70000000000073,
+      "p99": 100,
+      "serverImageRequestsDuringScroll": 0
+    },
+    {
+      "phase": "after",
+      "case": "1440:glass-light:top",
+      "avg": 347.2083333333333,
+      "p95": 666.7000000000007,
+      "p99": 666.7000000000007,
+      "serverImageRequestsDuringScroll": 0
+    },
+    {
+      "phase": "after",
+      "case": "390:glass-light:feed",
+      "avg": 17.85066666666667,
+      "p95": 33.29999999999927,
+      "p99": 33.399999999999636,
+      "serverImageRequestsDuringScroll": 0
+    }
+  ],
+  "rootProof": [
+    {
+      "engine": "chromium",
+      "proof": [
+        {
+          "root": "viewport",
+          "isIntersecting": false,
+          "bounds": {
+            "x": 0,
+            "y": 1400,
+            "width": 390,
+            "height": 200,
+            "top": 1400,
+            "right": 390,
+            "bottom": 1600,
+            "left": 0
+          },
+          "intersection": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "rootBounds": {
+            "x": 0,
+            "y": -1200,
+            "width": 390,
+            "height": 3244,
+            "top": -1200,
+            "right": 390,
+            "bottom": 2044,
+            "left": 0
+          }
+        },
+        {
+          "root": "scroll-container",
+          "isIntersecting": true,
+          "bounds": {
+            "x": 0,
+            "y": 1400,
+            "width": 390,
+            "height": 200,
+            "top": 1400,
+            "right": 390,
+            "bottom": 1600,
+            "left": 0
+          },
+          "intersection": {
+            "x": 0,
+            "y": 1400,
+            "width": 390,
+            "height": 200,
+            "top": 1400,
+            "right": 390,
+            "bottom": 1600,
+            "left": 0
+          },
+          "rootBounds": {
+            "x": 0,
+            "y": -1200,
+            "width": 390,
+            "height": 3100,
+            "top": -1200,
+            "right": 390,
+            "bottom": 1900,
+            "left": 0
+          }
+        }
+      ]
+    },
+    {
+      "engine": "webkit",
+      "proof": [
+        {
+          "root": "viewport",
+          "isIntersecting": false,
+          "bounds": {
+            "x": 0,
+            "y": 1400,
+            "width": 390,
+            "height": 200,
+            "top": 1400,
+            "right": 390,
+            "bottom": 1600,
+            "left": 0
+          },
+          "intersection": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "rootBounds": {
+            "x": 0,
+            "y": -1200,
+            "width": 390,
+            "height": 3244,
+            "top": -1200,
+            "right": 390,
+            "bottom": 2044,
+            "left": 0
+          }
+        },
+        {
+          "root": "scroll-container",
+          "isIntersecting": true,
+          "bounds": {
+            "x": 0,
+            "y": 1400,
+            "width": 390,
+            "height": 200,
+            "top": 1400,
+            "right": 390,
+            "bottom": 1600,
+            "left": 0
+          },
+          "intersection": {
+            "x": 0,
+            "y": 1400,
+            "width": 390,
+            "height": 200,
+            "top": 1400,
+            "right": 390,
+            "bottom": 1600,
+            "left": 0
+          },
+          "rootBounds": {
+            "x": 0,
+            "y": -1200,
+            "width": 390,
+            "height": 3100,
+            "top": -1200,
+            "right": 390,
+            "bottom": 1900,
+            "left": 0
+          }
+        }
+      ]
+    }
+  ],
+  "concurrency": [
+    {
+      "limit": 2,
+      "peak": 2,
+      "loads": [
+        {
+          "id": 2,
+          "ms": 1646.3999996185303
+        },
+        {
+          "id": 3,
+          "ms": 1650.8999996185303
+        }
+      ],
+      "requests": [
+        {
+          "id": "0",
+          "start": -201.30000019073486,
+          "queue": 3,
+          "ttfb": 903.3000001907349,
+          "transfer": 8.399999618530273,
+          "bytes": 200292
+        },
+        {
+          "id": "1",
+          "start": -201,
+          "queue": 2.799999713897705,
+          "ttfb": 917.0999999046326,
+          "transfer": 14.100000381469727,
+          "bytes": 200292
+        },
+        {
+          "id": "2",
+          "start": 725,
+          "queue": 4.199999809265137,
+          "ttfb": 903.4000000953674,
+          "transfer": 6.599999904632568,
+          "bytes": 200292
+        },
+        {
+          "id": "3",
+          "start": 737.5,
+          "queue": 2.1999998092651367,
+          "ttfb": 902.9000000953674,
+          "transfer": 6.799999713897705,
+          "bytes": 200292
+        }
+      ],
+      "navigationMs": 12.5,
+      "retained": true
+    },
+    {
+      "limit": 3,
+      "peak": 3,
+      "loads": [
+        {
+          "id": 2,
+          "ms": 912.3000001907349
+        },
+        {
+          "id": 3,
+          "ms": 1699.4000000953674
+        }
+      ],
+      "requests": [
+        {
+          "id": "0",
+          "start": -142.30000019073486,
+          "queue": 3.3000001907348633,
+          "ttfb": 904.3000001907349,
+          "transfer": 12.099999904632568,
+          "bytes": 200292
+        },
+        {
+          "id": "1",
+          "start": -142,
+          "queue": 3.0999999046325684,
+          "ttfb": 910.2000002861023,
+          "transfer": 11,
+          "bytes": 200292
+        },
+        {
+          "id": "2",
+          "start": 1.4000000953674316,
+          "queue": 3.4000000953674316,
+          "ttfb": 902,
+          "transfer": 3.5,
+          "bytes": 200292
+        },
+        {
+          "id": "3",
+          "start": 780.1999998092651,
+          "queue": 2.3000001907348633,
+          "ttfb": 902.8000001907349,
+          "transfer": 12.299999713897705,
+          "bytes": 200292
+        }
+      ],
+      "navigationMs": 7.900000095367432,
+      "retained": true
+    },
+    {
+      "limit": 4,
+      "peak": 4,
+      "loads": [
+        {
+          "id": 3,
+          "ms": 942.4000000953674
+        },
+        {
+          "id": 2,
+          "ms": 942.5
+        }
+      ],
+      "requests": [
+        {
+          "id": "0",
+          "start": -148.7999997138977,
+          "queue": 3.0999999046325684,
+          "ttfb": 908.0999999046326,
+          "transfer": 30.699999809265137,
+          "bytes": 200292
+        },
+        {
+          "id": "1",
+          "start": -148.69999980926514,
+          "queue": 3.799999713897705,
+          "ttfb": 914.1000003814697,
+          "transfer": 19.699999809265137,
+          "bytes": 200292
+        },
+        {
+          "id": "2",
+          "start": 1.5,
+          "queue": 8.5,
+          "ttfb": 902.2000002861023,
+          "transfer": 23.799999713897705,
+          "bytes": 200292
+        },
+        {
+          "id": "3",
+          "start": 2.4000000953674316,
+          "queue": 8.199999809265137,
+          "ttfb": 907.4000000953674,
+          "transfer": 18.300000190734863,
+          "bytes": 200292
+        }
+      ],
+      "navigationMs": 665.6999998092651,
+      "retained": true
+    }
+  ],
+  "lookupSharing": [
+    {
+      "variant": "baseline",
+      "extractions": 2,
+      "ms": 121.6024809999999
+    },
+    {
+      "variant": "candidate",
+      "extractions": 1,
+      "ms": 110.8506440000001
+    }
+  ],
+  "clientRetention": {
+    "before": {
+      "engine": "chromium",
+      "version": "149.0.7827.0",
+      "forcedGcInDisposableBrowser": true,
+      "cycles": 10,
+      "rows": [
+        {
+          "cycle": 0,
+          "heapUsed": 12642836,
+          "documents": 3,
+          "nodes": 23335,
+          "jsEventListeners": 662,
+          "cards": 12
+        },
+        {
+          "cycle": 5,
+          "heapUsed": 13604508,
+          "documents": 3,
+          "nodes": 23335,
+          "jsEventListeners": 675,
+          "cards": 12
+        },
+        {
+          "cycle": 10,
+          "heapUsed": 13682600,
+          "documents": 3,
+          "nodes": 23335,
+          "jsEventListeners": 675,
+          "cards": 12
+        }
+      ]
+    },
+    "after": {
+      "engine": "chromium",
+      "version": "149.0.7827.0",
+      "forcedGcInDisposableBrowser": true,
+      "cycles": 10,
+      "rows": [
+        {
+          "cycle": 0,
+          "heapUsed": 12791780,
+          "documents": 4,
+          "nodes": 23343,
+          "jsEventListeners": 664,
+          "cards": 12
+        },
+        {
+          "cycle": 5,
+          "heapUsed": 13742388,
+          "documents": 4,
+          "nodes": 23343,
+          "jsEventListeners": 677,
+          "cards": 12
+        },
+        {
+          "cycle": 10,
+          "heapUsed": 13830832,
+          "documents": 4,
+          "nodes": 23343,
+          "jsEventListeners": 677,
+          "cards": 12
+        },
+        {
+          "idleMs": 180506,
+          "heapUsed": 13904848,
+          "documents": 4,
+          "nodes": 23343,
+          "jsEventListeners": 677,
+          "cards": 12,
+          "retained": true
+        }
+      ]
+    }
+  },
+  "liveObservedPrimaryRemovals": {
+    "before": 5,
+    "after": 0,
+    "cardsRetainedAtEnd": 15,
+    "note": "Separate live contexts; not matched network benchmarks. This does not identify the compositor cause of the original recording."
+  },
+  "sameSettledViewportSha256": "97b85640ad486048fff6f0e99d7fd34f2de49a888ceeecc41afe9078d652b7f9",
+  "productionSnapshotTests": {
+    "passed": 820,
+    "failed": 0,
+    "skipped": 0,
+    "durationMs": 322623.149226,
+    "scope": "Earlier production source snapshot before final pending-image guard; not final exact PR tree."
+  },
+  "threeMinuteIdle": {
+    "engine": "chromium",
+    "version": "149.0.7827.0",
+    "forcedGcInDisposableBrowser": true,
+    "cycles": 10,
+    "rows": [
+      {
+        "cycle": 0,
+        "heapUsed": 12791780,
+        "documents": 4,
+        "nodes": 23343,
+        "jsEventListeners": 664,
+        "cards": 12
+      },
+      {
+        "cycle": 5,
+        "heapUsed": 13742388,
+        "documents": 4,
+        "nodes": 23343,
+        "jsEventListeners": 677,
+        "cards": 12
+      },
+      {
+        "cycle": 10,
+        "heapUsed": 13830832,
+        "documents": 4,
+        "nodes": 23343,
+        "jsEventListeners": 677,
+        "cards": 12
+      },
+      {
+        "idleMs": 180506,
+        "heapUsed": 13904848,
+        "documents": 4,
+        "nodes": 23343,
+        "jsEventListeners": 677,
+        "cards": 12,
+        "retained": true
+      }
+    ]
+  },
+  "interactionMatrix": {
+    "cases": 6,
+    "passed": 6,
+    "widths": [
+      390,
+      1440
+    ],
+    "themes": [
+      "classic",
+      "glass",
+      "glass-light"
+    ]
+  },
+  "backgroundRefreshReplay": {
+    "cards": 8,
+    "removed": 0,
+    "inserted": 0,
+    "cases": 4
+  },
+  "publicBaselineAssets": {
+    "thumbnail-loading.js": "8693df8426ea3a311ede3ec7f20d317840bb3da86737e62259fe447ad8f15b05",
+    "image-focus.js": "6315c3083fa6a1c292ee449a18159e81158f95bfa52d05611e34b2fde328c146",
+    "matchesProductionFiles": true,
+    "candidateDeployed": false
+  },
+  "exactPrCheckoutTests": {
+    "passed": 811,
+    "failed": 0,
+    "skipped": 0,
+    "durationMs": 357240.787637,
+    "scope": "Earlier exact PR checkout before current-main merge and final pending-image guard."
+  },
+  "finalMergedPrTests": {
+    "passed": 820,
+    "failed": 0,
+    "skipped": 0,
+    "durationMs": 326439.268468,
+    "scope": "Final code merged with main 88368e38862bee16329797fd751dcd32fda7f9d9; includes pending-image stylesheet and new browser assertions; all ten runtime files match the measured production-source candidate."
+  },
+  "longFeed": [
+    {
+      "width": 390,
+      "theme": "classic",
+      "visitedArticles": 60,
+      "pagination": "explicit mobile pages",
+      "retainedFromFirstPage": 0,
+      "nominalScrollPxPerSecond": [
+        350,
+        750,
+        2400
+      ],
+      "cards": 15,
+      "retainedAfterReversals": 15,
+      "primarySourceClears": 0,
+      "hasMore": false,
+      "errors": []
+    },
+    {
+      "width": 390,
+      "theme": "glass",
+      "visitedArticles": 60,
+      "pagination": "explicit mobile pages",
+      "retainedFromFirstPage": 0,
+      "nominalScrollPxPerSecond": [
+        350,
+        750,
+        2400
+      ],
+      "cards": 15,
+      "retainedAfterReversals": 15,
+      "primarySourceClears": 0,
+      "hasMore": false,
+      "errors": []
+    },
+    {
+      "width": 390,
+      "theme": "glass-light",
+      "visitedArticles": 60,
+      "pagination": "explicit mobile pages",
+      "retainedFromFirstPage": 0,
+      "nominalScrollPxPerSecond": [
+        350,
+        750,
+        2400
+      ],
+      "cards": 15,
+      "retainedAfterReversals": 15,
+      "primarySourceClears": 0,
+      "hasMore": false,
+      "errors": []
+    },
+    {
+      "width": 1440,
+      "theme": "classic",
+      "visitedArticles": 80,
+      "pagination": "desktop infinite scroll",
+      "retainedFromFirstPage": 40,
+      "nominalScrollPxPerSecond": [
+        350,
+        750,
+        2400
+      ],
+      "cards": 80,
+      "retainedAfterReversals": 80,
+      "primarySourceClears": 0,
+      "hasMore": false,
+      "errors": []
+    },
+    {
+      "width": 1440,
+      "theme": "glass",
+      "visitedArticles": 80,
+      "pagination": "desktop infinite scroll",
+      "retainedFromFirstPage": 40,
+      "nominalScrollPxPerSecond": [
+        350,
+        750,
+        2400
+      ],
+      "cards": 80,
+      "retainedAfterReversals": 80,
+      "primarySourceClears": 0,
+      "hasMore": false,
+      "errors": []
+    },
+    {
+      "width": 1440,
+      "theme": "glass-light",
+      "visitedArticles": 80,
+      "pagination": "desktop infinite scroll",
+      "retainedFromFirstPage": 40,
+      "nominalScrollPxPerSecond": [
+        350,
+        750,
+        2400
+      ],
+      "cards": 80,
+      "retainedAfterReversals": 80,
+      "primarySourceClears": 0,
+      "hasMore": false,
+      "errors": []
+    }
+  ],
+  "pendingImageGuard": {
+    "engines": [
+      "chromium",
+      "webkit"
+    ],
+    "reservedHeight": true,
+    "unassignedAltHidden": true,
+    "assignedVisible": true,
+    "srcsetOnlyVisible": true,
+    "productionMarkupQueuedVerticalBounds": [
+      [
+        331.03125,
+        535.78125
+      ],
+      [
+        711.75,
+        916.5
+      ]
+    ],
+    "boundsUnchangedByGuard": true
+  },
+  "productionIntegration": {
+    "runtimeFiles": 10,
+    "regressionFiles": 7,
+    "paths": 17,
+    "compatibleDryRun": true,
+    "applied": false,
+    "serviceRestarted": false,
+    "dependenciesBeforeEntry": true,
+    "entryWrittenLast": true
+  },
+  "previousMergedPrTests": {
+    "passed": 813,
+    "failed": 0,
+    "skipped": 0,
+    "durationMs": 334349.641576,
+    "scope": "Final code merged with main 459a0390b313625ec32e4254a93cc3516cdefb56; includes pending-image stylesheet and new browser assertions."
+  }
+}
