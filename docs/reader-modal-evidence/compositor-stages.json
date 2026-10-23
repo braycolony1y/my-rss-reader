@@ -1,0 +1,162 @@
+[
+  {
+    "trace": "before-1440-glass-light-plain-current-trace.json.gz",
+    "stages": [
+      {
+        "stage": "SubmitToReceiveCompositorFrame",
+        "count": 48,
+        "meanMs": 0.8150208333333335,
+        "p95Ms": 1.344,
+        "maxMs": 1.606
+      },
+      {
+        "stage": "ReceiveCompositorFrameToStartDraw",
+        "count": 48,
+        "meanMs": 0.5129791666666668,
+        "p95Ms": 0.653,
+        "maxMs": 0.67
+      },
+      {
+        "stage": "StartDrawToSwapStart",
+        "count": 48,
+        "meanMs": 77.2474791666667,
+        "p95Ms": 81.276,
+        "maxMs": 100.549
+      },
+      {
+        "stage": "SwapEndToPresentationCompositorFrame",
+        "count": 48,
+        "meanMs": 0.12293750000000003,
+        "p95Ms": 0.139,
+        "maxMs": 0.2
+      },
+      {
+        "stage": "SubmitCompositorFrameToPresentationCompositorFrame",
+        "count": 48,
+        "meanMs": 78.69841666666666,
+        "p95Ms": 83.27,
+        "maxMs": 101.938
+      }
+    ]
+  },
+  {
+    "trace": "after-1440-glass-light-plain-current-trace.json.gz",
+    "stages": [
+      {
+        "stage": "SubmitToReceiveCompositorFrame",
+        "count": 51,
+        "meanMs": 1.1409999999999998,
+        "p95Ms": 2.791,
+        "maxMs": 2.805
+      },
+      {
+        "stage": "ReceiveCompositorFrameToStartDraw",
+        "count": 51,
+        "meanMs": 0.5500588235294118,
+        "p95Ms": 0.735,
+        "maxMs": 0.891
+      },
+      {
+        "stage": "StartDrawToSwapStart",
+        "count": 51,
+        "meanMs": 96.77192156862743,
+        "p95Ms": 113.383,
+        "maxMs": 154.063
+      },
+      {
+        "stage": "SwapEndToPresentationCompositorFrame",
+        "count": 51,
+        "meanMs": 0.3324117647058824,
+        "p95Ms": 1.413,
+        "maxMs": 1.596
+      },
+      {
+        "stage": "SubmitCompositorFrameToPresentationCompositorFrame",
+        "count": 51,
+        "meanMs": 98.79539215686272,
+        "p95Ms": 116.393,
+        "maxMs": 157.712
+      }
+    ]
+  },
+  {
+    "trace": "before-390-glass-light-voz-current-trace.json.gz",
+    "stages": [
+      {
+        "stage": "SubmitToReceiveCompositorFrame",
+        "count": 63,
+        "meanMs": 0.6656349206349209,
+        "p95Ms": 1.545,
+        "maxMs": 2.298
+      },
+      {
+        "stage": "ReceiveCompositorFrameToStartDraw",
+        "count": 63,
+        "meanMs": 0.7529206349206348,
+        "p95Ms": 1.753,
+        "maxMs": 3.134
+      },
+      {
+        "stage": "StartDrawToSwapStart",
+        "count": 63,
+        "meanMs": 25.72325396825398,
+        "p95Ms": 29.345,
+        "maxMs": 36.098
+      },
+      {
+        "stage": "SwapEndToPresentationCompositorFrame",
+        "count": 63,
+        "meanMs": 0.05950793650793653,
+        "p95Ms": 0.14,
+        "maxMs": 0.198
+      },
+      {
+        "stage": "SubmitCompositorFrameToPresentationCompositorFrame",
+        "count": 63,
+        "meanMs": 27.201317460317448,
+        "p95Ms": 32.013,
+        "maxMs": 39.953
+      }
+    ]
+  },
+  {
+    "trace": "after-390-glass-light-voz-current-trace.json.gz",
+    "stages": [
+      {
+        "stage": "SubmitToReceiveCompositorFrame",
+        "count": 61,
+        "meanMs": 4.180032786885246,
+        "p95Ms": 32.369,
+        "maxMs": 51.662
+      },
+      {
+        "stage": "ReceiveCompositorFrameToStartDraw",
+        "count": 61,
+        "meanMs": 0.766983606557377,
+        "p95Ms": 2.379,
+        "maxMs": 3.332
+      },
+      {
+        "stage": "StartDrawToSwapStart",
+        "count": 61,
+        "meanMs": 34.62883606557378,
+        "p95Ms": 45.454,
+        "maxMs": 60.737
+      },
+      {
+        "stage": "SwapEndToPresentationCompositorFrame",
+        "count": 61,
+        "meanMs": 0.38800000000000007,
+        "p95Ms": 2.154,
+        "maxMs": 2.257
+      },
+      {
+        "stage": "SubmitCompositorFrameToPresentationCompositorFrame",
+        "count": 61,
+        "meanMs": 39.96385245901639,
+        "p95Ms": 68.011,
+        "maxMs": 105.342
+      }
+    ]
+  }
+]
