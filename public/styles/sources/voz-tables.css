@@ -1,0 +1,6 @@
+/* Match VOZ table headers to the reader's light surface. Nested text already
+   receives the light article foreground from light-content.css. */
+.theme-glass-light .article-rendered-content .voz-post th {
+    background: #f1f5f9;
+    color: #1d1d1f;
+}

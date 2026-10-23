@@ -1,3 +1,5 @@
+import { waitForGeminiWebModel } from './gemini-web-model-readiness.js';
+
 // Gemini Web model and thinking-level selection.
 // Live DOM verified on 2026-10-16 with both inline (narrow) and overlay (wide) menus.
 const MODEL_IDS = Object.freeze({
@@ -236,20 +238,22 @@ async function waitForSelection({ page, openMenu, sleep, match, thinking, code, 
 export async function selectGeminiWebMode(page, requestedMode, { openMenu, closeMenu, sleep }) {
     const target = resolveGeminiWebMode(requestedMode);
     try {
-        await openMenu();
-        let state = await readGeminiWebModeState(page);
         // Menu IDs are account-specific and can change. Match the displayed
         // model label; never use a stale hard-coded ID to choose a different model.
         const sameModel = item => String(item.name || '')
             .replace(/\s+/g, ' ').trim().toLowerCase() === target.modelName.toLowerCase();
-        const model = state.models.find(sameModel);
+        let { state, model } = await waitForGeminiWebModel({
+            readState: () => readGeminiWebModeState(page),
+            openMenu, matches: sameModel, sleep
+        });
         if (!model || model.disabled) {
             const available = state.models.map(item => item.name +
                 (item.upsell ? ' (upgrade required)' :
                     item.disabled ? ' (disabled)' : '')).join(', ') || '(none)';
             throw fail(model?.upsell ? 'GEMINI_WEB_MODEL_UPSELL' :
-                    'GEMINI_WEB_MODEL_NOT_FOUND',
+                    model?.disabled ? 'GEMINI_WEB_MODEL_DISABLED' : 'GEMINI_WEB_MODEL_NOT_FOUND',
                 target.modelName + (model?.upsell ? ' requires an account upgrade' :
+                    model?.disabled ? ' remained disabled after waiting for model availability' :
                     ' is not offered as a selectable model') +
                 '. Visible options: ' + available +
                 '. Check GEMINI_WEB_URL and the OpenCLI browser profile; no model was substituted.');
