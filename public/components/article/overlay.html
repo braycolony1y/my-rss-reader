@@ -1,13 +1,13 @@
     <!-- ARTICLE OVERLAY PANEL -->
     <div x-show="articleOverlayOpen" x-cloak
-        class="article-overlay-root fixed inset-0 z-[80] flex justify-center items-center" @touchmove.prevent>
+        class="article-overlay-root fixed inset-0 z-[80] flex justify-center items-center">
         <!-- Backdrop -->
         <div x-show="articleOverlayOpen" x-transition:enter="transition ease-out duration-300"
             x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100"
             x-transition:leave="transition ease-in duration-200" x-transition:leave-start="opacity-100"
             x-transition:leave-end="opacity-0" class="article-overlay-backdrop absolute inset-0"
             :class="theme === 'glass-light' ? 'bg-gray-400/20 backdrop-blur-md' : (theme === 'glass-dark' ? 'bg-black/40 backdrop-blur-md' : 'bg-black/60 backdrop-blur-md')"
-            @click="closeArticleOverlay()"></div>
+            @click="closeArticleOverlay()" @touchmove.prevent></div>
 
         <!-- Panel -->
         <div x-show="articleOverlayOpen" x-transition:enter="transition ease-out duration-300 transform"
@@ -17,12 +17,12 @@
             x-transition:leave-start="opacity-100 translate-y-0 scale-100"
             x-transition:leave-end="opacity-0 translate-y-8 md:translate-y-4 scale-95"
             class="article-overlay-panel relative w-full h-[100dvh] md:w-[90%] md:max-w-[720px] md:h-[85vh] md:max-h-[85vh] md:rounded-3xl bg-[#111827] shadow-2xl flex flex-col overflow-hidden"
-            @click.stop @touchstart.stop>
+            @click.stop @touchstart.passive.stop>
 
 <!-- reader:include article/overlay-header -->
             <!-- Content -->
             <div id="overlay-scroll-container" class="flex-1 min-h-0 overflow-y-auto overscroll-contain"
-                @scroll.passive="trackVozThreadScroll($event)" @touchmove.stop>
+                @scroll.passive="trackVozThreadScroll($event)" @touchmove.passive.stop>
                 <!-- Loading state -->
                 <div x-show="isLoadingOverlay" class="flex flex-col items-center justify-center h-full gap-4">
                     <div class="relative">
@@ -258,7 +258,7 @@
                     </div>
 
                     <!-- Rendered article body -->
-                    <div class="article-rendered-content" x-html="overlayContent" @click="openPostHistory($event); handleArticleClick($event)"></div>
+                    <div class="article-rendered-content" x-effect="renderArticleContent($el, overlayContent)" @click="openPostHistory($event); handleArticleClick($event)"></div>
 
                     <!-- VOZ Thread Pagination Bar -->
                     <template

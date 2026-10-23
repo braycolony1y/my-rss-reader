@@ -188,6 +188,7 @@ const ReaderAppBootstrap = {
                                 this.lastSavedScrollY = sc.scrollTop;
                             }
 
+                            ReaderVozScrollPosition.flush(this);
                             this.flushUserPreferences();
 
                             if (typeof this.saveState === 'function') {
@@ -200,8 +201,8 @@ const ReaderAppBootstrap = {
                             // Intentionally do not write sc.scrollTop here.
                         }
                     });
-                    window.addEventListener('pagehide', () => { this.flushUserPreferences(); if (typeof this.saveState === 'function') this.saveState(); });
-                    if ('onfreeze' in document) document.addEventListener('freeze', () => { if (typeof this.saveState === 'function') this.saveState(); });
+                    window.addEventListener('pagehide', () => { ReaderVozScrollPosition.flush(this); this.flushUserPreferences(); if (typeof this.saveState === 'function') this.saveState(); });
+                    if ('onfreeze' in document) document.addEventListener('freeze', () => { ReaderVozScrollPosition.flush(this); this.flushUserPreferences(); if (typeof this.saveState === 'function') this.saveState(); });
                     window.addEventListener('pageshow', (e) => {
                         if (e.persisted) {
                             // BFCache restores the live document, including its
