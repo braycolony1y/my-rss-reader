@@ -1,5 +1,6 @@
 import { parseK, parseBaoMoi, parseMorningstar, parseTechcombank, parseUOB, parseUOBVN } from './source-parsers.js';
 import { createCacheObservationBatch } from './cache-observation-batch.js';
+import { createFeedFetcher } from './fetch-feed.js';
 import { extractVozThreadListMetadata } from './voz-thread-metadata.js';
 import { publisherIcon, isInvalidImage, cleanUrl, normalizeStateUrl, isRedditUrl } from '../utils/article-utils.js';
 import sourceRegistry from '../sources/index.js';
@@ -30,6 +31,7 @@ export function createFeedSync({
     env,
     runUniversalTabPrefetch,
     gcAndLogMemory,
+    fetchFeedResponse = createFeedFetcher({ CF_PROXY_BASE, VIETSERVER_PROXY_BASE, BROWSER_HEADERS }),
 } = {}) {
     // Sync pause/resume control
     let syncPaused = false;
@@ -318,28 +320,7 @@ export function createFeedSync({
                 } else if (feed.url.includes('uob.com.vn')) {
                     response = await fetch(feed.url, { headers: BROWSER_HEADERS });
                 } else {
-                    // Default fetch logic for non-Morningstar sites
-                    let fetchUrl = feed.url;
-                    // Fix for Kenh14 changing their RSS URL structure
-                    if (fetchUrl === 'https://kenh14.vn/home.rss') fetchUrl = 'https://kenh14.vn/rss/home.rss';
-                    else if (fetchUrl === 'https://kenh14.vn/tin-moi-nhat.rss') fetchUrl = 'https://kenh14.vn/rss/tin-moi-nhat.rss';
-
-                    response = await fetch(fetchUrl, { headers: BROWSER_HEADERS });
-
-                    // If blocked by Cloudflare or WAF, fallback to our proxy
-                    if (response.status === 403 || response.status === 401 || response.status === 406) {
-                        console.log(`[FETCH DEBUG] WAF Blocked Request (${response.status}) for ${fetchUrl}. Falling back to CF proxy...`);
-                        await discardResponseBody(response);
-                        response = await fetch(CF_PROXY_BASE + encodeURIComponent(fetchUrl), { headers: BROWSER_HEADERS });
-                        if (!response.ok) {
-                            console.log("[PROXY DEBUG] CF proxy failed for feed " + fetchUrl + ", trying Vietserver...");
-                            await discardResponseBody(response);
-                            try {
-                                const vsHtml = await fetchViaVietserver(fetchUrl);
-                                response = new Response(vsHtml, { status: 200, headers: { 'Content-Type': 'application/xml' } });
-                            } catch (vsErr) {}
-                        }
-                    }
+                    response = await fetchFeedResponse(feed.url);
                 }
 
                 if (response && !response.ok && response.status !== 202) {
