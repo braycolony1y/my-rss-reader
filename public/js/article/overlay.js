@@ -4,6 +4,8 @@ const ReaderArticleOverlay = {
     create() {
         return {
 
+                renderArticleContent(root, content) { ReaderArticleContent.render(root, content); },
+
                 // ARTICLE OVERLAY STATE
                 articleOverlayOpen: false,
                 isLoadingOverlay: false,
@@ -141,105 +143,9 @@ const ReaderArticleOverlay = {
                         ...(data.attemptedStrategies || []),
                         strategy
                     ].filter(Boolean))];
-                    this.$nextTick(() => {
-                        this.hydrateTwitterEmbeds(document.getElementById('overlay-scroll-container'));
-                        if (window.Hls) {
-                            document.querySelectorAll('.article-rendered-content video').forEach(video => {
-                                let src = video.getAttribute('src');
-                                if (!src) {
-                                    const sourceTag = video.querySelector('source[src*=".m3u8"], source[type="application/x-mpegURL"]');
-                                    if (sourceTag) src = sourceTag.getAttribute('src');
-                                }
-                                if (src && src.includes('.m3u8')) {
-                                    if (Hls.isSupported()) {
-                                        video.removeAttribute('src');
-                                        video.querySelectorAll('source').forEach(s => s.remove());
-                                        const hls = new Hls();
-                                        hls.loadSource(src);
-                                        hls.attachMedia(video);
-                                    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-                                        video.src = src;
-                                    }
-                                }
-                            });
-                        }
-                        const articleScroll =
-                            document.getElementById(
-                                'overlay-scroll-container'
-                            );
-
-                        if (articleScroll) {
-                            articleScroll.scrollTop = 0;
-                        }
-
-                        // Find/scroll the remembered post before releasing any
-                        // speculative VOZ work.
-                        this.checkVozThreadPosition();
-
-                        if (
-                            deferVozWorkUntilPaint
-                            && this.articleOverlayOpen
-                            && this.overlayRequestId === applyRequestId
-                        ) {
-                            // First RAF commits DOM/layout.
-                            // Second RAF lets the target page actually paint.
-                            requestAnimationFrame(() => {
-                                requestAnimationFrame(() => {
-                                    if (
-                                        !this.articleOverlayOpen
-                                        || this.overlayRequestId !== applyRequestId
-                                    ) {
-                                        return;
-                                    }
-
-                                    const activeVozUrl = this.overlayArticle?.resolvedLink || this.overlayArticle?.link || '';
-                                    const activeFeedUrl = this.overlayArticle?.feedUrl || '';
-                                    let vozPriorityWork = Promise.resolve();
-
-                                    if (!this.overlayArticle?.sourceDeleted) {
-                                        if (this.overlayFetchedFromCache) {
-                                            // VOZ_FRONTIER_PARALLEL_P0_V2
-                                            //
-                                            // A cached page can be stale in TWO independent ways:
-                                            //   1) newer posts may have arrived on this same page;
-                                            //   2) the thread may already have rolled over to page N+1.
-                                            //
-                                            // Refresh the exact current page and probe page N+1 in
-                                            // parallel. Neither one is allowed to block the other.
-                                            // This is shared by ordinary VOZ threads and Cache-board
-                                            // threads; Cache-board reconciliation preserves historical
-                                            // cached post bodies instead of discarding them.
-                                            vozPriorityWork = Promise.resolve(
-                                                this.checkVozNewPostsInBackground(
-                                                    activeVozUrl,
-                                                    activeFeedUrl
-                                                )
-                                            );
-                                        } else if (this.overlayPagination?.nextUrl) {
-                                            vozPriorityWork = Promise.resolve(
-                                                this.prefetchThreadPages(
-                                                    this.overlayPagination,
-                                                    activeFeedUrl
-                                                )
-                                            );
-                                        }
-                                    }
-
-                                    const deferred = this.vozDeferredArticlePrefetch;
-                                    if (deferred && deferred.requestId === applyRequestId) {
-                                        this.vozDeferredArticlePrefetch = null;
-                                        // Unrelated article prefetch waits until VOZ continuation
-                                        // discovery/read-ahead has had first use of the source queue.
-                                        Promise.resolve(vozPriorityWork).finally(() => {
-                                            if (this.articleOverlayOpen && this.overlayRequestId === applyRequestId) {
-                                                this.prefetchNextAfter(deferred.article);
-                                            }
-                                        });
-                                    }
-                                });
-                            });
-                        }
-                    });
+                    this.$nextTick(() => ReaderArticleRenderEffects.afterInsert(
+                        this, applyRequestId, deferVozWorkUntilPaint
+                    ));
                 },
 
                 switchOverlayFetchStrategy(strategy) {
@@ -383,6 +289,8 @@ const ReaderArticleOverlay = {
 
                 restoreArticleOverlay(snapshot, updateHistory = true) {
                     if (!snapshot?.overlayArticle) return;
+                    const restoreScroll = document.getElementById('overlay-scroll-container');
+                    const restoreToken = ReaderArticleContent.beginRestore(restoreScroll);
                     this.overlayRequestId = '';
                     this.articleOverlayOpen = true;
                     this.isLoadingOverlay = false;
@@ -395,6 +303,7 @@ const ReaderArticleOverlay = {
                     this.overlayFetchStrategy = snapshot.overlayFetchStrategy;
                     this.overlayFetchedFromCache = snapshot.overlayFetchedFromCache;
                     this.overlayHasNativeAudio = snapshot.overlayHasNativeAudio;
+                    this.prepareArticleSpeech();
                     this.overlayMethodResults = { ...snapshot.overlayMethodResults };
                     this.overlayAttemptedStrategies = [...snapshot.overlayAttemptedStrategies];
                     this.overlayRejectedStrategies = [...snapshot.overlayRejectedStrategies];
@@ -411,7 +320,7 @@ const ReaderArticleOverlay = {
                     this.$nextTick(() => {
                         const articleScroll = document.getElementById('overlay-scroll-container');
                         this.hydrateTwitterEmbeds(articleScroll);
-                        if (articleScroll) articleScroll.scrollTop = snapshot.scrollTop || 0;
+                        ReaderArticleContent.restorePosition(articleScroll, restoreToken, snapshot.scrollTop);
                     });
                 },
 
@@ -426,6 +335,8 @@ const ReaderArticleOverlay = {
                 },
 
                 releaseArticleReaderSession() {
+                    ReaderArticleContent.cancelRestore(document.getElementById('overlay-scroll-container'));
+                    ReaderVozScrollPosition.flush(this);
                     if (!this.overlayRequestId) return;
                     fetch('/api/article-reader-session/close', {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -718,6 +629,7 @@ const ReaderArticleOverlay = {
                 },
             
             closeArticleOverlay(options = {}) {
+                    ReaderVozScrollPosition.flush(this);
                     // VOZ_FLUSH_POSITION_ON_CLOSE_V5
                     if (
                         Object.keys(this.pendingPreferences || {}).some(

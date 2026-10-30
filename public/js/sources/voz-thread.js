@@ -3,6 +3,7 @@
 const ReaderSourcesVozThread = {
     create() {
         return {
+                vozScrollOwner: Object.freeze({}),
                 vozScrollRaf: 0,
                 lastVozMeasureAt: 0,
                 lastTrackedVozPost: '',
@@ -118,39 +119,7 @@ const ReaderSourcesVozThread = {
 
                 vozResumePending: false,
                 trackVozThreadScroll(event) {
-                    if (this.vozResumePending) return;
-                    if (!this.overlayArticle || !this.articleOverlayOpen) return;
-                    const url = this.overlayArticle.link || '';
-                    if (!url.includes('voz.vn') && this.overlayArticle.siteName !== 'VOZ') return;
-                    const container = event.currentTarget || event.target;
-                    if (!container || this.vozScrollRaf) return;
-                    this.vozScrollRaf = requestAnimationFrame(() => {
-                        this.vozScrollRaf = 0;
-                        if (!this.overlayArticle || !this.articleOverlayOpen) return;
-                        const now = performance.now();
-                        if (now - this.lastVozMeasureAt < 120) return;
-                        this.lastVozMeasureAt = now;
-                        const posts = Array.from(container.querySelectorAll('.voz-post[data-post-index]'));
-                        if (!posts.length) return;
-                        const containerRect = container.getBoundingClientRect();
-                        let topPost = posts[0];
-                        for (const post of posts) {
-                            if (post.getBoundingClientRect().top >= containerRect.top - 50) {
-                                topPost = post;
-                                break;
-                            }
-                        }
-                        const index = topPost.getAttribute('data-post-index');
-                        const absId = topPost.getAttribute('data-absolute-post-id');
-                        if (!index || index === this.lastTrackedVozPost) return;
-                        this.lastTrackedVozPost = index;
-                        const currentUrl = this.overlayArticle.link || '';
-                        const threadMatch = currentUrl.match(/threads\/[^\/.]+\.(\d+)/i) || currentUrl.match(/\b(\d{5,8})\b/);
-                        const threadId = threadMatch ? threadMatch[1] : currentUrl;
-                        
-                        const saveData = absId ? JSON.stringify({ index, absId, page: this.overlayPagination?.currentPage || Math.ceil(Number(index) / 20) }) : index;
-                        this.syncUserPreferenceDebounced('voz_last_read_post_' + threadId, saveData);
-                    });
+                    ReaderVozScrollPosition.track(this, event);
                 },
 
                 vozReadingPositionRaw(prefKey) {
@@ -434,77 +403,15 @@ const ReaderSourcesVozThread = {
                                 let contentUpdated = false;
 
                                 if (renderedContainer && this.overlayRequestId === requestId) {
-                                    const currentPosts = Array.from(
-                                        renderedContainer.querySelectorAll('.voz-post')
+                                    const update = ReaderVozPostReconcile.reconcile(
+                                        renderedContainer, freshPosts,
+                                        this.boardFolderFor(this.overlayArticle) === 'cache'
                                     );
-                                    const postId = node =>
-                                        node.getAttribute('data-absolute-post-id')
-                                        || node.id
-                                        || '';
-                                    const freshById = new Map(
-                                        freshPosts
-                                            .map(node => [postId(node), node])
-                                            .filter(([id]) => id)
-                                    );
-                                    const freshIds = new Set(freshById.keys());
-                                    const currentById = new Map(
-                                        currentPosts
-                                            .map(node => [postId(node), node])
-                                            .filter(([id]) => id)
-                                    );
-                                    const currentIds = currentPosts.map(postId);
-                                    const preserveCachedBodies =
-                                        this.boardFolderFor(this.overlayArticle) === 'cache';
-                                    const after = new Map();
-                                    const leading = [];
-
-                                    // Cache-board only: posts that disappeared
-                                    // live remain historical overlays at their
-                                    // original sequence location. Normal VOZ
-                                    // threads follow the live page exactly.
-                                    if (preserveCachedBodies) {
-                                        for (let i = 0; i < currentPosts.length; i++) {
-                                            const id = currentIds[i];
-                                            if (!id || freshIds.has(id)) continue;
-
-                                            let previousLive = '';
-                                            for (let j = i - 1; j >= 0; j--) {
-                                                if (freshIds.has(currentIds[j])) {
-                                                    previousLive = currentIds[j];
-                                                    break;
-                                                }
-                                            }
-
-                                            const node = currentPosts[i].cloneNode(true);
-                                            if (previousLive) {
-                                                if (!after.has(previousLive)) after.set(previousLive, []);
-                                                after.get(previousLive).push(node);
-                                            } else {
-                                                leading.push(node);
-                                            }
-                                        }
+                                    contentUpdated = update.changed;
+                                    if (contentUpdated) {
+                                        ReaderArticleContent.adopt(renderedContainer, update.html);
+                                        this.overlayContent = update.html;
                                     }
-
-                                    const fragment = document.createDocumentFragment();
-                                    leading.forEach(node => fragment.appendChild(node));
-
-                                    freshPosts.forEach(freshPost => {
-                                        const id = postId(freshPost);
-                                        const sourceNode =
-                                            preserveCachedBodies && currentById.has(id)
-                                                ? currentById.get(id)
-                                                : freshPost;
-
-                                        fragment.appendChild(sourceNode.cloneNode(true));
-                                        (after.get(id) || []).forEach(node =>
-                                            fragment.appendChild(node)
-                                        );
-                                    });
-
-                                    const beforeHtml = renderedContainer.innerHTML;
-                                    renderedContainer.replaceChildren(fragment);
-                                    contentUpdated = beforeHtml !== renderedContainer.innerHTML;
-                                    this.overlayContent = renderedContainer.innerHTML;
 
                                     this.overlayPagination =
                                         this.alignVozPaginationForCurrentView(
@@ -514,7 +421,7 @@ const ReaderSourcesVozThread = {
                                             freshData.pagination?.nextUrl || null
                                         );
 
-                                    this.hydrateTwitterEmbeds(renderedContainer);
+                                    if (contentUpdated) this.hydrateTwitterEmbeds(renderedContainer);
 
                                     const cacheKeys = [
                                         url,

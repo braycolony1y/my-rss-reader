@@ -1,0 +1,766 @@
+[
+  {
+    "key": "1440:glass-light:plain",
+    "variant": "current",
+    "engine": "chromium",
+    "warmRamReopen": false,
+    "warmup": null,
+    "diagnostic": true,
+    "trace": true,
+    "errors": [],
+    "mean": 47.72575757575757,
+    "p95": 116.60000000000036,
+    "p99": 150,
+    "frames": 66,
+    "max": 150,
+    "inputP95": 102.5,
+    "inputs": [
+      29.09999990463257,
+      158.59999990463257,
+      101.80000019073486,
+      102.5,
+      96.40000009536743,
+      98.2000002861023,
+      84.59999990463257,
+      90.40000009536743,
+      101.59999990463257,
+      79.40000009536743,
+      60.40000009536743,
+      65.60000038146973,
+      80.39999961853027,
+      76.90000009536743,
+      66.89999961853027,
+      88.09999990463257,
+      81.69999980926514,
+      70.30000019073486,
+      83.5,
+      75.90000009536743,
+      70.60000038146973,
+      79.30000019073486,
+      89.2000002861023,
+      85.19999980926514,
+      86.69999980926514
+    ],
+    "scrollEvents": 25,
+    "rectReads": 0,
+    "storageWrites": 0,
+    "callbacks": {},
+    "longTasks": [],
+    "shifts": [],
+    "mutations": 0,
+    "removed": 0,
+    "srcCleared": 0,
+    "nodeStable": true,
+    "top": 4000,
+    "feedTop": 0,
+    "nodes": 499,
+    "images": [
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      }
+    ],
+    "wallMs": 3121,
+    "browser": {
+      "Nodes": 0,
+      "LayoutCount": 0,
+      "RecalcStyleCount": 0,
+      "LayoutDuration": 0,
+      "RecalcStyleDuration": 0,
+      "DevToolsCommandDuration": 0.005583,
+      "ScriptDuration": 0.013045,
+      "V8CompileDuration": 0,
+      "TaskDuration": 0.152876,
+      "TaskOtherDuration": 0.134248,
+      "JSHeapUsedSize": 231132
+    }
+  },
+  {
+    "key": "390:glass-light:voz",
+    "variant": "current",
+    "engine": "chromium",
+    "warmRamReopen": false,
+    "warmup": null,
+    "diagnostic": true,
+    "trace": true,
+    "errors": [],
+    "mean": 27.867213114754094,
+    "p95": 50,
+    "p99": 66.69999999999982,
+    "frames": 61,
+    "max": 66.69999999999982,
+    "inputP95": 82.2000002861023,
+    "inputs": [
+      72.69999980926514,
+      56.09999990463257,
+      78,
+      68,
+      41.40000009536743,
+      50.80000019073486,
+      48.89999961853027,
+      79.40000009536743,
+      63.30000019073486,
+      87.5,
+      73.60000038146973,
+      48.60000038146973,
+      18,
+      63.799999713897705,
+      46,
+      54.30000019073486,
+      18.5,
+      61.10000038146973,
+      70.5,
+      41.700000286102295,
+      56,
+      82.2000002861023,
+      11.200000286102295,
+      52.19999980926514,
+      48.5
+    ],
+    "scrollEvents": 25,
+    "rectReads": 8,
+    "storageWrites": 1,
+    "callbacks": {},
+    "longTasks": [],
+    "shifts": [],
+    "mutations": 0,
+    "removed": 0,
+    "srcCleared": 0,
+    "nodeStable": true,
+    "top": 4000,
+    "feedTop": 0,
+    "nodes": 1316,
+    "images": [
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      }
+    ],
+    "wallMs": 1706,
+    "browser": {
+      "Nodes": 0,
+      "LayoutCount": 0,
+      "RecalcStyleCount": 0,
+      "LayoutDuration": 0,
+      "RecalcStyleDuration": 0,
+      "DevToolsCommandDuration": 0.007234,
+      "ScriptDuration": 0.021661,
+      "V8CompileDuration": 0,
+      "TaskDuration": 0.144817,
+      "TaskOtherDuration": 0.115922,
+      "JSHeapUsedSize": 712340
+    }
+  }
+]

@@ -3,6 +3,7 @@
 const ReaderAppPersistence = {
     create() {
         return {
+                preferenceWriteOwner: Object.freeze({}),
                 pendingPreferences: {}, 
                 userPreferences: {},
                 lastSavedScrollY: 0,
@@ -112,25 +113,7 @@ const ReaderAppPersistence = {
                 },
 
                 async flushUserPreferences() {
-                    await Promise.all(Object.entries(this.pendingPreferences).filter(([key]) => key !== 'smartTabModes').map(async ([key, value]) => {
-                        clearTimeout(this.syncPrefsTimer?.[key]);
-                        try {
-                            const res = await fetch('/api/user-preferences', {
-                                method: 'POST', keepalive: true,
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ key, value })
-                            });
-                            if (res.ok && this.pendingPreferences[key] === value) {
-                                let returned = null;
-                                try { returned = await res.json(); } catch {}
-                                delete this.pendingPreferences[key];
-                                if (returned && Object.prototype.hasOwnProperty.call(returned, 'value')) {
-                                    this.userPreferences = { ...this.userPreferences, [key]: returned.value };
-                                    try { localStorage.setItem(key, typeof returned.value === 'string' ? returned.value : JSON.stringify(returned.value)); } catch {}
-                                }
-                            }
-                        } catch (_) { /* Retry on the next state sync. */ }
-                    }));
+                    await ReaderPreferenceWrites.flush(this);
                 },
         };
     }
