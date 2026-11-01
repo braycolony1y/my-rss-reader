@@ -1,32 +1,107 @@
-        /* AI status modal: readable Liquid Glass Light surface and state colors. */
+        /* AI status modal: single backdrop-filter layer, stable panel compositing,
+           and readable Liquid Glass surfaces without nested blur passes. */
+        html.ai-status-scroll-lock,
+        html.ai-status-scroll-lock body {
+            overflow: hidden !important;
+            overscroll-behavior: none !important;
+        }
+
+        .ai-status-overlay {
+            overscroll-behavior: contain;
+        }
+
+        .ai-status-modal {
+            isolation: isolate;
+            transform: translateZ(0);
+            backface-visibility: hidden;
+        }
+
+        .ai-status-overlay .ai-status-modal,
+        .ai-status-overlay .ai-status-modal *,
+        .theme-glass .ai-status-overlay .ai-status-modal,
+        .theme-glass .ai-status-overlay .ai-status-modal *,
+        .theme-glass-light .ai-status-overlay .ai-status-modal,
+        .theme-glass-light .ai-status-overlay .ai-status-modal * {
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+        }
+
+        .ai-status-body {
+            contain: paint;
+            overscroll-behavior: contain;
+        }
+
+        .ai-status-log-list,
+        .ai-status-log-list pre {
+            overscroll-behavior: contain;
+        }
+
+        .theme-glass .ai-status-overlay {
+            background: rgba(8, 12, 22, 0.76) !important;
+            backdrop-filter: blur(16px) saturate(160%) !important;
+            -webkit-backdrop-filter: blur(16px) saturate(160%) !important;
+            border: none !important;
+            box-shadow: none !important;
+            transition: none !important;
+        }
+
+        .theme-glass .ai-status-modal {
+            background: linear-gradient(145deg, rgba(17, 24, 39, 0.96), rgba(11, 16, 30, 0.94)) !important;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+            box-shadow: 0 24px 48px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+            transition: none !important;
+        }
+
+        .theme-glass .ai-status-modal .ai-status-header,
+        .theme-glass .ai-status-modal .ai-status-footer {
+            background: rgba(11, 16, 30, 0.72) !important;
+            border-color: rgba(255, 255, 255, 0.1) !important;
+            box-shadow: none !important;
+        }
+
+        .theme-glass .ai-status-modal .ai-status-card,
+        .theme-glass .ai-status-modal .ai-status-usage article {
+            background: rgba(11, 16, 30, 0.82) !important;
+            border: 1px solid rgba(255, 255, 255, 0.08) !important;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04) !important;
+        }
+
+        .theme-glass .ai-status-modal input[type="radio"],
+        .theme-glass .ai-status-modal .ai-status-usage select,
+        .theme-glass .ai-status-modal .ai-status-usage input {
+            background-color: rgba(11, 16, 30, 0.94) !important;
+            box-shadow: none !important;
+        }
+
         .theme-glass-light .ai-status-overlay {
             background:
-                radial-gradient(circle at 18% 12%, rgba(196, 181, 253, 0.22), transparent 38%),
-                radial-gradient(circle at 82% 86%, rgba(125, 211, 252, 0.2), transparent 42%),
-                rgba(226, 232, 240, 0.56) !important;
-            backdrop-filter: blur(30px) saturate(175%) !important;
-            -webkit-backdrop-filter: blur(30px) saturate(175%) !important;
+                radial-gradient(circle at 18% 12%, rgba(196, 181, 253, 0.24), transparent 38%),
+                radial-gradient(circle at 82% 86%, rgba(125, 211, 252, 0.22), transparent 42%),
+                rgba(226, 232, 240, 0.68) !important;
+            backdrop-filter: blur(16px) saturate(165%) !important;
+            -webkit-backdrop-filter: blur(16px) saturate(165%) !important;
+            border: none !important;
+            box-shadow: none !important;
+            transition: none !important;
         }
 
         .theme-glass-light .ai-status-modal {
             color: #1e293b !important;
-            background: linear-gradient(145deg, rgba(255, 255, 255, 0.91), rgba(248, 250, 252, 0.74)) !important;
-            border: 1px solid rgba(255, 255, 255, 0.92) !important;
+            background: linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(246, 249, 253, 0.93)) !important;
+            border: 1px solid rgba(255, 255, 255, 0.94) !important;
             box-shadow:
-                0 32px 80px rgba(15, 23, 42, 0.18),
-                0 10px 28px rgba(15, 23, 42, 0.08),
+                0 20px 48px rgba(15, 23, 42, 0.14),
+                0 6px 16px rgba(15, 23, 42, 0.06),
                 inset 0 1px 0 rgba(255, 255, 255, 0.96) !important;
-            backdrop-filter: blur(46px) saturate(185%) !important;
-            -webkit-backdrop-filter: blur(46px) saturate(185%) !important;
+            transition: none !important;
         }
 
         .theme-glass-light .ai-status-modal .ai-status-header,
         .theme-glass-light .ai-status-modal .ai-status-footer {
-            background: rgba(255, 255, 255, 0.42) !important;
+            background: rgba(255, 255, 255, 0.78) !important;
             border-color: rgba(100, 116, 139, 0.18) !important;
             box-shadow: none !important;
-            backdrop-filter: none !important;
-            -webkit-backdrop-filter: none !important;
+            transition: none !important;
         }
 
         .theme-glass-light .ai-status-modal .ai-status-title {
@@ -53,13 +128,19 @@
         .theme-glass-light .ai-status-modal .ai-status-card,
         .theme-glass-light .ai-status-modal .ai-status-key-row {
             color: #334155 !important;
-            background: linear-gradient(145deg, rgba(255, 255, 255, 0.72), rgba(248, 250, 252, 0.52)) !important;
+            background: linear-gradient(145deg, rgba(255, 255, 255, 0.92), rgba(248, 250, 252, 0.86)) !important;
             border-color: rgba(100, 116, 139, 0.2) !important;
             box-shadow:
-                0 10px 30px rgba(15, 23, 42, 0.06),
-                inset 0 1px 0 rgba(255, 255, 255, 0.88) !important;
-            backdrop-filter: blur(18px) saturate(165%) !important;
-            -webkit-backdrop-filter: blur(18px) saturate(165%) !important;
+                0 2px 8px rgba(15, 23, 42, 0.04),
+                inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
+            transition: none !important;
+        }
+
+        .theme-glass-light .ai-status-modal input[type="radio"] {
+            background-color: #ffffff !important;
+            border-color: rgba(100, 116, 139, 0.36) !important;
+            box-shadow: none !important;
+            transition: none !important;
         }
 
         .theme-glass-light .ai-status-modal .ai-status-provider-row {
@@ -204,12 +285,11 @@
 
         .theme-glass-light .ai-status-modal .ai-status-usage .rounded-xl,
         .theme-glass-light .ai-status-modal .ai-status-usage article {
-            background-color: rgba(255, 255, 255, 0.86) !important;
+            background-color: rgba(255, 255, 255, 0.94) !important;
             background-image: none !important;
             border-color: rgba(71, 85, 105, 0.24) !important;
-            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.055) !important;
-            backdrop-filter: none !important;
-            -webkit-backdrop-filter: none !important;
+            box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04) !important;
+            transition: none !important;
         }
 
         .theme-glass-light .ai-status-modal .ai-status-usage [class*="text-white"]:not(:where(.theme-glass-light [data-image-layout="top"], .theme-glass-light [data-image-layout="top"] *, .theme-glass-light [data-mobile-clean="1"], .theme-glass-light [data-mobile-clean="1"] *)),
@@ -250,9 +330,10 @@
         .theme-glass-light .ai-status-modal .ai-status-usage input,
         .theme-glass-light .ai-status-modal .ai-key-input {
             color: #172033 !important;
-            background: rgba(255, 255, 255, 0.94) !important;
+            background: rgba(255, 255, 255, 0.96) !important;
             border-color: rgba(71, 85, 105, 0.3) !important;
             box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.04) !important;
+            transition: none !important;
         }
 
         .theme-glass-light .ai-status-modal .ai-status-usage input::placeholder,
