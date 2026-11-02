@@ -1,0 +1,793 @@
+[
+  {
+    "key": "1440:glass-light:plain",
+    "variant": "current",
+    "engine": "chromium",
+    "diagnostic": true,
+    "trace": true,
+    "errors": [],
+    "mean": 38.96764705882353,
+    "p95": 83.40000000000009,
+    "p99": 100,
+    "frames": 68,
+    "max": 100,
+    "inputP95": 80.40000009536743,
+    "inputs": [
+      31.700000286102295,
+      79.7000002861023,
+      75.2999997138977,
+      68.59999990463257,
+      76.5,
+      63.19999980926514,
+      50,
+      64.2000002861023,
+      59,
+      63.39999961853027,
+      79.69999980926514,
+      80.40000009536743,
+      63.30000019073486,
+      62.40000009536743,
+      73.09999990463257,
+      80.2000002861023,
+      62.80000019073486,
+      64,
+      79.90000009536743,
+      80.09999990463257,
+      69.30000019073486,
+      77.2000002861023,
+      76.90000009536743,
+      78.40000009536743,
+      95.2000002861023
+    ],
+    "scrollEvents": 25,
+    "rectReads": 0,
+    "storageWrites": 0,
+    "callbacks": {},
+    "longTasks": [],
+    "shifts": [],
+    "mutations": 0,
+    "removed": 0,
+    "srcCleared": 0,
+    "nodeStable": true,
+    "top": 4000,
+    "feedTop": 0,
+    "nodes": 499,
+    "images": [
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      }
+    ],
+    "wallMs": 2648,
+    "browser": {
+      "Nodes": 0,
+      "LayoutCount": 0,
+      "RecalcStyleCount": 0,
+      "LayoutDuration": 0,
+      "RecalcStyleDuration": 0,
+      "DevToolsCommandDuration": 0.004025,
+      "ScriptDuration": 0.007668,
+      "V8CompileDuration": 0,
+      "TaskDuration": 0.08058799999999999,
+      "TaskOtherDuration": 0.068895,
+      "JSHeapUsedSize": 223588
+    }
+  },
+  {
+    "key": "390:glass-light:voz",
+    "variant": "current",
+    "engine": "chromium",
+    "diagnostic": true,
+    "trace": true,
+    "errors": [],
+    "mean": 18.625882352941176,
+    "p95": 33.30000000000018,
+    "p99": 33.40000000000009,
+    "frames": 85,
+    "max": 33.40000000000009,
+    "inputP95": 58.69999980926514,
+    "inputs": [
+      55.90000009536743,
+      58.69999980926514,
+      53.700000286102295,
+      55,
+      31.40000009536743,
+      47.80000019073486,
+      59.69999980926514,
+      37.5,
+      42.5,
+      39.19999980926514,
+      35.299999713897705,
+      32,
+      42.40000009536743,
+      49.5,
+      33.80000019073486,
+      45.19999980926514,
+      44.90000009536743,
+      31.800000190734863,
+      46.10000038146973,
+      43,
+      41.200000286102295,
+      53.09999990463257,
+      32.799999713897705,
+      42.40000009536743,
+      42
+    ],
+    "scrollEvents": 25,
+    "rectReads": 39,
+    "storageWrites": 6,
+    "callbacks": {
+      "MutationObserver:    at Object.install (http://127.0.0.1:38715/script.js?v=20261015_lifecycle_1:8554:9)     at http://127.0.0.1:38715/script.js?v=20261015_lifecycle_1:9712:18": {
+        "count": 1,
+        "ms": 0,
+        "entries": 1
+      },
+      "MutationObserver:    at installThumbnailLoading (http://127.0.0.1:38715/public/thumbnail-loading.js?v=20261019_scroll_1:76:23)     at http://127.0.0.1:38715/public/image-focus.js?v=20261019_scroll_1:216:10": {
+        "count": 1,
+        "ms": 0.09999990463256836,
+        "entries": 1
+      },
+      "MutationObserver:    at installImageFocus (http://127.0.0.1:38715/public/image-focus.js?v=20261019_scroll_1:190:23)     at http://127.0.0.1:38715/public/image-focus.js?v=20261019_scroll_1:218:10": {
+        "count": 1,
+        "ms": 1.8000001907348633,
+        "entries": 1
+      },
+      "MutationObserver:    at mountMobileTopLayout (http://127.0.0.1:38715/public/top-story-card/mobile-top-layout.js?v=20261017_scroll_2:139:22)     at http://127.0.0.1:38715/public/top-story-card/mobile-top-layout.js?v=20261017_scroll_2:174:10": {
+        "count": 1,
+        "ms": 0.09999990463256836,
+        "entries": 1
+      },
+      "MutationObserver:    at HTMLDocument.install (http://127.0.0.1:38715/script.js?v=20261015_lifecycle_1:8933:13)": {
+        "count": 1,
+        "ms": 0,
+        "entries": 1
+      },
+      "MutationObserver:    at https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js:1:2429     at https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js:5:49143": {
+        "count": 1,
+        "ms": 0,
+        "entries": 1
+      }
+    },
+    "longTasks": [],
+    "shifts": [],
+    "mutations": 0,
+    "removed": 0,
+    "srcCleared": 0,
+    "nodeStable": true,
+    "top": 4000,
+    "feedTop": 0,
+    "nodes": 1316,
+    "images": [
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      },
+      {
+        "complete": true,
+        "width": 816,
+        "loading": "auto"
+      }
+    ],
+    "wallMs": 1582,
+    "browser": {
+      "Nodes": 1,
+      "LayoutCount": 1,
+      "RecalcStyleCount": 1,
+      "LayoutDuration": 0.000567,
+      "RecalcStyleDuration": 0.000375,
+      "DevToolsCommandDuration": 0.007177,
+      "ScriptDuration": 0.01886,
+      "V8CompileDuration": 0,
+      "TaskDuration": 0.10468,
+      "TaskOtherDuration": 0.07770099999999999,
+      "JSHeapUsedSize": 1017460
+    }
+  }
+]

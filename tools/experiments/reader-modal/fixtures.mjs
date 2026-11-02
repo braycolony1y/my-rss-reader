@@ -1,0 +1,8 @@
+export function articleFixture(kind='plain') {
+ const para='<p>Readers should be able to follow a long article smoothly while photographs, quotations and related coverage retain their position. This paragraph includes enough text to exercise wrapping and selection at desktop and mobile widths.</p>';
+ if(kind==='plain')return Array.from({length:350},(_,i)=>`${i%10===0?`<h2>Section ${i/10+1}</h2>`:''}${para}`).join('');
+ if(kind==='formatted')return Array.from({length:50},(_,i)=>`<h2>Analysis ${i}</h2>${para}<table><thead><tr><th>Region</th><th>Count</th></tr></thead><tbody>${'<tr><td>City</td><td>12345</td></tr>'.repeat(12)}</tbody></table><pre><code>function example() {\n  return 'stable source formatting';\n}\n${'// long code line with preserved spacing and overflow\n'.repeat(10)}</code></pre>`).join('');
+ if(kind==='images')return Array.from({length:40},(_,i)=>`${para}<figure><img src="/public/default.jpg?photo=${i}" width="1200" height="800" loading="lazy"><figcaption>Photograph ${i+1}</figcaption></figure>${para}`).join('');
+ if(kind==='embeds')return Array.from({length:20},(_,i)=>`${para}<iframe src="about:blank" width="600" height="350" title="Embedded source ${i}"></iframe><video controls preload="none" width="600" height="350"></video>${para}`).join('');
+ return Array.from({length:120},(_,i)=>`<div class="voz-post" id="voz-post-${i+1}" data-post-index="${i+1}" data-absolute-post-id="${700000+i}"><div class="voz-post-header"><img class="avatar" src="/public/default.jpg" width="40" height="40"><span class="voz-post-author">Forum reader ${i+1}</span></div><div class="voz-post-body">${para}<blockquote>${para}</blockquote>${para}</div><div class="voz-post-likes">5 reactions</div></div>`).join('');
+}

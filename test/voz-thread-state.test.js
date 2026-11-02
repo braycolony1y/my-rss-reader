@@ -1,3 +1,4 @@
+import { assertVozBackgroundFeedPolicy } from './helpers/voz-reader-contract.js';
 import { readReaderClientSource } from './helpers/reader-source.js';
 import { readServerSource } from './helpers/server-source.js';
 import test from 'node:test';
@@ -150,13 +151,7 @@ test('server keeps the old cache until a validated replacement and short-circuit
 });
 
 test('VOZ background polling carries feed policy instead of silently enabling Jina', () => {
-    const script = readReaderClientSource();
-    assert.match(script, /checkVozNewPostsInBackground\(\s*activeVozUrl,\s*activeFeedUrl\s*\)/);
-    assert.match(script, /fetchThreadPage\(\s*currentLiveUrl,\s*feedUrl,\s*false,\s*true/);
-    assert.match(script, /params\.set\('bypassCache', 'true'\)/);
-    assert.match(script, /this\.overlayArticle\.sourceDeleted = data\.sourceDeleted === true/);
-    assert.match(script, /const activeFeedUrl = this\.overlayArticle\?\.feedUrl \|\| ''/);
-    assert.match(script, /if \(this\.overlayFetchedFromCache\)/);
+    assertVozBackgroundFeedPolicy(readReaderClientSource());
 });
 
 test('Cache Board schedules the permanent post archive every minute', () => {

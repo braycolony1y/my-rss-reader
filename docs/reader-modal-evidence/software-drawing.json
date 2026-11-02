@@ -1,0 +1,89 @@
+[
+  {
+    "trace": "detailed-software-draw-trace.json.gz",
+    "stages": [
+      {
+        "stage": "SubmitToReceiveCompositorFrame",
+        "count": 25,
+        "meanMs": 1.5663200000000002,
+        "p95Ms": 3.045,
+        "maxMs": 3.052
+      },
+      {
+        "stage": "ReceiveCompositorFrameToStartDraw",
+        "count": 25,
+        "meanMs": 0.68864,
+        "p95Ms": 1.265,
+        "maxMs": 1.265
+      },
+      {
+        "stage": "StartDrawToSwapStart",
+        "count": 25,
+        "meanMs": 118.46603999999996,
+        "p95Ms": 145.361,
+        "maxMs": 145.361
+      },
+      {
+        "stage": "SwapEndToPresentationCompositorFrame",
+        "count": 25,
+        "meanMs": 0.32872,
+        "p95Ms": 1.183,
+        "maxMs": 1.183
+      },
+      {
+        "stage": "SubmitCompositorFrameToPresentationCompositorFrame",
+        "count": 25,
+        "meanMs": 121.04972000000002,
+        "p95Ms": 149.079,
+        "maxMs": 149.079
+      }
+    ],
+    "softwareDrawing": [
+      {
+        "operation": "DirectRenderer::DrawFrame",
+        "count": 12,
+        "inclusiveWallMs": 1412.1239999999998,
+        "inclusiveThreadMs": 950.479,
+        "meanWallMs": 117.67699999999998,
+        "p95WallMs": 145.322,
+        "maxWallMs": 145.322
+      },
+      {
+        "operation": "DirectRenderer::DrawRenderPass",
+        "count": 316,
+        "inclusiveWallMs": 1407.86,
+        "inclusiveThreadMs": 949.4800000000004,
+        "meanWallMs": 4.455253164556962,
+        "p95WallMs": 32.002,
+        "maxWallMs": 102.366
+      },
+      {
+        "operation": "SoftwareRenderer::DoDrawQuad",
+        "count": 1256,
+        "inclusiveWallMs": 1390.3339999999996,
+        "inclusiveThreadMs": 941.8109999999992,
+        "meanWallMs": 1.1069538216560506,
+        "p95WallMs": 6.269,
+        "maxWallMs": 30.769
+      },
+      {
+        "operation": "void SkCanvas::drawImage(const SkImage *, SkScalar, SkScalar, const SkSamplingOptions &, const SkPaint *)",
+        "count": 304,
+        "inclusiveWallMs": 991.8880000000005,
+        "inclusiveThreadMs": 661.5149999999999,
+        "meanWallMs": 3.262789473684212,
+        "p95WallMs": 12.58,
+        "maxWallMs": 25.377
+      },
+      {
+        "operation": "SoftwareRenderer::SwapBuffers",
+        "count": 12,
+        "inclusiveWallMs": 0.33299999999999996,
+        "inclusiveThreadMs": 0.30800000000000005,
+        "meanWallMs": 0.027749999999999997,
+        "p95WallMs": 0.237,
+        "maxWallMs": 0.237
+      }
+    ]
+  }
+]
