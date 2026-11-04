@@ -1,4 +1,7 @@
 import { readGeminiWebModeState, selectGeminiWebMode } from './gemini-web-mode.js';
+import { createGeminiWebPage } from './gemini-web-page.js';
+import { waitForGeminiPageReady } from './gemini-web-page-readiness.js';
+import { waitForGeminiTemporaryChatState } from './gemini-web-temporary-readiness.js';
 import { closeOwnedSlotPage } from '../browser/slot-lifecycle.js';
 import { summarizeGeminiSlots } from '../browser/resource-state.js';
 export const getGeminiWebResourceState = () => summarizeGeminiSlots(slots);
@@ -18,12 +21,6 @@ export const GEMINI_WEB_MODEL = '3.8 Flash';
  * Browser slots below are created elastically only after work
  * has already been authorized by the global scheduler.
  */
-
-const GEMINI_WEB_PROFILE =
-    process.env.GEMINI_WEB_PROFILE ||
-    process.env.OPENCLI_BROWSER_PROFILE ||
-    process.env.OPENCLI_PROFILE ||
-    undefined;
 
 const GEMINI_WEB_COOLDOWN_MS = Math.max(
     5000,
@@ -416,15 +413,7 @@ async function getPage(slot) {
 
     slot.page = installGeminiStalePageRecovery(
         slot,
-        new Page(
-            `rss-gemini-web-${slot.id}`,
-            -1,
-            undefined,
-            'background',
-            'browser',
-            'persistent',
-            GEMINI_WEB_PROFILE
-        )
+        createGeminiWebPage(Page, slot.id)
     );
 
     return slot.page;
@@ -512,44 +501,7 @@ async function waitForGeminiPage(
     page,
     timeoutMs = 20000
 ) {
-    const deadline = Date.now() + timeoutMs;
-
-    while (Date.now() < deadline) {
-        const state = await page.evaluate(() => ({
-            url: location.href,
-            readyState: document.readyState,
-            title: document.title || '',
-            bodyLength:
-                (document.body?.innerText || '').length
-        })).catch(() => null);
-
-        if (state) {
-            if (
-                /accounts\.google\.com/i.test(state.url)
-            ) {
-                return providerError(
-                    page,
-                    'Gemini Web requires the Google account to be signed in',
-                    'GEMINI_WEB_LOGIN_REQUIRED'
-                );
-            }
-
-            if (
-                state.readyState !== 'loading' &&
-                state.bodyLength > 100
-            ) {
-                return state;
-            }
-        }
-
-        await sleep(300);
-    }
-
-    return providerError(
-        page,
-        'Gemini Web did not become ready',
-        'GEMINI_WEB_PAGE_TIMEOUT'
-    );
+    return waitForGeminiPageReady(page, { timeoutMs, sleep, providerError });
 }
 
 async function temporaryChatState(page) {
@@ -845,37 +797,9 @@ async function waitForTemporaryChatState(
     expectedEnabled,
     timeoutMs = 8000
 ) {
-    const deadline =
-        Date.now() + timeoutMs;
-
-    let state = null;
-
-    while (Date.now() < deadline) {
-        state =
-            await temporaryChatState(
-                page
-            );
-
-        if (
-            state?.found &&
-            state?.knownState &&
-            state.enabled === expectedEnabled
-        ) {
-            return state;
-        }
-
-        await sleep(200);
-    }
-
-    return providerError(
-        page,
-        expectedEnabled
-            ? 'Temporary Chat could not be confirmed ON'
-            : 'Temporary Chat could not be confirmed OFF',
-        expectedEnabled
-            ? 'GEMINI_WEB_TEMP_CHAT_NOT_CONFIRMED'
-            : 'GEMINI_WEB_TEMP_CHAT_RESET_FAILED'
-    );
+    return waitForGeminiTemporaryChatState(page, expectedEnabled, {
+        timeoutMs, readState: temporaryChatState, sleep, providerError
+    });
 }
 
 
