@@ -1,4 +1,9 @@
+import { createReaderVerificationRecovery } from '../articles/verification-recovery.js';
+import {articleFallbackRequest} from '../articles/fallback-request.js';
+import {parseStrategyCandidate} from '../articles/strategy-candidate.js';
+import {retargetPublisherFallbacks} from '../articles/publisher-fallbacks.js';
 import { createArticleRequestFlight } from '../articles/request-flight.js';
+import { createVerificationNoticeMiddleware } from '../articles/verification-notice.js';
 import { beginArticleRequest } from '../articles/request-priority.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { decodeHTMLEntities, normalizeArticleTitle } from '../../feed-parsers.js';
@@ -227,7 +232,7 @@ export function registerArticleRoutes({
     });
 
     const singleFlight = createArticleRequestFlight({ updateArticleFetchProgress, finishArticleFetchProgress });
-    app.get('/api/article-content', authMiddleware, articleFetchLaneMiddleware, singleFlight(async (req, res) => {
+    app.get('/api/article-content', authMiddleware, articleFetchLaneMiddleware, createVerificationNoticeMiddleware(updateArticleFetchProgress), singleFlight(articleFallbackRequest(async (req, res) => {
         const requestedUrl = req.query.url;
         if (!requestedUrl) return res.status(400).json({ error: 'URL required' });
         if (isRedditUrl(requestedUrl)) return res.json({ url: requestedUrl, externalUrl: requestedUrl, openExternally: true, content: '' });
@@ -306,6 +311,9 @@ export function registerArticleRoutes({
                     domain: req.query.domain
                 }, { force: bypassCache, backgroundResolve: false });
             }
+
+            retargetPublisherFallbacks(url);
+            const verificationRecovery = await createReaderVerificationRecovery(url);
 
             if (!bypassCache) {
                 const resume = await getCachedVozResumePage(requestedUrl, req.query.resumePage, getCachedArticle);
@@ -498,6 +506,7 @@ export function registerArticleRoutes({
                         assertArticleResultAcceptedBySource(url, payload);
                         await recordArticleFetchOutcome(hostname, strategy, true);
                         finishArticleFetchProgress(requestId, 'Article is ready.', { method: strategy });
+                        await verificationRecovery.accept(payload);
                         await cacheArticleResult(url, payload);
                         payload.prefetchQueue = (req.query.threadPage === '1' ? [] : await triggerNextFiveArticlesPrefetch(url, false, prefetchTargets));
                         return res.json(payload);
@@ -538,6 +547,7 @@ export function registerArticleRoutes({
                         if (req.query.threadPage !== '1' && req.query.prefetch !== '1' && payload.pagination?.nextUrl && (hostname === 'voz.vn' || hostname.endsWith('.voz.vn'))) {
                             prefetchPromise = withArticleFetchLane('p1', () => triggerVozNextPagePrefetch(payload.pagination.nextUrl, 1, requestedFeedUrl));
                         }
+                        await verificationRecovery.accept(payload);
                         await cacheArticleResult(url, payload);
                         payload.prefetchQueue = (req.query.threadPage === '1' ? [] : await triggerNextFiveArticlesPrefetch(url, false, prefetchTargets, prefetchPromise));
                         return res.json(payload);
@@ -562,11 +572,7 @@ export function registerArticleRoutes({
                     if (!isUsableArticlePage(candidateHtml)) throw new Error('Fetched page did not contain usable article HTML');
                     // Validate before selecting a method so a stale proxy page
                     // falls through to the next configured reader.
-                    if (isVozThreadUrl(url)) {
-                        const candidate = await parseArticleHtmlContent(candidateHtml, url, strategy, [...attemptedStrategies], availableStrategies, methodPreferences, requestId, excludedStrategies);
-                        assertArticleResultAcceptedBySource(url, candidate);
-                        parsedVozResult = candidate;
-                    }
+                    parsedVozResult = await parseStrategyCandidate(parseArticleHtmlContent, candidateHtml, url, strategy, [...attemptedStrategies], availableStrategies, methodPreferences, requestId, excludedStrategies);
                     html = candidateHtml;
                     htmlStrategy = strategy;
                     break;
@@ -758,7 +764,10 @@ export function registerArticleRoutes({
                 method: result.fetchStrategy,
                 partial: !extractionSucceeded
             });
-            if (extractionSucceeded) await cacheArticleResult(url, result);
+            if (extractionSucceeded) {
+                await verificationRecovery.accept(result);
+                await cacheArticleResult(url, result);
+            }
             let prefetchPromise = null;
             if (req.query.threadPage !== '1' && req.query.prefetch !== '1' && result.pagination?.nextUrl && (hostname === 'voz.vn' || hostname.endsWith('.voz.vn'))) {
                 prefetchPromise = withArticleFetchLane('p1', () => triggerVozNextPagePrefetch(result.pagination.nextUrl, 1, requestedFeedUrl));
@@ -772,6 +781,6 @@ export function registerArticleRoutes({
             articleReaderSessions.delete(requestId);
             releaseForeground();
         }
-    }));
+    })));
 
 }

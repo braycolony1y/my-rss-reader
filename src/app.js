@@ -1,4 +1,5 @@
 import { registerPersonalFilterRoutes } from './smart/feedback/routes.js';
+import { sourceCooldown } from './articles/source-cooldown.js';
 import { touchAntigravityBriefingFocus, clearAntigravityBriefingFocus } from './ai/antigravity.js';
 import { acquireOpenCliBrowserOriginLease, releaseOpenCliBrowserOriginLease } from './opencli-reader.js';
 import { authMiddleware } from './middleware/auth.js';
@@ -27,6 +28,7 @@ import { createArticleReaders } from './articles/readers.js';
 import { createArticleImages } from './articles/images.js';
 import { createArticleParser } from './articles/parser.js';
 import { createArticlePipeline } from './articles/pipeline.js';
+import {articleFallbackAcquisition} from './articles/fallback-request.js';
 import { createArticlePresentation } from './articles/presentation.js';
 import { createArticleArchives } from './articles/archives.js';
 import { createArticlePrefetch } from './feeds/prefetch.js';
@@ -48,7 +50,7 @@ import { startServiceWatchdog } from './observability/memory-budget.js';
 import { getGeminiWebResourceState } from './ai/gemini-web.js';
 import { getPostSanitizerState } from './articles/post-markup-sanitizer.js';
 import { startResourceMonitor } from './observability/resource-monitor.js';
-import { getArticleFetchQueueState } from './articles/fetch-lanes.js';
+import { getArticleFetchQueueState, withArticleFetchLane } from './articles/fetch-lanes.js';
 import { getBrowserFetchBudget } from './browser/work-budget.js';
 import { getOpenCliResourceState } from './opencli-reader.js';
 import { getGlobalAiSchedulerState } from './ai/global-ai-scheduler.js';
@@ -68,6 +70,7 @@ export async function createApplication({ isMainModule = false } = {}) {
     const database = createDatabaseStore();
 
     await database.initializeWriterLock(!process.env.SKIP_DB_LOCK && isMainThread && isMainModule);
+    await sourceCooldown.initialize(database.env.RSS_DATA, { lazy: true });
 
     const logs = captureOperationalLogs();
 
@@ -164,12 +167,12 @@ export async function createApplication({ isMainModule = false } = {}) {
             }
             return snapshots.sort((a, b) => a.captured_at.localeCompare(b.captured_at));
         },
-        fetchPage: async (url, feedUrl) => {
+        fetchPage: articleFallbackAcquisition(async (url, feedUrl) => {
             const fetchPolicy = await policy.getArticleFetchPolicy(url, feedUrl);
             let error;
             for (const strategy of fetchPolicy.strategyOrder) {
                 try {
-                    const result = await pipeline.fetchParsedArticleByStrategy(strategy, url, fetchPolicy, feedUrl);
+                    const result = await withArticleFetchLane('p3', () => pipeline.fetchParsedArticleByStrategy(strategy, url, fetchPolicy, feedUrl));
                     if (result?.isDeletedSource || result?.isDeletedThread || result?.sourceDeleted) return result;
                     if (!result?.content) throw new Error('Source unavailable');
                     if (/\/(?:t|threads)\//.test(new URL(url).pathname) && !result.threadSnapshot?.complete) throw new Error('Reader did not return permanent post IDs');
@@ -177,7 +180,7 @@ export async function createApplication({ isMainModule = false } = {}) {
                 } catch (e) { error = e; }
             }
             throw error || new Error('No reader is available');
-        }
+        })
     });
     registerBoardCacheRoutes({ app: http.app, boardCache });
 
@@ -336,7 +339,7 @@ export async function createApplication({ isMainModule = false } = {}) {
 
     const pdf = createPdfService({
         retention: cache.getArticleRetention,
-        fetchPage: async (url, feedUrl, { page, force }) => {
+        fetchPage: articleFallbackAcquisition(async (url, feedUrl, { page, force }) => {
             const archived = force ? null : await boardCache.articlePage(url);
             if (archived?.content && (!archived.pagination || Number(archived.pagination.currentPage) === page)) return archived;
             const fetchPolicy = await policy.getArticleFetchPolicy(url, feedUrl);
@@ -353,7 +356,7 @@ export async function createApplication({ isMainModule = false } = {}) {
             let error;
             for (const strategy of fetchPolicy.strategyOrder) {
                 try {
-                    const result = await pipeline.fetchParsedArticleByStrategy(strategy, url, fetchPolicy, feedUrl);
+                    const result = await withArticleFetchLane('p3', () => pipeline.fetchParsedArticleByStrategy(strategy, url, fetchPolicy, feedUrl));
                     if (!result?.content || result.isDeletedSource || result.isDeletedThread) throw new Error('The source page is unavailable.');
                     if (isVozThreadUrl(url) && result.pagination?.nextUrl && (result.content.match(/class=["']voz-post["']/g) || []).length < 20) throw new Error('The source returned an incomplete thread page.');
                     await cache.cacheArticleResult(url, result);
@@ -361,7 +364,7 @@ export async function createApplication({ isMainModule = false } = {}) {
                 } catch (e) { error = e; }
             }
             throw error || new Error('No reader is available for this source.');
-        }
+        })
     });
     registerPdfRoutes({ app: http.app, pdf });
 
@@ -388,13 +391,13 @@ export async function createApplication({ isMainModule = false } = {}) {
         CF_PROXY_BASE: config.CF_PROXY_BASE,
         BROWSER_HEADERS: config.BROWSER_HEADERS,
         VIETSERVER_PROXY_BASE: config.VIETSERVER_PROXY_BASE,
-        fetchViaVietserver: readers.fetchViaVietserver,
+        fetchViaVietserver: (...args) => withArticleFetchLane('p3', () => readers.fetchViaVietserver(...args)),
         execFileAsync: config.execFileAsync,
         recordFetch: logs.recordFetch,
-        fetchWithCookies: readers.fetchWithCookies,
+        fetchWithCookies: (...args) => withArticleFetchLane('p3', () => readers.fetchWithCookies(...args)),
         runParserWorker: worker.runParserWorker,
         googleDecoder: googleNews.googleDecoder,
-        fetchPdfCreationDate: images.fetchPdfCreationDate,
+        fetchPdfCreationDate: (...args) => sourceCooldown.run(args[0], () => images.fetchPdfCreationDate(...args)),
         hasOnlyOpenCliFetchMethod: pipeline.hasOnlyOpenCliFetchMethod,
         scheduleEagerArticleImage: images.scheduleEagerArticleImage,
         getBestImage: images.getBestImage,

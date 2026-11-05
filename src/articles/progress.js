@@ -1,3 +1,5 @@
+import { retainVerificationNotice } from './verification-notice.js';
+
 export function createArticleProgress() {
     const articleFetchProgress = new Map();
 
@@ -6,6 +8,7 @@ export function createArticleProgress() {
     function updateArticleFetchProgress(requestId, stage, message, extra = {}) {
         if (!requestId) return;
         articleFetchProgress.set(requestId, {
+            ...retainVerificationNotice(articleFetchProgress.get(requestId), extra),
             stage,
             message,
             ...extra,

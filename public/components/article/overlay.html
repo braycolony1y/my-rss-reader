@@ -23,6 +23,7 @@
             <!-- Content -->
             <div id="overlay-scroll-container" class="flex-1 min-h-0 overflow-y-auto overscroll-contain"
                 @scroll.passive="trackVozThreadScroll($event)" @touchmove.stop>
+<!-- reader:include article/verification-notice -->
                 <!-- Loading state -->
                 <div x-show="isLoadingOverlay" class="flex flex-col items-center justify-center h-full gap-4">
                     <div class="relative">

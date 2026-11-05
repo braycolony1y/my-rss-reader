@@ -1,3 +1,5 @@
+import {createArchiveReaderFallbacks} from './archive-reader-fallbacks.js';
+import { withArticleFetchLane } from './fetch-lanes.js';
 import { isUnsafeVozThreadPayload, isVozThreadUrl, getVozPaginationMaxPage, getVozThreadPageNumber, alignVozPaginationToRequestedPage } from '../voz-thread-state.js';
 import { normalizeStateUrl } from '../utils/article-utils.js';
 import { isDeletedArticlePayload, normalizeArticleSourceUrl, deletedSourceKind, deletedSourceTitle } from '../article-source-state.js';
@@ -42,6 +44,8 @@ export function createArticleArchives({
     const vozCacheBoardCrawlQueue = [];
 
     let activeVozCacheBoardCrawls = 0;
+
+    const readers = createArchiveReaderFallbacks({fetchParsedArticleByStrategy, buildDeletedSourceResponse, deletedVozThreads, getCachedArticle, cacheArticleResult, vozThreadPageUrl, enqueueVozCacheBoardCrawl, triggerVozNextPagePrefetch, maxPages: VOZ_CACHE_BOARD_MAX_PAGES});
 
     function vozThreadPageUrl(baseUrl, page) {
         return page === 1 ? baseUrl : `${baseUrl}/page-${page}`;
@@ -92,7 +96,7 @@ export function createArticleArchives({
             }
             job.status = 'running';
             activeVozCacheBoardCrawls++;
-            runVozCacheBoardCrawlBatch(job).catch(error => {
+            withArticleFetchLane('p4', () => runVozCacheBoardCrawlBatch(job)).catch(error => {
                 console.warn(`[VOZ CACHE BOARD CRAWL] ${job.baseUrl}: ${error.message}`);
             }).finally(() => {
                 activeVozCacheBoardCrawls--;
@@ -125,40 +129,7 @@ export function createArticleArchives({
             fetchedPages++;
             console.log(`[VOZ CACHE BOARD CRAWL] Caching page ${requestedPage}/${job.maxPage}: ${pageUrl}`);
             const policy = await getArticleFetchPolicy(pageUrl, job.feedUrl);
-            for (const strategy of policy.strategyOrder) {
-                try {
-                    const result = await fetchParsedArticleByStrategy(strategy, pageUrl, policy, job.feedUrl);
-                    if (isDeletedArticlePayload(pageUrl, result)) {
-                        await buildDeletedSourceResponse(pageUrl);
-                        deletedVozThreads.add(job.baseUrl);
-                        return;
-                    }
-                    if (!result?.content) continue;
-
-                    const parsedCurrentPage = Number.parseInt(result.pagination?.currentPage, 10);
-                    const actualPage = Number.isSafeInteger(parsedCurrentPage) && parsedCurrentPage > 0
-                        ? parsedCurrentPage
-                        : requestedPage;
-                    const discoveredMaxPage = Math.min(
-                        VOZ_CACHE_BOARD_MAX_PAGES,
-                        getVozPaginationMaxPage(result.pagination, actualPage)
-                    );
-                    if (actualPage < requestedPage && discoveredMaxPage < requestedPage) {
-                        job.maxPage = discoveredMaxPage;
-                    } else {
-                        job.maxPage = Math.max(job.maxPage, discoveredMaxPage);
-                    }
-
-                    const cacheUrl = vozThreadPageUrl(job.baseUrl, actualPage);
-                    result.url = cacheUrl;
-                    result.cached = true;
-                    await cacheArticleResult(cacheUrl, result);
-                    console.log(`[VOZ CACHE BOARD CRAWL] Cached page ${actualPage}/${job.maxPage} via ${strategy}`);
-                    break;
-                } catch (error) {
-                    // Continue through this source's configured reader methods.
-                }
-            }
+            await readers.crawlPage({job, pageUrl, requestedPage, policy});
             if (job.nextPage <= job.maxPage) {
                 await new Promise(resolve => setTimeout(resolve, VOZ_CACHE_BOARD_CRAWL_PAGE_DELAY_MS));
             }
@@ -175,24 +146,7 @@ export function createArticleArchives({
                     if (cached && cached.content) { resolve(); return; }
                     console.log(`[VOZ PAGINATION PREFETCH] Background caching next page: ${nextUrl}`);
                     const policy = await getArticleFetchPolicy(nextUrl, feedUrl);
-                    for (const strategy of policy.strategyOrder) {
-                        try {
-                            const result = await fetchParsedArticleByStrategy(strategy, nextUrl, policy, feedUrl);
-                            if (isDeletedArticlePayload(nextUrl, result)) {
-                                await buildDeletedSourceResponse(nextUrl);
-                                break;
-                            }
-                            if (result && result.content) {
-                                result.cached = true;
-                                await cacheArticleResult(nextUrl, result);
-                                console.log(`[VOZ PAGINATION PREFETCH] Successfully cached ${nextUrl} via ${strategy} (${result.content.length} bytes)`);
-                                if (result.pagination && result.pagination.nextUrl && depth < 2) {
-                                    triggerVozNextPagePrefetch(result.pagination.nextUrl, depth + 1, feedUrl);
-                                }
-                                break;
-                            }
-                        } catch(e) {}
-                    }
+                    await readers.prefetchPage({nextUrl, depth, feedUrl, policy});
                 } catch (e) {
                     console.error(`[VOZ PAGINATION PREFETCH ERROR] ${nextUrl}: ${e.message}`);
                 }
@@ -226,46 +180,7 @@ export function createArticleArchives({
                 console.log(`[VOZ BACKGROUND UPDATE] Checking for new posts on ${url}`);
                 const effectiveFeedUrl = feedUrl || cachedArticle?.feedUrl || '';
                 const policy = await getArticleFetchPolicy(url, effectiveFeedUrl);
-                for (const strategy of policy.strategyOrder) {
-                    try {
-                        const result = await fetchParsedArticleByStrategy(strategy, url, policy, effectiveFeedUrl);
-                        if (result) {
-                            if (isDeletedArticlePayload(url, result)) {
-                                await buildDeletedSourceResponse(url);
-                                console.log(`[VOZ BACKGROUND UPDATE] Thread ${url} is deleted. Marked to skip future background fetches.`);
-                                break;
-                            }
-                            if (result && result.content) {
-                                const parsedCurrentPage = Number.parseInt(result.pagination?.currentPage, 10);
-                                const currentPage = Number.isSafeInteger(parsedCurrentPage) && parsedCurrentPage > 0
-                                    ? parsedCurrentPage
-                                    : 1;
-                                const cacheTargetUrl = options.cacheAllPages
-                                    ? vozThreadPageUrl(canonicalUrl, currentPage)
-                                    : url;
-                                const comparableCache = options.cacheAllPages
-                                    ? await getCachedArticle(cacheTargetUrl)
-                                    : cachedArticle;
-                                const contentChanged = result.content !== comparableCache?.content;
-                                if (contentChanged) {
-                                    result.url = cacheTargetUrl;
-                                    result.cached = true;
-                                    await cacheArticleResult(cacheTargetUrl, result);
-                                    console.log(`[VOZ BACKGROUND UPDATE] Updated cache for ${cacheTargetUrl} (found new posts)`);
-                                } else {
-                                    console.log(`[VOZ BACKGROUND UPDATE] No new posts for ${cacheTargetUrl}`);
-                                }
-
-                                if (options.cacheAllPages) {
-                                    enqueueVozCacheBoardCrawl(canonicalUrl, result.pagination, effectiveFeedUrl);
-                                } else if (contentChanged && result.pagination?.nextUrl) {
-                                    triggerVozNextPagePrefetch(result.pagination.nextUrl, 1, effectiveFeedUrl);
-                                }
-                                break;
-                            }
-                        }
-                    } catch(e) {}
-                }
+                await readers.updatePage({url, cachedArticle, effectiveFeedUrl, canonicalUrl, options, policy});
             } catch (e) {
                 console.error(`[VOZ BACKGROUND UPDATE ERROR] ${url}: ${e.message}`);
             } finally {

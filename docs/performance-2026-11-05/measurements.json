@@ -1,0 +1,388 @@
+{
+  "measurementLimits": [
+    "Live resource windows differ in uptime, provider availability, corpus and background work; no causal CPU/memory reduction claim.",
+    "Browser metrics are isolated fixtures on Linux; physical Safari and field Core Web Vitals unavailable.",
+    "Eight API samples per view: p95 is the sample maximum; payloads changed during live news ingestion."
+  ],
+  "resources": {
+    "beforeMixed": {
+      "samples": 31,
+      "seconds": 306.768,
+      "startEpochMs": 1793850244721,
+      "endEpochMs": 1793850551489,
+      "cpuPercentOneCore": 13.157,
+      "rssMiB": {
+        "min": 2028.58,
+        "max": 2548.06
+      },
+      "heapMiB": {
+        "min": 418.43,
+        "max": 538.71
+      },
+      "readMiB": 26.82,
+      "writeMiB": 314.8,
+      "processSwapKiBMax": 147704,
+      "eventLoopP95Ms": [
+        21.18,
+        21.22,
+        26.64,
+        22.68,
+        22.33,
+        22.18,
+        29.36
+      ],
+      "eventLoopMaxMs": 1687.16,
+      "smartRunningStates": [
+        true
+      ]
+    },
+    "beforeQuiet": {
+      "samples": 13,
+      "seconds": 120.912,
+      "startEpochMs": 1793850522406,
+      "endEpochMs": 1793850643318,
+      "cpuPercentOneCore": 13.117,
+      "rssMiB": {
+        "min": 2070.36,
+        "max": 2196.24
+      },
+      "heapMiB": {
+        "min": 447.23,
+        "max": 474.76
+      },
+      "readMiB": 35.84,
+      "writeMiB": 280.96,
+      "processSwapKiBMax": 147704,
+      "eventLoopP95Ms": [
+        22.18,
+        29.36,
+        21.84
+      ],
+      "eventLoopMaxMs": 1687.16,
+      "smartRunningStates": [
+        true
+      ]
+    },
+    "afterStartup": {
+      "samples": 37,
+      "seconds": 373.239,
+      "startEpochMs": 1793866409560,
+      "endEpochMs": 1793866782799,
+      "cpuPercentOneCore": 22.171,
+      "rssMiB": {
+        "min": 872.12,
+        "max": 1798.65
+      },
+      "heapMiB": {
+        "min": 317.7,
+        "max": 545.91
+      },
+      "readMiB": 199.47,
+      "writeMiB": 914.75,
+      "processSwapKiBMax": 0,
+      "eventLoopP95Ms": [
+        28.85,
+        30.24,
+        30.34,
+        69.93,
+        22.02,
+        22.13
+      ],
+      "eventLoopMaxMs": 4383.05,
+      "smartRunningStates": [
+        true
+      ]
+    },
+    "afterQuiet": {
+      "samples": 13,
+      "seconds": 122.223,
+      "startEpochMs": 1793866959594,
+      "endEpochMs": 1793867081817,
+      "cpuPercentOneCore": 11.184,
+      "rssMiB": {
+        "min": 1219.0,
+        "max": 1476.46
+      },
+      "heapMiB": {
+        "min": 399.19,
+        "max": 525.48
+      },
+      "readMiB": 0.79,
+      "writeMiB": 281.56,
+      "processSwapKiBMax": 0,
+      "eventLoopP95Ms": [
+        22.07,
+        22.02,
+        23.2
+      ],
+      "eventLoopMaxMs": 1598.03,
+      "smartRunningStates": [
+        true
+      ]
+    }
+  },
+  "api": {
+    "before": {
+      "resources": {
+        "n": 2,
+        "ttfbMs": {
+          "median": 22.8,
+          "p75": 462.6,
+          "p95": 462.6,
+          "max": 462.6
+        },
+        "totalMs": {
+          "median": 23.1,
+          "p75": 489.5,
+          "p95": 489.5,
+          "max": 489.5
+        },
+        "bytes": {
+          "median": 2640,
+          "p75": 2640,
+          "p95": 2640,
+          "max": 2640
+        }
+      },
+      "today-first": {
+        "n": 1,
+        "ttfbMs": {
+          "median": 600.3,
+          "p75": 600.3,
+          "p95": 600.3,
+          "max": 600.3
+        },
+        "totalMs": {
+          "median": 758.3,
+          "p75": 758.3,
+          "p95": 758.3,
+          "max": 758.3
+        },
+        "bytes": {
+          "median": 696513,
+          "p75": 696513,
+          "p95": 696513,
+          "max": 696513
+        }
+      },
+      "today": {
+        "n": 8,
+        "ttfbMs": {
+          "median": 159.4,
+          "p75": 193.8,
+          "p95": 1114.1,
+          "max": 1114.1
+        },
+        "totalMs": {
+          "median": 269.7,
+          "p75": 300.1,
+          "p95": 1213.3,
+          "max": 1213.3
+        },
+        "bytes": {
+          "median": 696513,
+          "p75": 696513,
+          "p95": 696513,
+          "max": 696513
+        }
+      },
+      "feed": {
+        "n": 8,
+        "ttfbMs": {
+          "median": 120.6,
+          "p75": 129.1,
+          "p95": 519.1,
+          "max": 519.1
+        },
+        "totalMs": {
+          "median": 221.8,
+          "p75": 226.3,
+          "p95": 650.2,
+          "max": 650.2
+        },
+        "bytes": {
+          "median": 695858,
+          "p75": 695858,
+          "p95": 695858,
+          "max": 695858
+        }
+      },
+      "smart-top": {
+        "n": 8,
+        "ttfbMs": {
+          "median": 152.4,
+          "p75": 184.5,
+          "p95": 755.3,
+          "max": 755.3
+        },
+        "totalMs": {
+          "median": 251.4,
+          "p75": 274.8,
+          "p95": 906.5,
+          "max": 906.5
+        },
+        "bytes": {
+          "median": 595000,
+          "p75": 595000,
+          "p95": 595000,
+          "max": 595000
+        }
+      }
+    },
+    "after": {
+      "resources": {
+        "n": 2,
+        "ttfbMs": {
+          "median": 31.3,
+          "p75": 809.7,
+          "p95": 809.7,
+          "max": 809.7
+        },
+        "totalMs": {
+          "median": 31.5,
+          "p75": 824.5,
+          "p95": 824.5,
+          "max": 824.5
+        },
+        "bytes": {
+          "median": 2821,
+          "p75": 2821,
+          "p95": 2821,
+          "max": 2821
+        }
+      },
+      "today-first": {
+        "n": 1,
+        "ttfbMs": {
+          "median": 537.3,
+          "p75": 537.3,
+          "p95": 537.3,
+          "max": 537.3
+        },
+        "totalMs": {
+          "median": 571.7,
+          "p75": 571.7,
+          "p95": 571.7,
+          "max": 571.7
+        },
+        "bytes": {
+          "median": 695320,
+          "p75": 695320,
+          "p95": 695320,
+          "max": 695320
+        }
+      },
+      "today": {
+        "n": 8,
+        "ttfbMs": {
+          "median": 161.5,
+          "p75": 196.7,
+          "p95": 1145.2,
+          "max": 1145.2
+        },
+        "totalMs": {
+          "median": 343.8,
+          "p75": 420.1,
+          "p95": 1248.1,
+          "max": 1248.1
+        },
+        "bytes": {
+          "median": 695320,
+          "p75": 695320,
+          "p95": 695320,
+          "max": 695320
+        }
+      },
+      "feed": {
+        "n": 8,
+        "ttfbMs": {
+          "median": 96.6,
+          "p75": 130.2,
+          "p95": 3597.2,
+          "max": 3597.2
+        },
+        "totalMs": {
+          "median": 285.4,
+          "p75": 374.6,
+          "p95": 3716.9,
+          "max": 3716.9
+        },
+        "bytes": {
+          "median": 696471,
+          "p75": 696471,
+          "p95": 696471,
+          "max": 696471
+        }
+      },
+      "smart-top": {
+        "n": 8,
+        "ttfbMs": {
+          "median": 128.2,
+          "p75": 135.3,
+          "p95": 593.3,
+          "max": 593.3
+        },
+        "totalMs": {
+          "median": 263.8,
+          "p75": 290.9,
+          "p95": 667.6,
+          "max": 667.6
+        },
+        "bytes": {
+          "median": 657252,
+          "p75": 657252,
+          "p95": 657252,
+          "max": 657252
+        }
+      }
+    }
+  },
+  "rssReplay": [
+    {
+      "variant": "before",
+      "callerCount": 8,
+      "fetchCalls": 16,
+      "peakConcurrentFetches": 8,
+      "elapsedMs": 1010.8480099999997,
+      "userFeedEditPreserved": false,
+      "addedFeedPreserved": false,
+      "removedFeedAbsent": false,
+      "concurrentArticlePreserved": false,
+      "removedFeedArticlesAbsent": false
+    },
+    {
+      "variant": "after",
+      "callerCount": 8,
+      "fetchCalls": 4,
+      "peakConcurrentFetches": 1,
+      "elapsedMs": 2017.773029,
+      "userFeedEditPreserved": true,
+      "addedFeedPreserved": true,
+      "removedFeedAbsent": true,
+      "concurrentArticlePreserved": true,
+      "removedFeedArticlesAbsent": true
+    }
+  ],
+  "shellDelivery": {
+    "baselineScriptBytes": 492582,
+    "baselineScriptGzipBytes": 97591,
+    "baselineHtmlBytes": 376609,
+    "baselineHtmlGzipBytes": 63066,
+    "liveScriptDecodedBytes": 499224,
+    "liveScriptGzipBytes": 99673,
+    "liveScriptHash": "32c0e25df24c830905f3a37b8b91ea1ac6afe46e9dcf442379071ab4a5ef5f29"
+  },
+  "tests": {
+    "command": "npm test",
+    "total": 877,
+    "passed": 877,
+    "failed": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "durationMs": 288029.577371,
+    "earlierTransientFailures": [
+      "HTTP child timeout under competing startup/browser load; isolated rerun passed in9846.97ms",
+      "Scheduler wall-clock race; isolated rerun passed; final test uses deterministic mocked clock"
+    ]
+  }
+}

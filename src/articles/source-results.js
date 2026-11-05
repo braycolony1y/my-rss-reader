@@ -1,4 +1,5 @@
 import sourceRegistry from '../sources/index.js';
+import { assertNoPublisherVerification } from './publisher-verification.js';
 import { decodeHTMLEntities } from '../../feed-parsers.js';
 import { isMismatchedVozThreadPage } from '../voz-thread-state.js';
 
@@ -29,6 +30,7 @@ function enhanceArticleResultForSource(url, result, context = {}) {
 }
 
 function assertArticleResultAcceptedBySource(url, result) {
+    assertNoPublisherVerification(result);
     if (isMismatchedVozThreadPage(url, result)) {
         throw new Error(`The source returned page ${result.pagination.currentPage} instead of the requested page. Please try again.`);
     }

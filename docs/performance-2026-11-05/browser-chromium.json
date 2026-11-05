@@ -1,0 +1,556 @@
+[
+  {
+    "engine": "chromium",
+    "mobile": false,
+    "theme": "classic",
+    "baseline": false,
+    "errors": [],
+    "sameDestination": {
+      "requests": 6,
+      "counts": [
+        8,
+        8,
+        8,
+        8,
+        8,
+        8
+      ],
+      "reused": 8
+    },
+    "foregroundRefresh": {
+      "waitingCards": 8,
+      "reused": 8
+    },
+    "close": {
+      "beforeLength": 1630,
+      "frames": [
+        {
+          "ms": 187.30000007152557,
+          "display": "flex",
+          "inlineDisplay": "",
+          "open": false,
+          "closing": true,
+          "panelDisplay": "flex",
+          "opacity": "0",
+          "textLength": 1630,
+          "scrollLocked": true
+        },
+        {
+          "ms": 360,
+          "display": "flex",
+          "inlineDisplay": "",
+          "open": false,
+          "closing": true,
+          "panelDisplay": "flex",
+          "opacity": "0.876437",
+          "textLength": 1630,
+          "scrollLocked": true
+        },
+        {
+          "ms": 1903.8000000715256,
+          "display": "none",
+          "inlineDisplay": "none",
+          "open": false,
+          "closing": true,
+          "panelDisplay": "none",
+          "opacity": "1",
+          "textLength": 1630,
+          "scrollLocked": true
+        }
+      ],
+      "clearedAfterHidden": true,
+      "clearedBeforeRootHidden": 0,
+      "blankVisibleFrames": 0
+    },
+    "reopen": {
+      "open": true,
+      "textLength": 1630,
+      "correctArticle": true
+    },
+    "sections": [
+      {
+        "section": "news_vietnam",
+        "selected": "news_vietnam",
+        "cards": 8
+      },
+      {
+        "section": "news_global",
+        "selected": "news_global",
+        "cards": 8
+      },
+      {
+        "section": "finance_vietnam",
+        "selected": "finance_vietnam",
+        "cards": 8
+      },
+      {
+        "section": "finance_global",
+        "selected": "finance_global",
+        "cards": 8
+      },
+      {
+        "section": "tech_vietnam",
+        "selected": "tech_vietnam",
+        "cards": 8
+      },
+      {
+        "section": "tech_global",
+        "selected": "tech_global",
+        "cards": 8
+      }
+    ],
+    "historyRace": {
+      "selected": "current",
+      "overlayOpen": false
+    },
+    "nativeRefresh": {
+      "waitingCards": 8,
+      "reused": 8,
+      "freshProxyRetains": true
+    },
+    "scrollRefresh": {
+      "scrollBefore": 300,
+      "scrollAfter": 300,
+      "contentUnchanged": true,
+      "rootVisible": true,
+      "imageDecoded": true
+    },
+    "resize": {
+      "open": true,
+      "readable": true,
+      "samePanel": true
+    }
+  },
+  {
+    "engine": "chromium",
+    "mobile": false,
+    "theme": "glass-light",
+    "baseline": false,
+    "errors": [],
+    "sameDestination": {
+      "requests": 6,
+      "counts": [
+        8,
+        8,
+        8,
+        8,
+        8,
+        8
+      ],
+      "reused": 8
+    },
+    "foregroundRefresh": {
+      "waitingCards": 8,
+      "reused": 8
+    },
+    "close": {
+      "beforeLength": 1630,
+      "frames": [
+        {
+          "ms": 860.8999999761581,
+          "display": "flex",
+          "inlineDisplay": "",
+          "open": false,
+          "closing": true,
+          "panelDisplay": "flex",
+          "opacity": "1",
+          "textLength": 1630,
+          "scrollLocked": true
+        },
+        {
+          "ms": 1980.7000000476837,
+          "display": "flex",
+          "inlineDisplay": "",
+          "open": false,
+          "closing": true,
+          "panelDisplay": "flex",
+          "opacity": "1",
+          "textLength": 1630,
+          "scrollLocked": true
+        },
+        {
+          "ms": 3664.8000000715256,
+          "display": "none",
+          "inlineDisplay": "none",
+          "open": false,
+          "closing": false,
+          "panelDisplay": "none",
+          "opacity": "1",
+          "textLength": 0,
+          "scrollLocked": false
+        }
+      ],
+      "clearedAfterHidden": true,
+      "clearedBeforeRootHidden": 0,
+      "blankVisibleFrames": 0
+    },
+    "reopen": {
+      "open": true,
+      "textLength": 1630,
+      "correctArticle": true
+    },
+    "sections": [
+      {
+        "section": "news_vietnam",
+        "selected": "news_vietnam",
+        "cards": 8
+      },
+      {
+        "section": "news_global",
+        "selected": "news_global",
+        "cards": 8
+      },
+      {
+        "section": "finance_vietnam",
+        "selected": "finance_vietnam",
+        "cards": 8
+      },
+      {
+        "section": "finance_global",
+        "selected": "finance_global",
+        "cards": 8
+      },
+      {
+        "section": "tech_vietnam",
+        "selected": "tech_vietnam",
+        "cards": 8
+      },
+      {
+        "section": "tech_global",
+        "selected": "tech_global",
+        "cards": 8
+      }
+    ],
+    "historyRace": {
+      "selected": "current",
+      "overlayOpen": false
+    },
+    "nativeRefresh": {
+      "waitingCards": 8,
+      "reused": 8,
+      "freshProxyRetains": true
+    },
+    "scrollRefresh": {
+      "scrollBefore": 300,
+      "scrollAfter": 300,
+      "contentUnchanged": true,
+      "rootVisible": true,
+      "imageDecoded": true
+    },
+    "resize": {
+      "open": true,
+      "readable": true,
+      "samePanel": true
+    }
+  },
+  {
+    "engine": "chromium",
+    "mobile": true,
+    "theme": "classic",
+    "baseline": false,
+    "errors": [],
+    "sameDestination": {
+      "requests": 6,
+      "counts": [
+        8,
+        8,
+        8,
+        8,
+        8,
+        8
+      ],
+      "reused": 8
+    },
+    "foregroundRefresh": {
+      "waitingCards": 8,
+      "reused": 8
+    },
+    "close": {
+      "beforeLength": 1630,
+      "frames": [
+        {
+          "ms": 283.59999990463257,
+          "display": "flex",
+          "inlineDisplay": "",
+          "open": false,
+          "closing": true,
+          "panelDisplay": "flex",
+          "opacity": "1",
+          "textLength": 1630,
+          "scrollLocked": true
+        },
+        {
+          "ms": 495.7999999523163,
+          "display": "flex",
+          "inlineDisplay": "",
+          "open": false,
+          "closing": true,
+          "panelDisplay": "flex",
+          "opacity": "1",
+          "textLength": 1630,
+          "scrollLocked": true
+        },
+        {
+          "ms": 773.5999999046326,
+          "display": "none",
+          "inlineDisplay": "none",
+          "open": false,
+          "closing": true,
+          "panelDisplay": "none",
+          "opacity": "1",
+          "textLength": 1630,
+          "scrollLocked": true
+        }
+      ],
+      "clearedAfterHidden": true,
+      "clearedBeforeRootHidden": 0,
+      "blankVisibleFrames": 0
+    },
+    "reopen": {
+      "open": true,
+      "textLength": 1630,
+      "correctArticle": true
+    },
+    "sections": [
+      {
+        "section": "news_vietnam",
+        "selected": "news_vietnam",
+        "cards": 8
+      },
+      {
+        "section": "news_global",
+        "selected": "news_global",
+        "cards": 8
+      },
+      {
+        "section": "finance_vietnam",
+        "selected": "finance_vietnam",
+        "cards": 8
+      },
+      {
+        "section": "finance_global",
+        "selected": "finance_global",
+        "cards": 8
+      },
+      {
+        "section": "tech_vietnam",
+        "selected": "tech_vietnam",
+        "cards": 8
+      },
+      {
+        "section": "tech_global",
+        "selected": "tech_global",
+        "cards": 8
+      }
+    ],
+    "historyRace": {
+      "selected": "current",
+      "overlayOpen": false
+    },
+    "nativeRefresh": {
+      "waitingCards": 8,
+      "reused": 8,
+      "freshProxyRetains": true
+    },
+    "scrollRefresh": {
+      "scrollBefore": 300,
+      "scrollAfter": 300,
+      "contentUnchanged": true,
+      "rootVisible": true,
+      "imageDecoded": true
+    },
+    "resize": {
+      "open": true,
+      "readable": true,
+      "samePanel": true
+    }
+  },
+  {
+    "engine": "chromium",
+    "mobile": true,
+    "theme": "glass-light",
+    "baseline": false,
+    "errors": [],
+    "sameDestination": {
+      "requests": 6,
+      "counts": [
+        8,
+        8,
+        8,
+        8,
+        8,
+        8
+      ],
+      "reused": 8
+    },
+    "foregroundRefresh": {
+      "waitingCards": 8,
+      "reused": 8
+    },
+    "close": {
+      "beforeLength": 1630,
+      "frames": [
+        {
+          "ms": 20.100000023841858,
+          "display": "flex",
+          "inlineDisplay": "",
+          "open": false,
+          "closing": true,
+          "panelDisplay": "flex",
+          "opacity": "0.741129",
+          "textLength": 1630,
+          "scrollLocked": true
+        },
+        {
+          "ms": 96.20000004768372,
+          "display": "flex",
+          "inlineDisplay": "",
+          "open": false,
+          "closing": true,
+          "panelDisplay": "flex",
+          "opacity": "0.924697",
+          "textLength": 1630,
+          "scrollLocked": true
+        },
+        {
+          "ms": 167.89999997615814,
+          "display": "flex",
+          "inlineDisplay": "",
+          "open": false,
+          "closing": true,
+          "panelDisplay": "flex",
+          "opacity": "0.884831",
+          "textLength": 1630,
+          "scrollLocked": true
+        },
+        {
+          "ms": 178.80000007152557,
+          "display": "flex",
+          "inlineDisplay": "",
+          "open": false,
+          "closing": true,
+          "panelDisplay": "flex",
+          "opacity": "0.448873",
+          "textLength": 1630,
+          "scrollLocked": true
+        },
+        {
+          "ms": 229.89999997615814,
+          "display": "flex",
+          "inlineDisplay": "",
+          "open": false,
+          "closing": true,
+          "panelDisplay": "flex",
+          "opacity": "0.1477",
+          "textLength": 1630,
+          "scrollLocked": true
+        },
+        {
+          "ms": 271.89999997615814,
+          "display": "flex",
+          "inlineDisplay": "",
+          "open": false,
+          "closing": true,
+          "panelDisplay": "flex",
+          "opacity": "0.0721869",
+          "textLength": 1630,
+          "scrollLocked": true
+        },
+        {
+          "ms": 330.10000002384186,
+          "display": "flex",
+          "inlineDisplay": "",
+          "open": false,
+          "closing": true,
+          "panelDisplay": "flex",
+          "opacity": "0.0051265",
+          "textLength": 1630,
+          "scrollLocked": true
+        },
+        {
+          "ms": 363.7000000476837,
+          "display": "flex",
+          "inlineDisplay": "",
+          "open": false,
+          "closing": true,
+          "panelDisplay": "flex",
+          "opacity": "0",
+          "textLength": 1630,
+          "scrollLocked": true
+        },
+        {
+          "ms": 440.10000002384186,
+          "display": "none",
+          "inlineDisplay": "none",
+          "open": false,
+          "closing": false,
+          "panelDisplay": "none",
+          "opacity": "1",
+          "textLength": 0,
+          "scrollLocked": false
+        }
+      ],
+      "clearedAfterHidden": true,
+      "clearedBeforeRootHidden": 0,
+      "blankVisibleFrames": 0
+    },
+    "reopen": {
+      "open": true,
+      "textLength": 1630,
+      "correctArticle": true
+    },
+    "sections": [
+      {
+        "section": "news_vietnam",
+        "selected": "news_vietnam",
+        "cards": 8
+      },
+      {
+        "section": "news_global",
+        "selected": "news_global",
+        "cards": 8
+      },
+      {
+        "section": "finance_vietnam",
+        "selected": "finance_vietnam",
+        "cards": 8
+      },
+      {
+        "section": "finance_global",
+        "selected": "finance_global",
+        "cards": 8
+      },
+      {
+        "section": "tech_vietnam",
+        "selected": "tech_vietnam",
+        "cards": 8
+      },
+      {
+        "section": "tech_global",
+        "selected": "tech_global",
+        "cards": 8
+      }
+    ],
+    "historyRace": {
+      "selected": "current",
+      "overlayOpen": false
+    },
+    "nativeRefresh": {
+      "waitingCards": 8,
+      "reused": 8,
+      "freshProxyRetains": true
+    },
+    "scrollRefresh": {
+      "scrollBefore": 300,
+      "scrollAfter": 300,
+      "contentUnchanged": true,
+      "rootVisible": true,
+      "imageDecoded": true
+    },
+    "resize": {
+      "open": true,
+      "readable": true,
+      "samePanel": true
+    }
+  }
+]

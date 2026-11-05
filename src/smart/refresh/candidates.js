@@ -10,7 +10,8 @@ import { SMART_CLUSTER_VERSION, SMART_NEWS_CLUSTER_CONFIG, HOUR_MS, SMART_NEWS_A
 import { parsePublishedTimestamp, toVietnamIso } from '../dates/publication-time.js';
 import { EMBEDDING_MODEL, EMBEDDING_CACHE_VERSION } from '../embeddings/config.js';
 import { buildEmbeddingText } from '../embeddings/index.js';
-import { fetchInBatches, fetchSmartSource } from '../sources/fetch.js';
+import { fetchInBatches } from '../sources/fetch.js';
+import {fetchSmartSourceForRefresh} from '../sources/manual-fetch.js';
 import { canonicalSourceUrl, isExcludedFromSmart } from '../sources/identity.js';
 import { countSmartSources } from '../sources/normalize.js';
 import { dedupeGoogleNewsWrappers } from '../sources/wrappers.js';
@@ -98,10 +99,11 @@ export async function prepareSmartCandidates({ db, smartSources, getSettings, ha
       sourcesToFetch,
       16,
       source =>
-        fetchSmartSource(
+        fetchSmartSourceForRefresh(
           source,
           helpers.fastParseRSS,
-          headers
+          headers,
+          options.manualRefreshScopes
         ),
       progress =>
         notify(

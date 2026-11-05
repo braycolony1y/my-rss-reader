@@ -160,23 +160,7 @@ const ReaderArticleNavigation = {
                 },
 
                 async handleHashChange() {
-                    this.hideTooltip();
-                    const hashFilter = this.getFilterFromHash();
-                    if (!hashFilter) return;
-                    if (hashFilter.type !== this.selectedFilterType || hashFilter.value !== this.selectedFilterValue) {
-                        this.selectedFilterType = hashFilter.type;
-                        this.selectedFilterValue = hashFilter.value;
-                        if (hashFilter.type === 'smart') this.smartRegion = String(hashFilter.value).endsWith('_vietnam') ? 'vietnam' : 'global';
-                        this.currentPage = 1;
-                        this.hasMore = false;
-                        this.articles = [];
-                        await this.fetchData();
-                    }
-                    if (hashFilter.articleUrl) {
-                        await this.openArticleFromRoute(hashFilter.articleUrl);
-                    } else if (this.articleOverlayOpen) {
-                        this.closeArticleOverlay({ updateHistory: false, closeAll: true });
-                    }
+                    return ReaderRouteTransition.apply(this);
                 },
         };
     }

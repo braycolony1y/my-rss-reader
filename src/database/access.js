@@ -1,3 +1,4 @@
+import { createDatabaseBatchWriter } from './batch-writer.js';
 import { serializedRankingInput } from '../articles/ranking-input.js';
 import {encodeStoredValue,encodeStoredSnapshot,decodeStoredValue,isSerializedValue,sameStoredValue,storedByteLength} from './stored-value.js';
 import {measureDatabaseRead} from './read-timing.js';
@@ -68,53 +69,7 @@ export function createDatabaseAccess({state,withDbLock,_loadDBFromDisk,_jsonPars
                 }
                 }, {keys:[key],bytes:storedByteLength(value)});
             },
-            putMany: (keyValuePairs, options = {}) => {
-                keyValuePairs = encodeStoredSnapshot(keyValuePairs);
-                return withDbLock(async () => {
-                if (!state.value) state.value = await _loadDBFromDisk();
-                keyValuePairs = Object.fromEntries(Object.entries(keyValuePairs).filter(
-                    ([key, value]) => !sameStoredValue(state.value[key], value)
-                ));
-                if (!Object.keys(keyValuePairs).length) return;
-                const previous = state.value;
-                let next = { ...previous };
-
-                for (const [key, value] of Object.entries(keyValuePairs)) {
-                    next[key] = value;
-
-                    if (['feeds', 'articles', 'smartRawArticles', 'smartClusters', 'blockedArticleKeywords'].includes(key)) {
-                        const oldItems = _parseStoredArray(previous, key) || [];
-                        const newItems = _parseStoredArray(next, key);
-                        if (!newItems) throw new Error(`[DB SAFETY] ${key} write is not a valid array`);
-                        if (oldItems.length > 0 && newItems.length === 0 && !(key === 'blockedArticleKeywords' && options.allowLargeReduction)) {
-                            throw new Error(`[DB SAFETY] Refusing to wipe ${oldItems.length} ${key}`);
-                        }
-                        const destructiveDrop = oldItems.length >= 20 && newItems.length < Math.ceil(oldItems.length * 0.1);
-                        if (destructiveDrop && !options.allowLargeReduction) {
-                            throw new Error(`[DB SAFETY] Refusing unexpected ${key} reduction from ${oldItems.length} to ${newItems.length}`);
-                        }
-                    }
-
-                    if (key === 'feeds') {
-                        const oldFeeds = _parseStoredArray(previous, key) || [];
-                        const newFeeds = _parseStoredArray(next, key) || [];
-                        const destructiveDrop = oldFeeds.length >= 3 && newFeeds.length < Math.ceil(oldFeeds.length * 0.5);
-                        if (destructiveDrop && !options.allowLargeReduction) {
-                            throw new Error(`[DB SAFETY] Refusing unexpected feed reduction from ${oldFeeds.length} to ${newFeeds.length}`);
-                        }
-                        await _backupFeeds(JSON.stringify(newFeeds), oldFeeds.length ? JSON.stringify(oldFeeds) : null);
-                    }
-                }
-
-                try {
-                    await _persistToDisk(next, previous, Object.keys(keyValuePairs), options);
-                    state.value = next;
-                    for (const key of Object.keys(keyValuePairs)) _jsonParsedCache.invalidate(key, next[key]);
-                } catch (err) {
-                    state.value = previous; // rollback on failure
-                    throw err;
-                }
-            }, {keys:Object.keys(keyValuePairs),bytes:Object.values(keyValuePairs).reduce((sum,value)=>sum+storedByteLength(value),0)});
-            }
+            ...createDatabaseBatchWriter({state, withDbLock, _loadDBFromDisk,
+                _jsonParsedCache, _parseStoredArray, _backupFeeds, _persistToDisk})
     };
 }

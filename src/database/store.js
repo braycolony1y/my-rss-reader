@@ -3,6 +3,7 @@ import {SMART_INCREMENTAL_KEYS} from './state-policy.js';
 import {createKeyedOverlay} from './keyed-overlay.js';
 import {createDatabasePersistence} from './persistence.js';
 import {createDatabaseAccess} from './access.js';
+import {PUBLISHER_COOLDOWN_KEYS} from '../articles/publisher-cooldown-policy.js';
 import {encodeStoredSnapshot,decodeStoredValue,isSerializedValue,storedSnapshotState} from './stored-value.js';
 import { createParsedCache } from './parsed-cache.js';
 import { PERSONAL_STATE_KEY } from '../smart/feedback/store.js';
@@ -23,7 +24,7 @@ export function createDatabaseStore() {
     let smartStateRevision = 0;
     let smartStateOverlay = {};
     const STATE_FILE = './database-state.json';
-    const STATE_KEYS = new Set(['topStoriesState', PERSONAL_STATE_KEY, 'readStates', 'savedStates', 'hiddenStates', 'boardStates', 'recentReadAt', 'userPreferences', 'cacheMembers', 'cacheIdentityLedger', 'smartAiProviderHealth', 'articleFetchStrategyStats', 'googleNewsUrlCache']);
+    const STATE_KEYS = new Set(['topStoriesState', PERSONAL_STATE_KEY, 'readStates', 'savedStates', 'hiddenStates', 'boardStates', 'recentReadAt', 'userPreferences', 'cacheMembers', 'cacheIdentityLedger', 'smartAiProviderHealth', 'articleFetchStrategyStats', 'publisherVerificationCooldowns', ...Object.values(PUBLISHER_COOLDOWN_KEYS), 'googleNewsUrlCache']);
     let stateRevision = 0;
     let stateOverlay = {};
     const stateFiles = createKeyedOverlay({filename:STATE_FILE,allowedKeys:STATE_KEYS,writeJson:_writeJsonAtomic});

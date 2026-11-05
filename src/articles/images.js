@@ -1,6 +1,7 @@
 import { isInvalidImage, isRedditUrl } from '../utils/article-utils.js';
 import { getArticleThumbnail } from './thumbnail.js';
 import { withArticleFetchLane } from './fetch-lanes.js';
+import {articleFallbackAcquisition} from './fallback-request.js';
 
 export function createArticleImages({
     getLastKnownCachedArticle,
@@ -11,7 +12,7 @@ export function createArticleImages({
 } = {}) {
     const pending = new Map();
 
-    async function resolveImage(targetUrl, rssFallback) {
+    async function resolveImageNow(targetUrl, rssFallback) {
         const cachedImage = await getLastKnownCachedArticleImage(targetUrl);
         if (cachedImage) return cachedImage;
         if (rssFallback && !isInvalidImage(rssFallback)) return rssFallback;
@@ -32,6 +33,8 @@ export function createArticleImages({
         }
         return null;
     }
+
+    const resolveImage = articleFallbackAcquisition(resolveImageNow, {lane: 'p2'});
 
     async function getBestImage(targetUrl, _fetchFn, rssFallback = null) {
         if (isRedditUrl(targetUrl)) return rssFallback || '';

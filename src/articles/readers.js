@@ -1,4 +1,6 @@
-import { runArticleFetchTask } from './fetch-lanes.js';
+import { runArticleFetchTask, getCurrentArticleFetchLaneContext } from './fetch-lanes.js';
+import { readPublisherResponse, assertNoPublisherVerification } from './publisher-verification.js';
+import { notifyReaderVerification } from './verification-notice.js';
 import sourceRegistry from '../sources/index.js';
 import { normalizeArticleSourceUrl, deletedSourceKind, deletedSourceTitle } from '../article-source-state.js';
 import { safeHttpUrl, isRedditUrl } from '../utils/article-utils.js';
@@ -22,14 +24,15 @@ export function createArticleReaders({
         const res = await fetch(fetchUrl, {
             headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
         });
-        if (!res.ok && res.status !== 404 && res.status !== 403 && res.status !== 410) throw new Error(`Vietserver proxy returned HTTP ${res.status}`);
-        const body = await res.text();
+        if (!res.ok && ![404, 403, 410, 429].includes(res.status)) throw new Error(`Vietserver proxy returned HTTP ${res.status}`);
+        const body = await readPublisherResponse(res);
         return (res.status === 404 || res.status === 410)
             ? `<!-- RSS_SOURCE_HTTP_STATUS:${res.status} -->${body}`
             : body;
     }
 
     async function fetchViaOpenCli(url, requestId = '') {
+        const laneContext = getCurrentArticleFetchLaneContext();
         const sourceHandler = sourceRegistry.getHandler(url);
         const readerUrl = normalizeArticleSourceUrl(sourceHandler?.getOpenCliReaderUrl?.(url) || url);
         const captureDiagnostics = Boolean(sourceHandler?.needsOpenCliDiagnostics?.());
@@ -50,13 +53,15 @@ export function createArticleReaders({
                     url: readerCandidates[index], stdout: true, 'download-images': false,
                     wait: candidateWaitSeconds, diagnose: captureDiagnostics
                 }, () => {
-                    if (!isActiveArticleSession(articleReaderSessions.get(requestId), url)) return false;
+                    if (laneContext.lane !== 'p0' || !isActiveArticleSession(articleReaderSessions.get(requestId), url)) return false;
+                    notifyReaderVerification(url, laneContext);
                     updateArticleFetchProgress(requestId, 'verification',
                         'Please complete the CAPTCHA in the OpenCLI Chrome window. Keep this article open; reading will resume automatically after verification.',
                         { method: 'opencli', requiresHumanVerification: true });
                     return true;
                 });
             } catch (error) {
+                if (laneContext.lane !== 'p0') throw error;
                 if (!/Publisher verification blocked this fetch/i.test(error.message)) throw error;
                 remainedOnVerificationPage = true;
                 continue;
@@ -114,11 +119,12 @@ export function createArticleReaders({
                     isDeletedThread: kind === 'thread'
                 };
             }
+            if ([403, 429].includes(response.status)) await readPublisherResponse(response);
             if (!response.ok) {
                 await discardResponseBody(response);
                 throw new Error('Jina Reader returned HTTP ' + response.status);
             }
-            const parsed = parseJinaReaderText(await response.text(), url);
+            const parsed = parseJinaReaderText(assertNoPublisherVerification(await response.text()), url);
             if (parsed.isDeletedSource) return parsed;
             if (isUnsafeVozThreadPayload(url, parsed)) throw new Error('Jina Reader returned a VOZ error page');
             assertArticleResultAcceptedBySource(url, parsed);
@@ -161,8 +167,8 @@ export function createArticleReaders({
                     currentUrl = res.headers.get('location') || currentUrl;
                     if (!currentUrl.startsWith('http')) currentUrl = new URL(currentUrl, res.url || targetUrl).href;
                     await discardResponseBody(res);
-                } else if (res.ok || res.status === 404 || res.status === 403 || res.status === 410) {
-                    const body = await res.text();
+                } else if (res.ok || [404, 403, 410, 429].includes(res.status)) {
+                    const body = await readPublisherResponse(res);
                     return (res.status === 404 || res.status === 410)
                         ? `<!-- RSS_SOURCE_HTTP_STATUS:${res.status} -->${body}`
                         : body;
@@ -204,11 +210,11 @@ export function createArticleReaders({
                 ? CF_PROXY_BASE + encodeURIComponent(url + cbParam)
                 : 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url + cbParam);
             const response = await fetch(fetchUrl, { signal: controller.signal });
-            if (!response.ok && response.status !== 404 && response.status !== 403 && response.status !== 410) {
+            if (!response.ok && ![404, 403, 410, 429].includes(response.status)) {
                 await discardResponseBody(response);
                 throw new Error('HTTP ' + response.status);
             }
-            const body = await response.text();
+            const body = await readPublisherResponse(response);
             return (response.status === 404 || response.status === 410)
                 ? `<!-- RSS_SOURCE_HTTP_STATUS:${response.status} -->${body}`
                 : body;

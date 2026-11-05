@@ -7,6 +7,9 @@ const ReaderComponent = {
         for (const create of factories) {
             Object.defineProperties(component, Object.getOwnPropertyDescriptors(create()));
         }
+        // Alpine creates different evaluation proxies for separate DOM events.
+        // Frozen ownership stays identical through each reactive proxy.
+        Object.defineProperty(component, '__readerOwner', {value: Object.freeze({})});
         return component;
     }
 };

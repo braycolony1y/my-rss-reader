@@ -59,7 +59,16 @@ test('every background worker dispatches only through the resolved policy', () =
         const end = candidates.length ? Math.min(...candidates) : server.length;
         const body = server.slice(start, end);
         assert.match(body, /getArticleFetchPolicy\(/, `${functionName} should resolve policy`);
-        assert.match(body, /fetchParsedArticleByStrategy\(/, `${functionName} should use policy dispatcher`);
+        const delegated = {
+            triggerVozNextPagePrefetch: ['readers.prefetchPage', '../src/articles/archive-reader-fallbacks.js'],
+            triggerVozCurrentPageBackgroundUpdate: ['readers.updatePage', '../src/articles/archive-reader-fallbacks.js'],
+            triggerNextFiveArticlesPrefetch: ['prefetchArticleStrategies', '../src/feeds/prefetch-strategies.js'],
+            runUniversalTabPrefetch: ['prefetchArticleStrategies', '../src/feeds/prefetch-strategies.js']
+        }[functionName];
+        assert.ok(body.includes(delegated[0]), `${functionName} should call its fallback module`);
+        const implementation = readFileSync(new URL(delegated[1], import.meta.url), 'utf8');
+        assert.match(implementation, /fetchParsedArticleByStrategy\(/, `${functionName} should use policy dispatcher`);
+        assert.match(implementation, /policy\.strategyOrder/, `${functionName} should respect the configured order`);
     }
 });
 

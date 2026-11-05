@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 // Explicit allowlist: partial names never come from request parameters.
 export const READER_COMPONENT_PATHS = Object.fromEntries([
     'login', 'sidebar', 'header', 'smart/navigation', 'article-list',
-    'action-status', 'tooltip', 'article/overlay', 'article/overlay-header',
+    'action-status', 'tooltip', 'article/overlay', 'article/overlay-header', 'article/verification-notice',
     'article/summary', 'article/card-panel', 'modals/add-feed', 'modals/content-filter',
     'modals/ai-status', 'modals/smart-sources', 'modals/edit-source',
     'modals/logs', 'modals/boards', 'modals/article-debug',

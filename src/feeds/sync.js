@@ -1,11 +1,15 @@
+import { shouldSkipFeedFetch } from './fetch-scope.js';
+import { publishFeedResults } from './publish-results.js';
+import { coalesceFeedSync } from './coalescing.js';
+import { backgroundPublisherFetch as fetch } from '../articles/background-publisher-fetch.js';
+import {createFeedSourceAcquisition} from './source-acquisition.js';
 import { parseK, parseBaoMoi, parseMorningstar, parseTechcombank, parseUOB, parseUOBVN } from './source-parsers.js';
 import { createCacheObservationBatch } from './cache-observation-batch.js';
 import { createFeedFetcher } from './fetch-feed.js';
-import { extractVozThreadListMetadata } from './voz-thread-metadata.js';
+import {createVozForumMetadataScraper} from './voz-forum-metadata.js';
 import { publisherIcon, isInvalidImage, cleanUrl, normalizeStateUrl, isRedditUrl } from '../utils/article-utils.js';
 import sourceRegistry from '../sources/index.js';
 import { discardResponseBody } from '../fetch-response.js';
-import path from 'path';
 import { decodeHTMLEntities } from '../../feed-parsers.js';
 import { decodeGoogleNewsIndividually, matchesGoogleNewsPublisher } from '../google-news-destination.js';
 
@@ -64,45 +68,13 @@ export function createFeedSync({
         if (cleanup.unref) cleanup.unref();
     }
 
-    async function scrapeVozViews(forumUrl) {
-        const threadMap = new Map();
+    const scrapeVozViews = createVozForumMetadataScraper({CF_PROXY_BASE, BROWSER_HEADERS});
+    const acquireFeedSource = createFeedSourceAcquisition({CF_PROXY_BASE, BROWSER_HEADERS, VIETSERVER_PROXY_BASE,
+        fetchViaVietserver, execFileAsync, recordFetch, fetchFeedResponse});
 
-        async function scrapePage(url) {
-            try {
-                const fetchUrl = CF_PROXY_BASE + encodeURIComponent(url);
-                const controller = new AbortController();
-                const timeout = setTimeout(() => controller.abort(), 12000);
-                const res = await fetch(fetchUrl, {
-                    headers: BROWSER_HEADERS,
-                    signal: controller.signal
-                });
-                clearTimeout(timeout);
+    const syncFeeds = coalesceFeedSync(runFeedSync);
 
-                if (res.ok) {
-                    const html = await res.text();
-
-                    for (const [id, metadata] of extractVozThreadListMetadata(html)) {
-                        threadMap.set(id, metadata);
-                    }
-                }
-            } catch (e) {
-                console.error(`[VOZ SCRAPER ERROR] Failed to scrape ${url}: ${e.message}`);
-            }
-        }
-
-        // Scrape page 1
-        await scrapePage(forumUrl);
-
-        // If we got fewer than 15 non-sticky threads, also scrape page 2 for more candidates
-        if (threadMap.size < 15) {
-            const page2Url = forumUrl.endsWith('/') ? forumUrl + '?page=2' : forumUrl + '&page=2';
-            await scrapePage(page2Url);
-        }
-
-        return threadMap;
-    }
-
-    async function syncFeeds(env, targetFeedUrl = null, onProgress = null, targetCategory = null) {
+    async function runFeedSync(env, targetFeedUrl = null, onProgress = null, targetCategory = null, {forcedFeedUrls, manualRefreshScopes = []} = {}) {
         let rawFeeds = await env.RSS_DATA.get('feeds', { type: 'json' }) || [];
         const feeds = [];
         for (let f of rawFeeds) {
@@ -153,175 +125,15 @@ export function createFeedSync({
                 total: feedsToSync.length
             });
 
-            if (!targetFeedUrl && feed.category === 'Macroeconomics') {
-                const now = Date.now();
-                if (!global.lastFetchTimeByUrl) global.lastFetchTimeByUrl = {};
-                const lastFetch = global.lastFetchTimeByUrl[feed.url] || 0;
-                if (now - lastFetch < 86400000 - 30000) {
-                    return;
-                }
-            }
+            if (shouldSkipFeedFetch(feed, targetFeedUrl, forcedFeedUrls)) return;
 
             const feedFetchStart = Date.now();
             try {
-                let response;
-                const feedHandler = sourceRegistry.getHandler(feed.url);
-                let feedData;
-
-                // ============================================================================
-                // 🆕 MORNINGSTAR FETCH LOGIC — TRY ALL METHODS
-                // ============================================================================
-                if (feedHandler?.fetchFeed) {
-                    feedData = await feedHandler.fetchFeed(feed.url);
-                } else if (feed.url.includes('morningstar.com') || feed.url.includes('morningstar.co.uk')) {
-                    if (!global.lastFetchTimeByUrl) global.lastFetchTimeByUrl = {};
-                    global.lastFetchTimeByUrl[feed.url] = Date.now();
-
-                    let fetchOptions = {
-                        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)', 'Accept': '*/*' }
-                    };
-
-                    let msHtml = null;
-                    let msMethod = '';
-
-                    // Method 1: Direct fetch with Googlebot UA
-                    try {
-                        console.log(`[MORNINGSTAR DEBUG] Method 1: Direct fetch...`);
-                        const directRes = await fetch(feed.url, fetchOptions);
-                        if (directRes.ok) {
-                            const text = await directRes.text();
-                            if (text && text.length > 1000 && !text.includes('challenge.js')) {
-                                msHtml = text;
-                                msMethod = 'direct';
-                                console.log(`[MORNINGSTAR DEBUG] ✅ Direct fetch succeeded (${text.length} bytes)`);
-                            } else {
-                                console.log(`[MORNINGSTAR DEBUG] ⚠️ Direct fetch returned WAF/challenge page`);
-                            }
-                        } else {
-                            console.log(`[MORNINGSTAR DEBUG] ⚠️ Direct fetch HTTP ${directRes.status}`);
-                            await discardResponseBody(directRes);
-                        }
-                    } catch (e) {
-                        console.log(`[MORNINGSTAR DEBUG] ⚠️ Direct fetch error: ${e.message}`);
-                    }
-
-                    // Method 2: CF Proxy
-                    if (!msHtml) {
-                        try {
-                            console.log(`[MORNINGSTAR DEBUG] Method 2: CF Proxy...`);
-                            const cfRes = await fetch(CF_PROXY_BASE + encodeURIComponent(feed.url), fetchOptions);
-                            if (cfRes.ok) {
-                                const text = await cfRes.text();
-                                if (text && text.length > 1000 && !text.includes('challenge.js')) {
-                                    msHtml = text;
-                                    msMethod = 'cf-proxy';
-                                    console.log(`[MORNINGSTAR DEBUG] ✅ CF Proxy succeeded (${text.length} bytes)`);
-                                } else {
-                                    console.log(`[MORNINGSTAR DEBUG] ⚠️ CF Proxy returned WAF/challenge page`);
-                                }
-                            } else {
-                                console.log(`[MORNINGSTAR DEBUG] ⚠️ CF Proxy HTTP ${cfRes.status}`);
-                                await discardResponseBody(cfRes);
-                            }
-                        } catch (e) {
-                            console.log(`[MORNINGSTAR DEBUG] ⚠️ CF Proxy error: ${e.message}`);
-                        }
-                    }
-
-                    // Method 3: Vietserver Proxy
-                    if (!msHtml && VIETSERVER_PROXY_BASE) {
-                        try {
-                            console.log(`[MORNINGSTAR DEBUG] Method 3: Vietserver Proxy...`);
-                            const vsText = await fetchViaVietserver(feed.url);
-                            if (vsText && vsText.length > 1000 && !vsText.includes('challenge.js')) {
-                                msHtml = vsText;
-                                msMethod = 'vietserver';
-                                console.log(`[MORNINGSTAR DEBUG] ✅ Vietserver succeeded (${vsText.length} bytes)`);
-                            } else {
-                                console.log(`[MORNINGSTAR DEBUG] ⚠️ Vietserver returned insufficient content`);
-                            }
-                        } catch (e) {
-                            console.log(`[MORNINGSTAR DEBUG] ⚠️ Vietserver error: ${e.message}`);
-                        }
-                    }
-
-                    // Method 4: Jina Reader
-                    if (!msHtml) {
-                        try {
-                            console.log(`[MORNINGSTAR DEBUG] Method 4: Jina Reader...`);
-                            const jinaUrl = `https://r.jina.ai/${feed.url}`;
-                            const jinaController = new AbortController();
-                            const jinaTimeout = setTimeout(() => jinaController.abort(), 15000);
-                            const jinaRes = await fetch(jinaUrl, {
-                                headers: { 'Accept': 'text/html' },
-                                signal: jinaController.signal
-                            });
-                            clearTimeout(jinaTimeout);
-                            if (jinaRes.ok) {
-                                const text = await jinaRes.text();
-                                if (text && text.length > 500) {
-                                    msHtml = text;
-                                    msMethod = 'jina';
-                                    console.log(`[MORNINGSTAR DEBUG] ✅ Jina Reader succeeded (${text.length} bytes)`);
-                                } else {
-                                    console.log(`[MORNINGSTAR DEBUG] ⚠️ Jina Reader returned insufficient content`);
-                                }
-                            } else {
-                                console.log(`[MORNINGSTAR DEBUG] ⚠️ Jina Reader HTTP ${jinaRes.status}`);
-                                await discardResponseBody(jinaRes);
-                            }
-                        } catch (e) {
-                            console.log(`[MORNINGSTAR DEBUG] ⚠️ Jina Reader error: ${e.message}`);
-                        }
-                    }
-
-                    // Method 5: OpenCLI (browser-based, last resort)
-                    if (!msHtml) {
-                        try {
-                            console.log(`[MORNINGSTAR DEBUG] Method 5: OpenCLI web read...`);
-                            const { stdout: cliOutput } = await execFileAsync(path.resolve('./node_modules/.bin/opencli'), [
-                                'web', 'read', '--url', feed.url,
-                                '--stdout', 'true',
-                                '--download-images', 'false',
-                                '--wait', '5',
-                                '--window', 'background'
-                            ], {
-                                timeout: 30000,
-                                maxBuffer: 12 * 1024 * 1024
-                            });
-                            if (cliOutput && cliOutput.length > 500) {
-                                msHtml = cliOutput;
-                                msMethod = 'opencli';
-                                console.log(`[MORNINGSTAR DEBUG] ✅ OpenCLI succeeded (${cliOutput.length} bytes)`);
-                            } else {
-                                console.log(`[MORNINGSTAR DEBUG] ⚠️ OpenCLI returned insufficient content`);
-                            }
-                        } catch (e) {
-                            console.log(`[MORNINGSTAR DEBUG] ⚠️ OpenCLI error: ${e.message}`);
-                        }
-                    }
-
-                    if (msHtml) {
-                        console.log(`[MORNINGSTAR DEBUG] 🎯 Using content from method: ${msMethod}`);
-                        response = new Response(msHtml, { status: 200, headers: { 'Content-Type': 'text/html' } });
-                    } else {
-                        console.error(`[MORNINGSTAR DEBUG] 🔴 ALL 5 fetch methods failed for ${feed.url}`);
-                        syncLogs.push({ Feed: feed.title || feed.url, Issue: 'All fetch methods failed (direct, CF proxy, Vietserver, Jina, OpenCLI)' });
-                        recordFetch(feed.url, feed.title || feed.url, 'error', 'All 5 fetch methods failed', Date.now() - feedFetchStart, { errorType: 'all-methods-failed' });
-                        return;
-                    }
-                } else if (feed.url.includes('techcombank.com')) {
-                    // Techcombank loads data via GraphQL
-                    const apiUrl = 'https://techcombank.com/graphql/execute.json/techcombank/viewDocumentList%3BcfPath%3D/content/dam/techcombank/master-data/en/list-view-document/macroeconomics-en/';
-                    response = await fetch(apiUrl, { headers: BROWSER_HEADERS });
-                } else if (feed.url.includes('uobgroup.com')) {
-                    const apiUrl = 'https://www.uobgroup.com/assets/web-resources/research/csv/archive/todays-focus/csv/macro-note.csv';
-                    response = await fetch(apiUrl, { headers: BROWSER_HEADERS });
-                } else if (feed.url.includes('uob.com.vn')) {
-                    response = await fetch(feed.url, { headers: BROWSER_HEADERS });
-                } else {
-                    response = await fetchFeedResponse(feed.url);
-                }
+                const {response, feedData: acquiredFeedData, failed, manualRecovery} = await acquireFeedSource(feed, {
+                    feedFetchStart, syncLogs, manualRefreshScopes
+                });
+                if (failed) return;
+                let feedData = acquiredFeedData;
 
                 if (response && !response.ok && response.status !== 202) {
                     syncLogs.push({ Feed: feed.title || feed.url, Issue: `HTTP Error ${response.status}` });
@@ -827,6 +639,7 @@ export function createFeedSync({
                     cacheObservations.add(cacheArticles);
                     await Promise.all(eagerImageTasks);
                     await prefetchOpenCliOnlyArticles(openCliOnlyArticlesToPrefetch, feed.url);
+                    await manualRecovery?.accept();
                     recordFetch(feed.url, feed.title || feed.url, 'success', `${feedData.items.length} articles`, Date.now() - feedFetchStart);
                 } catch (parseErr) {
                     syncLogs.push({ Feed: feed.title || feed.url, Issue: `XML Parser crashed: ${parseErr.message}` });
@@ -851,112 +664,7 @@ export function createFeedSync({
         await Promise.all(activePromises);
         await cacheObservations.flush().catch(error => console.error('[RSS CACHE OBSERVATION]', error.message));
 
-        let allArticles = [...newArticles, ...existingArticles];
-
-        for (let article of allArticles) {
-            if (!article.image) {
-                article.image = `/api/og-image?url=${encodeURIComponent(article.link.replace(/\/unread\/?$/, ''))}&rss=${encodeURIComponent(article.rssFallbackMap || '')}&icon=${encodeURIComponent(article.feedIcon)}`;
-            }
-            delete article.rssFallbackMap;
-        }
-
-        for (let i = 0; i < allArticles.length; i++) {
-            allArticles[i]._ts = new Date(allArticles[i].pubDate).getTime() || 0;
-        }
-        allArticles.sort((a, b) => b._ts - a._ts);
-
-        const uniqueArticles = [];
-        const linkMap = new Map();
-        const titleMap = new Map();
-        const guidMap = new Map();
-        for (const article of allArticles) {
-            const titleKey = `${article.feedUrl}|${article.guid || article.title.toLowerCase()}`;
-            const guidKey = article.guid ? `${article.feedUrl}|${article.guid}` : null;
-            if (!linkMap.has(article.link) && !titleMap.has(titleKey) && !(guidKey && guidMap.has(guidKey))) {
-                if (guidKey) guidMap.set(guidKey, article);
-                linkMap.set(article.link, article);
-                titleMap.set(titleKey, article);
-                delete article._ts;
-                uniqueArticles.push(article);
-            } else {
-                // Keep the maximum view/reply count and createDate even if we skip the duplicate
-                const existing = (guidKey && guidMap.get(guidKey)) || linkMap.get(article.link) || titleMap.get(titleKey);
-                if (existing) {
-                    if (article.replyCount > (existing.replyCount || 0)) existing.replyCount = article.replyCount;
-                    if (article.viewCount > (existing.viewCount || 0)) existing.viewCount = article.viewCount;
-                    if (article.createDate && !existing.createDate) existing.createDate = article.createDate;
-                }
-            }
-        }
-
-        const MAX_PER_SOURCE = 200;
-        const feedCounts = {};
-        const savedStatesForPruning = await env.RSS_DATA.get('savedStates', { type: 'json' }) || [];
-        const boardStatesForPruning = await env.RSS_DATA.get('boardStates', { type: 'json' }) || [];
-        const readStatesForPruning = await env.RSS_DATA.get('readStates', { type: 'json' }) || [];
-        const archivedUrlsForPruning = new Set(
-            [...savedStatesForPruning, ...boardStatesForPruning].map(normalizeStateUrl).filter(Boolean)
-        );
-        const readUrlsForPruning = new Set(readStatesForPruning.map(normalizeStateUrl).filter(Boolean));
-
-        const latestArticles = uniqueArticles.filter(article => {
-            const normalizedLink = normalizeStateUrl(article.link);
-            if (archivedUrlsForPruning.has(normalizedLink)) return true;
-            if (readUrlsForPruning.has(normalizedLink)) {
-                const ageMs = Date.now() - (new Date(article.pubDate || 0).getTime() || 0);
-                if (ageMs < 7 * 24 * 60 * 60 * 1000) return true;
-            }
-            const sourceUrl = article.feedUrl;
-            if (!feedCounts[sourceUrl]) feedCounts[sourceUrl] = 0;
-            if (feedCounts[sourceUrl] < MAX_PER_SOURCE) {
-                feedCounts[sourceUrl]++;
-                return true;
-            }
-            return false;
-        });
-
-        const pendingDatabaseUpdates = {
-            articles: JSON.stringify(latestArticles)
-        };
-        // State lists tied to the live feed should not retain links after the
-        // article itself is rotated out. Read Later and Boards are intentional
-        // archives, so they are deliberately never pruned here.
-        try {
-            const smartClusters = await env.RSS_DATA.get('smartClusters', { type: 'json', shared: true }) || [];
-            const smartRawArticles = await env.RSS_DATA.get('smartRawArticles', { type: 'json', shared: true }) || [];
-            const retainedLinks = new Set(latestArticles.map(article => normalizeStateUrl(article.link)));
-
-            for (const article of smartRawArticles) {
-                if (article.link) retainedLinks.add(normalizeStateUrl(article.link));
-            }
-
-            for (const cluster of smartClusters) {
-                if (cluster.link) retainedLinks.add(normalizeStateUrl(cluster.link));
-                for (const related of cluster.relatedArticles || []) {
-                    if (related.link) retainedLinks.add(normalizeStateUrl(related.link));
-                }
-            }
-            for (const listName of ['readStates', 'hiddenStates']) {
-                const state = await env.RSS_DATA.get(listName, { type: 'json' }) || [];
-                const pruned = state.filter(link => retainedLinks.has(normalizeStateUrl(link)));
-                if (pruned.length !== state.length) pendingDatabaseUpdates[listName] = JSON.stringify(pruned);
-            }
-        } catch (error) {
-            console.error('[STATE CLEANUP] Could not prune stale feed state:', error.message);
-        }
-        if (!targetFeedUrl) {
-            pendingDatabaseUpdates.feeds = JSON.stringify(feeds);
-            const prefetchTargets = await computeUniversalPrefetchList(env, latestArticles);
-            if (Array.isArray(prefetchTargets)) {
-                pendingDatabaseUpdates.universalPrefetchTargets = JSON.stringify(prefetchTargets);
-            }
-        }
-
-        await env.RSS_DATA.putMany(pendingDatabaseUpdates);
-
-        // A full feed refresh rewrites the feed list from its opening snapshot.
-        // Re-apply publisher policies afterward so a concurrent refresh cannot
-        // restore an older per-feed copy of the setting.
+        await publishFeedResults(env.RSS_DATA, newArticles, feeds, !targetFeedUrl);
         if (!targetFeedUrl) {
             await reconcileAllConfiguredSourceFetchMethods();
         }

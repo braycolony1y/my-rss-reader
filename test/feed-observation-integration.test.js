@@ -1,3 +1,4 @@
+import { addMemoryUpdates } from './helpers/memory-updates.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createFeedSync} from '../src/feeds/sync.js';
@@ -16,6 +17,7 @@ test('RSS commits one Board observation for completed feeds before publishing th
         putMany: async changes => {events.push('publish'); for (const [key, value] of Object.entries(changes)) values[key] = JSON.parse(value);}
     }};
     const observations = [];
+    addMemoryUpdates(env.RSS_DATA, values);
     const service = createFeedSync({env, recordFetch() {}, hasOnlyOpenCliFetchMethod: () => false,
         prefetchOpenCliOnlyArticles: async () => {}, computeUniversalPrefetchList: async () => [],
         reconcileAllConfiguredSourceFetchMethods: async () => {},

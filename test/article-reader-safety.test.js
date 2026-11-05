@@ -21,7 +21,7 @@ test('cache clearing stays available except for confirmed deleted-source snapsho
     assert.match(routeBody, /Deleted-source snapshots are protected from cache clearing/);
     assert.match(routeBody, /await deleteCachedArticle\(url\)/);
     assert.match(script, /async clearArticleCache\(\)/);
-    assert.match(script, /if \(this\.overlayArticle\.sourceDeleted\) \{[\s\S]*protected and cannot be refreshed/);
+    assert.match(script, /if \(app\.overlayArticle\.sourceDeleted\) \{[\s\S]*protected and cannot be refreshed/);
     assert.match(html, /x-show="overlayFetchedFromCache && overlayArticle && !overlayArticle\.sourceDeleted"[\s\S]*@click="clearArticleCache"/);
 });
 

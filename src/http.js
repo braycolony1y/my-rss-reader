@@ -1,5 +1,6 @@
 import { listJsonCompression } from './middleware/json-compression.js';
 import { listTiming } from './middleware/list-timing.js';
+import { createShellCompression } from './middleware/shell-compression.js';
 import express from 'express';
 
 export function createHttpApp() {
@@ -24,6 +25,7 @@ export function createHttpApp() {
         next(error);
     });
 
+    app.use(createShellCompression());
     app.use('/public', express.static('public'));
     app.use('/api/data', listTiming, listJsonCompression);
 

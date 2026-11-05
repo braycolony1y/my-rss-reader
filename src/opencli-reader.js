@@ -1,3 +1,4 @@
+import { sourceCooldown } from './articles/source-cooldown.js';
 import { createBrowserFetchQueue } from './browser/fetch-queue.js';
 import { withBrowserFetchBudget } from './browser/work-budget.js';
 import { summarizeBrowserResources } from './browser/resource-state.js';
@@ -6,14 +7,8 @@ import { getCurrentArticleFetchLaneContext, withArticleFetchLane } from './artic
 import { fork } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-export function isVerificationPage(data) {
-    if (!data || typeof data !== 'object' || !('contentHtml' in data)) return false;
-    const frames = data.diagnostics?.frames || [];
-    if (String(data.contentHtml).replace(/<[^>]*>/g, '').length < 1500
-        && frames.some(frame => /captcha-delivery\.com|challenges\.cloudflare\.com/i.test(frame.src || ''))) return true;
-    return /verifying the device|requested content will be available after verification|verify (?:that )?you are (?:a )?human|are you a robot|press\s*(?:&amp;|&|and)\s*hold.*human|enable javascript and cookies to continue|captcha-delivery\.com\/interstitial|please (?:complete|solve) the captcha/i
-        .test(`${data.title || ''}\n${data.contentHtml || ''}`);
-}
+import { isVerificationPage, readWithHumanVerification, isPublisherHttpChallenge as isOpenCliBrowserFetchChallenge } from './articles/publisher-verification.js';
+export { isVerificationPage, readWithHumanVerification };
 
 export function isActiveArticleSession(session, url, now = Date.now()) {
     return Boolean(session && session.url === url && now - session.lastSeen < 3000);
@@ -63,14 +58,6 @@ const OPENCLI_BROWSER_FETCH_DEFAULT_HEADERS = Object.freeze({
         process.env.OPENCLI_BROWSER_SEC_CH_UA_PLATFORM
         || '"Linux"'
 });
-
-function isOpenCliBrowserFetchChallenge(status, html = '') {
-    return status === 401
-        || status === 403
-        || status === 429
-        || /Just a moment|cf-chl-|Enable JavaScript and cookies|Checking your browser|Verifying you are human|captcha-delivery\.com|Please enable JS and disable any ad blocker/i
-            .test(String(html));
-}
 
 function sanitizeOpenCliBrowserRequestHeaders(headers = {}) {
     const result = {};
@@ -1477,9 +1464,7 @@ export function runOpenCliBrowserFetch(url) {
             await tracker.closePromise;
         }
 
-        return runOpenCliBrowserFetchNow(
-            url
-        );
+        return sourceCooldown.run(url, () => runOpenCliBrowserFetchNow(url), context);
     };
 
     const context = getCurrentArticleFetchLaneContext();
@@ -1503,42 +1488,6 @@ export function runOpenCliBrowserFetch(url) {
             tracker
         );
     });
-}
-
-
-export async function readWithHumanVerification(read, page, kwargs, canWait) {
-    const guardedPage = new Proxy(page, {
-        get(target, key) {
-            if (key !== 'evaluate') {
-                const value = target[key];
-                return typeof value === 'function' ? value.bind(target) : value;
-            }
-
-            return async (...args) => {
-                let data = await target.evaluate(...args);
-
-                while (isVerificationPage(data)) {
-                    if (!await canWait()) {
-                        throw new Error('Publisher verification blocked this fetch.');
-                    }
-
-                    // Never activate/focus/switch Chromium. `opencli` stays in
-                    // the background exactly like `opencli-fetch`.
-                    await target.wait(1);
-                    data = await target.evaluate(...args);
-                }
-
-                return data;
-            };
-        }
-    });
-
-    // OPENCLI_READER_PER_SOURCE_REUSE_60S_V1
-    // The normal OpenCLI reader MUST open the exact requested URL, but it no
-    // longer needs a fresh physical tab for every article. The caller keeps
-    // one background Page per source/origin and command.func() navigates that
-    // same Page to kwargs.url for every queued read.
-    return read(guardedPage, kwargs, false);
 }
 
 

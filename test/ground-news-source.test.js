@@ -1,3 +1,4 @@
+import { addMemoryUpdates } from './helpers/memory-updates.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -117,6 +118,7 @@ test('shared sync persists cluster metadata, deduplicates changed slugs, and ret
         putMany: async values => { for (const [k, v] of Object.entries(values)) state[k] = JSON.parse(v); }
     } };
     const events = [];
+    addMemoryUpdates(env.RSS_DATA, state);
     const service = createFeedSync({ env, recordFetch: (...args) => events.push(args),
         hasOnlyOpenCliFetchMethod: () => false, prefetchOpenCliOnlyArticles: async () => {} });
     await service.syncFeeds(env, GROUND_URL);

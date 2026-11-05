@@ -15,6 +15,7 @@ async fetchData(isLoadMore = false, skipPageReset = false, keepVisible = false) 
                     const smartTiming = this.usesTopStories ? {startedAt:performance.now()} : null;
                     const topContext = this.usesTopStories ? JSON.stringify([this.selectedFilterValue,this.smartRegion,this.hideRead,this.searchQuery]) : null;
                     const retainTop = topContext && this._renderedTopContext === topContext && this.articles.length > 0;
+                    const retainPublication = ReaderListPublication.retains(this);
                     const requestGeneration = ++this.articleRequestGeneration;
                     this.articleListError = '';
                     this._lastArticlePageResult = { pending: true };
@@ -28,8 +29,8 @@ async fetchData(isLoadMore = false, skipPageReset = false, keepVisible = false) 
                     if (!isLoadMore) {
                         this.isLoadingArticles = true;
                         this.loadingArticleStatus = 'Connecting to server...';
-                        if (!keepVisible && !retainTop) this.articles = [];
-                        if (!keepVisible && !retainTop) this.topStories = [];
+                        if (!keepVisible && !retainTop && !retainPublication) this.articles = [];
+                        if (!keepVisible && !retainTop && !retainPublication) this.topStories = [];
                         
                         if (this._connectTimer) clearInterval(this._connectTimer);
                         let connectWaitTime = 0;
@@ -196,7 +197,8 @@ async fetchData(isLoadMore = false, skipPageReset = false, keepVisible = false) 
                                 } else {
                                     this.hideTooltip();
                                     this.articles = this.usesTopStories && (keepVisible || retainTop)
-                                        ? ReaderSmartRefresh.reconcile(this.articles, newArticles) : newArticles;
+                                        ? ReaderSmartRefresh.reconcile(this.articles, newArticles)
+                                        : retainPublication ? ReaderListPublication.reconcile(this.articles, newArticles) : newArticles;
                                 }
                                 
                                 this.userPreferences = { ...(data.userPreferences || {}), ...this.pendingPreferences };
@@ -214,6 +216,7 @@ async fetchData(isLoadMore = false, skipPageReset = false, keepVisible = false) 
                             this.hasMore = data.hasMore !== undefined ? data.hasMore : false;
                             const result = { ok: true, page: requestedPage, added: isLoadMore ? this.articles.length - previousCount : this.articles.length };
                             this._lastArticlePageResult = result;
+                            ReaderListPublication.commit(this);
                             if (typeof this.saveState === 'function') this.saveState();
                             if (!isLoadMore && this.articles && this.articles.length > 0) {
                                 setTimeout(() => {

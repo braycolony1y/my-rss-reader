@@ -1,15 +1,19 @@
+import { addMemoryUpdates } from './helpers/memory-updates.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createFeedFetcher } from '../src/feeds/fetch-feed.js';
+import { createSourceCooldown } from '../src/articles/source-cooldown.js';
 import { createFeedSync } from '../src/feeds/sync.js';
 import { fastParseRSS } from '../feed-parsers.js';
 
 const FEED_URL = 'https://example.test/feed.xml';
 const RSS = '<?xml version="1.0"?><rss version="2.0"><channel><title>Fixture</title><item><title>Recovered article</title><link>https://example.test/article</link><pubDate>Thu, 29 Oct 2026 06:00:00 GMT</pubDate></item></channel></rss>';
 
-function fixture({ statuses = [403, 403, 530], bodies = [], browserBody = RSS, readerBody = RSS, browserError } = {}) {
+function fixture({ statuses = [503, 503, 530], bodies = [], browserBody = RSS, readerBody = RSS, browserError } = {}) {
     const calls = [], responses = [];
+    const cooldown = createSourceCooldown();
     const fetchFeed = createFeedFetcher({
+        cooldown,
         CF_PROXY_BASE: 'https://cf.test/?url=',
         VIETSERVER_PROXY_BASE: 'https://vs.test/?url=',
         BROWSER_HEADERS: { 'User-Agent': 'fixture' },
@@ -29,10 +33,10 @@ function fixture({ statuses = [403, 403, 530], bodies = [], browserBody = RSS, r
         openCliRead: async url => { calls.push(['opencli', url]); return readerBody; },
         log() {},
     });
-    return { fetchFeed, calls, responses };
+    return { fetchFeed, calls, responses, cooldown };
 }
 
-test('blocked RSS tries direct, Cloudflare, Vietserver, then OpenCLI Fetch before the reader', async () => {
+test('unavailable RSS tries direct, Cloudflare, Vietserver, then OpenCLI Fetch before the reader', async () => {
     const { fetchFeed, calls, responses } = fixture();
     const response = await fetchFeed(FEED_URL);
     assert.equal(await response.text(), RSS);
@@ -42,16 +46,68 @@ test('blocked RSS tries direct, Cloudflare, Vietserver, then OpenCLI Fetch befor
 });
 
 test('OpenCLI reader recovers the feed after OpenCLI Fetch fails', async () => {
-    const { fetchFeed, calls } = fixture({ browserError: Error('HTTP 403') });
+    const { fetchFeed, calls } = fixture({ browserError: Error('Browser unavailable') });
     assert.equal(await (await fetchFeed(FEED_URL)).text(), RSS);
     assert.deepEqual(calls.slice(-2), [['opencli-fetch', FEED_URL], ['opencli', FEED_URL]]);
 });
 
-test('HTTP 200 challenge pages cannot prevent the remaining fallbacks', async () => {
-    const { fetchFeed, calls } = fixture({ statuses: [200, 200, 200],
+test('HTTP 200 challenge pages still reach a working browser RSS fallback', async () => {
+    const { fetchFeed, calls, cooldown } = fixture({ statuses: [200, 200, 200],
         bodies: Array(3).fill('<html><title>Just a moment...</title><body>cf-chl-challenge</body></html>') });
     assert.equal(await (await fetchFeed(FEED_URL)).text(), RSS);
     assert.deepEqual(calls.at(-1), ['opencli-fetch', FEED_URL]);
+    assert.equal(cooldown.get(FEED_URL).strikes, undefined);
+});
+
+test('HTTP 403 from direct and proxy cannot pause RSS recovered by the browser', async () => {
+    const { fetchFeed, calls, responses, cooldown } = fixture({statuses: [403, 403, 530]});
+    assert.equal(await (await fetchFeed(FEED_URL)).text(), RSS);
+    assert.equal(calls.length, 4);
+    assert.ok(responses.every(response => response.bodyUsed));
+    assert.equal(cooldown.get(FEED_URL).strikes, undefined);
+});
+
+test('a challenged browser fetch can still recover RSS through the reader', async () => {
+    const { fetchFeed, calls, cooldown } = fixture({statuses: [403, 403, 530], browserError: Error('HTTP 403')});
+    assert.equal(await (await fetchFeed(FEED_URL)).text(), RSS);
+    assert.deepEqual(calls.at(-1), ['opencli', FEED_URL]);
+    assert.equal(cooldown.get(FEED_URL).strikes, undefined);
+});
+
+test('exhausted verification fallbacks pause later calls and preserve all method details', async () => {
+    const { fetchFeed, calls, cooldown } = fixture({statuses: [403, 403, 530], browserError: Error('HTTP 403'),
+        readerBody: '<html><title>Just a moment...</title></html>'});
+    await assert.rejects(fetchFeed(FEED_URL), error => {
+        assert.equal(error.code, 'PUBLISHER_VERIFICATION');
+        for (const method of ['direct', 'cloudflare', 'vietserver', 'opencli-fetch', 'opencli']) {
+            assert.ok(error.message.includes(method + ':'), method);
+        }
+        return true;
+    });
+    assert.equal(calls.length, 5);
+    assert.equal(cooldown.get(FEED_URL).strikes, 1);
+    await assert.rejects(fetchFeed(FEED_URL), {code: 'SOURCE_COOLDOWN'});
+    assert.equal(calls.length, 5);
+});
+
+test('HTTP 429 preserves Retry-After only after both browser fallbacks fail', async () => {
+    let calls = 0;
+    const cooldown = createSourceCooldown();
+    const fetchFeed = createFeedFetcher({cooldown, fetchFn: async () => {
+        calls++; return new Response('Rate limited', {status: 429, headers: {'Retry-After': '600'}});
+    }, openCliFetch: async () => {calls++; throw Error('Browser unavailable');},
+    openCliRead: async () => {calls++; throw Error('Reader unavailable');}, log() {}});
+    await assert.rejects(fetchFeed(FEED_URL), {code: 'PUBLISHER_VERIFICATION', retryAfterMs: 600000});
+    assert.equal(calls, 3);
+    assert.equal(cooldown.get(FEED_URL).durationMs, 600000);
+});
+
+test('a reader fallback can recover after a browser HTTP 429 diagnostic', async () => {
+    const {fetchFeed, calls, cooldown} = fixture({browserError: Error('OpenCLI browser fetch remained behind verification (HTTP 429)')});
+    assert.equal(await (await fetchFeed(FEED_URL)).text(), RSS);
+    assert.deepEqual(calls.at(-1), ['opencli', FEED_URL]);
+    assert.equal(calls.length, 5);
+    assert.equal(cooldown.get(FEED_URL).strikes, undefined);
 });
 
 test('reader is attempted when OpenCLI Fetch returns HTML instead of RSS', async () => {
@@ -89,6 +145,7 @@ test('a working direct response never starts a proxy or browser', async () => {
 test('a direct network failure or stalled body can still reach the browser fallbacks', async () => {
     const calls = [];
     const fetchFeed = createFeedFetcher({
+        cooldown: createSourceCooldown(),
         CF_PROXY_BASE: 'https://cf.test/?url=',
         fetchFn: async url => {
             calls.push(url);
@@ -135,7 +192,7 @@ test('BaoMoi HTML listings and the Kenh14 RSS URL rewrite are preserved', async 
 
 test('sync persists articles and records success after either browser fallback recovers RSS', async () => {
     for (const useReader of [false, true]) {
-        const { fetchFeed, calls } = fixture({ browserError: useReader ? Error('HTTP 403') : undefined });
+        const { fetchFeed, calls } = fixture({ browserError: useReader ? Error('Browser unavailable') : undefined });
         const values = { feeds: [{ url: FEED_URL, title: 'Fixture', category: 'News' }], articles: [] };
         const history = [];
         const env = { RSS_DATA: {
@@ -144,6 +201,7 @@ test('sync persists articles and records success after either browser fallback r
                 for (const [key, value] of Object.entries(changes)) values[key] = JSON.parse(value);
             },
         } };
+        addMemoryUpdates(env.RSS_DATA, values);
         const sync = createFeedSync({
             env, fetchFeedResponse: fetchFeed, recordFetch: (...args) => history.push(args),
             runParserWorker: async (type, body) => fastParseRSS(body),

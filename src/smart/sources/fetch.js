@@ -1,7 +1,9 @@
+import { backgroundPublisherFetch as fetch } from '../../articles/background-publisher-fetch.js';
 import { prefetchOpenCliOnlySmartArticles } from './prefetch.js';
 import { discardResponseBody } from '../../fetch-response.js';
 import { normalizeArticle } from '../articles/normalize.js';
 import { SMART_ITEMS_PER_SOURCE } from '../config.js';
+import {rssFallbackAcquisition} from '../../feeds/fallback-acquisition.js';
 
 async function fetchRssUrl(
   url,
@@ -77,7 +79,7 @@ async function fetchRssUrl(
   }
 }
 
-async function fetchSmartSource(
+async function acquireSmartSource(
   source,
   fastParseRSS,
   headers
@@ -189,4 +191,5 @@ async function fetchInBatches(
   return results;
 }
 
+const fetchSmartSource = rssFallbackAcquisition(acquireSmartSource);
 export { fetchSmartSource, fetchInBatches, prefetchOpenCliOnlySmartArticles };

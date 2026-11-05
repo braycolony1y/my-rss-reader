@@ -6,6 +6,7 @@ import { normalizeArticleTitle } from '../../feed-parsers.js';
 import { isUnsafeVozThreadPayload, isDeletedVozThreadPayload, isVozThreadUrl } from '../voz-thread-state.js';
 import { isUsableArticlePage } from './markup.js';
 import { normalizedHostname, isRedditUrl } from '../utils/article-utils.js';
+import {articleFallbackAcquisition} from './fallback-request.js';
 
 export function createArticlePipeline({
     fetchViaJina,
@@ -120,7 +121,7 @@ export function createArticlePipeline({
         return normalized.length === 1 && normalized[0] === 'opencli-fetch';
     }
 
-    async function fetchPrimaryArticleForAggregate(value) {
+    async function fetchPrimaryArticleForAggregateNow(value) {
         const url = normalizeArticleSourceUrl(value);
         if (!url || normalizedHostname(url) === 'techmeme.com') return null;
         const policy = await getArticleFetchPolicy(url, '');
@@ -140,6 +141,8 @@ export function createArticlePipeline({
         }
         return null;
     }
+
+    const fetchPrimaryArticleForAggregate = articleFallbackAcquisition(fetchPrimaryArticleForAggregateNow);
 
     return {
         hasOnlyOpenCliFetchMethod,

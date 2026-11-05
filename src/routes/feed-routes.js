@@ -2,6 +2,7 @@ import sourceRegistry from '../sources/index.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { publisherIcon } from '../utils/article-utils.js';
 import { sourceFetchPolicyIdentity } from '../../smart-news.js';
+import {manualRefreshOptions} from '../articles/manual-refresh-scopes.js';
 
 export function registerFeedRoutes({
     app,
@@ -23,12 +24,12 @@ export function registerFeedRoutes({
         try {
             const result = await syncFeeds(env, targetFeedUrl, progress => {
                 setManualSyncProgress(requestId, progress.stage, progress.message, progress);
-            }, targetCategory);
+            }, targetCategory, manualRefreshOptions(targetFeedUrl, targetCategory));
             if (!targetFeedUrl && !targetCategory) {
                 setManualSyncProgress(requestId, 'smart', 'Updating Smart clusters…');
                 result.smart = await smartNews.sync(progress => {
                     setManualSyncProgress(requestId, progress.stage, progress.message, progress);
-                });
+                }, null, manualRefreshOptions());
             }
             finishManualSyncProgress(requestId, 'Refresh complete.', {
                 failed: result.success === false || result.smart?.ok === false

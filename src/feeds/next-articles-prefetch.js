@@ -1,7 +1,6 @@
+import {prefetchArticleStrategies} from './prefetch-strategies.js';
 import { isRedditUrl } from '../utils/article-utils.js';
-import { isDeletedArticlePayload } from '../article-source-state.js';
-import { enhanceArticleResultForSource } from '../articles/source-results.js';
-import { withArticleFetchLane, getCurrentArticleFetchLaneContext } from '../articles/fetch-lanes.js';
+import { getCurrentArticleFetchLaneContext } from '../articles/fetch-lanes.js';
 
 export function createNextArticlesPrefetch({ env, getCachedArticleMetadata, getCachedArticle, enqueuePrefetchedSummary, progress, getArticleFetchPolicy, fetchParsedArticleByStrategy, requiresIndependentDeletionConfirmation, buildDeletedSourceResponse, cacheArticleResult }) {
     let currentPrefetchRunId = 0;
@@ -77,42 +76,11 @@ export function createNextArticlesPrefetch({ env, getCachedArticleMetadata, getC
                     }
                     try {
                         const policy = await getArticleFetchPolicy(targetUrl, art?.feedUrl || '');
-                        const deletionEvidence = new Set();
-                        let prefetched = false;
-                        for (const strategy of policy.strategyOrder) {
-                            try {
-                                const parsedPayload = await withArticleFetchLane('p2', () => fetchParsedArticleByStrategy(
-                                    strategy,
-                                    targetUrl,
-                                    policy,
-                                    art?.feedUrl || '',
-                                    art?.title || ''
-                                ));
-                                if (isDeletedArticlePayload(targetUrl, parsedPayload)) {
-                                    deletionEvidence.add(strategy);
-                                    if (requiresIndependentDeletionConfirmation(targetUrl)) continue;
-                                    await buildDeletedSourceResponse(targetUrl, { fallbackTitle: art?.title || '' });
-                                    prefetched = true;
-                                    break;
-                                }
-                                if (parsedPayload && parsedPayload.content) {
-                                    const enhancedPayload = enhanceArticleResultForSource(targetUrl, parsedPayload, {
-                                        description: art?.description || art?.content || ''
-                                    });
-                                    await cacheArticleResult(targetUrl, enhancedPayload);
-                                    console.log(`[NEXT-5 PREFETCH] Cached ready to serve: ${targetUrl}`);
-                                    enqueuePrefetchedSummary(targetUrl, art, 1);
-                                    prefetched = true;
-                                    break;
-                                }
-                            } catch(e) {}
-                        }
-                        if (!prefetched && deletionEvidence.size >= 2) {
-                            await buildDeletedSourceResponse(targetUrl, {
-                                fallbackTitle: art?.title || '',
-                                deletionConfirmedBy: [...deletionEvidence]
-                            });
-                        }
+                        await prefetchArticleStrategies(targetUrl, art, policy, {
+                            fetchParsedArticleByStrategy, requiresIndependentDeletionConfirmation,
+                            buildDeletedSourceResponse, cacheArticleResult, enqueuePrefetchedSummary,
+                            lane: 'p2', priority: 1, enhance: true
+                        });
                     } catch(e) {}
                     await new Promise(r => setTimeout(r, 500));
                 }

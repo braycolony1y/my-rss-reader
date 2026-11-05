@@ -1,5 +1,8 @@
 // ARTICLE_FETCH_PRIORITY_LANES_V1
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { sourceCooldown } from './source-cooldown.js';
+import {captureManualPublisherRefresh} from './manual-publisher-refresh.js';
+import {capturePublisherFetchContext} from './publisher-fetch-context.js';
 import { createConcurrencyLimiter, cpuCapacity, workloadConcurrency } from '../runtime/concurrency-limiter.js';
 
 const laneStorage = new AsyncLocalStorage();
@@ -70,7 +73,7 @@ function pump(origin, group, queue) {
 }
 
 export function getCurrentArticleFetchLaneContext() {
-    return laneStorage.getStore() || { lane: 'p0', source: 'default' };
+    return capturePublisherFetchContext(captureManualPublisherRefresh(laneStorage.getStore() || { lane: 'p0', source: 'default' }));
 }
 
 export function withArticleFetchLane(lane, fn, extra = {}) {
@@ -105,11 +108,12 @@ export function runArticleFetchTask(url, task) {
     const context = { ...getCurrentArticleFetchLaneContext() };
     const lane = normalizeLane(context.lane);
     context.lane = lane;
+    const execute = () => sourceCooldown.run(url, task, context);
     const origin = originFor(url);
 
     if (lane === 'p0') {
         console.log(`[FETCH LANE] START p0 burst ${origin} waitedMs=0`);
-        return foreground.run(() => laneStorage.run(context, task));
+        return foreground.run(() => laneStorage.run(context, execute));
     }
 
     const reading = lane === 'p1' || lane === 'p2';
@@ -121,7 +125,7 @@ export function runArticleFetchTask(url, task) {
         (high ? queue.high : queue.low).push({
             lane,
             context,
-            task,
+            task: execute,
             resolve,
             reject,
             enqueuedAt: Date.now()

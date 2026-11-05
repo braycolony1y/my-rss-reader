@@ -6,6 +6,7 @@ const ReaderArticleOverlay = {
 
                 // ARTICLE OVERLAY STATE
                 articleOverlayOpen: false,
+                articleOverlayClosing: false,
                 isLoadingOverlay: false,
                 overlayArticle: null,
                 articleOverlayStack: [],
@@ -70,6 +71,7 @@ const ReaderArticleOverlay = {
                     // fetching is latency-critical: page read-ahead must not
                     // compete until the requested/resume page has actually painted.
                     const applyRequestId = this.overlayRequestId;
+                    const applyGeneration = ReaderOverlayLifecycle.generation(this);
 
                     this.overlayPagination = data.pagination || null;
 
@@ -142,6 +144,8 @@ const ReaderArticleOverlay = {
                         strategy
                     ].filter(Boolean))];
                     this.$nextTick(() => {
+                        if (!this.articleOverlayOpen || this.overlayRequestId !== applyRequestId
+                            || ReaderOverlayLifecycle.generation(this) !== applyGeneration) return;
                         this.hydrateTwitterEmbeds(document.getElementById('overlay-scroll-container'));
                         if (window.Hls) {
                             document.querySelectorAll('.article-rendered-content video').forEach(video => {
@@ -275,28 +279,7 @@ const ReaderArticleOverlay = {
                 },
 
                 async clearArticleCache() {
-                    if (!this.overlayArticle || !this.overlayFetchedFromCache) return;
-                    if (this.overlayArticle.sourceDeleted) {
-                        this.overlayMethodError = 'Deleted-source snapshots are protected and cannot be refreshed.';
-                        return;
-                    }
-                    const targetUrl = this.articleReaderUrl(this.overlayArticle);
-                    if (!targetUrl) return;
-
-                    try {
-                        const res = await fetch('/api/clear-article-cache', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ url: targetUrl })
-                        });
-                        const data = await res.json().catch(() => ({}));
-                        if (!res.ok) throw new Error(data.error || 'Failed to clear cache.');
-                        if (this.articleContentCache) this.articleContentCache.delete(targetUrl);
-                        this.overlayArticle.isCached = false;
-                        this.openArticleOverlay(this.overlayArticle);
-                    } catch (error) {
-                        this.overlayMethodError = error.message;
-                    }
+                    return ReaderOverlayCacheRefresh.run(this);
                 },
 
                 async rejectAndTryNextArticleMethod() {
@@ -320,7 +303,7 @@ const ReaderArticleOverlay = {
                             if (!this.articleOverlayOpen || this.overlayRequestId !== requestId) return;
                             const response = await fetch('/api/article-content-progress?' + new URLSearchParams({ id: requestId, url: targetUrl }));
                             if (!response.ok || this.overlayRequestId !== requestId) return;
-                            this.overlayProgress = await response.json();
+                            ReaderPublisherVerification.applyProgress(this, await response.json(), requestId);
                         } catch (e) { }
                     };
                     this.overlayProgressInterval = setInterval(updateProgress, 400);
@@ -338,9 +321,10 @@ const ReaderArticleOverlay = {
                             feedUrl: this.overlayArticle.feedUrl || '',
                             feedIcon: this.overlayArticle.feedIcon || ''
                         });
-                        const response = await fetch('/api/article-content?' + params.toString());
+                        const response = await ReaderOverlayRequest.fetch(this, requestId, '/api/article-content?' + params.toString());
                         const data = await response.json();
                         if (!this.articleOverlayOpen || this.overlayRequestId !== requestId) return;
+                        ReaderPublisherVerification.apply(this, data);
                         this.overlayAttemptedStrategies = [...new Set([...this.overlayAttemptedStrategies, ...(data.attemptedStrategies || [])])];
                         if (!response.ok || data.error) throw new Error(data.error || 'No other reader method could load this article.');
                         this.applyOverlayArticleData(data, this.overlayArticle);
@@ -383,6 +367,7 @@ const ReaderArticleOverlay = {
 
                 restoreArticleOverlay(snapshot, updateHistory = true) {
                     if (!snapshot?.overlayArticle) return;
+                    ReaderOverlayLifecycle.cancel(this);
                     this.overlayRequestId = '';
                     this.articleOverlayOpen = true;
                     this.isLoadingOverlay = false;
@@ -408,11 +393,7 @@ const ReaderArticleOverlay = {
                     this.overlayProgress = { message: '' };
                     document.body.style.overflow = 'hidden';
                     if (updateHistory) this.updateArticleRoute(this.overlayArticle, true);
-                    this.$nextTick(() => {
-                        const articleScroll = document.getElementById('overlay-scroll-container');
-                        this.hydrateTwitterEmbeds(articleScroll);
-                        if (articleScroll) articleScroll.scrollTop = snapshot.scrollTop || 0;
-                    });
+                    ReaderOverlayLifecycle.restorePosition(this, snapshot);
                 },
 
                 async openRelatedArticle(article, event = null) {
@@ -440,6 +421,7 @@ const ReaderArticleOverlay = {
                         this.markAsReadExplicit(article.originalLink || article.link);
                         return;
                     }
+                    ReaderOverlayLifecycle.cancel(this);
                     this.releaseArticleReaderSession();
                     if (this.articlePdfState === 'preparing') this.cancelArticlePdf({ silent: true });
                     if (this.articlePdfResetTimer) clearTimeout(this.articlePdfResetTimer);
@@ -621,7 +603,7 @@ const ReaderArticleOverlay = {
                     if (this.isMismatchedThreadPage(targetUrl, this.articleContentCache?.get(targetUrl))) {
                         this.articleContentCache.delete(targetUrl);
                     }
-                    if (this.articleContentCache && this.articleContentCache.has(targetUrl)) {
+                    if (!options.bypassCache && this.articleContentCache && this.articleContentCache.has(targetUrl)) {
                         const cachedData = this.articleContentCache.get(targetUrl);
                         cachedData.cached = true; // Frontend cache hit counts as cached
                         if (this.overlayRequestId !== requestId || !this.articleOverlayOpen) return;
@@ -643,7 +625,7 @@ const ReaderArticleOverlay = {
                             const progressResponse = await fetch('/api/article-content-progress?' + new URLSearchParams({ id: requestId, url: targetUrl }));
                             if (!progressResponse.ok || this.overlayRequestId !== requestId) return;
                             const progress = await progressResponse.json();
-                            this.overlayProgress = progress;
+                            ReaderPublisherVerification.applyProgress(this, progress, requestId);
                         } catch (e) { }
                     };
                     this.overlayProgressInterval = setInterval(updateProgress, 400);
@@ -659,16 +641,18 @@ const ReaderArticleOverlay = {
                             feedUrl: article.feedUrl || '',
                             feedIcon: article.feedIcon || ''
                         });
+                        if (options.bypassCache) params.set('bypassCache', '1');
                         if (isVoz) params.set('threadPage', '1');
                         if (resumePage > 0) params.set('resumePage', String(resumePage));
                         if (prefetchTargets.length > 0) {
                             params.set('prefetchTargets', JSON.stringify(prefetchTargets));
                         }
-                        const res = await fetch('/api/article-content?' + params.toString());
+                        const res = await ReaderOverlayRequest.fetch(this, requestId, '/api/article-content?' + params.toString());
                         if (this.overlayRequestId !== requestId || !this.articleOverlayOpen) return;
                         if (res.ok) {
                             const data = await res.json();
                             if (this.overlayRequestId !== requestId || !this.articleOverlayOpen) return;
+                            ReaderPublisherVerification.apply(this, data);
                             if (data.error) {
                                 this.overlayError = data.error;
                                 this.overlayRemainingAvailable = data.remainingAvailable === true;
@@ -718,64 +702,7 @@ const ReaderArticleOverlay = {
                 },
             
             closeArticleOverlay(options = {}) {
-                    // VOZ_FLUSH_POSITION_ON_CLOSE_V5
-                    if (
-                        Object.keys(this.pendingPreferences || {}).some(
-                            key => key.startsWith('voz_last_read_post_')
-                        )
-                    ) {
-                        this.flushUserPreferences().catch(() => {});
-                    }
-
-                    this.releaseArticleReaderSession();
-                    const closeOptions = options && options.constructor === Object ? options : {};
-                    if (this.articlePdfState === 'preparing') this.cancelArticlePdf({ silent: true });
-                    this.stopArticleSpeech();
-                    if (this.vozScrollRaf) cancelAnimationFrame(this.vozScrollRaf);
-                    this.vozScrollRaf = 0;
-                    this.lastVozMeasureAt = 0;
-                    this.lastTrackedVozPost = '';
-                    if (this.overlayProgressInterval) clearInterval(this.overlayProgressInterval);
-                    this.overlayProgressInterval = null;
-                    if (this.vozPollingInterval) clearInterval(this.vozPollingInterval);
-                    this.vozPollingInterval = null;
-                    this.overlayRequestId = '';
-                    if (this.articleOverlayStack.length > 0 && closeOptions.closeAll !== true) {
-                        const previous = this.articleOverlayStack.pop();
-                        this.restoreArticleOverlay(previous, closeOptions.updateHistory !== false);
-                        return;
-                    }
-                    this.articleOverlayOpen = false;
-                    this.overlayContent = null;
-                    this.overlayPagination = null;
-                    this.overlayError = null;
-                    this.overlayFetchStrategy = '';
-                    this.overlayFetchedFromCache = false;
-                    this.overlayHasNativeAudio = false;
-                    this.overlayMethodResults = {};
-                    this.overlayAttemptedStrategies = [];
-                    this.overlayRejectedStrategies = [];
-                    this.overlayMethodPreferences = {};
-                    this.overlayTryingMethod = false;
-                    this.overlayMethodError = '';
-                    this.setArticleCopyState('idle');
-                    this.overlayProgress = { message: '' };
-                    this.overlayArticle = null;
-                    this.isLoadingOverlay = false;
-                    // AI Summary cleanup
-                    this.aiSummary = null;
-                    this.aiSummaryLoading = false;
-                    this.aiSummaryExpanded = false;
-                    this.aiSummaryError = null;
-                    this.vozSummaryProgress = null;
-                    if (this.aiSummaryPollTimer) clearInterval(this.aiSummaryPollTimer);
-                    this.aiSummaryPollTimer = null;
-                    // Let Voz Summary run in background
-                    // No need to cancel, but we could clear the poll timer if we want
-                    if (this.vozSummaryPollTimer) clearInterval(this.vozSummaryPollTimer);
-                    document.body.style.overflow = '';
-                    this.articleOverlayStack = [];
-                    if (closeOptions.updateHistory !== false) this.clearArticleRoute(true);
+                    return ReaderOverlayLifecycle.close(this, options);
                 },
         };
     }

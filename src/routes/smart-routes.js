@@ -1,4 +1,6 @@
 import { authMiddleware } from '../middleware/auth.js';
+import {manualRefreshOptions} from '../articles/manual-refresh-scopes.js';
+import {canonicalSmartCategory} from '../utils/smart-destinations.js';
 
 export function registerSmartRoutes({
     app,
@@ -99,7 +101,8 @@ export function registerSmartRoutes({
         try {
             const result = await smartNews.sync(progress => {
                 setManualSyncProgress(requestId, progress.stage, progress.message, progress);
-            }, targetCategory, { forceRebuild: req.body?.forceRebuild === true });
+            }, targetCategory, { forceRebuild: req.body?.forceRebuild === true,
+                ...manualRefreshOptions(null, targetCategory ? canonicalSmartCategory(targetCategory) : null) });
             finishManualSyncProgress(requestId, result.skipped ? 'Smart feed is already up to date.' : 'Smart refresh complete.', {
                 failed: result.ok === false
             });

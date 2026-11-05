@@ -10,10 +10,14 @@ const rejected=s.pool(article).map(r=>r.id);
 const provider={id:'fixture',type:'ollama',model:'fixture'};
 const idle=()=>({active:null,pending:[]});
 
-test('the entire scheduled suggestion request is bounded and a late callback cannot start AI', async()=>{
- let queued, calls=0;
- const suggest=createInteractiveReasons(null,{timeoutMs:20,providers:()=>[provider],localState:idle,schedule:(_,fn)=>{queued=fn;return new Promise(()=>{});},request:()=>{calls++;return '{}';}});
- const result=await suggest({article,rejected});
+test('the entire scheduled suggestion request is bounded and a late callback cannot start AI', async t=>{
+ t.mock.timers.enable({apis:['setTimeout','Date'],now:1000});
+ let queued, calls=0, reached;
+ const scheduled=new Promise(resolve=>{reached=resolve;});
+ const suggest=createInteractiveReasons(null,{timeoutMs:20,providers:()=>[provider],localState:idle,schedule:(_,fn)=>{queued=fn;reached();return new Promise(()=>{});},request:()=>{calls++;return '{}';}});
+ const work=suggest({article,rejected});
+ await scheduled;t.mock.timers.tick(20);
+ const result=await work;
  assert.equal(result.retryable,true);assert.match(result.message,/too long/);assert.equal(calls,0);
  await queued();assert.equal(calls,0);
 });

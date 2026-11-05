@@ -1,5 +1,6 @@
 import { createCoalescedJob } from '../../runtime/coalesced-job.js';
 import { canonicalSmartCategory } from '../../utils/smart-destinations.js';
+import {mergeManualRefreshOptions} from '../../articles/manual-refresh-scopes.js';
 
 export function coalesceSmartRefresh(run, report) {
     const job = createCoalescedJob({
@@ -10,6 +11,7 @@ export function coalesceSmartRefresh(run, report) {
             // requested destination is represented in the final publication.
             category: previous.category === next.category ? next.category : null,
             options: { ...previous.options, ...next.options,
+                ...mergeManualRefreshOptions(previous.options, next.options),
                 forceRebuild: previous.options.forceRebuild === true || next.options.forceRebuild === true },
         }),
     });

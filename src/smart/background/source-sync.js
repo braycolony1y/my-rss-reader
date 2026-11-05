@@ -1,8 +1,8 @@
-import { sourceWorkView } from '../prefilter/source-work.js';
+import { publishBackgroundSources } from './publish-sources.js';
 import { hasWorkerHeadroom } from '../../observability/memory-budget.js';
-import { beginSmartRefresh, endSmartRefresh, isSmartRefreshActive } from '../refresh/coordination.js';
+import { getSmartRefreshGeneration, isSmartRefreshActive } from '../refresh/coordination.js';
 import { sleep } from '../refresh/scheduling.js';
-import { fetchInBatches, fetchSmartSource, prefetchOpenCliOnlySmartArticles } from '../sources/fetch.js';
+import { fetchInBatches, fetchSmartSource } from '../sources/fetch.js';
 
 async function startSmartSyncLoop(
   helpers,
@@ -38,6 +38,7 @@ async function startSmartSyncLoop(
         await sleep(15_000);
         continue;
       }
+      const generation = getSmartRefreshGeneration();
       const configuredSources =
         await getSources();
 
@@ -72,36 +73,9 @@ async function startSmartSyncLoop(
         continue;
       }
 
-      const sourceWork = await sourceWorkView(db, results, configuredSources);
-
-      if (
-        typeof helpers
-          .resolveSmartArticleDestinations ===
-        'function'
-      ) {
-        await helpers
-          .resolveSmartArticleDestinations(
-            sourceWork
-          );
-      }
-
-      const articles =
-        results.flatMap(
-          result =>
-            result.articles ||
-            []
-        );
-
-      await helpers.observeCacheArticles?.(articles);
-      void prefetchOpenCliOnlySmartArticles(
-        sourceWork,
-        helpers
-      ).catch(error => console.warn('[SMART PREFETCH]', error.message));
-
-      await db.put(
-        'smartRawArticles',
-        JSON.stringify(articles)
-      );
+      const committed = await publishBackgroundSources({db, results, configuredSources, helpers, generation});
+      if (!committed) continue;
+      const articles = results.flatMap(result => result.articles || []);
 
       console.log(
         `[SMART SYNC] Fetched ${articles.length} articles from ${uniqueSources.length} sources.`

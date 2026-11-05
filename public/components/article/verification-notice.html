@@ -1,0 +1,7 @@
+                <div x-show="overlayProgress.publisherVerification && (isLoadingOverlay || overlayError || overlayTryingMethod || overlayMethodError)"
+                    role="alert" data-publisher-verification aria-live="assertive" style="margin:16px;padding:16px;border:1px solid #b7791f;border-radius:12px;background:#fff8e6;color:#6b4300;">
+                    <strong>Security verification required</strong>
+                    <p>Complete verification in the reader’s Chrome window. Reading will resume if the browser reader is waiting. You can also open the original article and read it there.</p>
+                    <a :href="overlayProgress.publisherVerification?.url || '#'" target="_blank" rel="noopener noreferrer" style="text-decoration:underline;">Open original article ↗</a>
+                    <button x-show="!isLoadingOverlay && !overlayTryingMethod" @click="ReaderPublisherVerification.retry($data)" style="margin-left:16px;text-decoration:underline;">Retry article</button>
+                </div>

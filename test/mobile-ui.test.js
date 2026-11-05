@@ -54,7 +54,7 @@ test('Smart News restores compact cards immediately and revalidates without blan
     assert.match(script, /saveState\(\) \{[\s\S]*compactArticle[\s\S]*relatedArticles[\s\S]*sessionStorage, localStorage/);
     assert.match(script, /setTimeout\(\(\) => this\.fetchData\(false, true, true\), 50\)/);
     assert.match(script, /async fetchData\(isLoadMore = false, skipPageReset = false, keepVisible = false\)/);
-    assert.match(script, /if \(!keepVisible && !retainTop\) this\.articles = \[\];/);
+    assert.match(script, /if \(!keepVisible && !retainTop && !retainPublication\) this\.articles = \[\];/);
     assert.match(script, /if \(keepVisible && this\.articles\.length > 0 && !this\.usesTopStories\)[\s\S]*this\.articles = this\.articles\.map/);
     assert.match(script, /canUseEarlyRequest[\s\S]*await earlyRequest\.promise/);
 });
@@ -90,7 +90,7 @@ test('article reader URLs preserve the active filter and contain one canonical a
     assert.match(script, /filterHash\(articleUrl = ''\)[\s\S]*\?article=\$\{encodeURIComponent\(articleUrl\)\}/);
     assert.match(script, /updateArticleRoute\(articleOrUrl, replace = false\)/);
     assert.match(script, /const articleMarker = '\?article='/);
-    assert.match(script, /openArticleFromRoute\(hashFilter\.articleUrl\)/);
+    assert.match(script, /openArticleFromRoute\(route\.articleUrl\)/);
     assert.match(html, /@hashchange\.window="handleHashChange\(\)" @popstate\.window="handleHashChange\(\)"/);
     assert.match(html, /navigator\.clipboard\.writeText\(window\.location\.href\)/);
 });
@@ -99,7 +99,7 @@ test('related articles use a stacked reader and close back to the previous artic
     assert.match(script, /articleOverlayStack: \[\]/);
     assert.match(script, /openRelatedArticle\(article, event = null\)/);
     assert.match(script, /this\.articleOverlayStack\.push\(this\.captureArticleOverlay\(\)\)/);
-    assert.match(script, /const previous = this\.articleOverlayStack\.pop\(\);[\s\S]*this\.restoreArticleOverlay\(previous/);
+    assert.match(script, /app\.restoreArticleOverlay\(app\.articleOverlayStack\.pop\(\)/);
     assert.match(script, /\.embedded-suggested-card a, a\.styled-rel-card, a\.tuoitre-event-stream__item-link/);
     assert.match(html, /@click\.prevent\.stop="openRelatedArticle\(related, \$event\)"/);
     assert.match(html, /Back to previous article/);

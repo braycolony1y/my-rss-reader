@@ -1,7 +1,11 @@
+import { rssSourceCooldown } from '../articles/source-cooldown.js';
+import {runPublisherFallbacks} from '../articles/publisher-fallbacks.js';
+import { readPublisherResponse, assertNoPublisherVerification } from '../articles/publisher-verification.js';
 import { load } from 'cheerio';
 import { discardResponseBody } from '../fetch-response.js';
 import { runOpenCliBrowserFetch, runOpenCliReader } from '../opencli-reader.js';
-import { runArticleFetchTask, withArticleFetchLane } from '../articles/fetch-lanes.js';
+import {runFeedBrowserFallback} from './browser-fallback.js';
+import {createFeedFallbackFailures} from './fallback-failures.js';
 
 function normalizeFeedUrl(url) {
     if (url === 'https://kenh14.vn/home.rss') return 'https://kenh14.vn/rss/home.rss';
@@ -29,10 +33,6 @@ function acceptsFeedBody(body, url) {
         && !/cf-chl-|just a moment|enable javascript and cookies|attention required|checking your browser/i.test(body);
 }
 
-function inBackground(url, task) {
-    return withArticleFetchLane('p3', () => runArticleFetchTask(url, task), { source: 'rss-feed' });
-}
-
 async function readFeedWithOpenCli(url) {
     const { stdout } = await runOpenCliReader({
         url, stdout: true, 'download-images': false, wait: 5
@@ -45,8 +45,9 @@ export function createFeedFetcher({
     VIETSERVER_PROXY_BASE,
     BROWSER_HEADERS,
     fetchFn = (...args) => fetch(...args),
-    openCliFetch = url => inBackground(url, () => runOpenCliBrowserFetch(url)),
-    openCliRead = url => inBackground(url, () => readFeedWithOpenCli(url)),
+    openCliFetch = url => runFeedBrowserFallback(url, () => runOpenCliBrowserFetch(url)),
+    openCliRead = url => runFeedBrowserFallback(url, () => readFeedWithOpenCli(url)),
+    cooldown = rssSourceCooldown,
     timeoutMs = 15000,
     log = message => console.log(message),
 } = {}) {
@@ -54,7 +55,7 @@ export function createFeedFetcher({
         return fetchFn(url, { headers, signal: AbortSignal.timeout(timeoutMs) });
     }
 
-    return async function fetchFeedResponse(url) {
+    async function fetchFeedResponse(url) {
         const target = normalizeFeedUrl(url);
         const methods = [
             ['direct', () => fetchHttp(target, BROWSER_HEADERS)],
@@ -65,7 +66,7 @@ export function createFeedFetcher({
             ['opencli-fetch', () => openCliFetch(target)],
             ['opencli', () => openCliRead(target)],
         ];
-        const failures = [];
+        const failures = createFeedFallbackFailures(target, log);
 
         for (const [method, run] of methods) {
             let response;
@@ -76,20 +77,18 @@ export function createFeedFetcher({
                     response = result;
                     // A removed feed should retain its original HTTP error.
                     if (method === 'direct' && [404, 410].includes(response.status)) return response;
-                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                    if (!response.ok && ![403, 429].includes(response.status)) throw new Error(`HTTP ${response.status}`);
                 }
-                const body = isHttp ? await response.text() : result;
+                const body = isHttp ? await readPublisherResponse(response) : assertNoPublisherVerification(result);
                 if (!acceptsFeedBody(body, target)) throw new Error('Received unusable feed content instead of RSS/Atom XML');
 
-                if (failures.length) log(`[RSS FETCH] ${method} succeeded for ${target} after ${failures.join('; ')}`);
+                if (failures.summary()) log(`[RSS FETCH] ${method} succeeded for ${target} after ${failures.summary()}`);
                 return new Response(body, {
                     status: isHttp ? response.status : 200,
                     headers: { 'Content-Type': isHttp ? response.headers.get('content-type') || 'application/xml' : 'application/xml' }
                 });
             } catch (error) {
-                const failure = `${method}: ${String(error.message || error).slice(0, 200)}`;
-                failures.push(failure);
-                log(`[RSS FETCH] ${failure} for ${target}; trying next method`);
+                failures.record(method, error);
             } finally {
                 // Failed HTTP attempts must not hold open unread bodies.
                 if (response && !(method === 'direct' && [404, 410].includes(response.status))) {
@@ -98,6 +97,7 @@ export function createFeedFetcher({
             }
         }
 
-        throw new Error(`All RSS fetch methods failed (${failures.join('; ')})`);
-    };
+        throw failures.error();
+    }
+    return url => runPublisherFallbacks(url, () => fetchFeedResponse(url), {kind: 'rss', cooldown, accepted: () => false});
 }
