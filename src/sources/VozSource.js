@@ -1,4 +1,5 @@
 import { renderVozPost } from '../articles/voz-post-renderer.js';
+import { cleanVozCachedContent } from './voz-cached-content.js';
 import { load } from 'cheerio';
 import { absoluteTimestamp } from '../articles/source-time.js';
 import { hasVozDeletedThreadMarker, getVozThreadPageNumber } from '../voz-thread-state.js';
@@ -95,22 +96,7 @@ export function transformVozRedditEmbeds(markup) {
 export default class VozSource {
 
     cleanCachedArticleContent(content, result = {}) {
-        const page = Number(result.pagination?.currentPage);
-        if (!Number.isSafeInteger(page) || page < 1) return content;
-        const $ = load(content, null, false);
-        let changed = false;
-        $('.voz-post').each((ordinal, element) => {
-            const post = $(element);
-            const index = post.attr('data-post-index');
-            const permanentId = post.attr('data-absolute-post-id');
-            if (!permanentId || index !== permanentId) return;
-            const position = String((page - 1) * 20 + ordinal + 1);
-            if (index === position) return;
-            post.attr('data-post-index', position).attr('id', 'voz-post-' + position);
-            post.find('.voz-post-index').first().text('#' + position);
-            changed = true;
-        });
-        return changed ? $.html() : content;
+        return cleanVozCachedContent(content, result);
     }
 
     async getBestImage(targetUrl, fetchFn, rssFallback, utils) {

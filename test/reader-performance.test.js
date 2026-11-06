@@ -69,7 +69,7 @@ test('Forum cards defer missing images so thread files cannot block the list', a
         getLastKnownCachedArticle: async () => { throw new Error('Full body must not be loaded for a card'); },
         getLastKnownCachedArticleImage: async requested => { assert.equal(requested, url); reads++; return image; }
     });
-    assert.equal((await presentation.prepareArticleForClient({ link: url, title: 'Thread' })).image, `/api/og-image?url=${encodeURIComponent(url)}`);
+    assert.equal((await presentation.prepareArticleForClient({ link: url, title: 'Thread' })).image, `/api/og-image?url=${encodeURIComponent(url)}&cover=2`);
     assert.equal((await presentation.prepareArticleForClient({ link: url, title: 'Thread', image })).image, image);
     assert.equal(reads, 0);
 });
@@ -137,7 +137,8 @@ test('cards preserve publisher image lookup URLs, including RSS fallback hints',
     });
     for (const link of [url, 'https://tinhte.vn/thread/example.123456', 'https://example.com/story']) {
         const lookup = `/api/og-image?url=${encodeURIComponent(link)}&rss=https%3A%2F%2Fexample.com%2Fphoto.jpg`;
-        assert.equal((await presentation.prepareArticleForClient({ link, title: 'Story', image: lookup })).image, lookup);
+        assert.equal((await presentation.prepareArticleForClient({ link, title: 'Story', image: lookup })).image,
+            link === url ? lookup + '&cover=2' : lookup);
     }
 });
 

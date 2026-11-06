@@ -20,6 +20,6 @@ test('cache hits retain sanitizer safety rules and changed unsafe content is ind
     assert.equal(sanitizePostMarkup(unsafe), first);
     assert.ok(!/onclick|<script|<iframe|srcdoc/.test(first));
     const safeEmbed = sanitizePostMarkup('<iframe src="https://www.youtube.com/embed/example" srcdoc="attack"></iframe>');
-    assert.match(safeEmbed, /sandbox="allow-scripts allow-same-origin allow-popups allow-presentation"/);
+    assert.match(safeEmbed, /sandbox="allow-scripts allow-same-origin allow-popups allow-presentation allow-popups-to-escape-sandbox"/);
     assert.ok(!safeEmbed.includes('srcdoc'));
 });

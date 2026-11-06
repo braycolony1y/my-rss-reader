@@ -1,43 +1,17 @@
 import { frameMobilePhoto } from './mobile-photo-framing.js?v=20261004_fill_1';
+import { applyEdgeBleed } from './edge-bleed.js?v=20261106_8';
+import { directImageMask } from './mobile-photo-transition.js?v=20261106_4';
+export { directImageMask };
 // Mobile Smart Top owns only presentation; palette, focus and coverage data stay upstream.
 export const MOBILE_TOP = Object.freeze({
     MOBILE_BREAKPOINT: 767, META_TOP: 20, META_LEFT: 20, META_GAP: 7,
     RANK_WIDTH: 28, RANK_HEIGHT: 26, META_ITEM_HEIGHT: 26, META_ROW_HEIGHT: 28,
-    IMAGE_FEATHER_EDGE: 94, IMAGE_FEATHER_WAVE: .25, IMAGE_FEATHER_SOFTNESS: 5,
     TITLE_LIFT: 20, TITLE_TOP_PADDING: 14, COVERAGE_GAP: 8,
 });
 const selector = '.theme-glass-light #scroll-container .article-card[data-story-blend]:is([data-image-layout="top"], [data-image-layout="standard"])';
-// The same responsive card dimensions share the same mask artwork. Generating
-// 48-path SVGs per card is expensive during initial feed paint on WebKit.
-const maskCache = new Map();
-const MAX_MASK_SIZES = 24;
 const set = (node, key, value) => {
     if (node.style.getPropertyValue(key) !== value) node.style.setProperty(key, value);
 };
-export function directImageMask(width, height) {
-    const key = `${width}/${height}`;
-    if (maskCache.has(key)) return maskCache.get(key);
-    const c = MOBILE_TOP, edge = height * c.IMAGE_FEATHER_EDGE / 100;
-    const wave = height * c.IMAGE_FEATHER_WAVE / 100;
-    // Nested alpha contours approximate a soft blur without SVG filter clipping at
-    // the viewport edges (some rasterizers blur the otherwise opaque top/left).
-    const layers = 48;
-    let paths = '', previous = 0;
-    for (let i = 1; i <= layers; i++) {
-        const progress = i / layers;
-        const alpha = progress * progress * (3 - 2 * progress);
-        const opacity = (alpha - previous) / (1 - previous);
-        const offset = Math.min(c.IMAGE_FEATHER_SOFTNESS, height * .02) * (1 - 4 * progress);
-        const y = v => (edge + wave * v + offset).toFixed(2);
-        paths += `<path fill="white" fill-opacity="${opacity.toFixed(5)}" d="M -60 -60 H ${width+60} V ${y(.3)} C ${width*.9} ${y(.3)}, ${width*.85} ${y(-.7)}, ${width*.76} ${y(-.5)} S ${width*.62} ${y(.8)}, ${width*.51} ${y(.1)} S ${width*.38} ${y(.8)}, ${width*.32} ${y(.5)} S ${width*.21} ${y(-.8)}, ${width*.14} ${y(-.4)} S 0 ${y(.6)}, -60 ${y(.4)} Z"/>`;
-        previous = alpha;
-    }
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${paths}</svg>`;
-    const value = `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
-    if (maskCache.size >= MAX_MASK_SIZES) maskCache.delete(maskCache.keys().next().value);
-    maskCache.set(key, value);
-    return value;
-}
 function classify(metadata) {
     for (const node of metadata.querySelectorAll('span, a, div, button')) {
         let role = '';
@@ -107,6 +81,7 @@ export function mountMobileTopLayout(root = document.querySelector('#scroll-cont
             const hasRank = rank?.getClientRects().length > 0;
             set(card, '--mobile-meta-start', `${MOBILE_TOP.META_LEFT + (hasRank ? MOBILE_TOP.RANK_WIDTH + MOBILE_TOP.META_GAP : 0)}px`);
             frameMobilePhoto(card);
+            applyEdgeBleed(card, 'bottom');
             const width = hero.clientWidth, height = hero.clientHeight;
             const key = `${width}/${height}`;
             if (width && height && masks.get(card) !== key) {

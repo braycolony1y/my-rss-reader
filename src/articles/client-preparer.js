@@ -6,6 +6,7 @@ import { enhanceArticleResultForSource } from './source-results.js';
 import sourceRegistry from '../sources/index.js';
 import { absoluteTimestamp } from './source-time.js';
 import { isVozThreadUrl } from '../voz-thread-state.js';
+import { versionVozThumbnailUrl } from './voz-thumbnail.js';
 
 export function createClientArticlePreparer({ resolveGoogleNewsUrl, getLastKnownCachedArticle,
     getLastKnownCachedArticleImage, getCachedThreadCreationTime = async () => null }) {
@@ -80,6 +81,7 @@ export function createClientArticlePreparer({ resolveGoogleNewsUrl, getLastKnown
         }
 
         if (!prepared.originalLink) prepared.originalLink = prepared.link;
+        if (isVozThreadUrl(prepared.link)) prepared.image = versionVozThumbnailUrl(prepared.image);
         prepared.link = normalizeStateUrl(prepared.link);
 
         if (Array.isArray(prepared.relatedArticles)) {

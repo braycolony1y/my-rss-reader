@@ -1,6 +1,7 @@
 import { sourceTimeMarkup } from './source-time.js';
 import { normalizeArticleMediaMarkup } from '../../article-media.js';
 import { sanitizePostMarkup } from './post-markup-sanitizer.js';
+import { transformVozBlueskyEmbeds } from '../sources/voz-bluesky-embeds.js';
 export { sanitizePostMarkup };
 
 export const escapePostText = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'})[ch]);
@@ -20,7 +21,7 @@ export function renderVozPost(post, {body = '', reactions = '', annotations = ''
         </div>
     </div>
     ${annotations}
-    <div class="voz-post-body">${body}</div>
+    <div class="voz-post-body">${transformVozBlueskyEmbeds(body)}</div>
     ${reactions}
     ${history}
 </div>`, post.permalink));

@@ -23,7 +23,7 @@ export function createArticleCache({
     // file remains available longer in case the publisher later removes the page.
     const ARTICLE_CACHE_LAST_KNOWN_TTL_MS = CONTENT_RETENTION_MS;
 
-    const ARTICLE_CACHE_VERSION = 61;
+    const ARTICLE_CACHE_VERSION = 62;
 
     let _articleCacheIndex = null;
     const cardImages = new Map();

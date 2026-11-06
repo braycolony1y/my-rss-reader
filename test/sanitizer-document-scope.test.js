@@ -42,7 +42,7 @@ test('cleanup uses unclobberable DOM methods and preserves the existing iframe p
         const output = clean('<form id="form-probe"><input name="ownerDocument"><input name="firstChild"><input name="removeChild"><img src="x" onerror="alert(1)"></form><iframe src="https://www.youtube.com/embed/test" srcdoc="unsafe"></iframe><iframe src="https://evil.example/embed"></iframe>');
         assert.match(output, /id="form-probe"/);
         assert.match(output, /youtube\.com\/embed\/test/);
-        assert.match(output, /sandbox="allow-scripts allow-same-origin allow-popups allow-presentation"/);
+        assert.match(output, /sandbox="allow-scripts allow-same-origin allow-popups allow-presentation allow-popups-to-escape-sandbox"/);
         assert.doesNotMatch(output, /onerror|srcdoc|evil\.example/);
         assert.equal(window['form-probe'], undefined);
         assert.equal(clean('plain text'), 'plain text');

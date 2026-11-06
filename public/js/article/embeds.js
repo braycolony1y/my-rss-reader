@@ -2,6 +2,7 @@
 // Methods retain their original bodies and receive the Alpine proxy as this.
 const ReaderArticleEmbeds = {
     create() {
+        ReaderTwitterFrameSizing.install(window);
         return {
 
                 loadTwitterWidgets() {
@@ -53,6 +54,7 @@ const ReaderArticleEmbeds = {
                 hydrateTwitterEmbeds(root = document) {
                     this.updateSourceTimes();
                     const scope = root?.querySelectorAll ? root : document;
+                    ReaderBlueskyEmbeds.hydrate(scope, this.theme);
                     const embeds = Array.from(scope.querySelectorAll('.voz-twitter-embed[data-tweet-id]'))
                         .filter(embed => !embed.dataset.twitterState);
                     if (!embeds.length) return;

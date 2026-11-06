@@ -4,7 +4,7 @@ import { applyImageFocusMutations } from './image-focus-mutations.js?v=20261019_
 import { installThumbnailLoading } from './thumbnail-loading.js?v=20261019_scroll_1';
 import { fitCardImageViewport, visiblePhotoHeight } from './card-image-layout.js?v=2';
 import { applyImageColors } from './card-blend/legacy-color.js?v=1';
-import { applyTopStoryImage } from './top-story-card/blend/runtime.js?v=20261019_scroll_1';
+import { applyTopStoryImage } from './top-story-card/blend/runtime.js?v=20261106_8';
 
 const clamp = (value, low = 0, high = 1) => Math.max(low, Math.min(high, value));
 const center = { x: 0.5, y: 0.5 };

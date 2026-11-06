@@ -45,6 +45,8 @@ export const READER_CLIENT_MODULES = [
     'article/summary.js',
     'sources/voz-thread.js',
     'ui/tooltips.js',
+    'article/twitter-frame-sizing.js',
+    'article/bluesky-embeds.js',
     'article/embeds.js',
     'article/route-transition.js',
     'article/navigation.js',

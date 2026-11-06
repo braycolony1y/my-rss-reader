@@ -1,12 +1,13 @@
 import { updateStoryPhoto } from './source-readiness.js?v=20261015_lifecycle_1';
 import { rememberMobileSubject } from '../mobile-photo-framing.js?v=20261004_fill_1';
 import { updateSharedCardStyle, rememberSharedProperties } from '../../shared-card-style/runtime.js?v=20261004_fill_1';
-import { scheduleHeroExtent } from '../hero-extent.js?v=20261019_scroll_1';
+import { scheduleHeroExtent } from '../hero-extent.js?v=20261106_8';
 import { deriveStoryTokens } from './tokens.js';
 import { placeStoryHero, smoothMask } from './placement.js?v=20261006_requirements_2';
 import { clamp } from './palette.js';
 import { deriveStoryComposition, storyPhotoSource } from './composition.js?v=20261004_fill_1';
 import { intrinsicPhotoAnalysis } from './desktop-photo.js?v=20261003_organic_1';
+import { rememberEdgeBleedSource } from '../edge-bleed.js?v=20261106_8';
 const cards = new WeakMap();
 const asset = value => typeof value === 'string' && value.length < 800000 && /^data:image\/webp;base64,[a-zA-Z0-9+/=]+$/.test(value) ? value : '';
 const set = (el, key, value) => { if (el.style.getPropertyValue(key) !== value) el.style.setProperty(key, value); };
@@ -106,6 +107,7 @@ export function applyTopStoryImage(img, state, { ready = true, isDefault = false
         storyImageMissing: String(Boolean(img.getAttribute('src')) && img.complete && !img.naturalWidth)
     };
     for (const [key, value] of Object.entries(attributes)) if (card.dataset[key] !== value) card.dataset[key] = value;
+    rememberEdgeBleedSource(card, isDefault ? null : hero, analysis.crop);
     if (ready && state.settled) {
         if (img.dataset.focusState !== 'ready') img.dataset.focusState = 'ready';
         state.shown = true;
