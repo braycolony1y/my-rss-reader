@@ -237,3 +237,32 @@ test('Techmeme upgrades an already cached Bloomberg primary article without refe
     assert.match(enhanced.content, /The cached Bloomberg article body remains ready to serve/);
     assert.doesNotMatch(enhanced.content, /Gift this article|Bloomberg Terminal|<p>!<\/p>/);
 });
+
+
+test('Techmeme cleans Microsoft AI encoded figure documents during expansion and cache reuse', async () => {
+    const source = new TechmemeSource();
+    const url = 'https://www.techmeme.com/261015/p59';
+    const figure = Buffer.from('<meta http-equiv="Content-Security-Policy" content="x">' + 's'.repeat(2100)).toString('base64');
+    const story = `<article class="techmeme-story" data-techmeme-story-id="261015p59" data-techmeme-publisher="Microsoft AI" data-techmeme-main-url="https://microsoft.ai/news/frontier-pre-training-at-microsoft-ai/">
+        <header class="techmeme-main-story"><h2><a href="https://microsoft.ai/news/frontier-pre-training-at-microsoft-ai/">Microsoft unveils MAI-Base-2</a></h2></header>
+    </article>`;
+    const expanded = await source.expandArticleResult({ url, content: story }, {
+        url,
+        fetchPrimaryArticle: async () => ({
+            url: 'https://microsoft.ai/news/frontier-pre-training-at-microsoft-ai/',
+            title: 'Frontier Pre-training at Microsoft AI',
+            content: '<p>Figure 1 compares the models.</p><p>' + figure + '</p>'
+                + '<p>' + 'The model was evaluated using bits per byte. '.repeat(12) + '</p>'
+        })
+    });
+    assert.equal(expanded.primaryArticleFetched, true);
+    assert.match(expanded.content, /Figure 1 compares the models/);
+    assert.match(expanded.content, /The model was evaluated using bits per byte/);
+    assert.doesNotMatch(expanded.content, /PG1ldGEg/);
+    const cached = source.cleanCachedArticleContent(expanded.content.replace(
+        'Figure 1 compares the models.',
+        'Figure 1 compares the models.' + figure
+    ), { url, primaryArticleUrl: 'https://microsoft.ai/news/frontier-pre-training-at-microsoft-ai/' });
+    assert.doesNotMatch(cached, /PG1ldGEg/);
+    assert.equal(source.cleanCachedArticleContent(cached, { url, primaryArticleUrl: 'https://microsoft.ai/news/frontier-pre-training-at-microsoft-ai/' }), cached);
+});
