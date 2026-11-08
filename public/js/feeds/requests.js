@@ -5,6 +5,7 @@ async fetchData(isLoadMore = false, skipPageReset = false, keepVisible = false) 
                     if (keepVisible && (this.isLoadingMore || this.isLoadingArticles)) return { skipped: true };
                     if (!keepVisible) ReaderPrefetchLifecycle.cancel(this);
                     if (keepVisible) skipPageReset = true;
+                    const feedPageTransaction = ReaderFeedPageSession.begin(this, isLoadMore, skipPageReset, keepVisible);
                     if (this.selectedFilterType === 'smart') {
                         this.selectedFilterValue = this.normalizeSmartDestination(this.selectedFilterValue);
                         this.smartRegion = this.selectedFilterValue.endsWith('_vietnam') ? 'vietnam' : 'global';
@@ -90,7 +91,8 @@ async fetchData(isLoadMore = false, skipPageReset = false, keepVisible = false) 
                             window.__rssInitialDataRequest = null;
                             res = await earlyRequest.promise;
                         }
-                        if (!res) res = await fetch(`/api/data?${params.toString()}`, { signal: listController?.signal });
+                        const requestOptions = ReaderFeedPageSession.request(params, feedPageTransaction, { signal: listController?.signal });
+                        if (!res) res = await fetch(`/api/data?${params.toString()}`, requestOptions);
                         if (requestGeneration !== this.articleRequestGeneration) {
                             await res.body?.cancel();
                             return;
@@ -133,6 +135,7 @@ async fetchData(isLoadMore = false, skipPageReset = false, keepVisible = false) 
                             }
                             
                             if (requestGeneration !== this.articleRequestGeneration) return;
+                            if (ReaderFeedPageSession.exhausted(this, feedPageTransaction, data)) return { exhausted: true };
                             if (smartTiming) { smartTiming.fetchMs=performance.now()-smartTiming.startedAt; smartTiming.renderStartedAt=performance.now(); }
                             this._renderedTopContext = topContext;
                             this.topStories = data.topStories || [];
@@ -182,12 +185,12 @@ async fetchData(isLoadMore = false, skipPageReset = false, keepVisible = false) 
                                     // visible list and leave membership/order for an explicit refresh.
                                     const refreshedByIdentity = new Map();
                                     for (const refreshed of newArticles) {
-                                        for (const key of [refreshed.id, refreshed.guid, refreshed.originalLink, refreshed.link]) {
+                                        for (const key of [refreshed.feedPageKey, refreshed.id, refreshed.guid, refreshed.originalLink, refreshed.link]) {
                                             if (key) refreshedByIdentity.set(String(key), refreshed);
                                         }
                                     }
                                     this.articles = this.articles.map(existing => {
-                                        const refreshed = [existing.id, existing.guid, existing.originalLink, existing.link]
+                                        const refreshed = [existing.feedPageKey, existing.id, existing.guid, existing.originalLink, existing.link]
                                             .map(key => key ? refreshedByIdentity.get(String(key)) : null)
                                             .find(Boolean);
                                         // Row keys belong to the article object. Keep that object
@@ -214,6 +217,7 @@ async fetchData(isLoadMore = false, skipPageReset = false, keepVisible = false) 
                                 }
                             }
                             this.hasMore = data.hasMore !== undefined ? data.hasMore : false;
+                            ReaderFeedPageSession.accept(this, feedPageTransaction, data);
                             const result = { ok: true, page: requestedPage, added: isLoadMore ? this.articles.length - previousCount : this.articles.length };
                             this._lastArticlePageResult = result;
                             ReaderListPublication.commit(this);
@@ -228,6 +232,7 @@ async fetchData(isLoadMore = false, skipPageReset = false, keepVisible = false) 
                         throw Object.assign(new Error(`Server returned HTTP ${res.status}`), { status: res.status });
                     } catch (e) {
                         if (requestGeneration !== this.articleRequestGeneration) return { cancelled: true };
+                        ReaderFeedPageSession.rollback(this, feedPageTransaction);
                         if (e?.name !== 'AbortError') console.error("Failed to load data:", e);
                         if (!timedOut && e?.name === 'AbortError') return { cancelled: true };
                         this.articleListError = timedOut

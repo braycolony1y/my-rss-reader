@@ -20,7 +20,7 @@ const ReaderAppPersistence = {
                     const compactArticle = (article, includeRelated = true) => {
                         const compact = {};
                         const fields = [
-                            'id', 'guid', 'articleKey', 'title', 'link', 'originalLink',
+                            'id', 'guid', 'articleKey', 'feedPageKey', 'title', 'link', 'originalLink',
                             'pubDate', 'createDate', 'publicationTimeReliable', 'description',
                             'image', 'imageUrl', 'feedTitle', 'feedIcon', 'feedUrl',
                             'feedCategory', 'smartCategory', 'siteName', 'sourceWeight',
@@ -66,6 +66,7 @@ const ReaderAppPersistence = {
                         selectedFilterType: app.selectedFilterType,
                         selectedFilterValue: app.selectedFilterValue,
                         currentPage: app.currentPage,
+                        feedPageSession: ReaderFeedPageSession.snapshot(app),
                         hasMore: app.hasMore,
                         expandedCategories: app.expandedCategories,
                         scrollY: sc ? sc.scrollTop : (app.lastSavedScrollY || 0),

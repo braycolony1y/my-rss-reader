@@ -77,6 +77,7 @@ const ReaderAppBootstrap = {
                                     }
                                     cacheMatchesSmartDefault = this.selectedFilterType === state.selectedFilterType && this.selectedFilterValue === state.selectedFilterValue;
                                     this.currentPage = state.currentPage || 1;
+                                    ReaderFeedPageSession.restore(this, state.feedPageSession);
                                     this.hasMore = state.hasMore !== undefined ? state.hasMore : true;
                                     this.expandedCategories = state.expandedCategories || this.categories.map(c => c.name);
                                     restoredFromCache = true;

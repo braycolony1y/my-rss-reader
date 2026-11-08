@@ -1,3 +1,4 @@
+import { feedPageKey, selectFeedPage, registerFeedPagePost } from '../feeds/page-selection.js';
 import { filterPersonalView } from '../smart/feedback/pipeline.js';
 import { canonicalIdentity } from '../board/thread-model.js';
 import { authMiddleware } from '../middleware/auth.js';
@@ -115,7 +116,7 @@ export function registerDataRoutes({
         }
     );
 
-    app.get('/api/data', authMiddleware, async (req, res) => {
+    app.get('/api/data', authMiddleware, registerFeedPagePost(app, authMiddleware, async (req, res) => {
         progress.activeForegroundRequests++;
         try {
         const startedAt = performance.now();
@@ -504,75 +505,10 @@ export function registerDataRoutes({
         let hasMore = false;
 
         if (simpleStreamingView) {
-            pageSourceArticles = [];
-
-            const matchesSearch = searchQuery
-                ? value =>
-                    String(value || '')
-                        .toLowerCase()
-                        .includes(searchQuery)
-                : null;
-
-            let qualifyingCount = 0;
-
-            for (const article of visibleArticles) {
-                if (hiddenSet.has(article.link)) {
-                    continue;
-                }
-
-                if (
-                    hideRead
-                    && readSet.has(article.link)
-                ) {
-                    continue;
-                }
-
-                if (filterType === 'category') {
-                    const categoryMatches =
-                        article.feedCategory === filterValue
-                        || (
-                            filterValue === 'Others'
-                            && !article.feedCategory
-                        );
-
-                    if (!categoryMatches) {
-                        continue;
-                    }
-                } else if (
-                    filterType === 'feed'
-                    && article.feedUrl !== filterValue
-                ) {
-                    continue;
-                }
-
-                if (
-                    matchesSearch
-                    && !(
-                        matchesSearch(article.title)
-                        || matchesSearch(article.feedTitle)
-                        || matchesSearch(article.content)
-                    )
-                ) {
-                    continue;
-                }
-
-                if (
-                    qualifyingCount >= startIndex
-                    && pageSourceArticles.length < limit
-                ) {
-                    pageSourceArticles.push(article);
-                }
-
-                qualifyingCount++;
-
-                // One extra qualifying item is enough to prove that another
-                // page exists. Stop immediately instead of scanning/building
-                // the entire filtered result set.
-                if (qualifyingCount > endIndex) {
-                    hasMore = true;
-                    break;
-                }
-            }
+            const selection = selectFeedPage({ articles: visibleArticles, query: req.query,
+                body: req.body, hiddenSet, readSet, page, limit });
+            pageSourceArticles = selection.articles;
+            hasMore = selection.hasMore;
         } else {
             hasMore = endIndex < filteredArticles.length;
 
@@ -589,7 +525,9 @@ export function registerDataRoutes({
             await mapWithConcurrency(
                 pageSourceArticles,
                 6,
-                prepareArticleForClient
+                simpleStreamingView && req.query.feedPageMode === 'unseen'
+                    ? async article => ({ ...await prepareArticleForClient(article), feedPageKey: feedPageKey(article) })
+                    : prepareArticleForClient
             );
 
         res.setHeader?.(
@@ -610,13 +548,14 @@ export function registerDataRoutes({
             userPreferences,
             hasMore,
             currentPage: page,
+            feedPageMode: simpleStreamingView && req.query.feedPageMode === 'unseen' ? 'unseen' : undefined,
             unreadCounts,
             smartClusterVersion
         });
         } finally {
             progress.activeForegroundRequests = Math.max(0, progress.activeForegroundRequests - 1);
         }
-    });
+    }));
 
 }
 

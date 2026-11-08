@@ -10,7 +10,7 @@ try {
  await page.setViewport({width:390,height:1000});
  // This is a read-only UI check: prevent preference/read-state writes from its temporary session.
  await page.setRequestInterception(true);
- page.on('request',r=>r.method()==='GET'?r.continue():r.abort());
+ page.on('request',r=>r.method()==='GET'||(r.method()==='POST'&&new URL(r.url()).pathname==='/api/data')?r.continue():r.abort());
  await page.goto(base+'/#category/Forum',{waitUntil:'domcontentloaded',timeout:60000});
  await page.waitForFunction(()=>window.Alpine && Alpine.$data(document.body).isLoggedIn && !Alpine.$data(document.body).isLoadingArticles && Alpine.$data(document.body).articles.length>0,{timeout:60000});
  const first=await page.evaluate(()=>{const app=Alpine.$data(document.body);return {type:app.selectedFilterType,value:app.selectedFilterValue,page:app.currentPage,links:app.articles.map(a=>a.link)};});

@@ -19,6 +19,7 @@ const ReaderFeedPagination = {
     async goToPage(page) {
         if (page < 1 || this.isLoadingMore || this.isLoadingArticles) return;
         if (!this.hasMore && page > this.currentPage) return;
+        ReaderFeedPageSession.capture(this);
         const previousPage = this.currentPage, previousArticles = this.articles, generation = this.articleRequestGeneration + 1;
         this.isLoadingMore = true;
         this.currentPage = page;
