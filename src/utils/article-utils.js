@@ -1,4 +1,5 @@
 import { normalizeArticleSourceUrl } from '../article-source-state.js';
+import { normalizeStateUrl } from './state-url.js';
 import sourceRegistry from '../sources/index.js';
 
 function fnv1a(str) {
@@ -162,18 +163,6 @@ async function mapWithConcurrency(items, concurrency, mapper) {
     });
     await Promise.all(workers);
     return result;
-}
-
-function normalizeStateUrl(url) {
-    if (!url) return '';
-    let u = normalizeArticleSourceUrl(url);
-    if (u.includes('voz.vn/t/')) {
-        u = u
-            .replace(/[?#].*$/, '')
-            .replace(/\/(?:unread|latest|page-\d+|post-\d+)\/?$/i, '')
-            .replace(/\/$/, '');
-    }
-    return u.replace(/\/+$/, '');
 }
 
 class NormalizedSet extends Set {

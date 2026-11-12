@@ -16,5 +16,14 @@ export function rankingInputs(publication, raw) {
         // Fixed-length digests preserve input boundaries as well as all bytes.
         digest: createHash('sha256').update(left.digest).update(right.digest).digest('hex'),
         read: () => ({ publicationJson: left.read(), rawJson: right.read() })
+        ,readAsync: async () => {
+            const [publicationJson,rawJson]=await Promise.all([
+                left.readAsync ? left.readAsync() : left.read(),
+                right.readAsync ? right.readAsync() : right.read()
+            ]);
+            return {publicationJson,rawJson};
+        }
     };
 }
+
+export const readRankingInputs = inputs => inputs.readAsync ? inputs.readAsync() : inputs.read();

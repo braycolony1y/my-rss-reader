@@ -115,10 +115,10 @@ try {
     assert.equal(unavailable.sourceDeleted, true);
     assert.equal(unavailable.title, retained.title);
     assert.deepEqual(history.readStates, [retained.link, expired.link]);
-    const disk = JSON.parse(await fs.readFile('database.json', 'utf8'));
+    const persistedArticles = await application.database.env.RSS_DATA.get('articles',{type:'json'});
     const states = (await request('/api/user-states')).data;
     assert.equal(states.userPreferences.smokePreference, 'persisted');
-    assert.ok(JSON.parse(disk.articles).some(item => item.title === 'Fixture article refreshed'));
+    assert.ok(persistedArticles.some(item => item.title === 'Fixture article refreshed'));
     assert.equal((await request('/api/article-pdf', { method: 'POST', body: { url: articleUrl }, authenticated: false })).status, 401);
     assert.equal((await request('/api/article-pdf', { method: 'POST', body: { url: 'file:///etc/passwd' } })).status, 400);
     assert.equal((await request('/api/article-pdf/unknown')).status, 404);

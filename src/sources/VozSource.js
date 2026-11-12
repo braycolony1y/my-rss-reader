@@ -1,5 +1,6 @@
 import { renderVozPost } from '../articles/voz-post-renderer.js';
 import { cleanVozCachedContent } from './voz-cached-content.js';
+import { preserveVozWrapperImageWidths } from '../articles/voz-image-sizing.js';
 import { load } from 'cheerio';
 import { absoluteTimestamp } from '../articles/source-time.js';
 import { hasVozDeletedThreadMarker, getVozThreadPageNumber } from '../voz-thread-state.js';
@@ -409,6 +410,7 @@ export default class VozSource {
             let bbContent = utils.extractBalancedElementByClass(artHtml, 'bbWrapper') || (artHtml.match(/<div\b[^>]*class=["'][^"']*bbWrapper[^"']*["'][^>]*>([\s\S]*?)<\/div>/i)?.[1]);
             
             if (bbContent) {
+                bbContent = preserveVozWrapperImageWidths(bbContent);
                 // Clean inline styles and dimensions that break responsive design
                 bbContent = bbContent.replace(/<(span|div|table|td|tr|p|b|i|u|tbody|thead|th|img)\b([^>]*)>/gi, (m, tag, rest) => {
                     if (tag.toLowerCase() !== 'img') {

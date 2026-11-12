@@ -1,4 +1,4 @@
-import { rankingInputs } from './ranking-input.js';
+import { rankingInputs, readRankingInputs } from './ranking-input.js';
 import { prefilterWorkerState, filterPublishedSnapshot } from '../smart/prefilter/publication.js';
 import { Worker } from 'node:worker_threads';
 import { boundedWorkerOptions, hasWorkerHeadroom } from '../observability/memory-budget.js';
@@ -376,7 +376,7 @@ const migrated={policy:POLICY,articles,createdAt:now(),signature:'legacy',cluste
         }
 
         if (serializedWorker) {
-            ({ publicationJson, rawJson } = inputs.read());
+            ({ publicationJson, rawJson } = await readRankingInputs(inputs));
             inputs = null;
         }
         const result = await compute({

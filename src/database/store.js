@@ -1,4 +1,6 @@
 import {createDatabaseTransactionQueue} from './transaction-queue.js';
+import {createSqliteDatabaseStore} from './sqlite/store.js';
+import {selectedBackend} from './sqlite/backend.js';
 import {SMART_INCREMENTAL_KEYS} from './state-policy.js';
 import {createKeyedOverlay} from './keyed-overlay.js';
 import {createDatabasePersistence} from './persistence.js';
@@ -15,7 +17,11 @@ import path from 'path';
 import { repairGoogleNewsRecord } from '../google-news-destination.js';
 import { calculateHotness } from '../../smart-news.js';
 
-export function createDatabaseStore() {
+export function createDatabaseStore(options) { return selectedBackend(options?.root)==='json'?createLegacyDatabaseStore():createSqliteDatabaseStore(options); }
+
+// Retained only for offline comparison and rollback verification. Production
+// always uses the SQLite owner above; it never silently falls back to JSON.
+export function createLegacyDatabaseStore() {
     const DB_FILE = './database.json';
 
     const SMART_DB_FILE = './smart-data.json';

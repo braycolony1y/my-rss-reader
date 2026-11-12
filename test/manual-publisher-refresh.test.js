@@ -130,7 +130,7 @@ test('accepted manual success cannot erase a newer independent verification inci
     assert.equal(f.cooldown.get(item.url).strikes, 2);
 });
 
-test('RSS coalescing retains only the original manual bypass scopes when execution widens', async () => {
+test('RSS manual bypass scopes remain isolated from automatic pending work', async () => {
     const calls = [], gates = [];
     const sync = coalesceFeedSync(async (env, feed, progress, category, options) => {
         calls.push({feed, category, options}); await new Promise(resolve => gates.push(resolve));
@@ -139,11 +139,13 @@ test('RSS coalescing retains only the original manual bypass scopes when executi
     const first = sync(env);
     const a = sync(env, item.url, null, null, manualRefreshOptions(item.url));
     const b = sync(env, 'https://other.test/feed.xml');
-    gates.shift()(); await first;
-    assert.equal(calls[1].feed, null);
+    assert.equal(calls[1].feed, item.url);
     assert.equal(matchesManualRefresh(item, calls[1].options.manualRefreshScopes), true);
     assert.equal(matchesManualRefresh({url: 'https://other.test/feed.xml'}, calls[1].options.manualRefreshScopes), false);
-    gates.shift()(); await Promise.all([a, b]);
+    gates.shift()(); await first;
+    assert.equal(calls[2].feed, 'https://other.test/feed.xml');
+    assert.deepEqual(calls[2].options.manualRefreshScopes, []);
+    gates.shift()(); gates.shift()(); await Promise.all([a, b]);
 });
 
 test('Smart coalescing unions selected manual categories without granting a full bypass', async () => {

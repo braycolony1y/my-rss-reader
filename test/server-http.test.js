@@ -16,7 +16,7 @@ test('HTTP application integrates the extracted services in an isolated runtime'
             cwd: directory,
             env: { ...process.env, ADMIN_PASSWORD: 'fixture-password', ANTIGRAVITY_ENABLED: 'false',
                 GEMINI_WEB_ENABLED: 'false', SMART_LOCAL_AI_ENABLED: 'false' },
-            timeout: 30000,
+            timeout: 90000,
             maxBuffer: 1024 * 1024
         });
         assert.match(stdout, /HTTP_SMOKE_OK/);

@@ -19,6 +19,7 @@ import { normalizedVerificationArticles } from '../verification/cache.js';
 import { getEnabledVerificationProviders } from '../verification/provider-config.js';
 import { createHash } from 'node:crypto';
 import { canReuseSmartSnapshot } from './reuse-policy.js';
+import { previousSmartArticles } from './stored-inputs.js';
 
 export async function prepareSmartCandidates({ db, smartSources, getSettings, hasGeminiKey, localModel, setStatus, getProgress, notify, metrics, options, isTargeted, targetCategory, startedAt, helpers, headers, setAttemptedState }) {
   const sourceCounts =
@@ -86,13 +87,7 @@ export async function prepareSmartCandidates({ db, smartSources, getSettings, ha
     );
   }
 
-  let previousSmartArticlesForPrefetch =
-    (
-      await db.get(
-        'smartRawArticles',
-        { type: 'json', shared: true }
-      )
-    ) || [];
+  let previousSmartArticlesForPrefetch = await previousSmartArticles(db,isTargeted);
 
   let sourceResults =
     await fetchInBatches(

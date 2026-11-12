@@ -8,6 +8,7 @@ export const READER_CLIENT_MODULES = [
     'article/prefetch-lifecycle.js',
     'app/paint-persistence.js',
     'ui/layout.js',
+    'feeds/manual-refresh.js',
     'feeds/management.js',
     'app/bootstrap.js',
     'feeds/filter-transition.js',

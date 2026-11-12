@@ -9,7 +9,10 @@ export async function protectBrowserApiWrites(context) {
         const original = window.fetch;
         window.fetch = (input, init) => {
             const method = String(init?.method || input?.method || 'GET').toUpperCase();
-            if (api(input) && !['GET', 'HEAD'].includes(method)) {
+            // Mobile pagination sends its read-only page selection as JSON.
+            const url = new URL(typeof input === 'string' ? input : input.url || String(input), location.href);
+            const readOnlyPage = method === 'POST' && url.pathname === '/api/data';
+            if (api(input) && !['GET', 'HEAD'].includes(method) && !readOnlyPage) {
                 return Promise.resolve(new Response('{}', {status: 200, headers: {'Content-Type': 'application/json'}}));
             }
             return original.call(window, input, init);

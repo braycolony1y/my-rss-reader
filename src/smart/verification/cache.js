@@ -3,6 +3,7 @@ import { detectArticleLanguage } from '../articles/language.js';
 import { SMART_CLUSTER_VERSION, SMART_NEWS_AI_CONFIG } from '../config.js';
 import { validateComponentReviewResult, expandComponentReviewDecision, validatePartitionResult, postValidatePartition } from './validation.js';
 import { createHash } from 'node:crypto';
+import { loadVerificationEntry, saveVerificationEntry } from './cache-storage.js';
 
 let verificationCacheWriteChain = Promise.resolve();
 
@@ -27,9 +28,8 @@ function componentVerificationCacheKey(group, units) {
 
 async function getCachedComponentVerificationDecision(db, group, units) {
   if (!SMART_NEWS_AI_CONFIG.cache.enabled) return null;
-  const cache = await getVerificationCache(db);
   const key = componentVerificationCacheKey(group, units);
-  const entry = cache && typeof cache === 'object' ? cache[key] : null;
+  const entry = await loadVerificationEntry(db,key);
   if (!entry || group.forceRebuild) return null;
 
   const validation = validateComponentReviewResult(entry.result, units);
@@ -61,9 +61,8 @@ async function setCachedComponentVerificationDecision(db, group, units, result, 
   if (!validation.valid || result.uncertain) return;
 
   verificationCacheWriteChain = verificationCacheWriteChain.catch(() => {}).then(async () => {
-    const cache = await getVerificationCache(db);
     const key = componentVerificationCacheKey(group, units);
-    cache[key] = {
+    await saveVerificationEntry(db,key,{
       kind: 'component-relationship-review-v1',
       providerId: provider.id,
       model: provider.model,
@@ -74,8 +73,7 @@ async function setCachedComponentVerificationDecision(db, group, units, result, 
         relatedDevelopments: result.relatedDevelopments,
         uncertain: false
       }
-    };
-    await db.put('smartEventVerificationCache', JSON.stringify(cache));
+    });
   });
 
   try {
@@ -163,16 +161,13 @@ async function getCachedVerificationDecision(
     return null;
   }
 
-  const cache =
-    await getVerificationCache(db);
-
   const key =
     verificationCacheKey(
       group,
       providers
     );
 
-  const entry = cache && typeof cache === 'object' ? cache[key] : null;
+  const entry = await loadVerificationEntry(db,key);
 
   if (group.forceRebuild && entry) {
     if (group.metrics) { group.metrics.cachedDecisionsInvalidated++; group.metrics.invalidationReason = 'explicit_force_rebuild'; }
@@ -228,11 +223,6 @@ async function setCachedVerificationDecision(
   verificationCacheWriteChain =
     verificationCacheWriteChain.catch(() => {}).then(
       async () => {
-        const cache =
-          await getVerificationCache(
-            db
-          );
-
         const key =
           verificationCacheKey(
             group,
@@ -241,7 +231,7 @@ async function setCachedVerificationDecision(
 
         const now = Date.now();
 
-        cache[key] = {
+        await saveVerificationEntry(db,key,{
           providerId:
             result.providerId,
           model:
@@ -254,14 +244,7 @@ async function setCachedVerificationDecision(
               result.clusters,
             uncertain: false
           }
-        };
-
-        await db.put(
-          'smartEventVerificationCache',
-          JSON.stringify(
-            cache
-          )
-        );
+        });
       }
     );
 

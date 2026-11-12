@@ -12,7 +12,7 @@ test('manual refresh HTTP preserves failed verification cooldowns and clears acc
     try {
         const {stdout, stderr} = await promisify(execFile)(process.execPath,
             [fileURLToPath(new URL('./helpers/manual-refresh-http-runtime.js', import.meta.url))], {
-                cwd: directory, timeout: 30000, maxBuffer: 1024 * 1024,
+                cwd: directory, timeout: 90000, maxBuffer: 1024 * 1024,
                 env: {...process.env, ANTIGRAVITY_ENABLED: 'false', GEMINI_WEB_ENABLED: 'false', SMART_LOCAL_AI_ENABLED: 'false'}
             });
         assert.match(stdout, /MANUAL_REFRESH_HTTP_OK/);

@@ -12,6 +12,10 @@ export async function verifyManualRefreshHttp(request, feedUrl) {
         const failed = await request('/api/sync', {method: 'POST', body: {feedUrl, requestId: 'manual-blocked'}});
         assert.ok(failed.data.logs.length > 0);
         assert.ok(failed.data.logs.some(entry => /HTTP 429/.test(entry.Issue)), 'manual retry reaches the publisher');
+        assert.equal(failed.data.success, false);
+        const progress = await request('/api/sync-progress?id=manual-blocked');
+        assert.equal(progress.data.done, true);
+        assert.equal(progress.data.failed, true);
         const {remainingMs: oldRemaining, ...before} = previous;
         const {remainingMs, ...after} = await sourceCooldown.inspect(feedUrl);
         assert.deepEqual(after, before);
@@ -19,5 +23,6 @@ export async function verifyManualRefreshHttp(request, feedUrl) {
     } finally {globalThis.fetch = fetch;}
     const successful = await request('/api/sync', {method: 'POST', body: {feedUrl, requestId: 'manual-recovered'}});
     assert.deepEqual(successful.data.logs, []);
+    assert.equal(successful.data.success, true);
     assert.equal(sourceCooldown.get(feedUrl).strikes, undefined);
 }

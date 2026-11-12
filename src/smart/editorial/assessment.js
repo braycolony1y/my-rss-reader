@@ -1,4 +1,5 @@
 import { acceptAiSideTask } from '../prefilter/ai.js';
+import { loadEditorialCache, saveEditorialCache } from './cache-storage.js';
 import { survivingClusters } from '../prefilter/boundaries.js';
 import { buildCluster } from '../clustering/cluster.js';
 import { getGeminiWebCooldownState } from '../../ai/gemini-web.js';
@@ -20,21 +21,8 @@ async function assessSmartEditorialClusters({
   metrics
 }) {
   clusters = survivingClusters(clusters, buildCluster);
-  let cache =
-    {};
-
-  try {
-    cache =
-      JSON.parse(
-        (
-          await db.get(
-            'smartEditorialAssessmentCache'
-          )
-        ) || '{}'
-      );
-  } catch {
-    cache = {};
-  }
+  const cache = await loadEditorialCache(db,clusters,sources);
+  const originalCache = {...cache};
 
   const perDestination =
     Math.max(
@@ -745,12 +733,7 @@ async function assessSmartEditorialClusters({
   ];
 
   if (cacheChanged) {
-    await db.put(
-      'smartEditorialAssessmentCache',
-      JSON.stringify(
-        cache
-      )
-    );
+    await saveEditorialCache(db,cache,originalCache);
   }
 
   return stats;

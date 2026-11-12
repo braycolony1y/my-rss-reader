@@ -10,11 +10,10 @@ export { parseOpenCliSearchDestination } from './src/articles/search-destination
 export { parseBaoMoi, parseMorningstar, parseTechcombank, parseUOB, parseUOBVN } from './src/feeds/source-parsers.js';
 
 const isMainModule = process.argv[1] && process.argv[1] === fileURLToPath(import.meta.url);
-const application = await createApplication({ isMainModule });
-
 // Bind HTTP before starting any heavy work. Startup owns the original
 // immediate RSS phase and the 30/45/60/90-second staggered phases.
 if (isMainModule) {
+    const application = await createApplication({ isMainModule });
     application.app.listen(application.port, () => {
         console.log(`🚀 RSS Reader running on http://localhost:${application.port}`);
         application.startBackgroundServices();

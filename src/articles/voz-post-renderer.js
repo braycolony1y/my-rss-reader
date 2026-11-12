@@ -2,6 +2,7 @@ import { sourceTimeMarkup } from './source-time.js';
 import { normalizeArticleMediaMarkup } from '../../article-media.js';
 import { sanitizePostMarkup } from './post-markup-sanitizer.js';
 import { transformVozBlueskyEmbeds } from '../sources/voz-bluesky-embeds.js';
+import { preserveVozWrapperImageWidths, restoreVozImageDisplayWidths } from './voz-image-sizing.js';
 export { sanitizePostMarkup };
 
 export const escapePostText = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'})[ch]);
@@ -21,7 +22,7 @@ export function renderVozPost(post, {body = '', reactions = '', annotations = ''
         </div>
     </div>
     ${annotations}
-    <div class="voz-post-body">${transformVozBlueskyEmbeds(body)}</div>
+    <div class="voz-post-body">${restoreVozImageDisplayWidths(preserveVozWrapperImageWidths(transformVozBlueskyEmbeds(body)), post.current_content)}</div>
     ${reactions}
     ${history}
 </div>`, post.permalink));

@@ -4,14 +4,13 @@ import { bindPersonalState } from './pipeline.js';
 import { createInteractiveReasons } from './interactive.js';
 import { filterLog } from './log.js';
 import { semantics as s } from './semantics.js';
+import { feedbackSnapshotRows } from './article-lookup.js';
 
 export async function resolveFeedbackArticle(db, reference) {
     if (!reference?.link) throw new Error('A Smart article is required.');
     // Use only existing snapshots. Never acquire or reprocess content for this action.
     for (const key of ['topStoriesPublished', 'smartClusters', 'smartRawArticles']) {
-        let snapshot = await db.get(key, { type: 'json', shared: true });
-        if (typeof snapshot === 'string') { try { snapshot = JSON.parse(snapshot); } catch { continue; } }
-        const rows = Array.isArray(snapshot) ? snapshot : snapshot?.articles || [];
+        const rows = await feedbackSnapshotRows(db,key,reference.link);
         const found = rows.find(a => a.link === reference.link && (!reference.clusterId || !a.clusterId || a.clusterId === reference.clusterId));
         if (found) {
             const article = { ...found, feedbackSection: reference.feedbackSection || found.topStory?.feed || found.smartCategory };

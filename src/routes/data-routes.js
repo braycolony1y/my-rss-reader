@@ -1,4 +1,5 @@
 import { feedPageKey, selectFeedPage, registerFeedPagePost } from '../feeds/page-selection.js';
+import { hydratePersonalArticles } from '../feeds/personal-articles.js';
 import { filterPersonalView } from '../smart/feedback/pipeline.js';
 import { canonicalIdentity } from '../board/thread-model.js';
 import { authMiddleware } from '../middleware/auth.js';
@@ -327,31 +328,12 @@ export function registerDataRoutes({
                 .sort((a, b) => hiddenIndex.get(b.link) - hiddenIndex.get(a.link));
         } else {
             if (['recent', 'saved', 'board'].includes(filterType)) {
-                const smartClustersRaw = await env.RSS_DATA.get('smartClusters', { type: 'json', shared: true }) || [];
                 const wanted = filterType === 'board'
                     ? boardSet
                     : filterType === 'saved'
                         ? savedSet
                         : readSet;
-                const smartArticles = smartClustersRaw.filter(a => wanted.has(a.link)).map(c => cleanStoredCluster(c)).filter(a => a && !articleIsBlocked(a));
-
-                const linkMap = new Map();
-                filteredArticles.forEach(a => linkMap.set(a.link, a));
-
-                const smartRawArticles = await env.RSS_DATA.get('smartRawArticles', { type: 'json', shared: true }) || [];
-                smartRawArticles.forEach(a => {
-                    if (!articleIsBlocked(a)) linkMap.set(a.link, a);
-                });
-
-                smartArticles.forEach(a => linkMap.set(a.link, a));
-                if (filterType === 'board') {
-                    const members = await env.RSS_DATA.get('cacheMembers', { type: 'json' }) || {};
-                    for (const member of Object.values(members)) if (member.in_cache) {
-                        const article = { ...(linkMap.get(member.url) || member.article), link: member.url, active_caching: member.active_caching, auto_added: member.auto_added };
-                        linkMap.set(member.url, article);
-                    }
-                }
-                filteredArticles = Array.from(linkMap.values());
+                filteredArticles = await hydratePersonalArticles({db:env.RSS_DATA,articles:filteredArticles,wanted,filterType,articleIsBlocked});
             }
 
             if (!simpleStreamingView) filteredArticles = filteredArticles.filter(a => !hiddenSet.has(a.link));

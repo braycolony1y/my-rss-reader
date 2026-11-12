@@ -1,4 +1,5 @@
-import fs from 'node:fs/promises';
+import { createCacheFilesystem } from '../database/cache-filesystem.js';
+import { createPdfJobPersistence } from './job-storage.js';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { load } from 'cheerio';
@@ -6,20 +7,16 @@ import { canonicalIdentity, canonicalUrl } from '../board/thread-model.js';
 import { isVozThreadUrl, getVozPaginationMaxPage } from '../voz-thread-state.js';
 import { renderPdfChunk, mergePdfChunks } from './pdf-renderer.js';
 
-export function createPdfService({ fetchPage, retention, directory = './article_cache/pdf', render = renderPdfChunk, merge = mergePdfChunks,
+export function createPdfService({ fetchPage, retention, db, directory = './article_cache/pdf', render = renderPdfChunk, merge = mergePdfChunks,
     now = () => Date.now(), chunkSize = 10, pause = () => new Promise(resolve => setTimeout(resolve, 100)) }) {
     directory = path.resolve(directory);
+    const fs=createCacheFilesystem(db),persistJob=createPdfJobPersistence(db,directory);
     const jobs = new Map(), queue = [];
     let running = false, initialization;
     const folder = id => path.join(directory, id);
     const writes = new Map();
     const persist = job => {
-        const write = (writes.get(job.id) || Promise.resolve()).catch(() => {}).then(async () => {
-            await fs.mkdir(folder(job.id), { recursive: true });
-            const file = path.join(folder(job.id), 'job.json'), temp = file + '.' + randomUUID() + '.tmp';
-            await fs.writeFile(temp, JSON.stringify(job));
-            await fs.rename(temp, file);
-        });
+        const write = (writes.get(job.id) || Promise.resolve()).catch(() => {}).then(()=>persistJob(job));
         writes.set(job.id, write);
         write.finally(() => { if (writes.get(job.id) === write) writes.delete(job.id); }).catch(() => {});
         return write;

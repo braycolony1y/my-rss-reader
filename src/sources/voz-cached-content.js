@@ -1,9 +1,10 @@
 import { load } from 'cheerio';
 import { transformVozBlueskyEmbeds } from './voz-bluesky-embeds.js';
 import { normalizeCachedYoutubeEmbeds } from '../articles/youtube-cached-embeds.js';
+import { preserveVozWrapperImageWidths } from '../articles/voz-image-sizing.js';
 
 export function cleanVozCachedContent(content, result = {}) {
-    const upgraded = normalizeCachedYoutubeEmbeds(transformVozBlueskyEmbeds(content));
+    const upgraded = preserveVozWrapperImageWidths(normalizeCachedYoutubeEmbeds(transformVozBlueskyEmbeds(content)));
     const page = Number(result.pagination?.currentPage);
     if (!Number.isSafeInteger(page) || page < 1) return upgraded;
     const $ = load(upgraded, null, false);

@@ -1,14 +1,16 @@
 import { createMembershipReconciler } from './membership.js';
+import { createPreferenceUpdater } from './preference-update.js';
+import { createCacheFilesystem } from '../database/cache-filesystem.js';
 import { createLiveSync } from './live-sync.js';
 import { createIdleReactivation } from './idle-reactivation.js';
 import { archiveExpiry } from '../articles/retention.js';
-import fs from 'node:fs/promises';
 import path from 'node:path';
 import { archivePage, renderArchive } from './presentation.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { canonicalIdentity, canonicalUrl, reconcilePosts, upgradeArchiveTimes } from './thread-model.js';
 
 export function createBoardCache({ env, fetchPage, writeJson, directory = './article_cache/threads', loadLegacy = async () => [], now = () => Date.now(), retentionMs = Number(process.env.CACHE_DISMISSAL_RETENTION_DAYS || 30) * 86400000 }) {
+    const fs = createCacheFilesystem(env.RSS_DATA);
     retentionMs = Number.isFinite(retentionMs) && retentionMs > 0 ? retentionMs : 30 * 86400000;
     const db = env.RSS_DATA;
     // Board mutations still run one at a time, but foreground
@@ -797,31 +799,7 @@ export function createBoardCache({ env, fetchPage, writeJson, directory = './art
         });
         if (active) void syncOne(id).catch(e => console.warn('[CACHE RESUME]', e.message));
     }
-    async function updatePreference(key, value) {
-        // Share the same read-modify-write lock as auto-add and folder changes.
-        return locked(async () => {
-            const prefs = await get('userPreferences', {});
-            if (key === 'boardFolderMappings') {
-                if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Folder mappings must be an object');
-                const mappings = { ...(prefs.boardFolderMappings || {}) };
-                const known = new Set(Object.keys(mappings).map(identity));
-                // Older clients send their entire local snapshot. Omission or a
-                // stale value cannot undo a newer server-side assignment.
-                for (const [url, folder] of Object.entries(value)) {
-                    const id = identity(url);
-                    if (id && !known.has(id) && typeof folder === 'string' && folder.trim()) {
-                        mappings[url] = isCache(folder) ? 'cache' : folder;
-                        known.add(id);
-                    }
-                }
-                prefs[key] = mappings;
-            } else {
-                prefs[key] = value;
-            }
-            await put('userPreferences', prefs);
-            return prefs;
-        });
-    }
+    const updatePreference=createPreferenceUpdater({db,locked,get,put,identity,isCache});
     async function saveRules(rules) {
         if (!Array.isArray(rules) || rules.length > 100) throw new Error('Use up to 100 rules');
         const cleaned = rules.map(r => {

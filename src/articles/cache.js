@@ -1,4 +1,6 @@
 import { createCachedThreadCreationLookup } from './voz-creation-time.js';
+import { createCacheFilesystem } from '../database/cache-filesystem.js';
+import { loadSqliteArticleIndex } from './cache-index.js';
 import { CONTENT_RETENTION_MS, deletionTime, archiveExpiry } from './retention.js';
 import { getArticleThumbnail } from './thumbnail.js';
 import { canonicalIdentity } from '../board/thread-model.js';
@@ -6,7 +8,6 @@ import { normalizeStoredPostTimes } from './source-time.js';
 import { normalizeArticleSourceUrl } from '../article-source-state.js';
 import { fnv1a, normalizeStateUrl } from '../utils/article-utils.js';
 import path from 'path';
-import fs from 'fs/promises';
 import { isUnsafeVozThreadPayload, isVozThreadUrl, isMismatchedVozThreadPage } from '../voz-thread-state.js';
 import { normalizeCachedArticleForSource, enhanceArticleResultForSource, assertArticleResultAcceptedBySource } from './source-results.js';
 
@@ -14,6 +15,7 @@ export function createArticleCache({
     env,
     _writeJsonAtomic,
 } = {}) {
+    const fs = createCacheFilesystem(env?.RSS_DATA);
     const ARTICLE_CACHE_DIR = './article_cache';
 
     const ARTICLE_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -43,6 +45,7 @@ export function createArticleCache({
 
     async function _initArticleCacheIndex() {
         if (_articleCacheIndex !== null) return;
+        if(env?.RSS_DATA.cacheList){_articleCacheIndex=await loadSqliteArticleIndex(env.RSS_DATA);return;}
         _articleCacheIndex = new Map();
         try {
             await fs.mkdir(ARTICLE_CACHE_DIR, { recursive: true });

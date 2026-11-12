@@ -3,6 +3,7 @@ import { authMiddleware } from '../middleware/auth.js';
 import { publisherIcon } from '../utils/article-utils.js';
 import { sourceFetchPolicyIdentity } from '../../smart-news.js';
 import {manualRefreshOptions} from '../articles/manual-refresh-scopes.js';
+import {manualSyncOutcome} from '../feeds/manual-sync-outcome.js';
 
 export function registerFeedRoutes({
     app,
@@ -31,10 +32,9 @@ export function registerFeedRoutes({
                     setManualSyncProgress(requestId, progress.stage, progress.message, progress);
                 }, null, manualRefreshOptions());
             }
-            finishManualSyncProgress(requestId, 'Refresh complete.', {
-                failed: result.success === false || result.smart?.ok === false
-            });
-            res.json(result);
+            const outcome = manualSyncOutcome(result);
+            finishManualSyncProgress(requestId, outcome.message, {failed: outcome.failed});
+            res.json({...result, success: !outcome.failed, message: outcome.message});
         } catch (error) {
             finishManualSyncProgress(requestId, 'Refresh failed.', { failed: true, error: error.message });
             res.status(500).json({ success: false, error: error.message });

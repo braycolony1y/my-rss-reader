@@ -217,7 +217,7 @@ export function registerArticleRoutes({
                         if (cache._articleCacheIndex !== null) {
                             for (const [filename, meta] of cache._articleCacheIndex.entries()) {
                                 if (meta.url && meta.url.includes(`voz.vn/t/`) && meta.url.includes(`.${threadId}`)) {
-                                    await fs.unlink(path.join(ARTICLE_CACHE_DIR, filename)).catch(() => {});
+                                    await deleteCachedArticle(meta.url);
                                     cache._articleCacheIndex.delete(filename);
                                 }
                             }

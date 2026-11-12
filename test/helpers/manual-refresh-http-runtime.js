@@ -3,7 +3,7 @@ import {createApplication} from '../../src/app.js';
 import {verifyManualRefreshHttp} from './manual-refresh-smoke.js';
 
 const feedUrl = 'https://manual.example.test/feed.xml';
-const snapshot = {feeds: [{url: feedUrl, title: 'Manual refresh fixture', category: 'Forum'}],
+const snapshot = {feeds: [{url: feedUrl, title: 'Manual refresh fixture', category: 'Forum', fetchMethods:['direct']}],
     articles: [], smartSources: [], smartClusters: [], smartRawArticles: [],
     readStates: [], savedStates: [], hiddenStates: [], boardStates: [], userPreferences: {}};
 await fs.writeFile('database.json', JSON.stringify(Object.fromEntries(

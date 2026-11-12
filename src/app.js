@@ -1,7 +1,7 @@
 import { registerPersonalFilterRoutes } from './smart/feedback/routes.js';
 import { sourceCooldown } from './articles/source-cooldown.js';
 import { touchAntigravityBriefingFocus, clearAntigravityBriefingFocus } from './ai/antigravity.js';
-import { acquireOpenCliBrowserOriginLease, releaseOpenCliBrowserOriginLease } from './opencli-reader.js';
+import { acquireOpenCliBrowserOriginLease, releaseOpenCliBrowserOriginLease, startVozWarmTab } from './opencli-reader.js';
 import { authMiddleware } from './middleware/auth.js';
 import { createPdfService } from './exports/pdf-service.js';
 import { registerPdfRoutes } from './routes/pdf-routes.js';
@@ -59,7 +59,7 @@ import { isSmartRefreshActive } from './smart/refresh/coordination.js';
 
 // Construct one owner per subsystem. Deferred callbacks below connect the
 // Smart engine and feed ingestion without module cycles or duplicate state.
-export async function createApplication({ isMainModule = false } = {}) {
+export async function createApplication({ isMainModule = false, databaseStore } = {}) {
     const config = loadConfiguration();
 
     const lifecycle = installProcessHandlers();
@@ -67,7 +67,7 @@ export async function createApplication({ isMainModule = false } = {}) {
 
     const http = createHttpApp();
 
-    const database = createDatabaseStore();
+    const database = databaseStore || createDatabaseStore();
 
     await database.initializeWriterLock(!process.env.SKIP_DB_LOCK && isMainThread && isMainModule);
     await sourceCooldown.initialize(database.env.RSS_DATA, { lazy: true });
@@ -338,6 +338,7 @@ export async function createApplication({ isMainModule = false } = {}) {
     archives.setBoardCache(boardCache);
 
     const pdf = createPdfService({
+        db: database.env.RSS_DATA,
         retention: cache.getArticleRetention,
         fetchPage: articleFallbackAcquisition(async (url, feedUrl, { page, force }) => {
             const archived = force ? null : await boardCache.articlePage(url);
@@ -573,6 +574,7 @@ export async function createApplication({ isMainModule = false } = {}) {
         app: http.app,
         port: config.PORT,
         startBackgroundServices: async () => {
+            startVozWarmTab();
             await boardCache.initialize();
             startup.startBackgroundServices();
             void boardCache.tick().catch(error => console.warn('[CACHE STARTUP]', error.message));

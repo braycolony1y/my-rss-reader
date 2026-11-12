@@ -2,6 +2,7 @@ import { decodeHTMLEntities } from '../../feed-parsers.js';
 import { transformVozRedditEmbeds } from '../sources/VozSource.js';
 import * as cheerio from 'cheerio/slim';
 import { escapeHtml } from '../utils/article-utils.js';
+import { cleanResponsiveDimensions } from './responsive-dimensions.js';
 
 function isUsableArticlePage(html) {
     if (!html) return false;
@@ -266,15 +267,7 @@ function cleanArticleMarkupUncached(markup) {
 
             const isMediaNode = ['img', 'video', 'audio', 'iframe'].includes(tag);
             const isProtectedNode = protectedNodes.has(el);
-            if (!isProtectedNode) {
-                if (!isMediaNode || tag === 'img') {
-                    node.removeAttr('style');
-                    node.removeAttr('height');
-                    node.removeAttr('min-height');
-                    node.removeAttr('max-height');
-                    node.removeAttr('width');
-                }
-            }
+            cleanResponsiveDimensions(node, { protectedNode: isProtectedNode, mediaNode: isMediaNode, vozPost: isVozPost });
             Object.keys(el.attribs || {}).forEach(attr => {
                 if (/^on/i.test(attr)) node.removeAttr(attr);
             });

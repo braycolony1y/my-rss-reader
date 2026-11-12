@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import cron from 'node-cron';
-import { createDatabaseStore } from '../src/database/store.js';
+import { createLegacyDatabaseStore as createDatabaseStore } from '../src/database/store.js';
 import { createArticleCache } from '../src/articles/cache.js';
 import { createBackgroundStartup } from '../src/jobs/startup.js';
 import { summaryQueue } from '../summary-engine.js';

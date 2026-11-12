@@ -1,5 +1,6 @@
 import { shouldSkipFeedFetch } from './fetch-scope.js';
 import { publishFeedResults } from './publish-results.js';
+import { beginFeedPublication } from './publication-order.js';
 import { coalesceFeedSync } from './coalescing.js';
 import { backgroundPublisherFetch as fetch } from '../articles/background-publisher-fetch.js';
 import {createFeedSourceAcquisition} from './source-acquisition.js';
@@ -75,6 +76,7 @@ export function createFeedSync({
     const syncFeeds = coalesceFeedSync(runFeedSync);
 
     async function runFeedSync(env, targetFeedUrl = null, onProgress = null, targetCategory = null, {forcedFeedUrls, manualRefreshScopes = []} = {}) {
+        const publicationOrder = beginFeedPublication(env.RSS_DATA);
         let rawFeeds = await env.RSS_DATA.get('feeds', { type: 'json' }) || [];
         const feeds = [];
         for (let f of rawFeeds) {
@@ -664,7 +666,7 @@ export function createFeedSync({
         await Promise.all(activePromises);
         await cacheObservations.flush().catch(error => console.error('[RSS CACHE OBSERVATION]', error.message));
 
-        await publishFeedResults(env.RSS_DATA, newArticles, feeds, !targetFeedUrl);
+        await publishFeedResults(env.RSS_DATA, newArticles, feeds, !targetFeedUrl, publicationOrder);
         if (!targetFeedUrl) {
             await reconcileAllConfiguredSourceFetchMethods();
         }

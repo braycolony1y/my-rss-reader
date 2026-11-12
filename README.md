@@ -2,6 +2,8 @@
 
 Production RSS reader served by `rss-reader.service` from `/home/ubuntu/my-rss-reader`.
 
+SQLite is the default storage backend. Database files and private backups live under `database_state/`; see [storage, migration, backup and rollback procedures](docs/sqlite-storage.md). Original JSON files are retained as migration sources.
+
 ## Directory layout
 
 - `server.js`, `index.html`, `script.js`: application entry points.

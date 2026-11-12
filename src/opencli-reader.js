@@ -1,3 +1,5 @@
+import { createVozWarmTab } from './browser/voz-warm-tab.js';
+import { createFetchTabIdleScheduler } from './browser/fetch-tab-idle.js';
 import { sourceCooldown } from './articles/source-cooldown.js';
 import { createBrowserFetchQueue } from './browser/fetch-queue.js';
 import { withBrowserFetchBudget } from './browser/work-budget.js';
@@ -1024,7 +1026,7 @@ function getOpenCliBrowserFetchTracker(origin) {
 
     tracker.queue ||= createBrowserFetchQueue({ canFetchConcurrently: () => {
         const state = openCliBrowserFetchStates.get(origin);
-        return hasWarmOpenCliBrowserFetch(origin) && state.directDisabled && !state.refreshPromise;
+        return !tracker.maintenanceActive && hasWarmOpenCliBrowserFetch(origin) && state.directDisabled && !state.refreshPromise;
     } });
     return tracker;
 }
@@ -1161,75 +1163,24 @@ function maybeDeleteOpenCliBrowserTracker(
 }
 
 
-function scheduleOpenCliBrowserIdleClose(
-    origin,
-    tracker
-) {
-    if (!tracker) {
-        return;
-    }
+const scheduleOpenCliBrowserIdleClose = createFetchTabIdleScheduler({
+    states: openCliBrowserFetchStates,
+    trackers: openCliBrowserFetchQueues,
+    cancelIdleClose: cancelOpenCliBrowserIdleClose,
+    originPinned: openCliBrowserOriginPinned,
+    resetPage: resetOpenCliBrowserFetchPage,
+    maybeDeleteTracker: maybeDeleteOpenCliBrowserTracker
+});
 
-    cancelOpenCliBrowserIdleClose(
-        tracker
-    );
-
-    if (
-        tracker.pending !== 0 ||
-        tracker.closePromise ||
-        openCliBrowserOriginPinned(tracker)
-    ) {
-        return;
-    }
-
-    // OPENCLI_FETCH_EXACT_IDLE_CLOSE_V6
-    //
-    // Keep Browser Bridge's own idle timeout long enough that it cannot reap a
-    // VOZ tab while an RSS viewer is pinned. Our policy owns the real 60-second
-    // idle lifetime: only when there are no queued/running jobs AND no active
-    // viewer do we close the exact owned tab. Closing the exact target avoids
-    // the old closeWindow()/lease-release path that produced about:blank tabs.
-    tracker.closeTimer = setTimeout(() => {
-        tracker.closeTimer = null;
-
-        if (
-            tracker.pending !== 0 ||
-            tracker.closePromise ||
-            openCliBrowserOriginPinned(tracker) ||
-            openCliBrowserFetchQueues.get(origin) !== tracker
-        ) {
-            return;
-        }
-
-        const state = openCliBrowserFetchStates.get(origin);
-        const closeTask = (async () => {
-            if (state) {
-                await resetOpenCliBrowserFetchPage(state, {
-                    closeTab: true,
-                    reason: '60s fetch-idle cleanup'
-                });
-            }
-
-            console.log(
-                `[OPENCLI FETCH] ${origin} idle for 60s; closed exact reusable browser tab`
-            );
-        })();
-
-        tracker.closePromise = closeTask;
-
-        closeTask.finally(() => {
-            if (tracker.closePromise === closeTask) {
-                tracker.closePromise = null;
-            }
-
-            maybeDeleteOpenCliBrowserTracker(
-                origin,
-                tracker
-            );
-        }).catch(() => {});
-    }, 60_000);
-
-    tracker.closeTimer.unref?.();
-}
+const vozWarmTab = createVozWarmTab({
+    getState: getOpenCliBrowserFetchState,
+    getTracker: getOpenCliBrowserFetchTracker,
+    ensureReady: ensureOpenCliSharedBrowserReady,
+    evaluate: evaluateOpenCliSharedBrowserPage,
+    cancelIdleClose: cancelOpenCliBrowserIdleClose,
+    withBudget: withBrowserFetchBudget
+});
+export const startVozWarmTab = () => vozWarmTab.start();
 
 
 function normalizeOpenCliLeaseOrigin(
