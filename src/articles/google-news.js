@@ -1,3 +1,5 @@
+import { boundCacheObject } from '../database/sqlite/cache-retention.js';
+import { createConcurrencyLimiter } from '../runtime/concurrency-limiter.js';
 import GoogleDecoderPkg from 'google-news-url-decoder';
 import { safeHttpUrl, publisherIcon, isInvalidImage } from '../utils/article-utils.js';
 import { isGoogleNewsArticleUrl, parseOpenCliSearchDestination, isGoogleNewsHostedThumbnail } from './search-destination.js';
@@ -33,6 +35,10 @@ export function createGoogleNewsResolver({
     const GOOGLE_NEWS_URL_FAILURE_TTL_MS = 5 * 60 * 1000;
 
     let googleNewsUrlCache = null;
+    // Background resolutions share one OpenCLI search slot; a reader waiting on
+    // a foreground open has its own slot and never queues behind them.
+    const openCliSearchLimiter = createConcurrencyLimiter(1, { maxPending: 16 });
+    const foregroundOpenCliSearchLimiter = createConcurrencyLimiter(1, { maxPending: 8 });
 
     let googleNewsUrlCacheSaveTimer = null;
 
@@ -73,9 +79,19 @@ export function createGoogleNewsResolver({
     async function ensureGoogleNewsUrlCache() {
         if (!googleNewsUrlCache) {
             const obj = await env.RSS_DATA.get('googleNewsUrlCache', { type: 'json' }) || {};
-            googleNewsUrlCache = new Map(Object.entries(obj));
+            googleNewsUrlCache = new Map(Object.entries(boundCacheObject('googleNewsUrlCache',obj)));
+            persistedGoogleNewsUrls = new Map(googleNewsUrlCache);
         }
         return googleNewsUrlCache;
+    }
+    // Entries persist as row patches: the in-memory 3000-entry trim is a memory
+    // bound only and must not delete mappings that saved/Board stories still use.
+    // Only an explicit publisher mismatch removes a persisted mapping.
+    let persistedGoogleNewsUrls = new Map();
+    const removedGoogleNewsUrls = new Set();
+    function forgetGoogleNewsUrl(cache, url) {
+        cache.delete(url);
+        removedGoogleNewsUrls.add(url);
     }
 
     function scheduleGoogleNewsUrlCacheSave() {
@@ -84,8 +100,20 @@ export function createGoogleNewsResolver({
             googleNewsUrlCacheSaveTimer = null;
             try {
                 if (!googleNewsUrlCache) return;
-                const obj = Object.fromEntries(googleNewsUrlCache);
-                await env.RSS_DATA.put('googleNewsUrlCache', JSON.stringify(obj));
+                if (env.RSS_DATA.patchEntries) {
+                    const changed = {};
+                    for (const [url, entry] of googleNewsUrlCache) if (persistedGoogleNewsUrls.get(url) !== entry) changed[url] = entry;
+                    const removed = [...removedGoogleNewsUrls].filter(url => !googleNewsUrlCache.has(url));
+                    if (!Object.keys(changed).length && !removed.length) return;
+                    await env.RSS_DATA.patchEntries('googleNewsUrlCache', changed, removed);
+                    for (const url of removed) removedGoogleNewsUrls.delete(url);
+                    for (const [url, entry] of Object.entries(changed)) persistedGoogleNewsUrls.set(url, entry);
+                    for (const url of removed) persistedGoogleNewsUrls.delete(url);
+                } else {
+                    const obj = boundCacheObject('googleNewsUrlCache',Object.fromEntries(googleNewsUrlCache));
+                    googleNewsUrlCache = new Map(Object.entries(obj));
+                    await env.RSS_DATA.put('googleNewsUrlCache', JSON.stringify(obj));
+                }
             } catch (error) {
                 console.error('[GOOGLE NEWS] Could not persist destination cache:', error.message);
             }
@@ -191,13 +219,16 @@ export function createGoogleNewsResolver({
         return '';
     }
 
-    async function resolveGoogleNewsViaOpenCliSearch(hints = {}) {
+    async function resolveGoogleNewsViaOpenCliSearch(hints = {}, { foreground = false } = {}) {
         const domain = googleNewsPublisherDomain(hints);
         const title = normalizeArticleTitle(hints.title || '').replace(/\s+-\s+[^-]{2,80}$/i, '').trim();
         if (!domain || title.length < 12) return '';
         const executable = path.resolve('./node_modules/.bin/opencli');
         const query = 'site:' + domain + ' "' + title.replace(/["\r\n]+/g, ' ') + '"';
-        const { stdout } = await execFileAsync(executable, [
+        // Each search is a separate OpenCLI Node process driving a browser
+        // tab. Up to 16 background resolutions may run, so serialize only this
+        // expensive last-resort step instead of launching them all together.
+        const { stdout } = await (foreground ? foregroundOpenCliSearchLimiter : openCliSearchLimiter).run(() => execFileAsync(executable, [
             'duckduckgo', 'search', query,
             '--limit', '5',
             '--window', 'background',
@@ -205,7 +236,7 @@ export function createGoogleNewsResolver({
         ], {
             timeout: 45000,
             maxBuffer: 2 * 1024 * 1024
-        });
+        }));
         return parseOpenCliSearchDestination(stdout, domain);
     }
 
@@ -215,7 +246,7 @@ export function createGoogleNewsResolver({
         const cache = await ensureGoogleNewsUrlCache();
         let cached = cache.get(original);
         if (cached?.resolvedUrl && !matchesGoogleNewsPublisher(cached.resolvedUrl, hints)) {
-            cache.delete(original);
+            forgetGoogleNewsUrl(cache, original);
             cached = undefined;
         }
         if (cached) {
@@ -273,7 +304,7 @@ export function createGoogleNewsResolver({
             if (resolvedUrl && !matchesGoogleNewsPublisher(resolvedUrl, hints)) resolvedUrl = '';
             if (!resolvedUrl) {
                 try {
-                    resolvedUrl = await resolveGoogleNewsViaOpenCliSearch(hints);
+                    resolvedUrl = await resolveGoogleNewsViaOpenCliSearch(hints, { foreground: !options.backgroundResolve });
                 } catch (error) {
                     resolutionError += (resolutionError ? '; ' : '') + 'OpenCLI search: ' + error.message;
                 }
@@ -325,7 +356,7 @@ export function createGoogleNewsResolver({
             if (!isGoogleNewsArticleUrl(wrapper)) continue;
             let destination = cache.get(wrapper)?.resolvedUrl || '';
             if (destination && !matchesGoogleNewsPublisher(destination, article)) {
-                cache.delete(wrapper);
+                forgetGoogleNewsUrl(cache, wrapper);
                 destination = '';
             }
             if (!destination) {

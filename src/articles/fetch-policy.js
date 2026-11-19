@@ -23,6 +23,7 @@ export function createArticleFetchPolicy({
     let articleFetchStrategyStats = null;
 
     let articleFetchStatsSaveTimer = null;
+    const dirtyHosts=new Set();
 
     async function ensureArticleFetchStats() {
         if (!articleFetchStrategyStats) {
@@ -36,7 +37,11 @@ export function createArticleFetchPolicy({
         articleFetchStatsSaveTimer = setTimeout(async () => {
             articleFetchStatsSaveTimer = null;
             try {
-                await env.RSS_DATA.put('articleFetchStrategyStats', JSON.stringify(articleFetchStrategyStats || {}));
+                const hosts=[...dirtyHosts];dirtyHosts.clear();
+                try{
+                    if(env.RSS_DATA.patchEntries)await env.RSS_DATA.patchEntries('articleFetchStrategyStats',Object.fromEntries(hosts.map(host=>[host,articleFetchStrategyStats[host]])));
+                    else await env.RSS_DATA.put('articleFetchStrategyStats', JSON.stringify(articleFetchStrategyStats || {}));
+                }catch(error){for(const host of hosts)dirtyHosts.add(host);throw error;}
             } catch (error) {
                 console.error('[ARTICLE FETCH] Could not persist adaptive scores:', error.message);
             }
@@ -187,6 +192,7 @@ export function createArticleFetchPolicy({
         };
         stats[hostname][strategy].userPreference = preference === 'like' ? 1 : (preference === 'dislike' ? -1 : 0);
         stats[hostname][strategy].lastPreferenceAt = new Date().toISOString();
+        dirtyHosts.add(hostname);
         scheduleArticleFetchStatsSave();
         return getArticleFetchPreferences(hostname);
     }
@@ -216,6 +222,7 @@ export function createArticleFetchPolicy({
             current.lastError = String(error || 'No usable article content').slice(0, 240);
         }
         stats[hostname][strategy] = current;
+        dirtyHosts.add(hostname);
         scheduleArticleFetchStatsSave();
     }
 

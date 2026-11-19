@@ -1,3 +1,4 @@
+import { checkpointSqlite } from './checkpoints.js';
 import { parentPort, workerData } from 'node:worker_threads';
 import { randomUUID } from 'node:crypto';
 import { ensureSqlite } from './migration.js';
@@ -5,7 +6,8 @@ import { createRepository } from './repository.js';
 import { backupDatabase, maintainDatabase } from './maintenance.js';
 import { createCacheFiles } from './cache-files.js';
 
-let db,repository,transaction,timer,cacheFiles;
+let db,repository,transaction,timer,cacheFiles,checkpointTimer,optimizeTimer;
+let lastActivity=Date.now();
 const rollback=()=>{if(db?.isTransaction)db.exec('ROLLBACK');transaction=null;clearTimeout(timer);};
 const descriptor=key=>repository.info(key)||null;
 function readSnapshot(operation){
@@ -23,7 +25,11 @@ function get(key,revision){
 }
 async function dispatch(action,args) {
     if(transaction && !['commit','rollback'].includes(action))throw Error('SQLite transaction in progress');
+    lastActivity=Date.now();
     if(action==='info')return descriptor(args.key);
+    if(action==='getMany')return readSnapshot(()=>Object.fromEntries(args.keys.map(key=>{
+        const info=descriptor(key);return [key,info&&args.revisions?.[key]===info.revision?{info,cached:true}:{info,value:info?repository.read(key):null}];
+    })));
     if(action==='get')return get(args.key,args.revision);
     if(action==='begin'){
         db.exec('BEGIN IMMEDIATE');transaction=randomUUID();
@@ -56,7 +62,7 @@ async function dispatch(action,args) {
     if(action==='stats')return {storage:'sqlite',...repository.stats(),collections:db.prepare('SELECT count(*) n FROM collections').get().n};
     if(action==='backup')return backupDatabase(db,workerData.root,args);
     if(action==='maintenance')return maintainDatabase(db);
-    if(action==='close'){rollback();db.exec('PRAGMA wal_checkpoint(PASSIVE)');db.close();return;}
+    if(action==='close'){clearInterval(checkpointTimer);clearInterval(optimizeTimer);rollback();db.exec('PRAGMA optimize');checkpointSqlite(db,{idle:true});db.close();return;}
     throw Error('Unknown SQLite action');
 }
 
@@ -64,6 +70,9 @@ try{
     db=await ensureSqlite(workerData);repository=createRepository(db);cacheFiles=createCacheFiles(db);
     // Startup never advertises readiness until a verified restorable backup exists.
     if(workerData.backupOnOpen)await backupDatabase(db,workerData.root);
+    checkpointTimer=setInterval(()=>{try{checkpointSqlite(db,{idle:Date.now()-lastActivity>=30000});}catch(error){console.warn('[SQLITE CHECKPOINT]',error.message);}},30000);
+    optimizeTimer=setInterval(()=>{if(!db.isTransaction)try{db.exec('PRAGMA optimize');}catch(error){console.warn('[SQLITE OPTIMIZE]',error.message);}},30*60000);
+    checkpointTimer.unref();optimizeTimer.unref();
     parentPort.postMessage({ready:true});
     let queue=Promise.resolve();
     parentPort.on('message',message=>{
@@ -72,5 +81,5 @@ try{
             catch(error){parentPort.postMessage({id:message.id,error:{message:error.message,code:error.code,stack:error.stack}});}
         });
     });
-    parentPort.on('close',()=>{try{rollback();db.close();}catch{}});
+    parentPort.on('close',()=>{clearInterval(checkpointTimer);clearInterval(optimizeTimer);try{rollback();db.close();}catch{}});
 }catch(error){parentPort.postMessage({fatal:{message:error.message,code:error.code,stack:error.stack}});parentPort.close();}

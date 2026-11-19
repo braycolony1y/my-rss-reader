@@ -87,8 +87,9 @@ async function loadPrefilterStore(db, metrics = null) {
   };
   store.addIndex = addIndex;
   if (stored?.filterVersion === FILTER_VERSION) {
+    if ((stored.records || []).length > MAX_RECORDS) { store.dirty = true; store.revision++; }
     for (const record of (stored.records || []).slice(-MAX_RECORDS)) {
-      if (!record?.identity?.key || Date.now() - record.updatedAt > MAX_AGE) continue;
+      if (!record?.identity?.key || Date.now() - record.updatedAt > MAX_AGE) { store.dirty = true; store.revision++; continue; }
       if (retireSavedReasons(record)) { store.dirty = true; store.revision++; }
       records.set(record.identity.key, record);
       addIndex(record);

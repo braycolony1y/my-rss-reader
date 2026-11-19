@@ -8,7 +8,7 @@ export function workloadConcurrency(name, fallback, ceiling = 32) {
 
 export const cpuCapacity = () => Math.max(1, Math.min(4, availableParallelism()));
 
-export function createConcurrencyLimiter(limit) {
+export function createConcurrencyLimiter(limit, {maxPending=512}={}) {
     if (!Number.isInteger(limit) || limit < 1) throw new RangeError('Concurrency must be a positive integer');
     const pending = [];
     let active = 0, completed = 0, sequence = 0;
@@ -23,6 +23,7 @@ export function createConcurrencyLimiter(limit) {
     }
     return {
         run(run, priority = 0) {
+            if(active>=limit && pending.length>=maxPending)return Promise.reject(Object.assign(new Error('Work queue is full; retry later'),{code:'WORK_QUEUE_FULL',status:503}));
             return new Promise((resolve, reject) => {
                 pending.push({ run, priority, sequence: sequence++, resolve, reject }); pump();
             });

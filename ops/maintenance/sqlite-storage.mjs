@@ -5,6 +5,7 @@ import { exportLegacyDatabase } from '../../src/database/sqlite/export.js';
 import { restoreDatabase } from '../../src/database/sqlite/restore.js';
 import { assertOffline } from '../../src/database/sqlite/offline.js';
 import { rollbackToJson } from '../../src/database/sqlite/rollback.js';
+import { backupDatabase, checkDatabase } from '../../src/database/sqlite/maintenance.js';
 
 const [action='check',argument,rootArgument]=process.argv.slice(2);
 const root=path.resolve(rootArgument||(!['backup','restore','export-legacy'].includes(action)?argument:null)||process.env.RSS_READER_DIR||process.cwd());
@@ -18,13 +19,20 @@ if(action==='rollback-json'){
     await assertOffline(root);
     const db=openSqlite(path.join(root,'database_state/reader.sqlite'),{readOnly:true});
     try{console.log(JSON.stringify(await exportLegacyDatabase(db,path.resolve(argument)),null,2));}finally{db.close();}
-}else if(['check','backup','migrate'].includes(action)){
-    if(action==='migrate')await assertOffline(root);
+}else if(['check','backup'].includes(action)){
+    // Read-only connection: safe while the server runs (it never writes the
+    // database, so it cannot contend for the live writer's lock).
+    const db=openSqlite(path.join(root,'database_state/reader.sqlite'),{readOnly:true});
+    try{
+        const result=action==='backup'?await backupDatabase(db,root,argument?{destination:path.resolve(argument)}:{}):checkDatabase(db);
+        console.log(JSON.stringify(result,null,2));
+    }finally{db.close();}
+}else if(action==='migrate'){
+    // Writes the database: refuse while the server holds the writer lock.
+    await assertOffline(root);
     const store=createSqliteDatabaseStore({root});
     try{
         await store.initializeWriterLock(false);
-        const result=action==='backup'?await store.env.RSS_DATA.backup(argument?{destination:path.resolve(argument)}:{})
-            :action==='migrate'?{migrated:true,filename:path.join(root,'database_state/reader.sqlite')}:await store.env.RSS_DATA.maintenance();
-        console.log(JSON.stringify(result,null,2));
+        console.log(JSON.stringify({migrated:true,filename:path.join(root,'database_state/reader.sqlite')},null,2));
     }finally{await store.close();}
 }else throw Error('Choose check, backup, migrate, restore, export-legacy, or rollback-json');

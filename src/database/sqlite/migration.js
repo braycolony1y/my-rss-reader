@@ -56,7 +56,7 @@ async function ensureSqliteUnlocked({root,filename}) {
     const stage=filename+'.migration-'+id;
     const db=openSqlite(stage),repository=createRepository(db);
     // Import touches several indexes repeatedly. A bounded 64 MiB import cache
-    // avoids dirty-page churn; normal runtime connections retain the 8 MiB cap.
+    // avoids dirty-page churn; normal writer connections retain the 32 MiB cap.
     db.exec('PRAGMA cache_size=-65536');
     const startedAt=Date.now();let report;
     try {

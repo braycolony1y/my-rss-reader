@@ -1,3 +1,4 @@
+import { readResponseText } from '../fetch-response.js';
 // Shared by HTTP readers and the browser reader child process.
 export function isPublisherVerification(value) {
     if (value?.code === 'PUBLISHER_VERIFICATION') return true;
@@ -28,7 +29,7 @@ export function isPublisherHttpChallenge(status, html = '') {
 }
 
 export async function readPublisherResponse(response) {
-    const body = await response.text();
+    const body = await readResponseText(response,{maxBytes:16*1024*1024});
     if ([403, 429].includes(response.status) || isPublisherVerification(body)) {
         const retry = response.headers?.get('retry-after');
         const retryAfterMs = /^\d+$/.test(retry || '') ? Number(retry) * 1000 : Math.max(0, Date.parse(retry) - Date.now()) || 0;

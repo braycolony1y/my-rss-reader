@@ -4,6 +4,7 @@ export function createRevisionCache({maxBytes=48*1024*1024,maxEntries=64}={}) {
     const strong=new Map(),weak=new Map();let bytes=0,hits=0,misses=0;
     const remove=key=>{const row=strong.get(key);if(row){bytes-=row.bytes;strong.delete(key);}};
     return {
+        peek(key){const row=strong.get(key)||weak.get(key);const value=row?.value||row?.ref?.deref();return value===undefined?undefined:{revision:row.revision,value};},
         get(key,revision){
             const row=strong.get(key),entry=row||weak.get(key);
             const value=entry?.revision===revision?(row?.value||entry.ref?.deref()):undefined;

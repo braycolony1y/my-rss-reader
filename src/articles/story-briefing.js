@@ -696,7 +696,11 @@ export function createStoryBriefings({ db, generate, loadSource, concurrency = 2
                 || (next[job.latestKey].briefing_version || 0) <= (result.briefing_version || 0))) next[job.latestKey]=result;
             const keys = Object.keys(next);
             for (const old of keys.slice(0,Math.max(0,keys.length-cacheMaxEntries))) delete next[old];
-            await db.put('storyBriefings', JSON.stringify(next));
+            if(db.patchEntries){
+                const changed=Object.fromEntries(Object.entries(next).filter(([key,value])=>entries[key]!==value));
+                const removed=Object.keys(entries).filter(key=>!Object.hasOwn(next,key));
+                if(Object.keys(changed).length||removed.length)await db.patchEntries('storyBriefings',changed,removed);
+            }else await db.put('storyBriefings', JSON.stringify(next));
             for (const key of Object.keys(entries)) delete entries[key];
             Object.assign(entries,next);
             // Top analysis does not change the legacy Classic editorial keys.

@@ -1,3 +1,4 @@
+import { readMany } from '../database/read-many.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { setClusteringModel } from '../../smart-news.js';
 import { normalizeStateUrl } from '../utils/article-utils.js';
@@ -47,17 +48,14 @@ export function registerSettingsRoutes({
 
     app.get('/api/user-states', authMiddleware, async (req, res) => {
         try {
-            const prefs = await env.RSS_DATA.get('userPreferences', { type: 'json' }) || {};
+            const values=await readMany(env.RSS_DATA,['userPreferences','readStates','savedStates','boardStates',
+                'hiddenStates','recentReadAt','categoryOrder'],{shared:true});
+            const prefs=values.userPreferences||{};
             res.setHeader('Cache-Control', 'no-store');
             res.json({
-                readStates: await env.RSS_DATA.get('readStates', { type: 'json' }) || [],
-                savedStates: await env.RSS_DATA.get('savedStates', { type: 'json' }) || [],
-                boardStates: await env.RSS_DATA.get('boardStates', { type: 'json' }) || [],
-                hiddenStates: await env.RSS_DATA.get('hiddenStates', { type: 'json' }) || [],
-                recentReadAt: await env.RSS_DATA.get('recentReadAt', { type: 'json' }) || {},
-                categoryOrder: await env.RSS_DATA.get('categoryOrder', { type: 'json' }) || [],
-                userPreferences: prefs,
-                clusteringModel: normalizeClusteringModel(prefs.clusteringModel)
+                readStates:values.readStates||[],savedStates:values.savedStates||[],boardStates:values.boardStates||[],
+                hiddenStates:values.hiddenStates||[],recentReadAt:values.recentReadAt||{},categoryOrder:values.categoryOrder||[],
+                userPreferences:prefs,clusteringModel:normalizeClusteringModel(prefs.clusteringModel)
             });
         } catch (e) {
             res.status(500).json({ error: e.message });

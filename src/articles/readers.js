@@ -22,9 +22,10 @@ export function createArticleReaders({
         if (!VIETSERVER_PROXY_BASE) throw new Error("Vietserver proxy not configured in .env");
         const fetchUrl = VIETSERVER_PROXY_BASE + encodeURIComponent(url);
         const res = await fetch(fetchUrl, {
-            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+            signal: AbortSignal.timeout(30000)
         });
-        if (!res.ok && ![404, 403, 410, 429].includes(res.status)) throw new Error(`Vietserver proxy returned HTTP ${res.status}`);
+        if (!res.ok && ![404, 403, 410, 429].includes(res.status)) { await discardResponseBody(res);throw new Error(`Vietserver proxy returned HTTP ${res.status}`); }
         const body = await readPublisherResponse(res);
         return (res.status === 404 || res.status === 410)
             ? `<!-- RSS_SOURCE_HTTP_STATUS:${res.status} -->${body}`

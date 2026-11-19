@@ -11,6 +11,7 @@ export function createArticleImages({
     cacheArticleResult,
 } = {}) {
     const pending = new Map();
+    const resolved = new Map();
 
     async function resolveImageNow(targetUrl, rssFallback) {
         const cachedImage = await getLastKnownCachedArticleImage(targetUrl);
@@ -36,15 +37,32 @@ export function createArticleImages({
 
     const resolveImage = articleFallbackAcquisition(resolveImageNow, {lane: 'p2'});
 
-    async function getBestImage(targetUrl, _fetchFn, rssFallback = null) {
+    async function getBestImage(targetUrl, _fetchFn, rssFallback = null, { throwWhenBusy = false } = {}) {
         if (isRedditUrl(targetUrl)) return rssFallback || '';
         targetUrl = targetUrl.replace(/\/unread\/?$/, '');
         // /og-image receives rss="" from feed URLs; /image-focus resolves the
         // same missing fallback as null. They must share the same extraction.
         rssFallback = rssFallback || null;
         const key = JSON.stringify([targetUrl, rssFallback]);
+        const cached=resolved.get(key);
+        if(cached && cached.expiresAt>Date.now()){
+            resolved.delete(key);resolved.set(key,cached);return cached.image;
+        }
+        resolved.delete(key);
         if (!pending.has(key)) {
-            pending.set(key, resolveImage(targetUrl, rssFallback).finally(() => pending.delete(key)));
+            // Bounded in-flight lookups. HTTP callers get a retryable 503
+            // (not a cacheable "no image"); background callers just skip.
+            if(pending.size>=64){
+                if(throwWhenBusy)throw Object.assign(new Error('Image lookups are busy; retry later'),{code:'WORK_QUEUE_FULL',status:503});
+                return null;
+            }
+            pending.set(key, resolveImage(targetUrl, rssFallback).then(image=>{
+                // A failed lookup can recover immediately when a source or its
+                // cache becomes available; retain only successful resolutions.
+                if(image)resolved.set(key,{image,expiresAt:Date.now()+15*60000});
+                while(resolved.size>1000)resolved.delete(resolved.keys().next().value);
+                return image;
+            }).finally(() => pending.delete(key)));
         }
         return pending.get(key);
     }

@@ -1,3 +1,4 @@
+import { createStaticTextAssets, assetCacheControl } from './middleware/static-text-assets.js';
 import { listJsonCompression } from './middleware/json-compression.js';
 import { listTiming } from './middleware/list-timing.js';
 import { createShellCompression } from './middleware/shell-compression.js';
@@ -26,8 +27,12 @@ export function createHttpApp() {
     });
 
     app.use(createShellCompression());
-    app.use('/public', express.static('public'));
-    app.use('/api/data', listTiming, listJsonCompression);
+    app.use('/public', createStaticTextAssets());
+    app.use('/public', express.static('public', {setHeaders(res, filename) {
+        res.setHeader('Cache-Control',assetCacheControl(res.req, filename.includes('/components/')));
+    }}));
+    app.use('/api/data', listTiming);
+    app.use('/api', listJsonCompression);
 
     app.use('/api', (req, res, next) => {
         if (!req.path.startsWith('/og-image')) {

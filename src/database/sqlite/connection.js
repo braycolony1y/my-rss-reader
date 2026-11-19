@@ -9,14 +9,21 @@ export function openSqlite(filename, { readOnly = false } = {}) {
     try {
         // SQLite derives WAL/SHM permissions from the database file at creation.
         if(!readOnly&&filename!==':memory:')chmodSync(filename,0o600);
-        db.exec('PRAGMA busy_timeout=10000; PRAGMA foreign_keys=ON; PRAGMA cache_size=-8192; PRAGMA temp_store=FILE; PRAGMA mmap_size=0;');
+        // The page-cache budget is per connection, allocated as pages are used.
+        // Temporary b-trees stay on disk: VACUUM/large sorts would otherwise
+        // allocate a database-sized anonymous copy. No mmap: mapped pages count
+        // as process RSS, which the memory budget uses to defer worker jobs.
+        db.exec('PRAGMA busy_timeout=10000; PRAGMA foreign_keys=ON; PRAGMA cache_size=-32768; PRAGMA temp_store=FILE; PRAGMA mmap_size=0;');
         if (!readOnly) {
             const version = db.prepare('PRAGMA user_version').get().user_version;
             if (version > SCHEMA_VERSION) throw Error('SQLite schema is newer than this application; refusing to downgrade');
-            db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA wal_autocheckpoint=1000;');
+            // synchronous=FULL (as in HEAD): every committed save survives a
+            // power/VM failure, which is the priority over write latency.
+            db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA wal_autocheckpoint=1000; PRAGMA journal_size_limit=16777216;');
             db.exec('BEGIN IMMEDIATE');
             try { db.exec(SCHEMA); db.exec(`PRAGMA user_version=${SCHEMA_VERSION}; COMMIT`); }
             catch (error) { db.exec('ROLLBACK'); throw error; }
+            db.exec('PRAGMA optimize=0x10002');
         }
         return db;
     } catch (error) { db.close(); throw error; }

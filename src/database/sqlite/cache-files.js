@@ -7,6 +7,14 @@ export function cacheFilePath(root,filename){
     const relative=path.relative(root,path.resolve(filename)).split(path.sep).join('/');
     return /^article_cache\/(?:[^/.][^/]*\.json|threads\/[a-f0-9]{64}\.json|pdf\/[a-f0-9]{64}\/job\.json)$/.test(relative)?relative:null;
 }
+function prefixEnd(prefix) {
+    const characters = Array.from(prefix);
+    while (characters.length) {
+        const code = characters.pop().codePointAt(0);
+        if (code < 0x10ffff) return characters.join('') + String.fromCodePoint(code === 0xd7ff ? 0xe000 : code + 1);
+    }
+    return null;
+}
 export function createCacheFiles(db){
     const get=db.prepare('SELECT * FROM cache_files WHERE path=? AND deleted=0');
     const priorDigest=db.prepare('SELECT digest,modified_at FROM cache_files WHERE path=? AND deleted=0');
@@ -14,13 +22,18 @@ export function createCacheFiles(db){
         ON CONFLICT(path) DO UPDATE SET json=excluded.json,digest=excluded.digest,bytes=excluded.bytes,modified_at=excluded.modified_at,deleted=0,
         version=excluded.version,cached_at=excluded.cached_at,url=excluded.url,source_deleted=excluded.source_deleted,deleted_detected_at=excluded.deleted_detected_at
         WHERE cache_files.digest<>excluded.digest OR cache_files.deleted<>0`);
+    const info=db.prepare('SELECT path,deleted,bytes,modified_at FROM cache_files WHERE path=? AND deleted=0');
+    const list=db.prepare('SELECT path,deleted,bytes,modified_at,version,cached_at,url,source_deleted,deleted_detected_at FROM cache_files WHERE path>=? AND path<? ORDER BY path');
+    const listUnbounded=db.prepare('SELECT path,deleted,bytes,modified_at,version,cached_at,url,source_deleted,deleted_detected_at FROM cache_files WHERE substr(path,1,length(?))=? ORDER BY path');
+    const removeParts=db.prepare('DELETE FROM archive_entries WHERE path=?');
+    const tombstone=db.prepare("UPDATE cache_files SET json=NULL,digest='',bytes=0,deleted=1 WHERE path=?");
     return {
         get:filename=>{const row=get.get(filename);if(!row)return null;
             if(filename.startsWith('article_cache/threads/')){let envelope;try{envelope=JSON.parse(row.json);}catch{return row;}
                 row.json=JSON.stringify(hydrateArchive(db,filename,envelope));}
             return row;},
-        info:filename=>db.prepare('SELECT path,deleted,bytes,modified_at FROM cache_files WHERE path=? AND deleted=0').get(filename)||null,
-        list:prefix=>db.prepare('SELECT path,deleted,bytes,modified_at,version,cached_at,url,source_deleted,deleted_detected_at FROM cache_files WHERE substr(path,1,length(?))=? ORDER BY path').all(prefix,prefix),
+        info:filename=>info.get(filename)||null,
+        list:prefix=>{const end=prefixEnd(prefix);return end===null?listUnbounded.all(prefix,prefix):list.all(prefix,end);},
         put(filename,json,modifiedAt=Date.now()){
             let parsed;try{parsed=JSON.parse(json);}catch{parsed=null;}
             const split=splitArchive(filename,parsed),canonical=split?JSON.stringify(parsed):json;
@@ -35,8 +48,8 @@ export function createCacheFiles(db){
             }catch(error){if(own&&db.isTransaction)db.exec('ROLLBACK');throw error;}
         },
         remove(filename){const own=!db.isTransaction;if(own)db.exec('BEGIN IMMEDIATE');try{
-            db.prepare('DELETE FROM archive_entries WHERE path=?').run(filename);
-            db.prepare("UPDATE cache_files SET json=NULL,digest='',bytes=0,deleted=1 WHERE path=?").run(filename);if(own)db.exec('COMMIT');
+            removeParts.run(filename);
+            tombstone.run(filename);if(own)db.exec('COMMIT');
         }catch(error){if(own)db.exec('ROLLBACK');throw error;}},
     };
 }

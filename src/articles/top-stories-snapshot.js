@@ -1,3 +1,4 @@
+import { createTaskWorker } from '../runtime/task-worker.js';
 import { rankingInputs, readRankingInputs } from './ranking-input.js';
 import { prefilterWorkerState, filterPublishedSnapshot } from '../smart/prefilter/publication.js';
 import { Worker } from 'node:worker_threads';
@@ -88,16 +89,9 @@ const rawStateJson = async db => {
     return JSON.stringify(value || {});
 };
 
-const rankInWorker = input => new Promise((resolve, reject) => {
-    const worker = new Worker(new URL('./top-stories-worker.js', import.meta.url), {
-        workerData: input,
-        ...boundedWorkerOptions(input.workerHeapMB)
-    });
-    worker.once('message', result => result.error ? reject(new Error(result.error)) : resolve(result));
-    worker.once('error', reject);
-    // Reject a clean exit without a result too; otherwise pending never clears.
-    worker.once('exit', code => reject(new Error(`Ranking worker exited ${code} before returning a result`)));
-});
+// Short idle reuse only: an idle worker keeps its post-ranking heap resident.
+const rankingWorker=createTaskWorker({idleMs:5000,workerKey:input=>input.workerHeapMB,createWorker:input=>new Worker(new URL('./top-stories-worker.js',import.meta.url),boundedWorkerOptions(input.workerHeapMB))});
+const rankInWorker=input=>rankingWorker.run(input);
 
 // A display envelope around the existing index, including its editorial state.
 // Publication is one durable write; no intermediate worker state is visible.

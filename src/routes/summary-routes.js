@@ -1,3 +1,4 @@
+import { readResponseText } from '../fetch-response.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { getSummaryFromCache, summaryQueue, generateVozThreadSummary, writeSummaryToCache, generateDeepAnalysis, geminiKeyManager } from '../../summary-engine.js';
 
@@ -51,16 +52,23 @@ export function registerSummaryRoutes({
     });
 
     const vozJobs = new Map();
+    // Terminal jobs are only a polling bridge; their generated summaries are
+    // durably cached separately. An abandoned tab must not retain rawPosts.
+    const pruneJobs=()=>{for(const [url,job]of vozJobs)if(job.finishedAt && Date.now()-job.finishedAt>=10*60000)vozJobs.delete(url);};
+    const jobCleanup=setInterval(pruneJobs,60000);jobCleanup.unref();
 
     app.post('/api/summary/voz', authMiddleware, async (req, res) => {
         let url = req.body?.url;
         let mode = req.body?.mode || 'detailed';
         if (!url) return res.status(400).json({ error: 'URL required' });
 
+        pruneJobs();
         if (vozJobs.has(url)) {
             return res.json({ ok: true, message: 'Already running' });
         }
 
+        if([...vozJobs.values()].filter(job=>!job.finishedAt).length>=2 || vozJobs.size>=32)
+            return res.status(429).json({error:'Summary queue is full. Retry when a running summary finishes.'});
         const controller = new AbortController();
         const job = { url, mode, progress: { stage: 'starting', current: 0, total: null, message: 'Starting...' }, summary: null, error: null, controller };
         vozJobs.set(url, job);
@@ -73,12 +81,12 @@ export function registerSummaryRoutes({
                 const proxyUrl = "https://rss-proxy.k1d.workers.dev/?url=" + encodeURIComponent(pageUrl);
                 let fetchRes = await fetch(proxyUrl, {
                     headers: { ...BROWSER_HEADERS, 'Connection': 'close' },
-                    signal: controller.signal
+                    signal: AbortSignal.any([controller.signal,AbortSignal.timeout(30000)])
                 }).catch(e => ({ ok: false }));
 
                 let content = '';
                 if (fetchRes.ok) {
-                    content = await fetchRes.text();
+                    content = await readResponseText(fetchRes,{maxBytes:16*1024*1024});
                 }
 
                 if (!fetchRes.ok || content.includes('<title>Just a moment...</title>') || content.includes('Cloudflare')) {
@@ -129,7 +137,7 @@ export function registerSummaryRoutes({
                     job.error = e.message;
                     console.error('[VOZ SUMMARY] Error:', e);
                 }
-            }
+            } finally { job.finishedAt=Date.now(); }
         })();
     });
 

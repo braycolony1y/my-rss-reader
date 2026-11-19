@@ -1,3 +1,5 @@
+import { boundCacheObject, CACHE_RETENTION } from './cache-retention.js';
+import { createHash } from 'node:crypto';
 import { hash, describe, tableFor, rowIdentity, CRITICAL_ARRAYS, CHILD_FIELDS } from './codec.js';
 import { normalizeStateUrl } from '../../utils/state-url.js';
 
@@ -61,14 +63,14 @@ export function createRepository(db) {
         writes++;
         return digest;
     }
-    function materialize(row, key) {
+    function materialize(row, key, relatedRows) {
         let value = JSON.parse(row.payload ?? row.value);
         if(CHILD_FIELDS[key]?.has(row.row_key) && value?.$sqliteCollection===`$${key}.${row.row_key}`)
             return read(value.$sqliteCollection);
         if (tableFor(key) === 'articles' && row.related) {
-            const members = sql(
+            const members = (relatedRows ? relatedRows.get(row.row_key) || [] : sql(
             'SELECT payload FROM cluster_members WHERE collection=? AND cluster_key=? ORDER BY position'
-            ).all(key,row.row_key).map(member => JSON.parse(member.payload));
+            ).all(key,row.row_key)).map(member => JSON.parse(member.payload));
             const pairs=Object.entries(value);pairs.splice(row.related-1,0,['relatedArticles',members]);
             value=Object.fromEntries(pairs);
         }
@@ -92,12 +94,13 @@ export function createRepository(db) {
         if(!descriptor)return 'null';
         if(descriptor.shape==='scalar')return descriptor.scalar;
         const array=descriptor.shape==='array',parts=[array?'[':'{'];let first=true;
+        const relatedRows = tableFor(key)==='articles' ? membersFor(key) : undefined;
         for(const row of db.prepare(`SELECT * FROM ${tableFor(key)} WHERE collection=? ORDER BY position`).iterate(key)){
             let json=row.payload??row.value;
             if(CHILD_FIELDS[key]?.has(row.row_key)){
                 const marker=JSON.parse(json);
                 if(marker?.$sqliteCollection===`$${key}.${row.row_key}`)json=serializeCollection(marker.$sqliteCollection);
-            }else if(tableFor(key)==='articles'&&row.related)json=JSON.stringify(materialize(row,key));
+            }else if(tableFor(key)==='articles'&&row.related)json=JSON.stringify(materialize(row,key,relatedRows));
             parts.push((first?'':',')+(array?'':JSON.stringify(row.row_key)+':')+json);first=false;
         }
         parts.push(array?']':'}');return parts.join('');
@@ -116,7 +119,8 @@ export function createRepository(db) {
     }
     function write(key, value, options = {}) {
         if (value === undefined) throw Error(`Undefined database value: ${key}`);
-        const {encoding,shape,decoded} = describe(key,value), prior = info(key);
+        const described = describe(key,value), {encoding,shape}=described;
+        const decoded=boundCacheObject(key,described.decoded), prior = info(key);
         const count = shape === 'array' ? decoded.length : shape === 'object' ? Object.keys(decoded).length : 0;
         if (prior && CRITICAL_ARRAYS.has(key)) {
             if (prior.item_count > 0 && !count && !(key === 'blockedArticleKeywords' && options.allowLargeReduction)) throw Error(`[DB SAFETY] Refusing to wipe ${prior.item_count} ${key}`);
@@ -138,6 +142,21 @@ export function createRepository(db) {
         }
         return finishCollection(key,previous,encoding,shape,hash(JSON.stringify(digest)),count);
     }
+    // One indexed child query per page/corpus instead of one query per cluster.
+    function membersFor(key, rows) {
+        const members = new Map();
+        const ids = rows?.filter(row=>row.related).map(row=>row.row_key);
+        if (ids && !ids.length) return members;
+        const query = 'SELECT cluster_key,payload FROM cluster_members WHERE collection=?'
+            + (ids ? ' AND cluster_key IN (SELECT value FROM json_each(?))' : '') + ' ORDER BY cluster_key,position';
+        for (const row of sql(query).iterate(...(ids ? [key,JSON.stringify(ids)] : [key]))) {
+            if (!members.has(row.cluster_key)) members.set(row.cluster_key,[]);
+            members.get(row.cluster_key).push(row);
+        }
+        // Missing children are an empty array, never another per-row query.
+        for (const id of ids || []) if (!members.has(id)) members.set(id,[]);
+        return members;
+    }
     function findArticles(key, { links, normalizedLinks, category, limit, offset = 0 } = {}) {
         if (tableFor(key) !== 'articles') throw Error('Not an article collection');
         if (links && !links.length) return [];
@@ -149,13 +168,19 @@ export function createRepository(db) {
         if (category) { clauses.push('category=?'); params.push(category); }
         let query = 'SELECT * FROM articles WHERE ' + clauses.join(' AND ') + ' ORDER BY position';
         if (limit != null) { query += ' LIMIT ? OFFSET ?'; params.push(Math.max(0,limit),Math.max(0,offset)); }
-        return sql(query).all(...params).map(row => materialize(row,key));
+        const rows=sql(query).all(...params),members=membersFor(key,rows);
+        return rows.map(row => materialize(row,key,members));
     }
     function linkProjection(key) {
         if(tableFor(key)!=='articles')throw Error('Link projection requires article collection');
         if(!info(key))return null;
-        return sql('SELECT row_key,link,related FROM articles WHERE collection=? ORDER BY position').all(key).map(row=>({link:row.link,
-            ...(row.related?{relatedArticles:sql('SELECT link FROM cluster_members WHERE collection=? AND cluster_key=? ORDER BY position').all(key,row.row_key)}:{})}));
+        const related=new Map();
+        for(const row of sql('SELECT cluster_key,link FROM cluster_members WHERE collection=? ORDER BY cluster_key,position').iterate(key)){
+            if(!related.has(row.cluster_key))related.set(row.cluster_key,[]);
+            related.get(row.cluster_key).push({link:row.link});
+        }
+        return sql('SELECT row_key,link,related FROM articles WHERE collection=? ORDER BY position').all(key)
+            .map(row=>({link:row.link,...(row.related?{relatedArticles:related.get(row.row_key)||[]}:{})}));
     }
     function mapEntries(key,ids){
         if(!info(key))return {};
@@ -168,16 +193,31 @@ export function createRepository(db) {
         if(prior&&prior.shape!=='object')throw Error('Entry update requires an object collection');
         const encoding=prior?.encoding||'json';beginCollection(key,encoding,'object');
         const table=tableFor(key);
-        let nextPosition=sql(`SELECT coalesce(max(position),-1)+1 position FROM ${table} WHERE collection=?`).get(key).position;
+        let nextPosition=(sql(`SELECT position FROM ${table} WHERE collection=? ORDER BY position DESC LIMIT 1`).get(key)?.position??-1)+1;
+        const beforeWrites=writes;
+        if(Object.hasOwn(CACHE_RETENTION,key))values=boundCacheObject(key,values);
         for(const [id,value]of Object.entries(values)){
             const position=sql(`SELECT position FROM ${table} WHERE collection=? AND row_key=?`).get(key,id)?.position??nextPosition++;
             record(key,id,position,value);
         }
-        for(const id of remove)sql(`DELETE FROM ${table} WHERE collection=? AND row_key=?`).run(key,id);
-        const digests=sql(`SELECT row_key,digest FROM ${table} WHERE collection=? ORDER BY position`).all(key).map(row=>[row.row_key,row.digest]);
-        return finishCollection(key,prior,encoding,'object',hash(JSON.stringify(digests)),digests.length);
+        for(const id of remove)writes+=Number(sql(`DELETE FROM ${table} WHERE collection=? AND row_key=?`).run(key,id).changes);
+        if(prior && writes===beforeWrites)return false;
+        // Age/count/byte retention of derived caches runs in the 6-hourly
+        // maintenance worker (retention-maintenance.js), never per patch: a
+        // full-collection sweep here would rerun on every save once at the cap.
+        return refreshDigest(key,prior,encoding);
     }
-    return { info, read, write, record, entries, beginCollection, finishCollection, findArticles,linkProjection,mapEntries,patchMap,
+    function refreshDigest(key,prior=info(key),encoding=prior?.encoding||'json'){
+        // Stream hashes rather than retaining every key twice in an array and
+        // a giant JSON string. Canonical digest/export compatibility is retained.
+        const digest=createHash('sha256');let count=0;digest.update('[');
+        for(const row of sql(`SELECT row_key,digest FROM ${tableFor(key)} WHERE collection=? ORDER BY position`).iterate(key)){
+            const effective=CHILD_FIELDS[key]?.has(row.row_key)?info(`$${key}.${row.row_key}`)?.digest??row.digest:row.digest;
+            digest.update((count?',':'')+JSON.stringify([row.row_key,effective]));count++;
+        }
+        digest.update(']');return finishCollection(key,prior,encoding,'object',digest.digest('hex'),count);
+    }
+    return { info, read, write, record, entries, beginCollection, finishCollection, findArticles,linkProjection,mapEntries,patchMap,refreshDigest,
         keys: ({internal=false}={}) => sql(internal?'SELECT name FROM collections ORDER BY name':"SELECT name FROM collections WHERE name NOT LIKE '$%' ORDER BY name").all().map(row=>row.name),
         stats: () => ({writes,unchanged,statements:prepared.size}),
     };

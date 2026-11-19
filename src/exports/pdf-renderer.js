@@ -72,7 +72,15 @@ export async function renderPdfChunk({ title, author, sourceDate, url, pages, cr
         await page.setContent(pdfDocument({ title, author, sourceDate, url, pages, createdAt }), { waitUntil: 'domcontentloaded', timeout: 60000 });
         await waitForPdfAssets(page);
         await page.pdf({ path: output, format: 'A4', printBackground: true, preferCSSPageSize: true, waitForFonts: false, timeout: 120000 });
-    } finally { await browser.close(); }
+    } finally {
+        // A wedged Chromium must not outlive its export job (each one is a
+        // multi-process renderer tree). Escalate to SIGKILL after 15 seconds.
+        const child = browser.process();
+        const killer = setTimeout(() => { try { child?.kill('SIGKILL'); } catch {} }, 15000);
+        try { await browser.close(); }
+        catch { try { child?.kill('SIGKILL'); } catch {} }
+        finally { clearTimeout(killer); }
+    }
 }
 
 export async function mergePdfChunks(files, output) {

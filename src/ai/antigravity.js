@@ -1226,7 +1226,7 @@ export function createAntigravityProvider({ quotaRuntime = ANTIGRAVITY_QUOTA_RUN
      * Refresh quota immediately when the provider is created, but do NOT
      * await it. Server startup and other AI work continue normally.
      */
-    if (!quotaRuntime.startupCheckStarted) {
+    if (available() && !quotaRuntime.startupCheckStarted) {
         quotaRuntime.startupCheckStarted = true;
 
         void scheduleQuotaCheck(

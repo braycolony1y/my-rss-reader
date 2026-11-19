@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {gzipSync, gunzipSync} from 'node:zlib';
 import {createShellCompression} from '../src/middleware/shell-compression.js';
 
-function request(middleware, body, {path = '/script.js', encoding = true, cacheControl = ''} = {}) {
+function request(middleware, body, {path = '/script.js', encoding = 'gzip', cacheControl = ''} = {}) {
     return new Promise((resolve, reject) => {
         const headers = {'Content-Type': 'application/javascript', 'Cache-Control': cacheControl};
         const res = {statusCode: 200, getHeader: key => headers[key],
@@ -32,7 +32,7 @@ test('shell compression respects negotiation, no-transform, route isolation, and
     const middleware = createShellCompression({minBytes: 1, maxEntries: 1,
         compress: async body => {calls++; return gzipSync(body);}});
     const body = 'plain text';
-    for (const options of [{encoding: false}, {cacheControl: 'no-transform'}, {path: '/api/events'}]) {
+    for (const options of [{encoding: 'identity'}, {cacheControl: 'no-transform'}, {path: '/api/events'}]) {
         assert.equal((await request(middleware, body, options)).data, body);
     }
     assert.equal(calls, 0);

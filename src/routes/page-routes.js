@@ -12,6 +12,7 @@ export function registerPageRoutes({
         try {
             const js = await renderer.script();
             res.setHeader('Content-Type', 'application/javascript');
+            res.setHeader('Last-Modified',new Date(renderer.lastModified('script')).toUTCString());
             res.setHeader('Cache-Control', 'no-cache, must-revalidate');
             res.send(js);
         } catch (e) {
@@ -22,6 +23,7 @@ export function registerPageRoutes({
     app.get('/', async (req, res) => {
         try {
             const html = await renderer.html();
+            res.setHeader('Last-Modified',new Date(renderer.lastModified('html')).toUTCString());
             // The document composes feature partials and versioned asset
             // URLs, so it must revalidate instead of serving a
             // day-old shell after a UI deployment.

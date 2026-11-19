@@ -26,6 +26,7 @@ function compactPublishedTopStory(value) {
     return compact;
 }
 
+async function rank(workerData) {
 let topStoriesStateJson =
     typeof workerData.statesJson === 'string'
         ? workerData.statesJson
@@ -53,8 +54,7 @@ try {
             Number(publication?.revision || 0) !== workerData.progressiveRevision ||
             !Array.isArray(publication?.clusters)
         )) {
-            parentPort.postMessage({ skipped: true });
-            process.exit(0);
+            return {skipped:true};
         }
         candidates = workerData.progressiveVersion ? publication.clusters : (publication || []);
         const represented = new Set();
@@ -71,8 +71,7 @@ try {
         workerData.rawJson = null;
     }
     if (!candidates?.length) {
-        parentPort.postMessage({ skipped: true });
-        process.exit(0);
+        return {skipped:true};
     }
     const timings = {};
 
@@ -109,11 +108,21 @@ try {
         }
     }
 
-    parentPort.postMessage({
+    return {
         articles,
         timings,
         statesJson: topStoriesStateJson
-    });
+    };
 } catch (error) {
-    parentPort.postMessage({ error: error.message });
+    return {error:error.message};
+}
+
+}
+// Legacy one-shot invocation remains available for offline diagnostics.
+if(workerData){parentPort.postMessage(await rank(workerData));parentPort.close();}
+else{
+    let queue=Promise.resolve();
+    parentPort.on('message',({id,input})=>{
+        queue=queue.then(async()=>parentPort.postMessage({id,result:await rank(input)}));
+    });
 }

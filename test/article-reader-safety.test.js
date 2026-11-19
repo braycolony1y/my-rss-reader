@@ -117,7 +117,7 @@ test('Google News cards fetch and route to the resolved publisher while keeping 
     assert.match(script, /this\.isGoogleNewsArticleUrl\(this\.overlayArticle\.link\)[\s\S]*this\.overlayArticle\.link = data\.url/);
     assert.match(script, /this\.updateArticleRoute\(this\.overlayArticle, true\)/);
     assert.match(script, /this\.markAsReadExplicit\(article\.originalLink \|\| article\.link\)/);
-    assert.match(server, /resolveGoogleNewsViaOpenCliSearch\(hints\)/);
+    assert.match(server, /resolveGoogleNewsViaOpenCliSearch\(hints[,)]/);
     assert.match(server, /'duckduckgo', 'search', query/);
 });
 

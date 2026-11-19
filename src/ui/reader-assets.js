@@ -33,10 +33,11 @@ export function createReaderAssetRenderer(paths = READER_ASSET_PATHS) {
         if (cache.get(kind)?.key === key) return cache.get(kind).value;
         const contents = await Promise.all(files.map(file => readFile(file, 'utf8')));
         const value = compose(...contents);
-        cache.set(kind, { key, value });
+        cache.set(kind, { key, value, modifiedAt:Math.max(...versions.map(s=>s.mtimeMs)) });
         return value;
     }
     return {
+        lastModified: kind => cache.get(kind)?.modifiedAt,
         html: () => render('html', [paths.index, paths.card, ...components.map(([, file]) => file)],
             (index, card, ...contents) => composeReaderHtml(index, card,
                 Object.fromEntries(components.map(([name], i) => [name, contents[i]])))),

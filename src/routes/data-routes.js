@@ -1,3 +1,4 @@
+import { readMany } from '../database/read-many.js';
 import { feedPageKey, selectFeedPage, registerFeedPagePost } from '../feeds/page-selection.js';
 import { hydratePersonalArticles } from '../feeds/personal-articles.js';
 import { filterPersonalView } from '../smart/feedback/pipeline.js';
@@ -129,25 +130,12 @@ export function registerDataRoutes({
         // These snapshots are treated as immutable for the lifetime of this
         // request. Reuse the parsed global values rather than structuredClone()
         // every array/object on every tab click.
-        let feeds = await env.RSS_DATA.get('feeds', { type: 'json', shared: true }) || [];
-
-        // This route treats the article snapshot as immutable and derives new
-        // filtered arrays from it, so avoid cloning the full multi-megabyte list
-        // on every tab click.
-        let allArticles = await env.RSS_DATA.get('articles', { type: 'json', shared: true }) || [];
-
-        const readStates = await env.RSS_DATA.get('readStates', { type: 'json', shared: true }) || [];
-        const savedStates = await env.RSS_DATA.get('savedStates', { type: 'json', shared: true }) || [];
-        const boardStates = await env.RSS_DATA.get('boardStates', { type: 'json', shared: true }) || [];
-        const hiddenStates = await env.RSS_DATA.get('hiddenStates', { type: 'json', shared: true }) || [];
-        const recentReadAt = await env.RSS_DATA.get('recentReadAt', { type: 'json', shared: true }) || {};
-        const categoryOrder = await env.RSS_DATA.get('categoryOrder', { type: 'json', shared: true }) || [];
-        const userPreferences = await env.RSS_DATA.get('userPreferences', { type: 'json', shared: true }) || {};
-
-        const blockedKeywords = await env.RSS_DATA.get(
-            'blockedArticleKeywords',
-            { type: 'json', shared: true }
-        ) || [];
+        const values=await readMany(env.RSS_DATA,['feeds','articles','readStates','savedStates','boardStates',
+            'hiddenStates','recentReadAt','categoryOrder','userPreferences','blockedArticleKeywords'],{shared:true});
+        const feeds=values.feeds||[],allArticles=values.articles||[],readStates=values.readStates||[],
+            savedStates=values.savedStates||[],boardStates=values.boardStates||[],hiddenStates=values.hiddenStates||[],
+            recentReadAt=values.recentReadAt||{},categoryOrder=values.categoryOrder||[],userPreferences=values.userPreferences||{},
+            blockedKeywords=values.blockedArticleKeywords||[];
         const loadedAt = performance.now();
         const blockedKeywordEntries = normalizeBlockedKeywordEntries(blockedKeywords);
         const articleIsBlocked = article => articleContentFilterMatches(article, blockedKeywordEntries);
@@ -479,7 +467,7 @@ export function registerDataRoutes({
         }
 
         const page = Math.max(1, parseInt(req.query.page) || 1);
-        const limit = Math.max(1, parseInt(req.query.limit) || 40);
+        const limit = Math.min(500, Math.max(1, parseInt(req.query.limit) || 40));
         const startIndex = (page - 1) * limit;
         const endIndex = page * limit;
 

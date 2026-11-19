@@ -1462,6 +1462,24 @@ export function runOpenCliBrowserFetch(url) {
 const OPENCLI_READER_IDLE_MS = 60_000;
 const OPENCLI_READER_JOB_TIMEOUT_MS = 60_000;
 const openCliReaderPools = new Map();
+// Each source pool is a Node child plus one browser tab. Idle pools of other
+// sources are released early when a new source needs one, instead of keeping
+// one child per recently used origin for the full idle window.
+const OPENCLI_READER_MAX_POOLS = Math.max(1, Number(process.env.RSS_OPENCLI_READER_POOLS) || 3);
+function closeIdleOpenCliReaderPools(keep) {
+    for (const pool of [...openCliReaderPools.values()]) {
+        if (openCliReaderPools.size <= keep) return;
+        if (pool.jobs.size || pool.closing) continue;
+        clearOpenCliReaderPoolIdleTimer(pool);
+        pool.closing = true;
+        openCliReaderPools.delete(pool.origin);
+        console.log(`[OPENCLI READER] ${pool.origin} idle; closing its tab for another source`);
+        if (pool.child.connected) pool.child.send({ type: 'shutdown' });
+        else pool.child.kill('SIGTERM');
+        pool.forceKillTimer = setTimeout(() => { if (!pool.exited) pool.child.kill('SIGTERM'); }, 5000);
+        pool.forceKillTimer.unref?.();
+    }
+}
 let openCliReaderJobSequence = 0;
 
 function getOpenCliReaderOrigin(kwargs) {
@@ -1681,6 +1699,7 @@ export function runOpenCliReader(kwargs, canWait = () => false) {
 
     let pool = openCliReaderPools.get(origin);
     if (!pool || pool.closing || pool.exited) {
+        closeIdleOpenCliReaderPools(OPENCLI_READER_MAX_POOLS - 1);
         pool = createOpenCliReaderPool(origin);
     }
 

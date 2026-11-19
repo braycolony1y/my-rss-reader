@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readdir } from 'node:fs/promises';
+import { readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 const allowedRootFiles = new Set([
+    '.git', // Git worktrees use a regular gitdir pointer file.
     '.env',
     '.gitignore',
     'README.md',
@@ -60,11 +61,12 @@ const allowedRootDirectories = new Set([
 
 test('project root contains only documented production and workspace entries', async () => {
     const entries = await readdir(repositoryRoot, { withFileTypes: true });
+    const linkedNodeModules = await stat(path.join(repositoryRoot,'node_modules')).then(info=>info.isDirectory(),()=>false);
     const unexpected = entries
         // The live database writer briefly stages these atomic runtime files.
         .filter(entry => !/^smart-embeddings-worker\.json\.tmp-\d+$/.test(entry.name))
         .filter(entry => !/^(?:database\.json|database-state\.json|smart-state\.json|smart-data\.json|feeds_backup\.json)(?:\.backup)?\.tmp-\d+-[a-z0-9]+$/.test(entry.name))
-        .filter((entry) => entry.isDirectory()
+        .filter((entry) => (entry.isDirectory() || entry.name==='node_modules' && entry.isSymbolicLink() && linkedNodeModules)
             ? !allowedRootDirectories.has(entry.name)
             : !allowedRootFiles.has(entry.name))
         .map((entry) => entry.name)

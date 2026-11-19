@@ -1,6 +1,6 @@
 import { safeHttpUrl, isInvalidImage } from '../utils/article-utils.js';
 import { authMiddleware } from '../middleware/auth.js';
-import { discardResponseBody } from '../fetch-response.js';
+import { discardResponseBody, readResponseBytes } from '../fetch-response.js';
 import { createFocalCache, CENTER_FOCUS, publicImageUrl, readImageBytes } from '../images/focal-cache.js';
 
 export async function downloadFocalImage(url, { proxyBase, headers = {}, fetchImage = fetch } = {}) {
@@ -83,7 +83,7 @@ export function registerMediaRoutes({
     });
 
     app.get('/api/proxy-image', authMiddleware, async (req, res) => {
-        const targetUrl = req.query.url;
+        const targetUrl = safeHttpUrl(req.query.url);
         if (!targetUrl) return res.status(400).send('Missing URL');
         try {
             const fetchUrl = CF_PROXY_BASE + encodeURIComponent(targetUrl);
@@ -92,10 +92,10 @@ export function registerMediaRoutes({
                     ...BROWSER_HEADERS,
                     'Referer': new URL(targetUrl).origin + '/',
                     'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'
-                }
+                }, signal: AbortSignal.timeout(12000)
             });
             if (imgRes.ok) {
-                const buffer = await imgRes.arrayBuffer();
+                const buffer = await readResponseBytes(imgRes);
                 res.setHeader('Content-Type', imgRes.headers.get('Content-Type') || 'image/jpeg');
                 res.setHeader('Cache-Control', 'public, max-age=86400');
                 return res.send(Buffer.from(buffer));
@@ -112,6 +112,7 @@ export function registerMediaRoutes({
         if (!/^[a-z0-9_]{1,32}$/i.test(handle)) return res.status(400).send('Invalid X handle');
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 8000);
+        timeout.unref();
         try {
             const imageResponse = await fetch(`https://unavatar.io/x/${encodeURIComponent(handle)}`, {
                 headers: {
@@ -125,7 +126,7 @@ export function registerMediaRoutes({
                 await discardResponseBody(imageResponse);
                 return res.status(404).send('Profile image not found');
             }
-            const buffer = Buffer.from(await imageResponse.arrayBuffer());
+            const buffer = await readResponseBytes(imageResponse);
             res.setHeader('Content-Type', contentType);
             res.setHeader('Cache-Control', 'private, max-age=86400, stale-while-revalidate=604800');
             return res.send(buffer);
@@ -142,7 +143,7 @@ export function registerMediaRoutes({
         if (!targetUrl) return res.status(400).send('Missing URL');
         try {
             const scrapeUrl = targetUrl.replace(/\/unread\/?$/, '');
-            const foundImg = await getBestImage(scrapeUrl, async (u, opts = {}) => fetch(u, { headers: BROWSER_HEADERS, ...opts }), rssFallback);
+            const foundImg = await getBestImage(scrapeUrl, async (u, opts = {}) => fetch(u, { headers: BROWSER_HEADERS, ...opts, signal: opts.signal ? AbortSignal.any([opts.signal,AbortSignal.timeout(12000)]) : AbortSignal.timeout(12000) }), rssFallback, { throwWhenBusy: true });
             if (foundImg) {
                 rememberImage(targetUrl, foundImg);
                 res.setHeader('Cache-Control', 'private, max-age=86400, stale-while-revalidate=604800');
@@ -153,6 +154,11 @@ export function registerMediaRoutes({
             }
             res.status(404).send('Image not found');
         } catch (e) {
+            if (e.code === 'WORK_QUEUE_FULL') {
+                res.setHeader('Retry-After', '5');
+                res.setHeader('Cache-Control', 'no-store');
+                return res.status(503).send('Image lookups are busy; retry later');
+            }
             res.status(500).send('Error');
         }
     });

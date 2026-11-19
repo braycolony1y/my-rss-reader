@@ -7,6 +7,7 @@ import { createConcurrencyLimiter, cpuCapacity, workloadConcurrency } from '../r
 
 const laneStorage = new AsyncLocalStorage();
 const originQueues = new Map();
+let pendingOther=0;
 const VALID_LANES = new Set(['p0', 'p1', 'p2', 'p3', 'p4']);
 const foreground = createConcurrencyLimiter(workloadConcurrency('RSS_FOREGROUND_FETCH_CONCURRENCY', cpuCapacity() * 2));
 export function getArticleFetchQueueState() {
@@ -59,6 +60,7 @@ function pump(origin, group, queue) {
         return;
     }
 
+    pendingOther--;
     queue.running = true;
     const waitedMs = Date.now() - job.enqueuedAt;
     console.log(`[FETCH LANE] START ${job.lane} ${group} ${origin} waitedMs=${waitedMs}`);
@@ -118,10 +120,14 @@ export function runArticleFetchTask(url, task) {
 
     const reading = lane === 'p1' || lane === 'p2';
     const group = reading ? 'reading' : 'background';
+    if(pendingOther>=512 || (!originQueues.has(origin)&&originQueues.size>=256))
+        return Promise.reject(Object.assign(new Error('Background fetch queue is full; retry later'),{code:'WORK_QUEUE_FULL',status:503}));
     const queue = queueFor(origin, group);
+    if(queue.high.length+queue.low.length>=64)return Promise.reject(Object.assign(new Error('Publisher fetch queue is full; retry later'),{code:'WORK_QUEUE_FULL',status:503}));
     const high = lane === 'p1' || lane === 'p3';
 
     return new Promise((resolve, reject) => {
+        pendingOther++;
         (high ? queue.high : queue.low).push({
             lane,
             context,

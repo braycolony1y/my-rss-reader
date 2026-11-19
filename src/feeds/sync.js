@@ -1,3 +1,5 @@
+import { createOriginPacer } from './origin-pacer.js';
+import { readResponseText } from '../fetch-response.js';
 import { shouldSkipFeedFetch } from './fetch-scope.js';
 import { publishFeedResults } from './publish-results.js';
 import { beginFeedPublication } from './publication-order.js';
@@ -118,6 +120,7 @@ export function createFeedSync({
 
         const CONCURRENCY_LIMIT = 5;
         const activePromises = new Set();
+        const paceOrigin=createOriginPacer();
 
         const processOneFeed = async (feed, feedIndex) => {
             if (onProgress) onProgress({
@@ -131,6 +134,7 @@ export function createFeedSync({
 
             const feedFetchStart = Date.now();
             try {
+                await paceOrigin(feed.url);
                 const {response, feedData: acquiredFeedData, failed, manualRecovery} = await acquireFeedSource(feed, {
                     feedFetchStart, syncLogs, manualRefreshScopes
                 });
@@ -144,7 +148,7 @@ export function createFeedSync({
                     return;
                 }
 
-                const xmlData = response ? await response.text() : '';
+                const xmlData = response ? await readResponseText(response,{maxBytes:16*1024*1024}) : '';
 
                 if (feedData) {
                     // Structured source handlers already return the common feed shape.
@@ -661,7 +665,6 @@ export function createFeedSync({
             if (activePromises.size >= CONCURRENCY_LIMIT) {
                 await Promise.race(activePromises);
             }
-            await new Promise(r => setTimeout(r, 500));
         }
         await Promise.all(activePromises);
         await cacheObservations.flush().catch(error => console.error('[RSS CACHE OBSERVATION]', error.message));
