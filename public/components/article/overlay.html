@@ -6,8 +6,19 @@
             x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100"
             x-transition:leave="transition ease-in duration-200" x-transition:leave-start="opacity-100"
             x-transition:leave-end="opacity-0" class="article-overlay-backdrop absolute inset-0"
-            :class="theme === 'glass-light' ? 'bg-gray-400/20 backdrop-blur-md' : (theme === 'glass-dark' ? 'bg-black/40 backdrop-blur-md' : 'bg-black/60 backdrop-blur-md')"
+            :class="theme === 'glass-light' ? 'bg-gray-400/20' : (theme === 'glass-dark' ? 'bg-black/40' : 'bg-black/60')"
             @click="closeArticleOverlay()"></div>
+
+        <!-- Desktop blur strips. The blur used to be one full-viewport backdrop-filter
+             that sat under the opaque panel and was re-filtered on every scrolled
+             frame. The blur now only covers the visible gutters beside the panel. -->
+        <template x-for="side in ['left', 'right']" :key="side">
+            <div x-show="articleOverlayOpen" x-transition:enter="transition ease-out duration-300"
+                x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100"
+                x-transition:leave="transition ease-in duration-200" x-transition:leave-start="opacity-100"
+                x-transition:leave-end="opacity-0" class="article-overlay-blur-strip" :data-side="side"
+                aria-hidden="true"></div>
+        </template>
 
         <!-- Panel -->
         <div x-show="articleOverlayOpen" x-transition:enter="transition ease-out duration-300 transform"
@@ -91,7 +102,7 @@
                     <template x-if="overlayArticle && overlayArticle.overlayImage">
                         <figure data-article-export-header class="w-full mb-8">
                             <img :src="overlayArticle.overlayImage"
-                                class="w-full h-auto max-h-[40vh] md:max-h-[320px] object-cover rounded-2xl shadow-lg"
+                                class="w-full h-auto max-h-[40vh] md:max-h-[320px] object-cover rounded-2xl shadow-lg" decoding="async"
                                 @error="$el.closest('figure').style.display='none'">
                             <figcaption x-show="overlayArticle.overlayImageCaption"
                                 class="mt-2 px-1 text-sm leading-relaxed"

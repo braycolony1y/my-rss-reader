@@ -31,6 +31,10 @@
             -webkit-backdrop-filter: none !important;
         }
 
+        .theme-glass-light .article-overlay-blur-strip {
+            display: none !important;
+        }
+
         .theme-glass-light .article-overlay-panel {
             background: #f7f7f7 !important;
             background-image: none !important;

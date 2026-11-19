@@ -46,6 +46,48 @@ const ReaderArticleOverlay = {
                     return Object.keys(this.overlayMethodResults || {});
                 },
 
+                // hls.js is only needed for the rare .m3u8 video, so it is no longer
+                // a render-blocking script in index.html. It loads on first use.
+                loadHlsLibrary() {
+                    if (window.Hls) return Promise.resolve(window.Hls);
+                    if (!ReaderArticleOverlay.hlsPromise) {
+                        ReaderArticleOverlay.hlsPromise = new Promise((resolve, reject) => {
+                            const script = document.createElement('script');
+                            script.src = 'https://cdn.jsdelivr.net/npm/hls.js@1.7.4/dist/hls.min.js';
+                            script.onload = () => resolve(window.Hls);
+                            script.onerror = () => { ReaderArticleOverlay.hlsPromise = null; reject(new Error('hls.js failed to load')); };
+                            document.head.appendChild(script);
+                        });
+                    }
+                    return ReaderArticleOverlay.hlsPromise;
+                },
+
+                attachHlsVideos() {
+                    const streams = [];
+                    document.querySelectorAll('.article-rendered-content video').forEach(video => {
+                        let src = video.getAttribute('src');
+                        if (!src) {
+                            const sourceTag = video.querySelector('source[src*=".m3u8"], source[type="application/x-mpegURL"]');
+                            if (sourceTag) src = sourceTag.getAttribute('src');
+                        }
+                        if (src && src.includes('.m3u8')) streams.push({ video, src });
+                    });
+                    if (!streams.length) return;
+                    const native = ({ video, src }) => { if (video.canPlayType('application/vnd.apple.mpegurl')) video.src = src; };
+                    this.loadHlsLibrary().then(Hls => {
+                        streams.forEach(item => {
+                            const { video, src } = item;
+                            if (Hls && Hls.isSupported()) {
+                                video.removeAttribute('src');
+                                video.querySelectorAll('source').forEach(s => s.remove());
+                                const hls = new Hls();
+                                hls.loadSource(src);
+                                hls.attachMedia(video);
+                            } else native(item);
+                        });
+                    }).catch(() => streams.forEach(native));
+                },
+
                 applyOverlayArticleData(data, fallbackArticle = null) {
                     if (!data || data.error) return;
                     if (!this.articleContentCache) this.articleContentCache = new Map();
@@ -147,26 +189,7 @@ const ReaderArticleOverlay = {
                         if (!this.articleOverlayOpen || this.overlayRequestId !== applyRequestId
                             || ReaderOverlayLifecycle.generation(this) !== applyGeneration) return;
                         this.hydrateTwitterEmbeds(document.getElementById('overlay-scroll-container'));
-                        if (window.Hls) {
-                            document.querySelectorAll('.article-rendered-content video').forEach(video => {
-                                let src = video.getAttribute('src');
-                                if (!src) {
-                                    const sourceTag = video.querySelector('source[src*=".m3u8"], source[type="application/x-mpegURL"]');
-                                    if (sourceTag) src = sourceTag.getAttribute('src');
-                                }
-                                if (src && src.includes('.m3u8')) {
-                                    if (Hls.isSupported()) {
-                                        video.removeAttribute('src');
-                                        video.querySelectorAll('source').forEach(s => s.remove());
-                                        const hls = new Hls();
-                                        hls.loadSource(src);
-                                        hls.attachMedia(video);
-                                    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-                                        video.src = src;
-                                    }
-                                }
-                            });
-                        }
+                        this.attachHlsVideos();
                         const articleScroll =
                             document.getElementById(
                                 'overlay-scroll-container'

@@ -7,11 +7,25 @@ const ReaderAppBootstrap = {
                 password: '',
 
                 async initApp() {
-                    setInterval(() => { this.clockNow = Date.now(); this.updateSourceTimes(); }, 30000);
+                    setInterval(() => { if (document.hidden) return; this.clockNow = Date.now(); this.updateSourceTimes(); }, 30000);
                     document.addEventListener('visibilitychange', () => { this.clockNow = Date.now(); this.updateSourceTimes(); });
                     document.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') this.toggleSourceTime(event); });
                     this.$watch('isLoggedIn', () => this.loadCacheState());
-                    setInterval(() => this.loadCacheState(), 60000);
+                    // While the reader is open the feed behind it is static, dimmed and
+                    // mostly covered. Flag it so CSS can drop the per-frame backdrop
+                    // filters and glow blurs that would otherwise be re-evaluated under
+                    // the scrolling panel. The flag lands after the 300ms fade-in so the
+                    // transition itself is unchanged, and clears the moment it closes.
+                    let readerOpenTimer = 0;
+                    this.$watch('articleOverlayOpen', open => {
+                        clearTimeout(readerOpenTimer);
+                        const root = document.documentElement;
+                        if (!open) { root.removeAttribute('data-reader-open'); return; }
+                        readerOpenTimer = setTimeout(() => {
+                            if (this.articleOverlayOpen) root.setAttribute('data-reader-open', '');
+                        }, 350);
+                    });
+                    setInterval(() => { if (!document.hidden) this.loadCacheState(); }, 60000);
                     this.installTooltipDismissListeners();
                     if (document.cookie.includes('auth=true')) {
                         this.isLoggedIn = true;
@@ -201,8 +215,8 @@ const ReaderAppBootstrap = {
                             // Intentionally do not write sc.scrollTop here.
                         }
                     });
-                    window.addEventListener('pagehide', () => { this.flushUserPreferences(); if (typeof this.saveState === 'function') this.saveState(); });
-                    if ('onfreeze' in document) document.addEventListener('freeze', () => { if (typeof this.saveState === 'function') this.saveState(); });
+                    window.addEventListener('pagehide', () => { this.flushUserPreferences(); if (typeof this.saveState === 'function') (this.saveStateNow || this.saveState).call(this); });
+                    if ('onfreeze' in document) document.addEventListener('freeze', () => { if (typeof this.saveState === 'function') (this.saveStateNow || this.saveState).call(this); });
                     window.addEventListener('pageshow', (e) => {
                         if (e.persisted) {
                             // BFCache restores the live document, including its

@@ -6,7 +6,35 @@ const ReaderAppPersistence = {
                 pendingPreferences: {}, 
                 userPreferences: {},
                 lastSavedScrollY: 0,
+                // Coalesce bursts of state changes (read marks, pagination, saved
+                // lists) into one trailing snapshot. The snapshot serialises the
+                // whole feed state to two storages, which is too heavy to repeat
+                // synchronously on every interaction. Lifecycle handlers use
+                // saveStateNow() so nothing is lost on pagehide/freeze/hidden.
                 saveState() {
+                    if (document.visibilityState === 'hidden' || typeof window.setTimeout !== 'function') return this.saveStateNow();
+                    const owner = window.Alpine?.raw?.(this) || this;
+                    if (owner.__saveStateTimer) return;
+                    owner.__saveStateTimer = window.setTimeout(() => {
+                        owner.__saveStateTimer = 0;
+                        if (typeof window.requestIdleCallback === 'function') {
+                            window.requestIdleCallback(() => this.persistStateNow(), { timeout: 1500 });
+                        } else {
+                            this.persistStateNow();
+                        }
+                    }, 400);
+                },
+
+                saveStateNow() {
+                    const owner = window.Alpine?.raw?.(this) || this;
+                    if (owner.__saveStateTimer) {
+                        (window.clearTimeout || clearTimeout)(owner.__saveStateTimer);
+                        owner.__saveStateTimer = 0;
+                    }
+                    return this.persistStateNow();
+                },
+
+                persistStateNow() {
                     // Persistence is a read-only snapshot, not a reactive consumer.
                     // Walking thousands of history/preferences fields through Alpine
                     // proxies adds tracking and wrapper work to every article click.
@@ -90,6 +118,13 @@ const ReaderAppPersistence = {
                             relatedArticles: undefined
                         }))
                     });
+
+                    // Skip identical snapshots: a storage write of this size is the
+                    // expensive part and most bursts re-save unchanged state.
+                    const stateOwner = window.Alpine?.raw?.(app) || app;
+                    const unstamped = json.replace(/,"savedAt":\d+\}$/, '}');
+                    if (stateOwner.__lastStateJson === unstamped) return;
+                    stateOwner.__lastStateJson = unstamped;
 
                     for (const storage of [sessionStorage, localStorage]) {
                         try {

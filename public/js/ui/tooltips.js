@@ -49,6 +49,10 @@ const ReaderUiTooltips = {
                     this.positionTooltip(e);
                 },
                 hideTooltip() {
+                    // Called for every scroll/touch/resize event: stay a no-op (no
+                    // reactive writes) unless a tooltip or timer is actually pending.
+                    if (!this.customTooltipOpen && !this.tooltipTriggerElement
+                        && !this.tooltipShowTimer && !this.tooltipHideTimer) return;
                     this.clearTooltipTimers();
                     this.customTooltipOpen = false;
                     this.tooltipTriggerElement = null;

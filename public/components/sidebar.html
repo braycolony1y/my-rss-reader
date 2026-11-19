@@ -396,7 +396,7 @@
                                 <div class="w-10 h-8 flex items-center justify-center rounded-md cursor-pointer transition-all"
                                     :class="selectedFilterType === 'feed' && selectedFilterValue === feed.url ? (theme === 'glass-light' ? 'bg-emerald-100' : 'bg-teal-900/40 shadow-[inset_0_0_10px_rgba(20,184,166,0.1)]') : (theme === 'glass-light' ? 'hover:bg-gray-100/50' : 'hover:bg-white/10')"
                                     @click="setFilter('feed', feed.url)" :title="feed.title">
-                                    <img :src="smartSourceIcon(feed) || feed.icon"
+                                    <img :src="smartSourceIcon(feed) || feed.icon" loading="lazy" decoding="async"
                                         class="w-4 h-4 rounded-sm object-contain transition"
                                         @error="$el.src='data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'16\' height=\'16\' fill=\'gray\'><rect width=\'16\' height=\'16\'/></svg>'">
                                 </div>
@@ -451,7 +451,7 @@
                                         <div class="flex items-center gap-2 flex-1 overflow-hidden cursor-pointer"
                                             @click="setFilter('feed', feed.url)">
                                             <div class="w-7 flex items-center justify-center shrink-0">
-                                                <img :src="smartSourceIcon(feed) || feed.icon"
+                                                <img :src="smartSourceIcon(feed) || feed.icon" loading="lazy" decoding="async"
                                                     class="max-w-full h-5 md:h-4 rounded object-contain bg-white transition"
                                                     @error="$el.src='data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'16\' height=\'16\' fill=\'gray\'><rect width=\'16\' height=\'16\'/></svg>'">
                                             </div>

@@ -96,6 +96,43 @@
             transition: opacity 0.15s ease;
         }
 
+        /* Reader open: the feed and sidebar underneath are static, dimmed by the
+           scrim and covered by the panel. Their backdrop filters and the 70px
+           card glow blur are otherwise re-evaluated under the panel on every
+           scrolled frame (measured 3x + 3x per-frame draw cost). */
+        html[data-reader-open] :is(main, aside),
+        html[data-reader-open] :is(main, aside) * {
+            -webkit-backdrop-filter: none !important;
+            backdrop-filter: none !important;
+        }
+
+        html[data-reader-open] .card-ambient {
+            display: none !important;
+        }
+
+        /* Blur only the gutters beside the desktop panel (see overlay.html). The
+           blur strips are siblings of the scrim, not children, so the scrim's
+           opacity transition does not turn them into a backdrop root. */
+        .article-overlay-blur-strip {
+            display: none;
+        }
+
+        @media (min-width: 768px) {
+            .article-overlay-blur-strip {
+                display: block;
+                position: absolute;
+                top: 0;
+                bottom: 0;
+                width: calc((100% - min(90%, 860px)) / 2);
+                pointer-events: none;
+                -webkit-backdrop-filter: blur(12px);
+                backdrop-filter: blur(12px);
+            }
+
+            .article-overlay-blur-strip[data-side="left"] { left: 0; }
+            .article-overlay-blur-strip[data-side="right"] { right: 0; }
+        }
+
         /* Hide scrollbar for Chrome, Safari and Opera */
         .no-scrollbar::-webkit-scrollbar {
             display: none !important;
@@ -147,7 +184,10 @@
         /* Avoid mask/filter compositing on the feed cards while they move. */
 
         #scroll-container [class*="backdrop-blur"],
-        #overlay-scroll-container [class*="backdrop-blur"] {
+        #overlay-scroll-container [class*="backdrop-blur"],
+        #overlay-scroll-container .ground-coverage,
+        #overlay-scroll-container .ground-articles,
+        #overlay-scroll-container .ground-perspectives {
             -webkit-backdrop-filter: none !important;
             backdrop-filter: none !important;
         }
