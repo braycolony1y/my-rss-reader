@@ -73,6 +73,15 @@ Environment=STORY_BRIEFING_DUMP_OUTPUT=1
 [Service]
 Environment="TOP_STORIES_MAIN_HEAP_MAX_MB=2450"
 
+# /etc/systemd/system/rss-reader.service.d/zz-anti-hang.conf
+[Service]
+# 2026-11-19: the VPS (2 CPU / 11 GB) hung from swap thrash when this unit
+# (6G max, unlimited swap) and ollama (5G max) together could claim all RAM.
+# Keep rss-reader + ollama <= ~8.5G so SSH/system always have headroom.
+MemoryHigh=4300M
+MemoryMax=5G
+MemorySwapMax=512M
+
 # /etc/systemd/system/rss-reader.service.d/zz-memory-recovery.conf
 [Service]
 # Leave room below MemoryHigh for workers, native allocations and file I/O.
