@@ -10,7 +10,24 @@ const ReaderListPublication = {
     retains(app) {
         return app.articles.length > 0 && this.contexts.get(app.__readerOwner || app) === this.context(app);
     },
-    commit(app) { this.contexts.set(app.__readerOwner || app, this.context(app)); },
+    commit(app) { this.contexts.set(app.__readerOwner || app, this.context(app)); this.remember(app); },
+    // Stale-while-revalidate for the personal lists (Read Later, Recently Read,
+    // Boards, Hidden): re-entering one paints its last page at once while the
+    // normal request below supplies authoritative membership and order.
+    snapshots: new Map(),
+    personal: new Set(['saved', 'recent', 'board', 'hidden']),
+    remember(app) {
+        if (!this.personal.has(app.selectedFilterType) || !app.articles.length) return;
+        this.snapshots.set(this.context(app), { at: Date.now(), articles: app.articles.slice(0, 40) });
+    },
+    restore(app) {
+        if (!this.personal.has(app.selectedFilterType)) return false;
+        const snapshot = this.snapshots.get(this.context(app));
+        if (!snapshot || Date.now() - snapshot.at > 15 * 60 * 1000) return false;
+        app.articles = snapshot.articles.slice();
+        this.contexts.set(app.__readerOwner || app, this.context(app));
+        return true;
+    },
     reconcile(current, incoming) {
         const identity = article => article.clusterId ? `cluster:${article.clusterId}`
             : article.link ? `link:${article.link}` : null;

@@ -515,3 +515,8 @@
 [2026-11-19 16:46:18 +07] SUCCESS: website backup completed
 [2026-11-20 05:00:01 +07] Starting sanitized GitHub backup
 [2026-11-20 05:00:09 +07] Source and systemd snapshots prepared
+[2026-11-20 05:00:09 +07] Created backup commit: 0529b14
+[2026-11-20 05:00:12 +07] Pushed sanitized snapshot to GitHub main
+[2026-11-20 05:00:12 +07] SUCCESS: website backup completed
+[2026-11-21 05:00:01 +07] Starting sanitized GitHub backup
+[2026-11-21 05:00:12 +07] Source and systemd snapshots prepared

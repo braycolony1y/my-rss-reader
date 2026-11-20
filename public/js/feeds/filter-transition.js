@@ -46,7 +46,7 @@ const ReaderFilterTransition = {
                     window.location.hash = `${type}${value ? '/' + encodeURIComponent(value) : ''}`;
                     this.currentPage = 1;
                     this.hasMore = false;
-                    if (!sameDestination) this.articles = [];
+                    if (!sameDestination) { this.articles = []; ReaderListPublication.restore(this); }
                     this.mobileSidebarOpen = false;
                     const sc = document.getElementById('scroll-container');
                     if (sc) sc.scrollTo(0, 0);

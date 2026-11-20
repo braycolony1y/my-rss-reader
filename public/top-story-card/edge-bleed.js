@@ -8,6 +8,35 @@ const set = (card, key, value) => {
     if (card.style.getPropertyValue(key) !== value) card.style.setProperty(key, value);
 };
 
+// The finished mobile color field is remembered per image URL (memory plus
+// localStorage). A repeat view paints the final blend before the photo decodes,
+// instead of waiting for metadata, image load and canvas sampling again.
+const STORE_KEY = 'rss-mobile-blend-v1', STORE_LIMIT = 150;
+const remembered = new Map();
+let storeLoaded = false, storeTimer = 0;
+const sourceId = img => img.getAttribute('data-thumbnail-src') || img.currentSrc || img.src || '';
+function storedBlend(win, url) {
+    if (!storeLoaded) {
+        storeLoaded = true;
+        try {
+            for (const [id, entry] of JSON.parse(win.localStorage.getItem(STORE_KEY) || '[]')) {
+                if (typeof entry?.key === 'string' && typeof entry.gradient === 'string') remembered.set(id, entry);
+            }
+        } catch { /* Storage is optional, including in private browsing. */ }
+    }
+    return url ? remembered.get(url) || null : null;
+}
+function rememberBlend(win, url, entry) {
+    if (!url) return;
+    remembered.delete(url); remembered.set(url, entry);
+    while (remembered.size > STORE_LIMIT) remembered.delete(remembered.keys().next().value);
+    if (storeTimer) return;
+    storeTimer = win.setTimeout(() => {
+        storeTimer = 0;
+        try { win.localStorage.setItem(STORE_KEY, JSON.stringify([...remembered])); } catch { }
+    }, 400);
+}
+
 // Publisher photos often taint canvas after a redirect. The image pipeline
 // already supplies an inline copy with the same crop; reuse it without fetching.
 export function rememberEdgeBleedSource(card, source, frame = [0, 0, 0, 0]) {
@@ -62,11 +91,18 @@ export function applyEdgeBleed(card, axis) {
     const img = axis === 'left' && card.dataset.storyPhoto === 'cropped' && soft?.complete && soft.naturalWidth
         ? soft : card.querySelector('.thumbnail-img');
     const hero = card.querySelector('.article-card-image');
+    const win = card.ownerDocument.defaultView;
+    const url = axis === 'bottom' && img ? sourceId(img) : '';
     if (!img?.complete || !img.naturalWidth || !hero || card.dataset.storyImageMissing === 'true') {
-        delete card.dataset.edgeBleed;
+        // Before the photo decodes, show the last finished blend for this URL.
+        const previous = hero && card.dataset.storyImageMissing !== 'true' ? storedBlend(win, url) : null;
+        if (previous) {
+            set(card, '--edge-bleed-background', previous.gradient);
+            if (card.dataset.edgeBleed !== axis) card.dataset.edgeBleed = axis;
+        } else delete card.dataset.edgeBleed;
         return;
     }
-    const win = card.ownerDocument.defaultView, css = win.getComputedStyle(img);
+    const css = win.getComputedStyle(img);
     const cr = card.getBoundingClientRect(), ir = img.getBoundingClientRect(), hr = hero.getBoundingClientRect();
     const left = Math.max(ir.left, hr.left, cr.left + card.clientLeft);
     const top = Math.max(ir.top, hr.top, cr.top + card.clientTop);
@@ -85,6 +121,11 @@ export function applyEdgeBleed(card, axis) {
     const key = [axis, ...crop, ...(axis === 'bottom' ? Object.values(geometry) : [])].join('|');
     const displayedSource = img.currentSrc || img.src;
     let cached = samples.get(img);
+    const persistentKey = [axis, ...crop.map(Math.round), ...Object.values(geometry).map(Math.round)].join('|');
+    const previous = url ? storedBlend(win, url) : null;
+    if ((cached?.key !== key || cached.source !== source || cached.displayedSource !== displayedSource) && previous?.key === persistentKey) {
+        cached = { key, source, displayedSource, gradient: previous.gradient }; samples.set(img, cached);
+    }
     if (cached?.key !== key || cached.source !== source || cached.displayedSource !== displayedSource) {
         try {
             const canvas = card.ownerDocument.createElement('canvas'); canvas.width = canvas.height = 32;
@@ -102,6 +143,7 @@ export function applyEdgeBleed(card, axis) {
                 : edgeBleedPalette(data, 32, 32, axis);
             if (!gradient) { delete card.dataset.edgeBleed; return; }
             cached = { key, source, displayedSource, gradient }; samples.set(img, cached);
+            if (url) rememberBlend(win, url, { key: persistentKey, gradient });
         } catch { delete card.dataset.edgeBleed; return; }
     }
     const fade = 'linear-gradient(to right, var(--field-neutral), color-mix(in oklab, var(--field-neutral) 55%, transparent) 32%, transparent 65%)';

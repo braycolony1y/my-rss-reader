@@ -77,10 +77,21 @@ test('old baseline JSON is never mistaken for this request completing', async ()
     });
 });
 
+// Slice exactly one top-level function: from its declaration up to the next
+// top-level (optionally exported/async) function declaration.
+function extractFunctionSource(source, name) {
+    const start = source.indexOf(`async function ${name}(`);
+    assert.notEqual(start, -1, `${name} must exist in gemini-web.js`);
+    const rest = source.slice(start + 1);
+    const next = rest.search(/\n(?:export\s+)?(?:async\s+)?function\s/);
+    return source.slice(start, next === -1 ? undefined : start + 1 + next);
+}
+
 test('a provider error preserves the exact Gemini slot tab for the next request', async () => {
     const source = readFileSync(new URL('../src/ai/gemini-web.js', import.meta.url), 'utf8');
-    const start = source.indexOf('async function runOnSlot(');
-    const fn = source.slice(start, source.indexOf('\nexport async function closeGeminiWebSlots', start));
+    // runOnSlot wraps this per-attempt function with profile recovery; the
+    // tab-preservation behaviour lives in runOnSlotOnce.
+    const fn = extractFunctionSource(source, 'runOnSlotOnce');
     const page = { closeWindow: () => assert.fail('A provider failure must not close its tab') };
     const slot = { id: 1, page };
     const run = vm.runInNewContext(`(${fn})`, {
@@ -113,12 +124,12 @@ async function container() {
 
 test('each Gemini job uses New chat then Temporary Chat and fails closed without reloading', async () => {
     const source = readFileSync(new URL('../src/ai/gemini-web.js', import.meta.url), 'utf8');
-    const start = source.indexOf('async function resetGeminiJobPage(');
-    const fn = source.slice(start, source.indexOf('\n\nasync function runOnSlot', start));
+    const fn = extractFunctionSource(source, 'resetGeminiJobPage');
     for (const failOnce of [false, true]) {
         const calls = []; let attempts = 0;
         const reset = vm.runInNewContext(`(${fn})`, {
             URL, console: { warn() {} }, GEMINI_WEB_URL: 'https://gemini.google.com/u/1/app',
+            dismissNativeDialog: async () => {},
             returnToGeminiChatHome: async () => {
                 calls.push('new-chat');
                 if (failOnce && !attempts++) throw Object.assign(Error('retry'), { code: 'GEMINI_WEB_NEW_CHAT_FAILED' });

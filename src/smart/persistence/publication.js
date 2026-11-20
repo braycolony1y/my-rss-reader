@@ -127,6 +127,9 @@ metrics.editorialAssessmentFailures =
               .memoryPressureDeferredGroups || 0,
           relatedDevelopmentCount:
             storyRelationshipsForSnapshot.length,
+          ...(reviewResult.timeBudget?.reached
+            ? { reviewTimeBudget: reviewResult.timeBudget }
+            : {}),
           completedAt:
             toVietnamIso(
               Date.now()
@@ -232,7 +235,14 @@ metrics.editorialAssessmentFailures =
         'local-qwen'
       ),
     localModel,
+    // Exposed in Smart status only when the review budget was exhausted.
+    ...(reviewResult.timeBudget?.reached
+      ? { reviewTimeBudget: reviewResult.timeBudget }
+      : {}),
     verificationStats: {
+      ...(reviewResult.timeBudget?.reached
+        ? { timeBudget: reviewResult.timeBudget }
+        : {}),
       ambiguousGroupsTotal:
         reviewResult
           .ambiguousGroupsTotal,

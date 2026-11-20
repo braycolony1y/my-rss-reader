@@ -22,6 +22,7 @@ async function verifyWithProviderChain(
     return runGlobalAiTask(
       {
         lane: 'p3',
+        priority: 1,
         background: true,
         getFreshnessAt:
           () =>

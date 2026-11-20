@@ -452,12 +452,20 @@
                                                             <span class="text-gray-300" x-text="event.provider"></span>
                                                             <span x-show="event.providerId"> · <span x-text="event.providerId"></span></span>
                                                             <span x-show="event.model"> · <span x-text="event.model"></span></span>
+                                                            <span x-show="event.thinkingLevel"> · <span x-text="event.thinkingLevel + ' thinking'"></span></span>
+                                                            <span x-show="event.slot"> · <span x-text="'slot ' + event.slot"></span></span>
                                                         </div>
                                                     </div>
                                                     <time class="shrink-0 text-[10px] text-gray-600" x-text="formatVietnamDateTime(event.timestamp)"></time>
                                                 </div>
 
                                                 <div class="mt-2 flex flex-wrap gap-1.5 text-[10px] text-gray-400">
+                                                    <span x-show="event.modelFallback || event.thinkingFallback" data-testid="ai-usage-fallback"
+                                                        class="rounded-md bg-amber-500/[0.08] px-2 py-1 font-bold text-amber-300/90"
+                                                        x-text="'Fallback' + (event.modelFallback ? ': ' + (event.requestedModel || 'requested model') + ' → ' + event.model : '') + (event.thinkingFallback ? ' · thinking → ' + event.thinkingLevel : '')"></span>
+                                                    <span x-show="event.recovery" data-testid="ai-usage-recovery"
+                                                        class="rounded-md bg-sky-500/[0.08] px-2 py-1 font-bold text-sky-300/90"
+                                                        x-text="'Browser restarted' + (event.recovery?.restarts > 1 ? ' ×' + event.recovery.restarts : '') + (event.recovery?.attempts?.length ? ' · ' + event.recovery.attempts.map(item => item.outcome).join(', ') : '')"></span>
                                                     <span x-show="event.keyIndex" class="rounded-md bg-white/[0.04] px-2 py-1" x-text="'Key ' + event.keyIndex"></span>
                                                     <span x-show="event.attempt" class="rounded-md bg-white/[0.04] px-2 py-1" x-text="'Attempt ' + event.attempt"></span>
                                                     <span x-show="event.durationMs !== null" class="rounded-md bg-white/[0.04] px-2 py-1" x-text="formatAiUsageDuration(event.durationMs)"></span>
@@ -491,13 +499,17 @@
                                                     Legacy diagnostic record · Raw provider output was not captured by this version.
                                                 </div>
 
-                                                <details x-show="event.groupId || event.source || event.parserReason || event.repairAttempted" class="mt-2 text-[10px] text-gray-500">
+                                                <details x-show="event.groupId || event.source || event.parserReason || event.repairAttempted || event.recovery" class="mt-2 text-[10px] text-gray-500">
                                                     <summary class="cursor-pointer select-none hover:text-gray-300">Technical details</summary>
                                                     <div class="mt-1 space-y-0.5 border-l border-white/10 pl-2 font-mono break-all">
                                                         <div x-show="event.groupId">Group: <span x-text="event.groupId"></span></div>
                                                         <div x-show="event.parserReason">Parser reason: <span x-text="event.parserReason"></span></div>
                                                         <div x-show="event.repairAttempted">Repair: <span x-text="event.repairSucceeded === true ? 'succeeded' : (event.repairSucceeded === false ? 'failed' : 'attempted')"></span></div>
                                                         <div x-show="event.repairReason">Repair reason: <span x-text="event.repairReason"></span></div>
+                                                        <div x-show="event.recovery">Browser auto-restart: <span x-text="event.recovery?.restarts + ' attempt(s) on profile ' + event.recovery?.profile + ' | ' + event.recovery?.summary"></span></div>
+                                                        <template x-for="attempt in (event.recovery?.attempts || [])" :key="attempt.n">
+                                                            <div class="pl-2 text-gray-600" x-text="'#' + attempt.n + ' ' + attempt.action + ' -> ' + attempt.outcome + (attempt.reason ? ' (' + attempt.reason + ')' : '') + (attempt.killedPids?.length ? ' killed pids ' + attempt.killedPids.join(',') : '') + (attempt.removedLocks?.length ? ' removed ' + attempt.removedLocks.join(',') : '') + (attempt.error ? ' error: ' + attempt.error : '')"></div>
+                                                        </template>
                                                         <div>Log format: <span x-text="event.source === 'structured' ? 'Current detailed record' : 'Earlier text record'"></span></div>
                                                         <div>Event ID: <span x-text="event.id"></span></div>
                                                     </div>

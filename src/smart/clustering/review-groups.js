@@ -188,8 +188,28 @@ function deferredReviewPartitions(
       : (group?.reviewUniverse || group?.articles || [])
         .map(article => [article]);
 
-  return deferredComponents
+  // Stored and freshly computed deterministic components can overlap. Every
+  // article must be published exactly once, so assign each article to the
+  // largest component that claims it (stable for equal sizes).
+  const claimed = new Set();
+  const disjointComponents = deferredComponents
     .filter(component => component?.length)
+    .map((component, order) => ({ component, order }))
+    .sort((left, right) => right.component.length - left.component.length || left.order - right.order)
+    .map(({ component, order }) => ({
+      order,
+      component: component.filter(article => {
+        const id = getArticleId(article);
+        if (claimed.has(id)) return false;
+        claimed.add(id);
+        return true;
+      })
+    }))
+    .filter(entry => entry.component.length)
+    .sort((left, right) => left.order - right.order)
+    .map(entry => entry.component);
+
+  return disjointComponents
     .map(component => ({
       reviewRequestId: group.id,
       id: createGroupId(component),

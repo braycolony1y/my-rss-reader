@@ -75,6 +75,9 @@ async fetchData(isLoadMore = false, skipPageReset = false, keepVisible = false) 
                         params.set('smartMode', this.smartTabMode);
                         params.set('smartRegion', this.smartRegion);
                     }
+                    // The user-preference and recent-read maps are ~85% of a list payload
+                    // and unchanged by navigation; ask the server to omit them once held.
+                    if (this._fullStateLoaded && this.selectedFilterType !== 'smart' && (isLoadMore || !keepVisible)) params.set('lean', '1');
                     params.append('_t', Date.now().toString());
 
                     try {
@@ -204,7 +207,9 @@ async fetchData(isLoadMore = false, skipPageReset = false, keepVisible = false) 
                                         : retainPublication ? ReaderListPublication.reconcile(this.articles, newArticles) : newArticles;
                                 }
                                 
-                                this.userPreferences = { ...(data.userPreferences || {}), ...this.pendingPreferences };
+                                const incomingPreferences = data.userPreferences || (this._fullStateLoaded ? this.userPreferences : {});
+                                if (data.userPreferences) this._fullStateLoaded = true;
+                                this.userPreferences = { ...incomingPreferences, ...this.pendingPreferences };
                                 if (this.userPreferences.clusteringModel) {
                                     this.clusteringModel = this.userPreferences.clusteringModel;
                                 }

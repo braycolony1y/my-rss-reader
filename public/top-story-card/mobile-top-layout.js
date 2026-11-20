@@ -1,5 +1,5 @@
-import { frameMobilePhoto } from './mobile-photo-framing.js?v=20261004_fill_1';
-import { applyEdgeBleed } from './edge-bleed.js?v=20261106_8';
+import { frameMobilePhoto } from './mobile-photo-framing.js?v=20261120_fixed_1';
+import { applyEdgeBleed } from './edge-bleed.js?v=20261120_cache_1';
 import { directImageMask } from './mobile-photo-transition.js?v=20261106_4';
 export { directImageMask };
 // Mobile Smart Top owns only presentation; palette, focus and coverage data stay upstream.
@@ -139,10 +139,18 @@ export function mountMobileTopLayout(root = document.querySelector('#scroll-cont
     // Theme changes are outside the card tree.
     const theme = new MutationObserver(() => schedule());
     theme.observe(root.ownerDocument.body, { attributes: true, attributeFilter: ['class'] });
+    // Blend as soon as the photo has pixels; do not wait for focus metadata.
+    const onImageLoad = event => {
+        if (event.target?.matches?.('img.thumbnail-img')) {
+            const card = event.target.closest('.article-card');
+            if (card) schedule(card);
+        }
+    };
+    root.addEventListener('load', onImageLoad, true);
     const onMediaChange = () => schedule();
     media.addEventListener('change', onMediaChange);
     schedule();
-    return () => { observer.disconnect(); theme.disconnect(); resize.disconnect(); media.removeEventListener('change', onMediaChange); win.cancelAnimationFrame(frame); for (const card of active) clear(card); };
+    return () => { root.removeEventListener('load', onImageLoad, true); observer.disconnect(); theme.disconnect(); resize.disconnect(); media.removeEventListener('change', onMediaChange); win.cancelAnimationFrame(frame); for (const card of active) clear(card); };
 }
 if (typeof document !== 'undefined') {
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => mountMobileTopLayout(), { once: true });

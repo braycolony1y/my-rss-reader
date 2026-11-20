@@ -15,6 +15,29 @@ function rawText(value, maximum = 100000) {
     return result ? result.slice(0, maximum) : null;
 }
 
+// Browser auto-recovery trail (restart attempts) for the technical details.
+function recoveryFrom(value) {
+    if (!value || typeof value !== 'object' || !Array.isArray(value.attempts)) return null;
+    const attempts = value.attempts.slice(0, 5).map(attempt => ({
+        n: number(attempt.n),
+        action: text(attempt.action, 40) || null,
+        outcome: text(attempt.outcome, 60) || null,
+        reason: text(attempt.reason, 200) || null,
+        durationMs: number(attempt.durationMs),
+        backoffMs: number(attempt.backoffMs),
+        killedPids: Array.isArray(attempt.killedPids) ? attempt.killedPids.slice(0, 20).map(number).filter(v => v !== null) : [],
+        removedLocks: Array.isArray(attempt.removedLocks) ? attempt.removedLocks.slice(0, 5).map(item => text(item, 40)) : [],
+        launched: attempt.launched === true,
+        error: text(attempt.error, 200) || null
+    }));
+    return {
+        profile: text(value.profile, 80) || null,
+        restarts: number(value.restarts) || attempts.length,
+        attempts,
+        summary: attempts.map(item => `#${item.n} ${item.action}:${item.outcome}${item.durationMs !== null ? ` ${item.durationMs}ms` : ''}`).join('; ')
+    };
+}
+
 function booleanOrNull(value) {
     return value === true ? true : (value === false ? false : null);
 }
@@ -63,6 +86,11 @@ function structuredEvent(parsedLine, payload, sequence) {
         message: text(payload.message, MAX_ERROR_LENGTH) || null,
         cooldownUntil: journalTimestamp(payload.cooldownUntil),
         keyIndex: number(payload.keyIndex),
+        slot: number(payload.slot),
+        thinkingLevel: text(payload.thinkingLevel, 40) || null,
+        modelFallback: payload.modelFallback === true,
+        thinkingFallback: payload.thinkingFallback === true,
+        requestedModel: text(payload.requestedModel, 120) || null,
         attempt: number(payload.attempt),
         durationMs: number(payload.durationMs),
         promptTokens: number(payload.promptTokens) || 0,
@@ -82,6 +110,7 @@ function structuredEvent(parsedLine, payload, sequence) {
         repairRawResponseLength: number(payload.repairRawResponseLength),
         repairRawResponseShownLength: number(payload.repairRawResponseShownLength),
         repairRawResponseTruncated: payload.repairRawResponseTruncated === true,
+        recovery: recoveryFrom(payload.recovery),
         source: 'structured',
         precision: 'exact',
         kind: 'request',

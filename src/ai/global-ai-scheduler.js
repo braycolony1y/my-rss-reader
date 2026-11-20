@@ -359,7 +359,60 @@ function takeLane(lane) {
 }
 
 
+// Verification-over-briefing priority.
+//
+// Cluster verification (priority > 0) is what gates the final Smart snapshot,
+// so it jumps ahead of every other waiting low-lane job (story briefings,
+// editorial). Starvation is bounded: once any other ready low-lane task has
+// waited longer than GLOBAL_AI_PRIORITY_MAX_WAIT_MS (default 30 min) normal
+// P3/P4 alternation resumes. Briefings run freely whenever no verification
+// is waiting, so nothing is starved once the review stage has finished.
+function priorityMaxWaitMs() {
+    const value = Number(process.env.GLOBAL_AI_PRIORITY_MAX_WAIT_MS);
+    return Number.isFinite(value) && value >= 0 ? value : 30 * 60 * 1000;
+}
+
+function priorityFor(task) {
+    return Number(task?.priority) || 0;
+}
+
+function takePriorityLow() {
+    const now = Date.now();
+    const maxWait = priorityMaxWaitMs();
+    let best = null;
+    let bestIndex = -1;
+    let starved = false;
+
+    for (let index = 0; index < pending.length; index++) {
+        const task = pending[index];
+        const lane = laneFor(task);
+        if (!ready(task) || (lane !== 'p3' && lane !== 'p4')) continue;
+
+        if (priorityFor(task) > 0) {
+            if (
+                best === null ||
+                priorityFor(task) > priorityFor(best) ||
+                (priorityFor(task) === priorityFor(best) && taskBefore(task, best))
+            ) {
+                best = task;
+                bestIndex = index;
+            }
+        }
+        else if (now - (Number(task.enqueuedAt) || now) > maxWait) {
+            starved = true;
+        }
+    }
+
+    if (!best || starved) return null;
+
+    pending.splice(bestIndex, 1);
+    return { task: best, lane: laneFor(best) };
+}
+
 function takeLow() {
+    const prioritized = takePriorityLow();
+    if (prioritized) return prioritized;
+
     const preferred =
         lowTurn;
 
@@ -758,6 +811,12 @@ export function runGlobalAiTask(
                 lane:
                     options.lane ||
                     'p4',
+
+                priority:
+                    Number(options.priority) || 0,
+
+                enqueuedAt:
+                    Date.now(),
 
                 getLane:
                     options.getLane ||

@@ -1,18 +1,42 @@
 import { readGeminiWebModeState, selectGeminiWebMode } from './gemini-web-mode.js';
-import { createGeminiWebPage } from './gemini-web-page.js';
+import { createGeminiWebPage, resolveGeminiWebProfileId } from './gemini-web-page.js';
+import { createDefaultProfileRecovery, waitFor } from '../browser/profile-recovery.js';
 import { waitForGeminiPageReady } from './gemini-web-page-readiness.js';
-import { waitForGeminiTemporaryChatState } from './gemini-web-temporary-readiness.js';
+import { isTemporaryChatConfirmedOn, waitForGeminiTemporaryChatState } from './gemini-web-temporary-readiness.js';
+import {
+    confirmFreshNormalChat, geminiHomeUrl, isFreshNormalChatState, readGeminiFreshChatDom
+} from './gemini-web-new-chat.js';
 import { closeOwnedSlotPage } from '../browser/slot-lifecycle.js';
 import { summarizeGeminiSlots } from '../browser/resource-state.js';
 export const getGeminiWebResourceState = () => summarizeGeminiSlots(slots);
 const sleep = ms =>
     new Promise(resolve => setTimeout(resolve, ms));
 
+// UI condition polls (each iteration re-checks a concrete selector/state, so
+// they are bounded by readiness, not by a fixed delay). Previously 150-300 ms.
+const POLL_MS = 100;
+// Response-completion poll scans the whole conversation DOM; previously 500 ms.
+const RESPONSE_POLL_MS = 250;
+const GEMINI_WEB_RESPONSE_START_MS = 25000;
+
 export const GEMINI_WEB_URL =
     process.env.GEMINI_WEB_URL ||
     'https://gemini.google.com/u/1/app';
 
-export const GEMINI_WEB_MODEL = '3.8 Flash';
+// Nominal label; the model actually chosen is logged per job (slot.lastMode).
+export const GEMINI_WEB_MODEL = 'Everyday help';
+
+function modeLogFields(slot) {
+    const mode = slot?.lastMode;
+    if (!mode) return { model: GEMINI_WEB_MODEL };
+    return {
+        model: mode.model,
+        thinkingLevel: mode.thinkingLevel,
+        modelFallback: mode.modelFallback || undefined,
+        thinkingFallback: mode.thinkingFallback || undefined,
+        requestedModel: mode.modelFallback ? mode.requestedModel : undefined
+    };
+}
 
 /*
  * Gemini Web has no provider-local concurrency limit.
@@ -154,14 +178,40 @@ async function browserModules() {
             )
         ]).then(([
             { Page },
-            { setDaemonCommandTimeoutSeconds }
+            { setDaemonCommandTimeoutSeconds, fetchDaemonStatus }
         ]) => {
             setDaemonCommandTimeoutSeconds(35);
-            return { Page };
+            return { Page, fetchDaemonStatus };
         });
     }
 
     return browserModulesPromise;
+}
+
+/*
+ * Shared fast-fail + auto-restart for this provider's browser profile.
+ * A not-connected profile is detected with a ~ms daemon probe (not the 35 s
+ * command deadline); the profile browser is relaunched at most twice per task
+ * and concurrent slots await the same restart.
+ */
+let profileRecovery = null;
+function geminiProfileRecovery() {
+    if (!profileRecovery) {
+        profileRecovery = createDefaultProfileRecovery({
+            name: 'gemini web',
+            fetchStatus: async opts => (await browserModules()).fetchDaemonStatus(opts),
+            overrides: {
+                // The restarted browser invalidates every cached tab binding.
+                onRestarted: () => { for (const slot of slots) slot.page = null; }
+            }
+        });
+    }
+    return profileRecovery;
+}
+
+// Test seam: inject a ProfileRecovery (or null to reset to the default).
+export function setGeminiWebProfileRecoveryForTests(instance) {
+    profileRecovery = instance;
 }
 
 function clearIdleClose(slot) {
@@ -556,7 +606,7 @@ async function temporaryChatState(page) {
         ]
             .filter(visible)
             .find(element =>
-                /^temporary chat$/i.test(
+                /^(turn (on|off) )?temporary chat$/i.test(
                     String(
                         element.getAttribute(
                             'aria-label'
@@ -566,6 +616,15 @@ async function temporaryChatState(page) {
                         .trim()
                 )
             );
+
+        // The label is the authoritative signal: "Turn off temporary chat"
+        // means ON, "Turn on temporary chat" means OFF.
+        const rawLabel = String(
+            temporaryButton?.getAttribute('aria-label') || ''
+        ).replace(/\s+/g, ' ').trim();
+        const labelState =
+            /^turn off /i.test(rawLabel) ? 'on' :
+            /^turn on /i.test(rawLabel) ? 'off' : null;
 
         const icon =
             temporaryButton?.querySelector('mat-icon');
@@ -585,13 +644,14 @@ async function temporaryChatState(page) {
         const toolbarEnabled =
             iconName === 'close';
 
-        const canEnable =
-            iconName ===
-            'gemini_chat_temp';
-
-        const enabled =
-            activeTemporaryDom ||
-            toolbarEnabled;
+        const onSignals =
+            labelState === 'on' || toolbarEnabled || activeTemporaryDom;
+        const offSignals =
+            labelState === 'off' || iconName === 'gemini_chat_temp';
+        // Contradictory indicators are ambiguous: never treat as known.
+        const ambiguous = onSignals && offSignals;
+        const enabled = onSignals && !offSignals;
+        const canEnable = offSignals && !onSignals;
 
         return {
             found:
@@ -604,11 +664,12 @@ async function temporaryChatState(page) {
                 enabled ||
                 canEnable,
 
+            ambiguous,
+            labelState,
+
             enabled,
 
-            canEnable:
-                !enabled &&
-                canEnable,
+            canEnable,
 
             activeTemporaryDom,
 
@@ -660,7 +721,7 @@ async function waitForTemporaryChatControl(
             return lastState;
         }
 
-        await sleep(200);
+        await sleep(POLL_MS);
     }
 
     return null;
@@ -702,7 +763,7 @@ async function ensureTemporaryChat(page) {
         ]
             .filter(visible)
             .find(element =>
-                /^temporary chat$/i.test(
+                /^(turn on )?temporary chat$/i.test(
                     (
                         element.getAttribute('aria-label') ||
                         element.innerText ||
@@ -728,13 +789,13 @@ async function ensureTemporaryChat(page) {
     const deadline = Date.now() + 8000;
 
     while (Date.now() < deadline) {
-        await sleep(250);
-
         state = await temporaryChatState(page);
 
         if (state.enabled) {
             return;
         }
+
+        await sleep(POLL_MS);
     }
 
     return providerError(
@@ -770,7 +831,7 @@ async function clickTemporaryChatToggle(page) {
         ]
             .filter(visible)
             .find(element =>
-                /^temporary chat$/i.test(
+                /^(turn on )?temporary chat$/i.test(
                     String(
                         element.getAttribute(
                             'aria-label'
@@ -805,9 +866,9 @@ async function waitForTemporaryChatState(
 
 async function clickGeminiNewChatControl(page, timeoutMs = 5000) {
     const deadline = Date.now() + timeoutMs;
-    let sidebarOpened = false;
+    let openedMenu = false;
     while (Date.now() < deadline) {
-        const result = await page.evaluate(() => {
+        const result = await page.evaluate(openedMenu => {
             const visible = element => {
                 if (!element) return false;
                 const style = getComputedStyle(element);
@@ -835,9 +896,9 @@ async function clickGeminiNewChatControl(page, timeoutMs = 5000) {
                 preferred.click();
                 return { clicked: true, href: preferred.getAttribute('href') };
             }
-            const menu = [...document.querySelectorAll('button')].find(element =>
+            const menu = openedMenu ? null : [...document.querySelectorAll('button')].find(element =>
                 visible(element) && (
-                    /^main menu$/i.test(name(element)) ||
+                    /^(main menu|open sidebar|expand menu|open menu)$/i.test(name(element)) ||
                     [...element.querySelectorAll('mat-icon')].some(icon =>
                         /^(menu|menu_open)$/.test(String(
                             icon.getAttribute('fonticon') ||
@@ -852,70 +913,86 @@ async function clickGeminiNewChatControl(page, timeoutMs = 5000) {
                 return { openedSidebar: true };
             }
             return { missing: true };
-        });
+        }, openedMenu);
         if (result.clicked) return true;
-        if (result.openedSidebar) sidebarOpened = true;
-        await sleep(sidebarOpened ? 250 : 200);
+        // Toggle the collapsed sidebar once; clicking again would close it.
+        if (result.openedSidebar) openedMenu = true;
+        await sleep(POLL_MS);
     }
     return false;
+}
+
+async function readFreshChatState(page) {
+    const [temporary, dom] = await Promise.all([
+        temporaryChatState(page),
+        page.evaluate(readGeminiFreshChatDom)
+    ]);
+    return { ...dom, enabled: Boolean(temporary?.enabled || temporary?.ambiguous), temporary };
 }
 
 async function waitForFreshNormalChat(
     page,
     timeoutMs = 12000
 ) {
-    const deadline =
-        Date.now() + timeoutMs;
+    const deadline = Date.now() + timeoutMs;
 
-    let state = null;
-
-    while (Date.now() < deadline) {
-        state =
-            await temporaryChatState(
-                page
-            );
-
-        /*
-         * Fresh normal Gemini chat:
-         *
-         * - canonical /app route
-         * - NOT currently Temporary Chat
-         * - Temporary Chat button is available with
-         *   gemini_chat_temp icon.
-         */
-        if (
-            state?.freshRoute &&
-            state?.conversationEmpty &&
-            !state?.enabled &&
-            state?.canEnable
-        ) {
-            return state;
-        }
-
-        await sleep(200);
+    /*
+     * Fresh normal Gemini chat (see gemini-web-new-chat.js): canonical
+     * /app route, empty composer, no message turns, not Temporary Chat.
+     */
+    for (;;) {
+        const state = await readFreshChatState(page).catch(() => null);
+        if (isFreshNormalChatState(state)) return state.temporary;
+        if (Date.now() >= deadline) return null;
+        await sleep(POLL_MS);
     }
-
-    return null;
 }
 
 
-async function returnToGeminiChatHome(page) {
-    // Verified 2026-10-16: real New chat control works with both collapsed
-    // and expanded sidebar, including reactivation from Temporary Chat.
-    // Avoid Ctrl+Shift+O and reload-based resets for routine jobs.
-    for (let attempt = 1; attempt <= 2; attempt++) {
-        const clicked = await clickGeminiNewChatControl(page, 5000);
-        if (clicked) {
-            const fresh = await waitForFreshNormalChat(page, 10000);
-            if (fresh) return fresh;
-        }
-        console.warn('[GEMINI WEB] New chat UI confirmation failed, attempt ' + attempt);
+// Best-effort: a native dialog (e.g. beforeunload for unsent text) makes
+// Runtime.evaluate hang until the CDP timeout.
+async function dismissNativeDialog(page) {
+    try {
+        await page.cdp('Page.handleJavaScriptDialog', { accept: true });
+        return true;
+    } catch {
+        return false;
     }
-    return providerError(
-        page,
-        'Gemini could not reach a confirmed fresh normal chat using New chat',
-        'GEMINI_WEB_NEW_CHAT_FAILED'
-    );
+}
+
+// Unsent text triggers a "Leave site?" dialog when navigating away.
+async function clearComposerDraft(page) {
+    await page.evaluate(() => {
+        const editor = [...document.querySelectorAll('textarea,[contenteditable="true"]')]
+            .find(element => element.getBoundingClientRect().width > 0);
+        if (!editor) return;
+        if (editor.tagName === 'TEXTAREA') {
+            editor.value = '';
+        } else if (String(editor.textContent || '').trim()) {
+            editor.textContent = '';
+        } else return;
+        editor.dispatchEvent(new Event('input', { bubbles: true }));
+    }).catch(() => {});
+}
+
+async function returnToGeminiChatHome(page) {
+    await dismissNativeDialog(page);
+    await clearComposerDraft(page);
+    // An already-blank chat is accepted as-is; otherwise use the New chat
+    // control (opening the collapsed sidebar once), then fall back to the
+    // same account's base /u/N/app URL. Avoid Ctrl+Shift+O and unneeded reloads.
+    return confirmFreshNormalChat(page, {
+        readState: readFreshChatState,
+        clickNewChat: clickGeminiNewChatControl,
+        goHome: async target => {
+            const current = await target.evaluate(() => location.href);
+            console.warn('[GEMINI WEB] New chat control unavailable; opening base app URL');
+            await target.goto(geminiHomeUrl(current, GEMINI_WEB_URL));
+            await waitForGeminiPage(target, 20000);
+        },
+        sleep,
+        providerError
+    });
 }
 
 async function resetFreshTemporaryChat(page) {
@@ -970,7 +1047,7 @@ async function resetFreshTemporaryChat(page) {
     await waitForTemporaryChatState(page, true, 10000);
     // Fail closed: require BOTH independently observed live indicators.
     const verified = await temporaryChatState(page);
-    if (!verified.activeTemporaryDom || verified.iconName !== 'close') {
+    if (!isTemporaryChatConfirmedOn(verified)) {
         return providerError(page,
             'Temporary Chat activation requires both active chat DOM and close icon',
             'GEMINI_WEB_TEMP_CHAT_NOT_CONFIRMED');
@@ -980,9 +1057,11 @@ async function resetFreshTemporaryChat(page) {
 
 async function waitForModePicker(
     page,
-    timeoutMs = 10000
+    timeoutMs = 6000
 ) {
-    const deadline = Date.now() + timeoutMs;
+    const startedAt = Date.now();
+    const deadline = startedAt + timeoutMs;
+    let sidebarClosed = false;
 
     while (Date.now() < deadline) {
         const found = await page.evaluate(() => {
@@ -1005,7 +1084,23 @@ async function waitForModePicker(
 
         if (found) return;
 
-        await sleep(250);
+        // A narrow window with the sidebar open hides the picker. Collapse
+        // the sidebar once (after the page had a moment to render).
+        if (!sidebarClosed && Date.now() - startedAt >= 1200) {
+            sidebarClosed = true;
+            await page.evaluate(() => {
+                const button = [...document.querySelectorAll('button,[role="button"]')]
+                    .find(element => {
+                        const label = String(element.getAttribute('aria-label') || '').trim();
+                        const rect = element.getBoundingClientRect();
+                        return /^(close sidebar|collapse menu|close menu)$/i.test(label) &&
+                            rect.width > 0 && rect.height > 0;
+                    });
+                if (button) button.click();
+            }).catch(() => {});
+        }
+
+        await sleep(POLL_MS);
     }
 
     return providerError(
@@ -1030,7 +1125,7 @@ async function openModelMenu(page) {
                 button.click();
             }
         });
-        await sleep(150);
+        await sleep(POLL_MS);
     }
     return providerError(page, 'Gemini Web model menu did not open',
         'GEMINI_WEB_MODEL_MENU_TIMEOUT');
@@ -1043,7 +1138,9 @@ async function closeModelMenu(page) {
         if (button && (button.getAttribute('aria-expanded') === 'true' ||
             holder?.getAttribute('aria-expanded') === 'true')) button.click();
     }).catch(() => {});
-    await sleep(150);
+    await waitFor(async () => !(await readGeminiWebModeState(page).catch(() => ({ open: false }))).open, {
+        timeoutMs: 800, intervalMs: 40, maxIntervalMs: 120, sleep
+    });
 }
 
 async function ensureModel(page, requestedMode = '3.8') {
@@ -1269,7 +1366,7 @@ async function submitPrompt(page) {
 
         if (submitted) return;
 
-        await sleep(150);
+        await sleep(POLL_MS);
     }
 
     return providerError(
@@ -1277,6 +1374,63 @@ async function submitPrompt(page) {
         'Gemini Web send button was not available',
         'GEMINI_WEB_SEND_NOT_FOUND'
     );
+}
+
+// Evidence that a prompt was really inserted / submitted.
+async function readSubmissionState(page) {
+    return page.evaluate(() => {
+        const visible = element => {
+            const style = getComputedStyle(element);
+            const rect = element.getBoundingClientRect();
+            return style.display !== 'none' && style.visibility !== 'hidden' &&
+                rect.width > 0 && rect.height > 0;
+        };
+        const editor = [...document.querySelectorAll('textarea,[contenteditable="true"]')]
+            .filter(visible)[0];
+        const editorText = editor
+            ? String(editor.tagName === 'TEXTAREA' ? editor.value : editor.textContent || '').trim()
+            : '';
+        const generating = [...document.querySelectorAll('button,[role="button"]')]
+            .filter(visible).some(element => /stop response|stop generating|cancel response/i.test(
+                [element.innerText, element.getAttribute('aria-label'), element.getAttribute('title')]
+                    .filter(Boolean).join(' ')));
+        return {
+            editorLength: editorText.length,
+            userTurns: document.querySelectorAll('user-query,[data-message-author-role="user"]').length,
+            modelTurns: document.querySelectorAll('model-response,[data-message-author-role="model"]').length,
+            generating
+        };
+    });
+}
+
+// Clicking Send is not proof of submission (an open menu or lost focus can
+// swallow the click). Confirm from the DOM and retry the click a few times.
+async function submitPromptVerified(page, text) {
+    let before = await readSubmissionState(page);
+    if (!before.editorLength) {
+        await setPrompt(page, text);
+        before = await readSubmissionState(page);
+        if (!before.editorLength) {
+            return providerError(page, 'Gemini Web prompt was not inserted into the editor',
+                'GEMINI_WEB_PROMPT_NOT_INSERTED');
+        }
+    }
+    for (let attempt = 1; attempt <= 3; attempt++) {
+        await submitPrompt(page);
+        const confirmed = await waitFor(async () => {
+            const state = await readSubmissionState(page).catch(() => null);
+            return Boolean(state && (
+                state.generating || state.userTurns > before.userTurns ||
+                state.modelTurns > before.modelTurns || state.editorLength === 0
+            ));
+        }, { timeoutMs: 5000, intervalMs: 100, maxIntervalMs: 250, sleep });
+        if (confirmed) return;
+        console.warn('[GEMINI WEB] Send not confirmed, attempt ' + attempt);
+        // A leftover open model menu swallows the first click.
+        await closeModelMenu(page);
+    }
+    return providerError(page, 'Gemini Web did not confirm the prompt was sent',
+        'GEMINI_WEB_SUBMIT_NOT_CONFIRMED');
 }
 
 async function responseState(page) {
@@ -1870,7 +2024,8 @@ export async function waitForResponse(
     page,
     baseline,
     timeoutMs,
-    expectJson = false
+    expectJson = false,
+    startTimeoutMs = 0
 ) {
     let deadline =
         Date.now() + timeoutMs;
@@ -2180,7 +2335,16 @@ export async function waitForResponse(
             throw error;
         }
 
-        await sleep(500);
+        // Nothing at all started (no text, no Stop button): fail fast rather
+        // than wait out the whole generation timeout.
+        if (
+            startTimeoutMs && !started && !state.generating &&
+            Date.now() - responseDebugStartedAt >= startTimeoutMs
+        ) {
+            break;
+        }
+
+        await sleep(RESPONSE_POLL_MS);
     }
 
     const error =
@@ -2389,6 +2553,7 @@ function buildInput(prompt, options) {
 }
 
 async function resetGeminiJobPage(page) {
+    await dismissNativeDialog(page);
     const currentUrl = await page.evaluate(() => location.href);
     await page.cdp('Emulation.setFocusEmulationEnabled', { enabled: true });
     // /u/0 and /u/1 can be different Google accounts. An already-open
@@ -2408,13 +2573,35 @@ async function resetGeminiJobPage(page) {
     await resetFreshTemporaryChat(page);
 }
 
-async function runOnSlot(
+function mergeRecoveryTrail(trail, recovery) {
+    if (!trail || !recovery?.attempts?.length) return;
+    trail.restarts += recovery.restarts || 0;
+    trail.attempts.push(...recovery.attempts);
+}
+
+// One generation attempt with fast-fail + bounded browser auto-recovery.
+async function runOnSlot(slot, prompt, options, trail) {
+    try {
+        const { value, recovery } = await geminiProfileRecovery().run(
+            resolveGeminiWebProfileId(),
+            () => runOnSlotOnce(slot, prompt, options)
+        );
+        mergeRecoveryTrail(trail, recovery);
+        return value;
+    } catch (error) {
+        mergeRecoveryTrail(trail, error?.recovery);
+        throw error;
+    }
+}
+
+async function runOnSlotOnce(
     slot,
     prompt,
     options
 ) {
     const page =
         await getPage(slot);
+    slot.lastMode = null;
 
     try {
         /*
@@ -2434,7 +2621,7 @@ async function runOnSlot(
          * this SAME tab and retry.
          */
         try {
-            await ensureModel(
+            slot.lastMode = await ensureModel(
                 page,
                 options?.geminiWebMode ||
                     '3.8'
@@ -2452,7 +2639,7 @@ async function runOnSlot(
             );
 
             await resetGeminiJobPage(page);
-            await ensureModel(
+            slot.lastMode = await ensureModel(
                 page,
                 options?.geminiWebMode ||
                     '3.8'
@@ -2460,7 +2647,7 @@ async function runOnSlot(
         }
 
         const ready = await temporaryChatState(page);
-        if (!ready.activeTemporaryDom || ready.iconName !== 'close' ||
+        if (!isTemporaryChatConfirmedOn(ready) ||
             !ready.freshRoute || !ready.conversationEmpty) {
             return providerError(page,
                 'Temporary Chat was not confirmed immediately before submission',
@@ -2483,7 +2670,7 @@ async function runOnSlot(
 
         options.onRequest?.();
 
-        await submitPrompt(page);
+        await submitPromptVerified(page, input);
 
         return await waitForResponse(
             page,
@@ -2496,9 +2683,14 @@ async function runOnSlot(
                     120000
                 )
             ),
-            Boolean(options?.json)
+            Boolean(options?.json),
+            GEMINI_WEB_RESPONSE_START_MS
         );
     } catch (error) {
+        // A native dialog (beforeunload/alert) blocks every CDP evaluate.
+        if (/cdp_timeout/i.test(String(error?.code)) || /CDP command .* timed out/i.test(String(error?.message))) {
+            await dismissNativeDialog(page);
+        }
         // Provider errors do not mean the physical tab is broken. Preserve
         // its lease and reset the conversation in that same tab on the next job.
         console.warn(`[GEMINI WEB] Slot ${slot.id}: preserving tab after ${error.code || error.name}`);
@@ -2585,6 +2777,9 @@ const inputBytes =
     const startedAt =
         Date.now();
 
+    // Browser restart attempts, recorded in the task log's technical details.
+    const recoveryTrail = { restarts: 0, attempts: [] };
+
     try {
     let rawText;
 
@@ -2596,7 +2791,8 @@ const inputBytes =
             await runOnSlot(
                 slot,
                 prompt,
-                options
+                options,
+                recoveryTrail
             );
     }
     catch (error) {
@@ -2620,7 +2816,8 @@ const inputBytes =
             await runOnSlot(
                 slot,
                 prompt,
-                options
+                options,
+                recoveryTrail
             );
     }
 
@@ -2766,8 +2963,7 @@ const inputBytes =
                 operation:
                     options.operation ||
                     'summary',
-                model:
-                    GEMINI_WEB_MODEL,
+                ...modeLogFields(slot),
                 slot:
                     slot.id,
                 status:
@@ -2775,6 +2971,10 @@ const inputBytes =
                 durationMs:
                     Date.now() -
                     startedAt,
+                recovery:
+                    recoveryTrail.attempts.length
+                        ? recoveryTrail
+                        : undefined,
                 ...usage
             })
         );
@@ -2784,7 +2984,7 @@ const inputBytes =
             provider:
                 'gemini-web',
             modelUsed:
-                GEMINI_WEB_MODEL,
+                modeLogFields(slot).model,
             totalDuration:
                 (
                     Date.now() -
@@ -2844,8 +3044,7 @@ const inputBytes =
                 operation:
                     options.operation ||
                     'summary',
-                model:
-                    GEMINI_WEB_MODEL,
+                ...modeLogFields(slot),
                 slot:
                     slot.id,
                 status:
@@ -2896,6 +3095,10 @@ const inputBytes =
                     error.rawResponse
                         ? String(error.rawResponse).length > 100000
                         : false,
+                recovery:
+                    recoveryTrail.attempts.length
+                        ? recoveryTrail
+                        : undefined,
                 responseStarted: error.responseStarted,
                 responseMatchesBaseline: error.responseMatchesBaseline,
                 timeoutMs: error.timeoutMs,

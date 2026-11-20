@@ -21,7 +21,7 @@ export async function waitForGeminiPageReady(page, { timeoutMs, sleep, providerE
             }
             if (state.readyState !== 'loading' && state.composerReady) return state;
         }
-        await sleep(300);
+        await sleep(100);
     }
     return providerError(page, 'Gemini Web did not become ready', 'GEMINI_WEB_PAGE_TIMEOUT');
 }

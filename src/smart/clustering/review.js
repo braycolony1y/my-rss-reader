@@ -4,15 +4,33 @@ import { verifyWithProviderChain } from '../verification/review.js';
 import { deferredReviewPartitions } from './review-groups.js';
 import { createReviewMemoryPolicy } from '../verification/memory-policy.js';
 
+const DEFAULT_REVIEW_TIME_BUDGET_MS = 25 * 60 * 1000;
+
+// SMART_REVIEW_TIME_BUDGET_MS: wall-clock budget for the AI review stage of one
+// Smart run. 0 (or a negative value) disables the budget.
+function reviewTimeBudgetMs(env = process.env) {
+  const raw = env.SMART_REVIEW_TIME_BUDGET_MS;
+  if (raw === undefined || raw === '') return DEFAULT_REVIEW_TIME_BUDGET_MS;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : DEFAULT_REVIEW_TIME_BUDGET_MS;
+}
+
 async function reviewAmbiguousEventGroups(
   ambiguousGroups,
   providers,
   keyManager,
   db,
   onProgress = null,
-  onGroupResolved = null
+  onGroupResolved = null,
+  options = {}
 ) {
   const resolvedGroups = [];
+  const now = typeof options.now === 'function' ? options.now : Date.now;
+  const startedAtMs = now();
+  const timeBudgetMs = Number.isFinite(options.timeBudgetMs)
+    ? options.timeBudgetMs
+    : reviewTimeBudgetMs();
+  const deadlineAt = timeBudgetMs > 0 ? startedAtMs + timeBudgetMs : Infinity;
 
   const statistics = {
     ambiguousGroupsTotal:
@@ -27,7 +45,55 @@ async function reviewAmbiguousEventGroups(
     providerRequests: {},
     deferredGroups: [],
     storyRelationships: [],
-    groupResults: []
+    groupResults: [],
+    timeBudget: {
+      budgetMs: timeBudgetMs > 0 ? timeBudgetMs : 0,
+      reached: false,
+      elapsedMs: 0,
+      verifiedGroups: 0,
+      totalGroups: ambiguousGroups.length,
+      deferredGroups: 0
+    }
+  };
+
+  // Groups that were never started keep their deterministic components, using
+  // the same durable 'deferred' partitions as any other pending verification.
+  // They MUST still be represented: a full-repartition group whose articles
+  // are removed from the automatic set but never re-added would otherwise
+  // fail the final membership validation.
+  const deferRemainingGroups = (fromIndex, reason) => {
+    let deferred = 0;
+    for (let index = fromIndex; index < ambiguousGroups.length; index++) {
+      const group = pruneReviewGroup(ambiguousGroups[index]);
+      if (!group.articles.length) continue;
+      const partitions = deferredReviewPartitions(group, reason);
+      resolvedGroups.push(...partitions);
+      statistics.ambiguousGroupsDeferred++;
+      statistics.reviewedArticleCount += group.articles.length;
+      statistics.deferredGroups.push({
+        groupId: group.id,
+        reason,
+        articleIds: (group.reviewUniverse || group.articles).map(getArticleId).sort(),
+        components: partitions.map(partition => partition.articles.map(getArticleId).sort()),
+        fullRepartition: group.fullRepartition === true,
+        deferredAt: new Date().toISOString(),
+        skippedProviders: []
+      });
+      statistics.groupResults.push({
+        groupId: group.id,
+        articleCount: group.articles.length,
+        attemptedProviders: [],
+        successfulProvider: null,
+        successfulModel: null,
+        resolution: 'deferred',
+        fallbackReason: reason,
+        reviewMode: 'articles',
+        reviewUnitCount: group.articles.length,
+        relatedDevelopmentCount: 0
+      });
+      deferred++;
+    }
+    return deferred;
   };
 
   const memoryPolicy = createReviewMemoryPolicy();
@@ -37,6 +103,35 @@ async function reviewAmbiguousEventGroups(
     index < ambiguousGroups.length;
     index++
   ) {
+    if (now() >= deadlineAt) {
+      const deferred = deferRemainingGroups(index, 'time_budget');
+      const verified =
+        statistics.ambiguousGroupsVerified + statistics.ambiguousGroupsFromCache;
+      statistics.timeBudget = {
+        ...statistics.timeBudget,
+        reached: true,
+        elapsedMs: now() - startedAtMs,
+        verifiedGroups: verified,
+        deferredGroups: deferred
+      };
+      console.warn(
+        `[SMART] review time budget reached: verified ${verified}/${ambiguousGroups.length}, deferred ${deferred}`,
+        JSON.stringify({ budgetMs: timeBudgetMs, elapsedMs: now() - startedAtMs })
+      );
+      if (onProgress) {
+        onProgress({
+          stage: 'smart-ai',
+          message:
+            `Smart Verify time budget reached · verified ${verified}/${ambiguousGroups.length} · ${deferred} deferred to next run`,
+          current: ambiguousGroups.length,
+          total: ambiguousGroups.length,
+          remaining: 0,
+          reviewResolution: 'time_budget'
+        });
+      }
+      break;
+    }
+
     const group =
       pruneReviewGroup(ambiguousGroups[index]);
     if (!group.articles.length) continue;
@@ -345,6 +440,8 @@ async function reviewAmbiguousEventGroups(
         })
       );
 
+      deferRemainingGroups(index + 1, 'verification_pending');
+
       if (typeof global.gc === 'function') {
         global.gc();
       }
@@ -368,6 +465,13 @@ async function reviewAmbiguousEventGroups(
   }
 
 
+  if (!statistics.timeBudget.reached) {
+    statistics.timeBudget.elapsedMs = now() - startedAtMs;
+    statistics.timeBudget.verifiedGroups =
+      statistics.ambiguousGroupsVerified + statistics.ambiguousGroupsFromCache;
+    statistics.timeBudget.deferredGroups = statistics.ambiguousGroupsDeferred;
+  }
+
   return {
     clusters:
       resolvedGroups,
@@ -375,4 +479,4 @@ async function reviewAmbiguousEventGroups(
   };
 }
 
-export { reviewAmbiguousEventGroups };
+export { reviewAmbiguousEventGroups, reviewTimeBudgetMs };

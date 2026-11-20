@@ -7,9 +7,11 @@ const MODEL_IDS = Object.freeze({
         id: 'bard-mode-option-8c46e95b1a07cecc',
         name: '3.5 Flash-Lite'
     },
+    // Gemini renamed the 3.8 Flash entry to "Everyday help" (2026-11-20).
     '3.8': {
         id: 'bard-mode-option-56fdd199312815e2',
-        name: '3.8 Flash'
+        name: 'Everyday help',
+        aliases: ['3.8 Flash']
     },
     '3.1-pro': {
         id: 'bard-mode-option-e6fa609c3fa255c0',
@@ -32,8 +34,43 @@ export function resolveGeminiWebMode(requestedMode = '3.8') {
         mode: match ? input : '3.8',
         modelId: model.id,
         modelName: model.name,
+        modelNames: [model.name, ...(model.aliases || [])],
         thinkingLevel: level
     };
+}
+
+// Known thinking level names, lowest first. Used to pick the lowest level when
+// the requested one is not offered (renamed levels sort by list position).
+export const THINKING_LEVEL_ORDER = Object.freeze([
+    'off', 'none', 'minimal', 'fast', 'low', 'standard', 'medium', 'high', 'extended'
+]);
+// The in-page reader below inlines the same level-name pattern.
+
+const NON_MODEL_PATTERN = /^(auto|models?|more|upgrade\b.*|get\b.*)$/i;
+
+// Models that can safely be chosen automatically: never Auto, upgrade
+// prompts, disabled entries or unnamed rows.
+export function selectableGeminiWebModels(models = []) {
+    return models.filter(item => {
+        const name = String(item?.name || '').replace(/\s+/g, ' ').trim();
+        return name && !NON_MODEL_PATTERN.test(name) && !/upgrade|upsell/i.test(name) &&
+            !item.upsell && !item.disabled;
+    });
+}
+
+// Lowest offered level: the requested one when present, else by known rank,
+// else the first in the list.
+export function pickGeminiWebThinking(levels = [], requested) {
+    const usable = levels.filter(item => !item.disabled);
+    const exact = usable.find(item => item.level === requested);
+    if (exact) return { item: exact, fallback: false };
+    if (!usable.length) return { item: null, fallback: false };
+    const rank = item => {
+        const index = THINKING_LEVEL_ORDER.indexOf(item.level);
+        return index === -1 ? Infinity : index;
+    };
+    const lowest = usable.reduce((best, item) => rank(item) < rank(best) ? item : best, usable[0]);
+    return { item: rank(lowest) === Infinity ? usable[0] : lowest, fallback: true };
 }
 
 const fail = (code, message) => {
@@ -97,7 +134,7 @@ export async function readGeminiWebModeState(page) {
             'gem-menu-item,[role="menuitem"],[role="menuitemradio"],[role="option"]'
         )].filter(visible).map(element => {
             const name = label(element);
-            const match = name.match(/^(Low|Medium|High)\b/i);
+            const match = name.match(/^(Off|None|Minimal|Fast|Low|Standard|Medium|High|Extended)\b/i);
             if (!match) return null;
             return {
                 level: match[1].toLowerCase(),
@@ -161,7 +198,7 @@ async function clickMenuOption(page, choice) {
 async function openThinkingLevel(page, openMenu, sleep) {
     await openMenu();
     let state = await readGeminiWebModeState(page);
-    if (state.thinking.length >= 3) return state;
+    if (state.thinking.length >= 2) return state;
 
     const interaction = await page.evaluate(() => {
         const menu = document.querySelector('[data-test-id="gem-mode-menu"]');
@@ -196,8 +233,8 @@ async function openThinkingLevel(page, openMenu, sleep) {
         const deadline = Date.now() + timeout;
         while (Date.now() < deadline) {
             state = await readGeminiWebModeState(page);
-            if (state.thinking.length >= 3) return true;
-            await sleep(150);
+            if (state.thinking.length >= 2) return true;
+            await sleep(100);
         }
         return false;
     };
@@ -228,7 +265,7 @@ async function waitForSelection({ page, openMenu, sleep, match, thinking, code, 
         if (thinking) await openThinkingLevel(page, openMenu, sleep);
         state = await readGeminiWebModeState(page);
         if (match(state)) return state;
-        await sleep(200);
+        await sleep(100);
     }
     throw fail(code,
         message + '; last selected model=' + (state?.selectedModelId || 'none') +
@@ -238,75 +275,87 @@ async function waitForSelection({ page, openMenu, sleep, match, thinking, code, 
 export async function selectGeminiWebMode(page, requestedMode, { openMenu, closeMenu, sleep }) {
     const target = resolveGeminiWebMode(requestedMode);
     try {
-        // Menu IDs are account-specific and can change. Match the displayed
-        // model label; never use a stale hard-coded ID to choose a different model.
-        const sameModel = item => String(item.name || '')
-            .replace(/\s+/g, ' ').trim().toLowerCase() === target.modelName.toLowerCase();
+        // Match the displayed label (menu IDs are account-specific). If the
+        // configured label is not offered, fall back to the top selectable
+        // non-Auto entry; fail closed only when there is none.
+        const norm = value => String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+        const preferred = target.modelNames.map(norm);
+        const isPreferred = item => preferred.includes(norm(item.name));
         let { state, model } = await waitForGeminiWebModel({
             readState: () => readGeminiWebModeState(page),
-            openMenu, matches: sameModel, sleep
+            openMenu, matches: isPreferred, sleep, timeoutMs: 2500
         });
-        if (!model || model.disabled) {
-            const available = state.models.map(item => item.name +
-                (item.upsell ? ' (upgrade required)' :
-                    item.disabled ? ' (disabled)' : '')).join(', ') || '(none)';
-            throw fail(model?.upsell ? 'GEMINI_WEB_MODEL_UPSELL' :
-                    model?.disabled ? 'GEMINI_WEB_MODEL_DISABLED' : 'GEMINI_WEB_MODEL_NOT_FOUND',
-                target.modelName + (model?.upsell ? ' requires an account upgrade' :
-                    model?.disabled ? ' remained disabled after waiting for model availability' :
-                    ' is not offered as a selectable model') +
-                '. Visible options: ' + available +
-                '. Check GEMINI_WEB_URL and the OpenCLI browser profile; no model was substituted.');
+        let modelFallback = false;
+        if (!model || model.disabled || model.upsell) {
+            const [first] = selectableGeminiWebModels(state.models);
+            if (!first) {
+                const available = state.models.map(item => item.name +
+                    (item.upsell ? ' (upgrade required)' :
+                        item.disabled ? ' (disabled)' : '')).join(', ') || '(none)';
+                throw fail('GEMINI_WEB_MODEL_NOT_FOUND',
+                    target.modelName + ' is not offered and no selectable non-Auto model exists' +
+                    '. Visible options: ' + available +
+                    '. Check GEMINI_WEB_URL and the OpenCLI browser profile.');
+            }
+            model = first;
+            modelFallback = true;
+            console.warn('[GEMINI WEB] ' + target.modelName + ' not offered; using "' +
+                first.name + '" (top non-Auto model)');
         }
+        const chosenName = model.name;
+        const sameModel = item => norm(item.name) === norm(chosenName);
         if (!state.models.some(item => item.selected && sameModel(item))) {
-            if (!await clickMenuOption(page, { modelName: target.modelName })) {
-                throw fail('GEMINI_WEB_MODEL_SELECT_FAILED',
-                    'Could not click ' + target.modelName);
+            if (!await clickMenuOption(page, { modelName: chosenName })) {
+                throw fail('GEMINI_WEB_MODEL_SELECT_FAILED', 'Could not click ' + chosenName);
             }
             state = await waitForSelection({
                 page, openMenu, sleep,
                 match: value => value.models.some(item => item.selected && sameModel(item)),
                 code: 'GEMINI_WEB_MODEL_NOT_CONFIRMED',
-                message: 'Could not verify ' + target.modelName
+                message: 'Could not verify ' + chosenName
             });
         }
 
         state = await openThinkingLevel(page, openMenu, sleep);
-        const thinking = state.thinking.find(item => item.level === target.thinkingLevel);
-        if (!thinking || thinking.disabled) {
+        const { item: thinking, fallback: thinkingFallback } =
+            pickGeminiWebThinking(state.thinking, target.thinkingLevel);
+        if (!thinking) {
             throw fail('GEMINI_WEB_THINKING_LEVEL_NOT_FOUND',
-                'Gemini Web does not offer ' + target.thinkingLevel +
-                ' thinking for ' + target.modelName);
+                'Gemini Web offers no selectable thinking level for ' + chosenName);
         }
-        if (state.selectedThinking !== target.thinkingLevel) {
-            if (!await clickMenuOption(page, { level: target.thinkingLevel })) {
-                throw fail('GEMINI_WEB_THINKING_SELECT_FAILED',
-                    'Could not click ' + target.thinkingLevel + ' thinking');
+        const level = thinking.level;
+        if (thinkingFallback) {
+            console.warn('[GEMINI WEB] ' + target.thinkingLevel + ' thinking not offered; using "' +
+                level + '" (lowest available)');
+        }
+        if (state.selectedThinking !== level) {
+            if (!await clickMenuOption(page, { level })) {
+                throw fail('GEMINI_WEB_THINKING_SELECT_FAILED', 'Could not click ' + level + ' thinking');
             }
             await waitForSelection({
                 page, openMenu, sleep, thinking: true,
                 match: value => value.models.some(item => item.selected && sameModel(item)) &&
-                    value.selectedThinking === target.thinkingLevel,
+                    value.selectedThinking === level,
                 code: 'GEMINI_WEB_THINKING_NOT_CONFIRMED',
-                message: 'Could not verify ' + target.thinkingLevel + ' thinking'
+                message: 'Could not verify ' + level + ' thinking'
             });
         }
 
         await openThinkingLevel(page, openMenu, sleep);
         const verified = await readGeminiWebModeState(page);
         if (!verified.models.some(item => item.selected && sameModel(item)) ||
-            verified.selectedThinking !== target.thinkingLevel) {
+            verified.selectedThinking !== level) {
             throw fail('GEMINI_WEB_MODEL_NOT_CONFIRMED',
-                'Expected ' + target.modelName + '/' + target.thinkingLevel +
+                'Expected ' + chosenName + '/' + level +
                 '; got ' + (verified.selectedModelId || 'none') +
                 '/' + (verified.selectedThinking || 'none'));
         }
-        console.log('[GEMINI WEB] Mode ready: ' +
-            target.modelName + ' + ' + target.thinkingLevel);
+        console.log('[GEMINI WEB] Mode ready: ' + chosenName + ' + ' + level +
+            (modelFallback || thinkingFallback ? ' (fallback)' : ''));
         return {
-            mode: target.mode, model: target.modelName,
-            thinkingLevel: target.thinkingLevel,
-            extended: target.thinkingLevel === 'high'
+            mode: target.mode, model: chosenName, requestedModel: target.modelName,
+            modelFallback, thinkingLevel: level, requestedThinkingLevel: target.thinkingLevel,
+            thinkingFallback, extended: level === 'high'
         };
     } finally {
         await closeMenu().catch(() => {});

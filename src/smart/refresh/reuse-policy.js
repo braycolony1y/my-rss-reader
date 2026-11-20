@@ -9,8 +9,9 @@ export async function canReuseSmartSnapshot({ forceRebuild, currentSignature, pr
         db.get('smartClusteringAlgorithmVersion'), db.get('smartEmbeddingIdentity'),
         db.get('smartDeferredReviewGroups', { type: 'json', shared: true }),
     ]);
+    // Time-budget deferred groups are finished by the next run (verified ones are cache hits).
     // Memory-deferred work is not a completed cached decision. Retain its
     // durable groups and retry after capacity recovers, even with unchanged input.
-    if (deferred?.groups?.some(group => group.reason === 'memory_pressure')) return false;
+    if (deferred?.groups?.some(group => group.reason === 'memory_pressure' || group.reason === 'time_budget')) return false;
     return algorithm === SMART_CLUSTER_VERSION && embedding === `${EMBEDDING_MODEL}:${EMBEDDING_CACHE_VERSION}`;
 }

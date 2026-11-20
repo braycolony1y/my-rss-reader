@@ -156,7 +156,7 @@ test('a slow Web attempt cannot consume the API fallback timeout', async () => {
         generateWithAntigravity: async () => { now += 25000; throw Error('Unavailable'); },
         getGeminiWebCooldownState: () => ({}),
         generateWithGeminiWeb: async (_prompt, options) => { webTimeout = options.timeoutMs; now += 150000; throw Error('Web setup/response failed'); },
-        geminiGenerate: async (_model, _prompt, options) => { apiTimeout = options.timeoutMs; return { text: 'done' }; }
+        geminiGenerateWithDiscovery: async (_model, _prompt, options) => { apiTimeout = options.timeoutMs; return { text: 'done' }; }
     });
     assert.equal((await generate('fixture-model', 'prompt', { timeoutMs: 120000 })).text, 'done');
     assert.equal(webTimeout, 90000);

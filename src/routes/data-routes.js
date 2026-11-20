@@ -205,6 +205,7 @@ export function registerDataRoutes({
 
         const filterValue = req.query.filterValue || '';
         const hideRead = req.query.hideRead === 'true';
+        const lean = req.query.lean === '1';
         const searchQuery = req.query.searchQuery ? req.query.searchQuery.toLowerCase() : '';
 
         // category/feed preserve the ordering already present in visibleArticles.
@@ -513,9 +514,10 @@ export function registerDataRoutes({
             savedStates,
             boardStates,
             hiddenStates,
-            recentReadAt,
+            // lean=1: the client already holds these (about 85% of a Read Later
+            // payload); it keeps its copy when the fields are absent.
+            ...(lean ? {} : { recentReadAt, userPreferences }),
             categoryOrder,
-            userPreferences,
             hasMore,
             currentPage: page,
             feedPageMode: simpleStreamingView && req.query.feedPageMode === 'unseen' ? 'unseen' : undefined,

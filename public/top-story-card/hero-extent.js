@@ -1,5 +1,5 @@
 import { applyBottomEdgeColor } from './edge-colors.js?v=20261019_scroll_1';
-import { applyEdgeBleed } from './edge-bleed.js?v=20261106_8';
+import { applyEdgeBleed } from './edge-bleed.js?v=20261120_cache_1';
 // Consume resolved Smart Top placement; never change its focus or horizontal box.
 // The image lifecycle calls this after its normal placement/palette update.
 const pending = new Set();

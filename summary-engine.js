@@ -1,6 +1,9 @@
 import { globalAiTaskActive, runGlobalAiTask } from './src/ai/global-ai-scheduler.js';
 import { generateWithAntigravity } from './src/ai/antigravity.js';
 import { generateWithGeminiWeb, getGeminiWebCooldownState } from './src/ai/gemini-web.js';
+import {
+    classifyGeminiError, createGeminiModelDiscovery, generateWithModelDiscovery, parseGeminiApiError
+} from './src/ai/gemini-model-discovery.js';
 import { generateWithLocalQwen } from './src/ai/local-qwen.js';
 /**
  * summary-engine.js — AI Summary Engine
@@ -30,7 +33,10 @@ const MAX_RETRIES = 2;
 const RETRY_DELAY_MS = 5000;
 const QUEUE_POLL_INTERVAL_MS = 3000;
 const COOLDOWN_BETWEEN_JOBS_MS = 1500;
-const GEMINI_PRIMARY_MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
+// Explicit override wins; otherwise the best model is discovered per key
+// (see src/ai/gemini-model-discovery.js) and this is only the last-resort default.
+const GEMINI_MODEL_OVERRIDE = process.env.GEMINI_API_MODEL || process.env.GEMINI_MODEL || '';
+const GEMINI_PRIMARY_MODEL = GEMINI_MODEL_OVERRIDE || 'gemini-3.8-flash';
 
 // A key that has exhausted Gemini quota must not be automatically retried
 // during the next 24 hours, even if the RSS Reader service restarts.
@@ -43,6 +49,8 @@ const GEMINI_KEY_COOLDOWN_FILE =
         ARTICLE_CACHE_DIR,
         '.gemini-key-cooldowns.json'
     );
+
+const geminiModelDiscovery = createGeminiModelDiscovery();
 
 function logOnlineAiUsage(event) {
     console.log('[ONLINE AI]', JSON.stringify({
@@ -1040,8 +1048,10 @@ async function geminiGenerate(model, prompt, options = {}) {
         
         if (!res.ok) {
             const body = await res.text().catch(() => '');
-            const err = new Error(`Gemini HTTP ${res.status}: ${body.slice(0, 200)}`);
+            const parsedError = parseGeminiApiError(res.status, body);
+            const err = new Error(`Gemini HTTP ${res.status}: ${parsedError.text.slice(0, 300)}`);
             err.status = res.status;
+            err.geminiKind = classifyGeminiError(res.status, body);
             logOnlineAiUsage({
                 operation: options.operation || 'summary',
                 model,
@@ -1050,7 +1060,8 @@ async function geminiGenerate(model, prompt, options = {}) {
                 httpStatus: res.status,
                 durationMs: Date.now() - startTime,
                 errorCode: `HTTP_${res.status}`,
-                error: String(body || `Gemini returned HTTP ${res.status}`).replace(/\s+/g, ' ').slice(0, 800)
+                error: parsedError.text.slice(0, 800),
+                ...(options.requestedModel ? { requestedModel: options.requestedModel, modelFallback: true } : {})
             });
             usageLogged = true;
             geminiKeyManager.reportError(err, keyObj);
@@ -1069,6 +1080,7 @@ async function geminiGenerate(model, prompt, options = {}) {
             status: 'success',
             httpStatus: res.status,
             durationMs: Date.now() - startTime,
+            ...(options.requestedModel ? { requestedModel: options.requestedModel, modelFallback: true } : {}),
             promptTokens: Number(data.usageMetadata?.promptTokenCount) || 0,
             outputTokens: Number(data.usageMetadata?.candidatesTokenCount) || 0,
             totalTokens: Number(data.usageMetadata?.totalTokenCount) || 0
@@ -1084,6 +1096,7 @@ async function geminiGenerate(model, prompt, options = {}) {
         if (error.name === 'AbortError') {
             const err = new Error('Request timed out');
             err.status = 504;
+            err.geminiKind = 'timeout';
             logOnlineAiUsage({
                 operation: options.operation || 'summary',
                 model,
@@ -1113,6 +1126,16 @@ async function geminiGenerate(model, prompt, options = {}) {
     } finally {
         clearTimeout(timeout);
     }
+}
+
+function geminiGenerateWithDiscovery(model, prompt, options = {}) {
+    return generateWithModelDiscovery({
+        model, prompt, options,
+        generate: geminiGenerate,
+        discovery: geminiModelDiscovery,
+        currentKey: () => geminiKeyManager.getCurrentKeyObj()?.key,
+        autoSelect: !GEMINI_MODEL_OVERRIDE && model === GEMINI_PRIMARY_MODEL
+    });
 }
 
 async function generateWithFallback(geminiModel, prompt, options = {}) {
@@ -1380,7 +1403,7 @@ async function generateWithFallback(geminiModel, prompt, options = {}) {
     for (const step of sequence) {
         try {
             const res =
-                await geminiGenerate(
+                await geminiGenerateWithDiscovery(
                     step.apiModel,
                     prompt,
                     {
@@ -1403,7 +1426,7 @@ async function generateWithFallback(geminiModel, prompt, options = {}) {
                 'gemini';
 
             res.modelUsed =
-                step.displayModel;
+                res.modelUsed || step.displayModel;
 
             res.fallbackTrace =
                 fallbackTrace;

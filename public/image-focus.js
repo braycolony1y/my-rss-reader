@@ -4,7 +4,7 @@ import { applyImageFocusMutations } from './image-focus-mutations.js?v=20261019_
 import { installThumbnailLoading } from './thumbnail-loading.js?v=20261019_scroll_1';
 import { fitCardImageViewport, visiblePhotoHeight } from './card-image-layout.js?v=2';
 import { applyImageColors } from './card-blend/legacy-color.js?v=1';
-import { applyTopStoryImage } from './top-story-card/blend/runtime.js?v=20261106_8';
+import { applyTopStoryImage } from './top-story-card/blend/runtime.js?v=20261120_cache_1';
 
 const clamp = (value, low = 0, high = 1) => Math.max(low, Math.min(high, value));
 const center = { x: 0.5, y: 0.5 };
@@ -67,6 +67,28 @@ export function installImageFocus(win) {
             if (Number.isFinite(focus?.x) && Number.isFinite(focus?.y)) saved.set(source, focus);
         }
     } catch { /* Storage is optional, including in private browsing. */ }
+    // Per-URL metadata (focus, tint, palette, blend numbers) persists across
+    // visits without its large inline images. A cached entry paints the final
+    // look immediately; the full response is still fetched once to refresh it.
+    const persistentKey = 'rss-image-focus-lite-v12';
+    const lite = value => JSON.parse(JSON.stringify(value, (key, item) => typeof item === 'string' && item.startsWith('data:image/') ? undefined : item));
+    let persistTimer = 0;
+    try {
+        for (const [source, focus] of JSON.parse(win.localStorage.getItem(persistentKey) || '[]')) {
+            if (Number.isFinite(focus?.x) && Number.isFinite(focus?.y) && !saved.has(source)) saved.set(source, { ...focus, cached: true });
+        }
+    } catch { /* Storage is optional, including in private browsing. */ }
+    function persist() {
+        if (persistTimer) return;
+        persistTimer = win.setTimeout(() => {
+            persistTimer = 0;
+            let entries = [...saved].filter(([, focus]) => !focus.retry).slice(-200).map(([source, focus]) => [source, lite(focus)]);
+            for (let attempt = 0; attempt < 3; attempt++) {
+                try { win.localStorage.setItem(persistentKey, JSON.stringify(entries)); return; }
+                catch { entries = entries.slice(Math.ceil(entries.length / 2)); }
+            }
+        }, 500);
+    }
 
     function drain() {
         while (active < 2 && queue.length) {
@@ -86,7 +108,8 @@ export function installImageFocus(win) {
                     else {
                         saved.set(source, result);
                         if (saved.size > 300) saved.delete(saved.keys().next().value);
-                        try { win.sessionStorage.setItem(storageKey, JSON.stringify([...saved])); } catch { }
+                        try { win.sessionStorage.setItem(storageKey, JSON.stringify([...saved].filter(([, item]) => !item.cached))); } catch { }
+                        persist();
                     }
                     resolve(result || center);
                 }, () => { cache.delete(source); resolve(center); })
@@ -95,7 +118,7 @@ export function installImageFocus(win) {
     }
 
     function getFocus(source) {
-        if (saved.has(source)) return Promise.resolve(saved.get(source));
+        if (saved.has(source) && !saved.get(source).cached) return Promise.resolve(saved.get(source));
         if (cache.has(source)) return cache.get(source);
         const promise = new Promise(resolve => { queue.push({ source, resolve }); });
         cache.set(source, promise);

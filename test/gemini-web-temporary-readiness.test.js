@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { waitForGeminiTemporaryChatState } from '../src/ai/gemini-web-temporary-readiness.js';
+import { isTemporaryChatConfirmedOn, waitForGeminiTemporaryChatState } from '../src/ai/gemini-web-temporary-readiness.js';
 
 const on = { found: true, knownState: true, enabled: true, activeTemporaryDom: true, iconName: 'close' };
 const providerError = (_page, message, code) => { throw Object.assign(Error(message), { code }); };
@@ -29,4 +29,33 @@ test('confirmation of normal chat still accepts the known disabled state', async
     assert.equal(await waitForGeminiTemporaryChatState({}, false, {
         timeoutMs: 1000, providerError, sleep: async () => {}, readState: async () => off
     }), off);
+});
+
+test('the "Turn off temporary chat" label alone confirms ON, without the old icon or DOM markers', async () => {
+    const labelOn = { found: true, knownState: true, enabled: true, labelState: 'on', activeTemporaryDom: false, iconName: '' };
+    assert.equal(isTemporaryChatConfirmedOn(labelOn), true);
+    assert.equal(await waitForGeminiTemporaryChatState({}, true, {
+        timeoutMs: 50, providerError, sleep: async () => {}, readState: async () => labelOn
+    }), labelOn);
+});
+
+test('the "Turn on temporary chat" label means OFF and never confirms ON', async () => {
+    const labelOff = { found: true, knownState: true, enabled: false, canEnable: true, labelState: 'off' };
+    assert.equal(isTemporaryChatConfirmedOn(labelOff), false);
+    assert.equal(await waitForGeminiTemporaryChatState({}, false, {
+        timeoutMs: 50, providerError, sleep: async () => {}, readState: async () => labelOff
+    }), labelOff);
+    await assert.rejects(waitForGeminiTemporaryChatState({}, true, {
+        timeoutMs: 5, providerError, sleep: async () => {}, readState: async () => labelOff
+    }), { code: 'GEMINI_WEB_TEMP_CHAT_NOT_CONFIRMED' });
+});
+
+test('ambiguous Temporary Chat indicators fail closed in both directions', async () => {
+    const ambiguous = { found: true, knownState: false, ambiguous: true, enabled: false, labelState: 'on' };
+    assert.equal(isTemporaryChatConfirmedOn({ ...ambiguous, enabled: true }), false);
+    for (const expected of [true, false]) {
+        await assert.rejects(waitForGeminiTemporaryChatState({}, expected, {
+            timeoutMs: 5, providerError, sleep: async () => {}, readState: async () => ambiguous
+        }), { code: expected ? 'GEMINI_WEB_TEMP_CHAT_NOT_CONFIRMED' : 'GEMINI_WEB_TEMP_CHAT_RESET_FAILED' });
+    }
 });
