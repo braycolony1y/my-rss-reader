@@ -8,7 +8,9 @@ import {createDatabaseAccess} from './access.js';
 import {PUBLISHER_COOLDOWN_KEYS} from '../articles/publisher-cooldown-policy.js';
 import {encodeStoredSnapshot,decodeStoredValue,isSerializedValue,storedSnapshotState} from './stored-value.js';
 import { createParsedCache } from './parsed-cache.js';
-import { PERSONAL_STATE_KEY } from '../smart/feedback/store.js';
+// Retired AI personal rules. No code reads or writes this key any more; it stays an allowed
+// state key only so the stored data can be archived before it is deleted.
+const PERSONAL_STATE_KEY = 'smartPersonalFilters';
 import { FILTER_STATE_KEY } from '../smart/prefilter/policy.js';
 import { writeJsonSnapshot } from './json-writer.js';
 import { readFileSync, unlinkSync } from 'node:fs';

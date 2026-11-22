@@ -1,5 +1,4 @@
-import { personalTerminal, personalFullyExcluded } from '../feedback/terminal.js';
-import { systemLogMetadata } from '../feedback/log-metadata.js';
+import { systemLogMetadata } from './log-metadata.js';
 import { articleIdentity } from './identity.js';
 import { retiredReason, retireSavedReasons } from './retired-reasons.js';
 import { FILTER_VERSION, FILTER_STATE_KEY, SECTIONS, prefilterEnabled, evaluatePolicy } from './policy.js';
@@ -29,7 +28,6 @@ export function decisionsFor(article) {
   return live.get(binding.key) || article.smartTopPrefilter || {};
 }
 export function terminalExcluded(article, section) {
-  if (personalTerminal(article, section)) return true;
   const d = decisionsFor(article)[section];
   return valid(d) && d.section === section && d.status === 'exclude' && d.final === true;
 }
@@ -37,7 +35,6 @@ export function filterDestinations(article, destinations) {
   return destinations.filter(section => !terminalExcluded(article, section));
 }
 export function fullyExcluded(article) {
-  if (personalFullyExcluded(article)) return true;
   const sections = article.smartTopPrefilterSections;
   return prefilterEnabled() && Array.isArray(sections) && sections.length > 0 && sections.every(section => terminalExcluded(article, section));
 }
@@ -143,7 +140,6 @@ export function evaluateCandidate(store, article, sections, evaluator = evaluate
   article.smartTopPrefilter = store.records.get(identity.key)?.decisions || {};
   live.set(identity.key, article.smartTopPrefilter);
   for (const section of applicable) {
-    if (personalTerminal(article, section)) continue;
     let firstEncounter = true;
     if (store.metrics) {
       let seen = metricSeen.get(store.metrics);

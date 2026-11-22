@@ -1,4 +1,4 @@
-import { registerPersonalFilterRoutes } from './smart/feedback/routes.js';
+import { registerFilterLogRoutes } from './smart/prefilter/log-routes.js';
 import { sourceCooldown } from './articles/source-cooldown.js';
 import { acquireOpenCliBrowserOriginLease, releaseOpenCliBrowserOriginLease, startVozWarmTab } from './opencli-reader.js';
 import { authMiddleware } from './middleware/auth.js';
@@ -11,7 +11,6 @@ import { registerBoardCacheRoutes } from './routes/board-cache-routes.js';
 import { isMainThread } from 'node:worker_threads';
 import { createSmartNewsEngine } from '../smart-news.js';
 import { fastParseRSS } from '../feed-parsers.js';
-import { geminiKeyManager } from '../summary-engine.js';
 import { loadConfiguration } from './config.js';
 import { installProcessHandlers } from './process-lifecycle.js';
 import { createHttpApp } from './http.js';
@@ -404,7 +403,7 @@ export async function createApplication({ isMainModule = false, databaseStore } 
         env: database.env
     });
 
-    registerPersonalFilterRoutes({ app: http.app, db: database.env.RSS_DATA, keyManager: geminiKeyManager });
+    registerFilterLogRoutes({ app: http.app, db: database.env.RSS_DATA });
 
     registerSmartRoutes({
         app: http.app,

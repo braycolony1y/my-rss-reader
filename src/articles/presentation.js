@@ -1,6 +1,4 @@
 import { createClientArticlePreparer } from './client-preparer.js';
-import { personalSignature } from '../smart/feedback/store.js';
-import { createPersonalViewCache } from './personal-view-cache.js';
 import { smartDestination } from '../utils/smart-destinations.js';
 import { rankStory, storyMembers } from './story-ranking.js';
 import { rankClassicStories } from '../ranking/classic.js';
@@ -20,7 +18,6 @@ export function createArticlePresentation({
 } = {}) {
     // Cache for parsed JSON strings (e.g. smartClusters) to avoid CPU-heavy parsing on tab clicks
     let _smartClustersHistory = {};
-    const filterNavigationView = createPersonalViewCache();
 
     const prepareArticleForClient = createClientArticlePreparer({ resolveGoogleNewsUrl,
         getLastKnownCachedArticle, getLastKnownCachedArticleImage, getCachedThreadCreationTime });
@@ -358,9 +355,7 @@ export function createArticlePresentation({
         const blockedKeywordEntries = normalizeBlockedKeywordEntries(blockedKeywords || []);
         const matchesSearch = value => String(value || '').toLowerCase().includes(searchQuery);
 
-        const personalFilterSignature = await personalSignature(env.RSS_DATA);
         const filterSignature = JSON.stringify([
-            personalFilterSignature,
             filterValue,
             smartRegionKey,
             hideRead,
@@ -420,7 +415,6 @@ export function createArticlePresentation({
 
         }
         const viewSignature = JSON.stringify([
-            personalFilterSignature,
             filterValue,
             filterValue === 'tech' ? smartRegion : null,
             hideRead,
@@ -443,7 +437,6 @@ export function createArticlePresentation({
         //
         // When there is a reusable smartView the pinned ranked array is used and nothing is
         // ranked at all.
-        filteredArticles = await filterNavigationView(env.RSS_DATA, filteredArticles, filterValue, 'pre_classic_ranking');
         const needsClassicRanking = !reusableView && !cachedClassic;
         if (needsClassicRanking && classicMode !== 'legacy') {
             // Vectors come from the clustering's cache. Wait briefly for a cold start; after that
@@ -467,7 +460,7 @@ export function createArticlePresentation({
         mark("filtering");
 
         let smartViewToken = req.query.smartView;
-        filteredArticles = await filterNavigationView(env.RSS_DATA, reusableView ? priorView.articles : ranked, filterValue, 'cached_smart_view');
+        filteredArticles = reusableView ? priorView.articles : ranked;
         if (!reusableView) {
             smartViewToken = `${Date.now()}-${++storyViewSequence}`;
             storyViews.set(smartViewToken, {

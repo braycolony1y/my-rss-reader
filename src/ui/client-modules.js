@@ -32,7 +32,6 @@ export const READER_CLIENT_MODULES = [
     'ai/status.js',
     'smart/sources.js',
     'ui/diagnostics.js',
-    'smart/feedback-semantics.js',
     'smart/feedback-picker.js',
     'ui/filter-log.js',
     'board/lookup.js',

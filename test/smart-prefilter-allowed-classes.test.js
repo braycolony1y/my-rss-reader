@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { evaluatePolicy, FILTER_VERSION, validReason } from '../src/smart/prefilter/policy.js';
 import { articleIdentity } from '../src/smart/prefilter/identity.js';
 import { getPrefilterStore, evaluateCandidate, terminalExcluded } from '../src/smart/prefilter/state.js';
-import { filterLog } from '../src/smart/feedback/log.js';
+import { filterLog } from '../src/smart/prefilter/log.js';
 import { prefilterConfiguration } from '../src/smart/prefilter/boundaries.js';
 import { FILTER_POLICY_REVISION } from '../src/smart/prefilter/retired-reasons.js';
 

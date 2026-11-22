@@ -1,4 +1,3 @@
-import { preparePersonalCandidates, personalFullyExcluded } from '../feedback/pipeline.js';
 import { articleIdentity } from './identity.js';
 import { rawAllowedDestinations } from '../../ranking/destinations.js';
 import { FILTER_VERSION, prefilterEnabled } from './policy.js';
@@ -7,7 +6,6 @@ import { getPrefilterStore, evaluateCandidate, fullyExcluded, stampDecisions } f
 
 export const prefilterConfiguration = () => prefilterEnabled() ? [FILTER_VERSION, FILTER_POLICY_REVISION] : [];
 export async function preparePrefilterCandidates({ db, articles, sources, metrics }) {
-  articles = await preparePersonalCandidates(db, articles, sources);
   if (!prefilterEnabled()) return articles;
   const store = await getPrefilterStore(db, metrics);
   const kept = [];
@@ -24,7 +22,6 @@ export async function preparePrefilterCandidates({ db, articles, sources, metric
   return kept;
 }
 export function survivingArticles(articles) {
-  articles = articles.filter(article => !personalFullyExcluded(article));
   if (!prefilterEnabled()) return articles;
   return articles.filter(article => !fullyExcluded(article)).map(stampDecisions);
 }
