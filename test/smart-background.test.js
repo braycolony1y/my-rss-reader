@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { startSmartSyncLoop, scheduleMonthlySourceEvaluation } from '../smart-news.js';
+import { resetSourceEvaluationStateForTests } from '../src/smart/background/source-evaluation.js';
 import { beginSmartRefresh, endSmartRefresh } from '../src/smart/refresh/coordination.js';
 import { hasWorkerHeadroom } from '../src/observability/memory-budget.js';
 
@@ -72,12 +73,82 @@ test('monthly source evaluation keeps initial/hourly timers and reads existing s
       get: async key => { reads.push(key); return key === 'lastSourceEvalTime' ? Date.now() : { 'fixture.test': 1 }; },
       put: () => assert.fail('Fresh source scores should not be rewritten')
     }, () => assert.fail('Fresh source scores should not start evaluation'));
-    assert.equal(timers.timeouts[0].delay, 10000);
+    assert.equal(timers.timeouts[0].delay, 300000);
     assert.equal(timers.intervals[0].delay, 3600000);
     assert.equal(timers.unrefs(), 2);
     await timers.timeouts[0].callback();
     assert.deepEqual(reads, ['lastSourceEvalTime', 'smartSourceScores']);
   } finally {
     timers.restore();
+  }
+});
+
+function memoryDb(initial) {
+  const store = new Map(Object.entries(initial).map(([k, v]) => [k, JSON.stringify(v)]));
+  return {
+    store,
+    get: async key => (store.has(key) ? JSON.parse(store.get(key)) : null),
+    put: async (key, value) => { store.set(key, value); }
+  };
+}
+
+test('monthly source evaluation runs when last run is stale or missing and merges scores', async () => {
+  resetSourceEvaluationStateForTests();
+  const timers = fakeTimers();
+  const db = memoryDb({ lastSourceEvalTime: Date.now() - 31 * 86400000, smartSourceScores: { 'old.test': 1.2 } });
+  const calls = [];
+  try {
+    const { checkEvaluation } = await scheduleMonthlySourceEvaluation(db, async () => [{ domain: 'a.test' }, { domain: 'a.test' }, { domain: 'b.test' }, {}], {
+      evaluate: async domains => { calls.push(domains); return { 'a.test': 1.1, 'b.test': 0.9 }; }
+    });
+    const result = await checkEvaluation();
+    assert.deepEqual(calls, [['a.test', 'b.test']]);
+    assert.equal(result.status, 'done');
+    assert.equal(result.scored, 2);
+    assert.deepEqual(JSON.parse(db.store.get('smartSourceScores')), { 'old.test': 1.2, 'a.test': 1.1, 'b.test': 0.9 });
+    assert.ok(Date.now() - JSON.parse(db.store.get('lastSourceEvalTime')) < 5000);
+    assert.equal((await checkEvaluation()).status, 'fresh');
+    assert.equal(calls.length, 1);
+
+    resetSourceEvaluationStateForTests();
+    const missing = memoryDb({});
+    const second = await scheduleMonthlySourceEvaluation(missing, async () => [{ domain: 'c.test' }], {
+      evaluate: async () => ({ 'c.test': 1 })
+    });
+    assert.equal((await second.checkEvaluation()).status, 'done');
+  } finally {
+    timers.restore();
+    resetSourceEvaluationStateForTests();
+  }
+});
+
+test('monthly source evaluation is single-flight and survives gemini-web failure', async () => {
+  resetSourceEvaluationStateForTests();
+  const timers = fakeTimers();
+  const db = memoryDb({});
+  let release, calls = 0;
+  const gate = new Promise(resolve => { release = resolve; });
+  try {
+    const { checkEvaluation } = await scheduleMonthlySourceEvaluation(db, async () => [{ domain: 'a.test' }], {
+      evaluate: async () => { calls++; await gate; return null; }
+    });
+    const first = checkEvaluation();
+    await settleUntil(() => calls === 1);
+    assert.equal((await checkEvaluation()).status, 'busy');
+    release();
+    const result = await first;
+    assert.equal(result.status, 'failed');
+    assert.equal(calls, 1);
+    assert.equal(db.store.has('lastSourceEvalTime'), false, 'failure must not mark the evaluation as done');
+    assert.equal((await checkEvaluation()).status, 'backoff');
+
+    resetSourceEvaluationStateForTests();
+    const thrower = await scheduleMonthlySourceEvaluation(db, async () => [{ domain: 'a.test' }], {
+      evaluate: async () => { throw new Error('gemini-web down'); }
+    });
+    assert.equal((await thrower.checkEvaluation()).status, 'error');
+  } finally {
+    timers.restore();
+    resetSourceEvaluationStateForTests();
   }
 });

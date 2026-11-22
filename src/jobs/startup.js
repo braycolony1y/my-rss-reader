@@ -1,4 +1,4 @@
-import { setClusteringModel, startSmartSyncLoop } from '../../smart-news.js';
+import { setClusteringModel, startSmartSyncLoop, scheduleMonthlySourceEvaluation } from '../../smart-news.js';
 import { fastParseRSS } from '../../feed-parsers.js';
 import cron from 'node-cron';
 import { normalizeStateUrl } from '../utils/article-utils.js';
@@ -91,6 +91,16 @@ export function createBackgroundStartup({
             gcAndLogMemory('Pre-SmartSyncLoop');
             console.log('[STAGGERED BOOT] Phase 3: Starting smart source sync loop...');
             startSmartSyncLoop({ fastParseRSS, waitForHttpIdle, prefetchOpenCliOnlyArticles, resolveSmartArticleDestinations, observeCacheArticles: boardCache.observe }, BROWSER_HEADERS, env.RSS_DATA, smartNews.getSources);
+        }, STAGGER_DELAY_MS.SMART_SYNC_LOOP);
+
+        // ── Phase 3b: Monthly source reputation evaluation (gemini-web) ──
+        // Runs a few minutes after the sync loop starts, only when
+        // lastSourceEvalTime is missing or older than 30 days. Single-flight,
+        // non-blocking, and failures are logged, never thrown.
+        setTimeout(() => {
+            scheduleMonthlySourceEvaluation(env.RSS_DATA, smartNews.getSources).catch(error => {
+                console.error('[SMART EVAL] Could not schedule source evaluation:', error.message);
+            });
         }, STAGGER_DELAY_MS.SMART_SYNC_LOOP);
 
         // ── Phase 4: Prefetch engine (delayed) ──────────────────────

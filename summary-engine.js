@@ -1272,8 +1272,14 @@ async function generateWithFallback(geminiModel, prompt, options = {}) {
         };
 
     // Antigravity first. Its own router preserves the existing uncertainty
-    // behavior; ordinary failure falls through.
+    // behavior; ordinary failure falls through. Callers that want Gemini Web
+    // as the first provider (source reputation evaluation) pass skipAntigravity.
     try {
+        if (options.skipAntigravity) {
+            const skip = new Error('Antigravity skipped by caller');
+            skip.skipProvider = true;
+            throw skip;
+        }
         const result =
             await generateWithAntigravity(
                 prompt,
@@ -1458,6 +1464,24 @@ async function generateWithFallback(geminiModel, prompt, options = {}) {
             lastError =
                 error;
         }
+    }
+
+    // Callers that must never use local Qwen (source reputation evaluation)
+    // fail here instead of deferring to or running the local model.
+    if (options.noLocalQwen) {
+        const error =
+            new Error(
+                `All online providers failed. Trace: ${
+                    JSON.stringify(
+                        fallbackTrace
+                    )
+                }`
+            );
+
+        error.cause =
+            lastError;
+
+        throw error;
     }
 
     // If Web was the last viable online path and its KNOWN cooldown is at
@@ -2294,25 +2318,37 @@ ${domains.join(', ')}
 `;
 
     try {
+        // Gemini Web first, then the Gemini API; never Antigravity or local Qwen.
         const result = await generateWithFallback(GEMINI_PRIMARY_MODEL, prompt, {
             maxTokens: 4000,
-            timeoutMs: 60000,
-            operation: 'source-discovery'
+            timeoutMs: 90000,
+            operation: 'source-reputation',
+            json: true,
+            skipAntigravity: true,
+            noLocalQwen: true
         });
-        if (!result || !result.content) throw new Error("Empty response from AI");
-        
-        let jsonStr = result.content;
+        // Providers return `text`; older code read `content`, which is never set.
+        let jsonStr = String(result?.text ?? result?.content ?? '').trim();
+        if (!jsonStr) throw new Error("Empty response from AI");
+
         // Clean markdown if present
         if (jsonStr.startsWith('```')) {
             const lines = jsonStr.split('\n');
-            if (lines[0].includes('json')) lines.shift();
-            else if (lines[0].startsWith('```')) lines.shift();
-            if (lines[lines.length - 1].startsWith('```')) lines.pop();
+            lines.shift();
+            if (lines[lines.length - 1].trim().startsWith('```')) lines.pop();
             jsonStr = lines.join('\n').trim();
         }
-        
-        const scores = JSON.parse(jsonStr);
-        console.log(`[EVALUATOR] Successfully evaluated ${Object.keys(scores).length} domains.`);
+
+        const raw = JSON.parse(jsonStr);
+        const wanted = new Set(domains);
+        const scores = {};
+        for (const [domain, value] of Object.entries(raw || {})) {
+            const n = Number(value);
+            if (wanted.has(domain) && Number.isFinite(n)) {
+                scores[domain] = Math.min(1.5, Math.max(0.5, n));
+            }
+        }
+        console.log(`[EVALUATOR] Successfully evaluated ${Object.keys(scores).length}/${domains.length} domains via ${result.provider || 'unknown'}.`);
         return scores;
     } catch (err) {
         console.error('[EVALUATOR] AI Evaluation failed:', err.message);
