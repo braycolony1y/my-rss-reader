@@ -10,20 +10,35 @@ const ReaderListPublication = {
         return app.articles.length > 0 && this.contexts.get(app.__readerOwner || app) === this.context(app);
     },
     commit(app) { this.contexts.set(app.__readerOwner || app, this.context(app)); this.remember(app); },
-    // Stale-while-revalidate for the personal lists (Read Later, Recently Read,
-    // Boards, Hidden): re-entering one paints its last page at once while the
-    // normal request below supplies authoritative membership and order.
+    // Re-entering a tab paints its first page immediately. The normal request
+    // then applies authoritative membership/order while retaining row identity.
     snapshots: new Map(),
-    personal: new Set(['saved', 'recent', 'board', 'hidden']),
+    snapshotContext(app) {
+        return JSON.stringify([this.context(app), app.selectedFilterType === 'smart' ? app.smartRegion || '' : '', Boolean(app.isMobile)]);
+    },
+    stateSignature(app) {
+        // Read/hidden Sets are mutated locally, so identity alone is insufficient.
+        // Keep global state out of snapshots and reject any changed filter state.
+        return JSON.stringify([
+            [...(app.readStates || [])], [...(app.pendingReadLinks || [])], [...(app.pendingUnreadLinks || [])],
+            [...(app.hiddenStates || [])], [...(app.savedStates || [])], [...(app.boardStates || [])],
+            app.blockedKeywords || [], app.feeds || [], app.recentReadAt || {},
+            app.userPreferences?.boardFolderMappings || {}
+        ]);
+    },
     remember(app) {
-        if (!this.personal.has(app.selectedFilterType) || !app.articles.length) return;
-        this.snapshots.set(this.context(app), { at: Date.now(), articles: app.articles.slice(0, 40) });
+        if (app.currentPage !== 1 || !app.articles.length) return;
+        const key = this.snapshotContext(app);
+        this.snapshots.delete(key);
+        this.snapshots.set(key, { at: Date.now(), state: this.stateSignature(app),
+            articles: app.articles.slice(0, app.isMobile ? 15 : 40), hasMore: app.hasMore });
+        while (this.snapshots.size > 8) this.snapshots.delete(this.snapshots.keys().next().value);
     },
     restore(app) {
-        if (!this.personal.has(app.selectedFilterType)) return false;
-        const snapshot = this.snapshots.get(this.context(app));
-        if (!snapshot || Date.now() - snapshot.at > 15 * 60 * 1000) return false;
+        const key = this.snapshotContext(app), snapshot = this.snapshots.get(key);
+        if (!snapshot || Date.now() - snapshot.at > 60000 || snapshot.state !== this.stateSignature(app)) return false;
         app.articles = snapshot.articles.slice();
+        app.hasMore = snapshot.hasMore;
         this.contexts.set(app.__readerOwner || app, this.context(app));
         return true;
     },

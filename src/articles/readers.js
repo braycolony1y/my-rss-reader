@@ -11,6 +11,7 @@ import { discardResponseBody } from '../fetch-response.js';
 import { isUnsafeVozThreadPayload } from '../voz-thread-state.js';
 
 export function createArticleReaders({
+    resolveArticleSourceUrl = async url => normalizeArticleSourceUrl(url),
     VIETSERVER_PROXY_BASE,
     articleReaderSessions,
     updateArticleFetchProgress,
@@ -19,6 +20,7 @@ export function createArticleReaders({
     CF_PROXY_BASE,
 } = {}) {
     async function fetchViaVietserver(url) {
+        url = await resolveArticleSourceUrl(url);
         if (!VIETSERVER_PROXY_BASE) throw new Error("Vietserver proxy not configured in .env");
         const fetchUrl = VIETSERVER_PROXY_BASE + encodeURIComponent(url);
         const res = await fetch(fetchUrl, {
@@ -33,6 +35,7 @@ export function createArticleReaders({
     }
 
     async function fetchViaOpenCli(url, requestId = '') {
+        url = await resolveArticleSourceUrl(url);
         const laneContext = getCurrentArticleFetchLaneContext();
         const sourceHandler = sourceRegistry.getHandler(url);
         const readerUrl = normalizeArticleSourceUrl(sourceHandler?.getOpenCliReaderUrl?.(url) || url);
@@ -86,6 +89,7 @@ export function createArticleReaders({
     }
 
     async function fetchViaOpenCliBrowserFetch(url) {
+        url = await resolveArticleSourceUrl(url);
         url = normalizeArticleSourceUrl(url);
 
         if (!safeHttpUrl(url)) {
@@ -96,6 +100,7 @@ export function createArticleReaders({
     }
 
     async function fetchViaJina(url) {
+        url = await resolveArticleSourceUrl(url);
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 15000);
         try {
@@ -142,6 +147,7 @@ export function createArticleReaders({
     // Helper to fetch a URL while manually following redirects and persisting cookies.
     // Needed for sites like qdnd.vn that do a 302 back to the same URL with a Set-Cookie.
     async function fetchWithCookies(targetUrl, timeoutMs = 8000, maxRedirects = 5) {
+        targetUrl = await resolveArticleSourceUrl(targetUrl);
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), timeoutMs);
         try {
@@ -190,6 +196,7 @@ export function createArticleReaders({
 
     async function fetchArticleHtmlByStrategy(strategy, url) {
         url = normalizeArticleSourceUrl(url);
+        url = await resolveArticleSourceUrl(url);
         if (strategy === 'opencli-fetch') {
             return await fetchViaOpenCliBrowserFetch(url);
         }

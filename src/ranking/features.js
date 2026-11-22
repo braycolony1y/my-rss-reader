@@ -7,7 +7,7 @@
 //   vec    L2-normalised multilingual-e5-small vector of the member, optional
 import { LEX, GUARDS, POLICY_EXCLUDE } from './lexicons.js';
 import { NOVELTY_WINDOW_HOURS } from './config.js';
-import { isAggregator, outletGroups, outletOf } from './outlets.js';
+import { isAggregator, outletGroups, outletOf, syndicationMatcher } from './outlets.js';
 
 export const FEEDS = ['news_vietnam', 'news_global', 'finance_vietnam', 'finance_global', 'tech_vietnam', 'tech_global'];
 export const HOURS = 3600000;
@@ -93,10 +93,14 @@ export function coverage(cluster, now) {
   const firstSeen = new Map(), seenTitles = new Set(), independent = new Map(), distinct = new Map(), distinctAll = new Map();
   let t0 = Infinity, tLast = 0;
   const sorted = [...use].sort((a, b) => (a.t || 0) - (b.t || 0));
-  const groups = outletGroups(sorted, sorted.map(publisherOf));
+  const publishers = sorted.map(publisherOf);
+  const samePiece = sorted.length > 1 ? syndicationMatcher(sorted) : undefined;
+  const groups = outletGroups(sorted, publishers, samePiece);
   // Hot-floor outlets: an aggregator item counts as the real publisher it resolves to (m.outlet); one that cannot be resolved counts as none.
   const outletKeys = sorted.map(m => outletOf(publisherOf(m), m));
-  const realGroups = outletGroups(sorted, outletKeys.map((o, i) => o || publisherOf(sorted[i])));
+  const realPublishers = outletKeys.map((o, i) => o || publishers[i]);
+  const realGroups = realPublishers.every((p, i) => p === publishers[i])
+    ? groups : outletGroups(sorted, realPublishers, samePiece);
   for (let i = 0; i < sorted.length; i++) {
     const m = sorted[i];
     const p = publisherOf(m);

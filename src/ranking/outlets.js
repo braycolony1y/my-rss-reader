@@ -121,6 +121,27 @@ export function levenshteinSimilarity(a, b, min = 0) {
   return 1 - prev[b.length] / n;
 }
 
+/** Share title/lead comparisons between the two publisher interpretations of a cluster. */
+export function syndicationMatcher(members) {
+  const keys = members.map(m => syndicationKey(m.title));
+  const tokens = keys.map(k => new Set(k.split(' ').filter(Boolean)));
+  const leads = members.map(m => leadKey(m.content));
+  const pairs = new Map();
+  const { titleSimilarity, minLeadChars } = SYNDICATION;
+  const matches = (i, j) => {
+    const key = i * members.length + j;
+    if (pairs.has(key)) return pairs.get(key);
+    const same = (leads[i].length >= minLeadChars && leads[i] === leads[j]) || Boolean(keys[i] &&
+      (keys[i] === keys[j] || jaccard(tokens[i], tokens[j]) >= titleSimilarity ||
+      (Math.abs(keys[i].length - keys[j].length) <= 0.1 * Math.max(keys[i].length, keys[j].length) &&
+        levenshteinSimilarity(keys[i], keys[j], titleSimilarity) >= titleSimilarity)));
+    pairs.set(key, same);
+    return same;
+  };
+  matches.signature = JSON.stringify([keys, leads]);
+  return matches;
+}
+
 /**
  * Group the members of a story into distinct outlets. Members are linked when they share a registrable
  * domain, or have near-identical headlines (token Jaccard or Levenshtein >= SYNDICATION.titleSimilarity),
@@ -129,25 +150,38 @@ export function levenshteinSimilarity(a, b, min = 0) {
  * @param {string[]} publishers publisher id of each member (hostname), same order
  * @returns {number[]} group id per member (0..k-1, first-appearance order)
  */
-export function outletGroups(members, publishers) {
+const groupCache = new Map();
+let groupCacheChars = 0;
+export function outletGroups(members, publishers, samePiece) {
+  if (members.length <= 1) return members.map(() => 0);
+  samePiece ||= syndicationMatcher(members);
   const n = members.length, parent = Array.from({ length: n }, (_, i) => i);
   const find = i => { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
   const union = (a, b) => { a = find(a); b = find(b); if (a !== b) parent[Math.max(a, b)] = Math.min(a, b); };
   const reg = publishers.map(registrableDomain);
+  const signature = samePiece.signature && JSON.stringify([reg, samePiece.signature]);
+  const cached = signature && groupCache.get(signature);
+  if (cached) return cached.slice();
   // A publisher known only by name ("thenextweb") matches the domain whose first label spells it (thenextweb.com).
   const label = r => (r.includes('.') ? r.split('.')[0] : r);
-  const keys = members.map(m => syndicationKey(m.title));
-  const tokens = keys.map(k => new Set(k.split(' ').filter(Boolean)));
-  const leads = members.map(m => leadKey(m.content));
-  const { titleSimilarity, minLeadChars } = SYNDICATION;
   for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
     if (find(i) === find(j)) continue;
     if (reg[i] === reg[j]) { union(i, j); continue; }
     if ((!reg[i].includes('.') || !reg[j].includes('.')) && label(reg[i]).length >= 3 && label(reg[i]) === label(reg[j])) { union(i, j); continue; }
-    if (keys[i] && (keys[i] === keys[j] || jaccard(tokens[i], tokens[j]) >= titleSimilarity ||
-      (Math.abs(keys[i].length - keys[j].length) <= 0.1 * Math.max(keys[i].length, keys[j].length) && levenshteinSimilarity(keys[i], keys[j], titleSimilarity) >= titleSimilarity))) { union(i, j); continue; }
-    if (leads[i].length >= minLeadChars && leads[i] === leads[j]) union(i, j);
+    if (samePiece(i, j)) union(i, j);
   }
   const ids = new Map();
-  return Array.from({ length: n }, (_, i) => { const r = find(i); if (!ids.has(r)) ids.set(r, ids.size); return ids.get(r); });
+  const groups = Array.from({ length: n }, (_, i) => { const r = find(i); if (!ids.has(r)) ids.set(r, ids.size); return ids.get(r); });
+  // Content signatures include ordered members and the publisher interpretation.
+  // Bound retained strings as well as entries; never retain article graphs.
+  if (signature && signature.length <= 32768) {
+    groupCache.set(signature, groups);
+    groupCacheChars += signature.length;
+    while (groupCache.size > 2000 || groupCacheChars > 2 * 1024 * 1024) {
+      const oldest = groupCache.keys().next().value;
+      groupCacheChars -= oldest.length;
+      groupCache.delete(oldest);
+    }
+  }
+  return groups.slice();
 }

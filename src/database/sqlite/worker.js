@@ -53,6 +53,11 @@ async function dispatch(action,args) {
         try{const changed=repository.patchMap(args.key,args.values,args.remove);db.exec('COMMIT');return {changed};}
         catch(error){db.exec('ROLLBACK');throw error;}
     }
+    if(action==='repairGoogleNewsUrls'){
+        db.exec('BEGIN IMMEDIATE');
+        try{const result=repository.repairGoogleNewsUrls(args.destinations);db.exec('COMMIT');return result;}
+        catch(error){db.exec('ROLLBACK');throw error;}
+    }
     if(action==='keys')return repository.keys();
     if(action==='cacheGet')return readSnapshot(()=>cacheFiles.get(args.path));
     if(action==='cacheInfo')return cacheFiles.info(args.path);

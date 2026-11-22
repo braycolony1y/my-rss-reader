@@ -14,6 +14,7 @@ import { publisherIcon, isInvalidImage, cleanUrl, normalizeStateUrl, isRedditUrl
 import sourceRegistry from '../sources/index.js';
 import { discardResponseBody } from '../fetch-response.js';
 import { decodeHTMLEntities } from '../../feed-parsers.js';
+import { isGoogleNewsArticleUrl } from '../articles/search-destination.js';
 import { decodeGoogleNewsIndividually, matchesGoogleNewsPublisher } from '../google-news-destination.js';
 
 export function createFeedSync({
@@ -27,6 +28,7 @@ export function createFeedSync({
     fetchWithCookies,
     runParserWorker,
     googleDecoder,
+    resolveGoogleNewsUrl,
     fetchPdfCreationDate,
     hasOnlyOpenCliFetchMethod,
     scheduleEagerArticleImage,
@@ -481,10 +483,10 @@ export function createFeedSync({
                     let decodedGoogleNewsLinks = new Map();
                     let googleNewsUrlsToDecode = [];
                     if (feed.url.includes('news.google.com')) {
-                        googleNewsUrlsToDecode = feedData.items.map(i => i.link).filter(l => l && l.includes('news.google.com/rss/articles/'));
+                        googleNewsUrlsToDecode = feedData.items.map(i => i.link).filter(isGoogleNewsArticleUrl);
                         if (googleNewsUrlsToDecode.length > 0) {
                             try {
-                                const results = await decodeGoogleNewsIndividually(googleDecoder, googleNewsUrlsToDecode);
+                                const results = await (googleDecoder.decodeBatch ? googleDecoder.decodeBatch(googleNewsUrlsToDecode) : decodeGoogleNewsIndividually(googleDecoder, googleNewsUrlsToDecode));
                                 results.forEach((res, idx) => {
                                     if (res.status && googleNewsUrlsToDecode.includes(res.source_url) && matchesGoogleNewsPublisher(res.decoded_url, { feedUrl: feed.url })) {
                                         decodedGoogleNewsLinks.set(res.source_url, res.decoded_url);
@@ -500,6 +502,7 @@ export function createFeedSync({
                     const eagerImageTasks = [];
                     const openCliOnlyArticlesToPrefetch = [];
                     for (const item of feedData.items) {
+                        const googleNewsWrapper = isGoogleNewsArticleUrl(item.link) ? item.link : null;
                         let safeLink = cleanUrl(item.link);
                         if (decodedGoogleNewsLinks.has(item.link)) {
                             safeLink = cleanUrl(decodedGoogleNewsLinks.get(item.link));
@@ -612,6 +615,7 @@ export function createFeedSync({
                             feedCategory: feed.category,
                             title: item.title,
                             link: safeLink,
+                            ...(googleNewsWrapper ? { originalLink: googleNewsWrapper } : {}),
                             image: finalImage,
                             rssFallbackMap: rssImageUrl,
                             pubDate: normalizedPubDate,
@@ -622,6 +626,10 @@ export function createFeedSync({
                             ...(item.guid ? { id: item.id || item.guid, guid: item.guid } : {}),
                             ...(item.groundNews ? { groundNews: item.groundNews, description: item.description, publishedAt: item.publishedAt, url: item.url } : {})
                         };
+                        if (googleNewsWrapper && isGoogleNewsArticleUrl(safeLink)) {
+                            // No browser work on the sync's critical path.
+                            resolveGoogleNewsUrl?.(googleNewsWrapper, articleRecord, { backgroundResolve: true }).catch(() => {});
+                        }
                         newArticles.push(articleRecord);
                         if (!isRedditUrl(safeLink)) cacheArticles.push(articleRecord);
 

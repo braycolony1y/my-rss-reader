@@ -99,3 +99,21 @@ test('Techmeme headlines resolve from the trailing (Author/Publisher)', () => {
   assert.equal(resolveAggregatorPublisher({ domain: 'techmeme.com', link: 'https://www.techmeme.com/261121/p1', title: 'Cade Metz asks how quantum computers may correct errors (Cade Metz/New York Times)' }), 'nytimes.com');
   assert.equal(resolveAggregatorPublisher({ domain: 'techmeme.com', link: 'https://www.techmeme.com/261121/p2', title: 'Amazon nears a deal to buy Decart (Financial Times)' }), 'ft.com');
 });
+
+test('outlet grouping cache follows ordered member content and publisher changes without exposing cached arrays', () => {
+  const members = [{ title: 'A central bank interest rate decision' }, { title: 'Heavy flooding forces evacuation' }];
+  const publishers = ['edition.cnn.com', 'cnn.com'];
+  const first = outletGroups(members, publishers);
+  assert.deepEqual(first, [0, 0]);
+  first[1] = 99;
+  assert.deepEqual(outletGroups(members, publishers), [0, 0]);
+  publishers[1] = 'bbc.co.uk';
+  assert.deepEqual(outletGroups(members, publishers), [0, 1]);
+  members[1].title = members[0].title;
+  assert.deepEqual(outletGroups(members, publishers), [0, 0]);
+  members[1].title = 'An unrelated festival opens this weekend';
+  assert.deepEqual(outletGroups(members, publishers), [0, 1]);
+  const lead = 'Original reporting with a sufficiently long shared lead to identify a syndicated copy across different publishers.';
+  members.forEach(member => { member.content = lead; });
+  assert.deepEqual(outletGroups(members, publishers), [0, 0]);
+});

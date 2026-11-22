@@ -185,3 +185,21 @@ test('unread counts reuse the current snapshot and update immediately when read 
     state.readStates = [url];
     assert.equal((await request()).unreadCounts.total, 0);
 });
+
+test('forum pool index retains hot/views ordering and invalidates articles and hidden state', async () => {
+    let feedReads = 0, handler;
+    const thread = (id, replies) => ({ link: `https://voz.vn/t/example.${id}/`, title: `Thread ${id}`,
+        get feedUrl() { feedReads++; return 'https://voz.vn/f/diem-bao.33/index.rss'; }, replyCount: replies, createDate: new Date().toISOString() });
+    const state = { articles: [thread(1, 10), thread(2, 20)], hiddenStates: [], readStates: [] };
+    registerDataRoutes({ app: { post() {}, get: (...args) => { handler = args.at(-1); } },
+        env: { RSS_DATA: { get: async key => state[key] } }, prepareArticleForClient: async a => ({ link: a.link }) });
+    const request = async () => { let data; await handler({ query: { filterType: 'hot_today' } }, { json(v) { data = v; } }); return data.articles.map(a => a.link); };
+    const first = await request(), reads = feedReads;
+    assert.deepEqual(first, [state.articles[1].link, state.articles[0].link]);
+    assert.deepEqual(await request(), first);
+    assert.equal(feedReads, reads, 'unchanged snapshot does not scan forum membership again');
+    state.hiddenStates = [first[0]];
+    assert.deepEqual(await request(), [first[1]]);
+    state.articles = [...state.articles, thread(3, 30)];
+    assert.deepEqual(await request(), [state.articles[2].link, first[1]]);
+});

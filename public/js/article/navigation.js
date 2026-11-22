@@ -53,7 +53,7 @@ const ReaderArticleNavigation = {
                 isGoogleNewsArticleUrl(value) {
                     try {
                         const parsed = new URL(value);
-                        return parsed.hostname === 'news.google.com' && /\/(?:rss\/)?articles\//.test(parsed.pathname);
+                        return parsed.hostname === 'news.google.com' && /\/(?:rss\/)?(?:articles|read)\//.test(parsed.pathname);
                     } catch (e) {
                         return false;
                     }

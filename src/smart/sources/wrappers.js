@@ -9,7 +9,7 @@ function isGoogleNewsWrapperUrl(value) {
     return (
       url.hostname ===
         'news.google.com' &&
-      /\/(?:rss\/)?articles\//i.test(
+      /\/(?:rss\/)?(?:articles|read)\//i.test(
         url.pathname
       )
     );

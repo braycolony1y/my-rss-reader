@@ -1,13 +1,18 @@
 // A site-restricted Google News feed must resolve back to that publisher.
 export function matchesGoogleNewsPublisher(destination, hints = {}) {
     try {
-        const feed = new URL(hints.feedUrl || hints.url || '');
-        if (feed.hostname !== 'news.google.com') return true;
-        const expected = (feed.searchParams.get('q') || '').match(/(?:^|\s)site:([\w.-]+)/i)?.[1]?.replace(/^www\./, '').toLowerCase();
+        let expected = '';
+        try {
+            const feed = new URL(hints.feedUrl || hints.url || '');
+            if (feed.hostname === 'news.google.com') expected = (feed.searchParams.get('q') || '').match(/(?:^|\s)site:([\w.-]+)/i)?.[1] || '';
+        } catch { }
+        if (!expected) expected = hints.sourceDomain || hints.domain || '';
         if (!expected) return true;
+        expected = new URL(expected.includes('://') ? expected : 'https://' + expected).hostname.replace(/^www\./, '').toLowerCase();
+        if (/(^|\.)google\.com$/.test(expected)) return true;
         const host = new URL(destination).hostname.replace(/^www\./, '').toLowerCase();
         return host === 'news.google.com' || host === expected || host.endsWith('.' + expected);
-    } catch { return true; }
+    } catch { return false; }
 }
 
 // Decode independently: batch RPC response order is not guaranteed to match

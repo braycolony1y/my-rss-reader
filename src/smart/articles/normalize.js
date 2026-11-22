@@ -87,6 +87,7 @@ function normalizeArticle(
     contentHash,
     title: cleanedTitle,
     link,
+    ...(item.originalLink ? { originalLink: normalizeArticleSourceUrl(item.originalLink) } : {}),
     pubDate: toVietnamIso(sortablePublicationTime),
     rawPubDate: publicationTimeReliable ? undefined : String(item.pubDate || ''),
     publicationTimeReliable,

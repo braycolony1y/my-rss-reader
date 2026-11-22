@@ -9,6 +9,7 @@ import { normalizedHostname, isRedditUrl } from '../utils/article-utils.js';
 import {articleFallbackAcquisition} from './fallback-request.js';
 
 export function createArticlePipeline({
+    resolveArticleSourceUrl = async url => normalizeArticleSourceUrl(url),
     fetchViaJina,
     fetchViaOpenCli,
     fetchArticleHtmlByStrategy,
@@ -35,6 +36,7 @@ export function createArticlePipeline({
     async function fetchParsedArticleByStrategy(strategy, url, policy, feedUrl = '', fallbackTitle = '') {
         if (isRedditUrl(url)) return null;
         url = normalizeArticleSourceUrl(url);
+        url = await resolveArticleSourceUrl(url, { feedUrl });
         const commonMetadata = {
             url,
             feedUrl: feedUrl || '',

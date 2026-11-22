@@ -1,87 +1,58 @@
 import { boundCacheObject } from '../database/sqlite/cache-retention.js';
-import { createConcurrencyLimiter } from '../runtime/concurrency-limiter.js';
-import GoogleDecoderPkg from 'google-news-url-decoder';
+import { createGoogleNewsDecoder, decodeGoogleNewsOffline, cleanGoogleNewsDestination } from './google-news-decode.js';
+import { runGoogleNewsBrowserRedirect, runGoogleNewsBrowserTask } from '../browser/google-news-redirect.js';
+import { resolveOpenCliExecutable } from '../browser/opencli-executable.js';
+import { applyGoogleNewsDestinations } from './google-news-repair.js';
 import { safeHttpUrl, publisherIcon, isInvalidImage } from '../utils/article-utils.js';
 import { isGoogleNewsArticleUrl, parseOpenCliSearchDestination, isGoogleNewsHostedThumbnail } from './search-destination.js';
 import { decodeHTMLEntities, normalizeArticleTitle } from '../../feed-parsers.js';
-import path from 'path';
 import { normalizeArticleSourceUrl } from '../article-source-state.js';
-import { matchesGoogleNewsPublisher, decodeGoogleNewsIndividually } from '../google-news-destination.js';
+import { matchesGoogleNewsPublisher } from '../google-news-destination.js';
 
 export function createGoogleNewsResolver({
     env,
     BROWSER_HEADERS,
     execFileAsync,
     getLastKnownCachedArticle,
+    decoder,
+    browserRedirect = url => runGoogleNewsBrowserRedirect(url, execFileAsync),
+    now = Date.now,
 } = {}) {
-    const { GoogleDecoder } = GoogleDecoderPkg;
-
-    const googleDecoder = new GoogleDecoder();
-
-    async function decodeGoogleNews(url) {
-        if (url && typeof url === 'string' && url.includes('news.google.com/rss/articles/')) {
-            try {
-                const result = await googleDecoder.decode(url);
-                if (result && result.decoded_url) {
-                    return result.decoded_url;
-                }
-            } catch (e) { }
+    const networkDecoder = decoder || createGoogleNewsDecoder({ headers: BROWSER_HEADERS });
+    // Feed sync uses this same cached, paced decoder rather than a second npm instance.
+    const googleDecoder = {
+        async decode(url) {
+            const decoded_url = await resolveGoogleNewsUrl(url, {}, { decodersOnly: true });
+            return { status: Boolean(cleanGoogleNewsDestination(decoded_url)), decoded_url };
+        },
+        async decodeBatch(urls) {
+            const results = [];
+            for (let i = 0; i < urls.length; i += 8) {
+                results.push(...await Promise.all(urls.slice(i, i + 8).map(async source_url => ({ ...await googleDecoder.decode(source_url), source_url }))));
+            }
+            return results;
         }
-        return url;
-    }
+    };
+    const decodeGoogleNews = url => resolveArticleSourceUrl(url);
 
     const GOOGLE_NEWS_URL_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
     const GOOGLE_NEWS_URL_FAILURE_TTL_MS = 5 * 60 * 1000;
 
     let googleNewsUrlCache = null;
-    // Background resolutions share one OpenCLI search slot; a reader waiting on
-    // a foreground open has its own slot and never queues behind them.
-    const openCliSearchLimiter = createConcurrencyLimiter(1, { maxPending: 16 });
-    const foregroundOpenCliSearchLimiter = createConcurrencyLimiter(1, { maxPending: 8 });
-
     let googleNewsUrlCacheSaveTimer = null;
-
+    let cacheLoading;
     const googleNewsUrlPending = new Map();
-
-    let googleNewsResolveStartQueue = Promise.resolve();
-
-    let googleNewsLastResolveStart = 0;
-
-    let _googleNewsCircuitBreakerUntil = 0;
-
-    async function scheduleGoogleNewsLookup(task) {
-        if (Date.now() < _googleNewsCircuitBreakerUntil) {
-            throw new Error('Google News rate limit (HTTP 429) active; circuit open');
-        }
-        const previous = googleNewsResolveStartQueue.catch(() => {});
-        let release;
-        googleNewsResolveStartQueue = new Promise(resolve => { release = resolve; });
-        await previous;
-        if (Date.now() < _googleNewsCircuitBreakerUntil) {
-            release();
-            throw new Error('Google News rate limit (HTTP 429) active; circuit open');
-        }
-        const waitMs = Math.max(0, 700 - (Date.now() - googleNewsLastResolveStart));
-        if (waitMs) await new Promise(resolve => setTimeout(resolve, waitMs));
-        googleNewsLastResolveStart = Date.now();
-        release();
-        try {
-            return await task();
-        } catch (e) {
-            if (e && (e.message?.includes('429') || e.status === 429)) {
-                _googleNewsCircuitBreakerUntil = Date.now() + 120000;
-            }
-            throw e;
-        }
-    }
+    const repairQueue = new Map();
+    const repairedUrls = new Map();
 
     async function ensureGoogleNewsUrlCache() {
-        if (!googleNewsUrlCache) {
+        if (!googleNewsUrlCache && !cacheLoading) cacheLoading = (async () => {
             const obj = await env.RSS_DATA.get('googleNewsUrlCache', { type: 'json' }) || {};
             googleNewsUrlCache = new Map(Object.entries(boundCacheObject('googleNewsUrlCache',obj)));
             persistedGoogleNewsUrls = new Map(googleNewsUrlCache);
-        }
+        })().finally(() => { cacheLoading = null; });
+        await cacheLoading;
         return googleNewsUrlCache;
     }
     // Entries persist as row patches: the in-memory 3000-entry trim is a memory
@@ -121,62 +92,24 @@ export function createGoogleNewsResolver({
         if (googleNewsUrlCacheSaveTimer.unref) googleNewsUrlCacheSaveTimer.unref();
     }
 
-    function findGoogleNewsResolvedUrl(node) {
-        if (typeof node === 'string') {
-            if (!node.includes('garturlres')) return '';
-            try { return findGoogleNewsResolvedUrl(JSON.parse(node)); } catch (e) { return ''; }
-        }
-        if (!Array.isArray(node)) return '';
-        if (node[0] === 'garturlres') return safeHttpUrl(node[1]);
-        for (const child of node) {
-            const found = findGoogleNewsResolvedUrl(child);
-            if (found) return found;
-        }
-        return '';
-    }
-
-    async function decodeGoogleNewsArticleUrl(sourceUrl) {
-        const articlePageUrl = sourceUrl.replace('/rss/articles/', '/articles/');
-        const pageResponse = await fetch(articlePageUrl, { headers: BROWSER_HEADERS, redirect: 'follow' });
-        if (!pageResponse.ok) throw new Error('Google News wrapper returned HTTP ' + pageResponse.status);
-        if (pageResponse.url && !isGoogleNewsArticleUrl(pageResponse.url) && !/google\.com\/sorry\//i.test(pageResponse.url)) {
-            return safeHttpUrl(pageResponse.url);
-        }
-        if (/google\.com\/sorry\//i.test(pageResponse.url || '')) throw new Error('Google News temporarily rate-limited destination lookup');
-        const pageHtml = await pageResponse.text();
-        const declaredUrl = decodeHTMLEntities(pageHtml.match(/<(?:link|meta)\b[^>]*(?:rel=(?:["'])canonical(?:["'])|property=(?:["'])og:url(?:["']))[^>]*(?:href|content)=(?:["'])(https?:\/\/[^"']+)(?:["'])/i)?.[1] || '');
-        if (declaredUrl && !isGoogleNewsArticleUrl(declaredUrl) && !/google\.com\/sorry\//i.test(declaredUrl)) return safeHttpUrl(declaredUrl);
-        const attribute = name => decodeHTMLEntities(pageHtml.match(new RegExp('\\s' + name + '=(?:"([^"]+)"|\'([^\']+)\')', 'i'))?.slice(1).find(Boolean) || '');
-        const articleId = attribute('data-n-a-id') || sourceUrl.match(/\/(?:rss\/)?articles\/([^?]+)/)?.[1] || '';
-        const timestamp = attribute('data-n-a-ts');
-        const signature = attribute('data-n-a-sg');
-        if (!articleId || !timestamp || !signature) throw new Error('Google News destination metadata was unavailable');
-
-        const context = [
-            ['en-US', 'US', ['FINANCE_TOP_INDICES', 'WEB_TEST_1_0_0'], null, null, 1, 1, 'US:en', null, 180, null, null, null, null, null, 0, null, null, [1608992183, 723341000]],
-            'en-US', 'US', 1, [2, 3, 4, 8], 1, 0, '655000234', 0, 0, null, 0
-        ];
-        const innerRequest = JSON.stringify(['garturlreq', context, articleId, Number(timestamp), signature]);
-        const form = new URLSearchParams({
-            'f.req': JSON.stringify([[['Fbv4je', innerRequest, null, 'generic']]])
-        });
-        const rpcResponse = await fetch('https://news.google.com/_/DotsSplashUi/data/batchexecute', {
-            method: 'POST',
-            headers: {
-                ...BROWSER_HEADERS,
-                'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'
-            },
-            body: form
-        });
-        if (!rpcResponse.ok) throw new Error('Google News destination lookup returned HTTP ' + rpcResponse.status);
-        const rpcText = await rpcResponse.text();
-        for (const line of rpcText.split(/\r?\n/).map(value => value.trim()).filter(value => value.startsWith('['))) {
+    let repairTimer;
+    function scheduleRepair(source, destination) {
+        if (now() - (repairedUrls.get(source) || 0) < 60000) return;
+        repairQueue.set(source, destination);
+        if (repairTimer) return;
+        repairTimer = setTimeout(async () => {
+            repairTimer = null;
+            const entries = Object.fromEntries(repairQueue);
+            repairQueue.clear();
             try {
-                const resolved = findGoogleNewsResolvedUrl(JSON.parse(line));
-                if (resolved && !isGoogleNewsArticleUrl(resolved)) return resolved;
-            } catch (e) { }
-        }
-        throw new Error('Google News did not return a publisher destination');
+                await env.RSS_DATA.repairGoogleNewsUrls?.(entries);
+                for (const source of Object.keys(entries)) repairedUrls.set(source, now());
+                if (repairedUrls.size > 3000) repairedUrls.delete(repairedUrls.keys().next().value);
+            } catch (error) {
+                console.error('[GOOGLE NEWS] Stored URL repair failed:', error.message);
+            }
+        }, 3000);
+        repairTimer.unref?.();
     }
 
     function googleNewsPublisherDomain(hints = {}) {
@@ -206,7 +139,7 @@ export function createGoogleNewsResolver({
             headers: BROWSER_HEADERS,
             signal: AbortSignal.timeout(15000)
         });
-        if (!response.ok) throw new Error('Publisher destination search returned HTTP ' + response.status);
+        if (!response.ok) { await response.body?.cancel(); throw new Error('Publisher destination search returned HTTP ' + response.status); }
         const html = await response.text();
         for (const match of html.matchAll(/(?:[?&]|&amp;)uddg=([^&"']+)/gi)) {
             let candidate = match[1];
@@ -219,16 +152,16 @@ export function createGoogleNewsResolver({
         return '';
     }
 
-    async function resolveGoogleNewsViaOpenCliSearch(hints = {}, { foreground = false } = {}) {
+    async function resolveGoogleNewsViaOpenCliSearch(hints = {}) {
         const domain = googleNewsPublisherDomain(hints);
         const title = normalizeArticleTitle(hints.title || '').replace(/\s+-\s+[^-]{2,80}$/i, '').trim();
         if (!domain || title.length < 12) return '';
-        const executable = path.resolve('./node_modules/.bin/opencli');
+        const executable = resolveOpenCliExecutable();
         const query = 'site:' + domain + ' "' + title.replace(/["\r\n]+/g, ' ') + '"';
         // Each search is a separate OpenCLI Node process driving a browser
         // tab. Up to 16 background resolutions may run, so serialize only this
         // expensive last-resort step instead of launching them all together.
-        const { stdout } = await (foreground ? foregroundOpenCliSearchLimiter : openCliSearchLimiter).run(() => execFileAsync(executable, [
+        const { stdout } = await runGoogleNewsBrowserTask(() => execFileAsync(executable, [
             'duckduckgo', 'search', query,
             '--limit', '5',
             '--window', 'background',
@@ -244,111 +177,100 @@ export function createGoogleNewsResolver({
         const original = safeHttpUrl(normalizeArticleSourceUrl(sourceUrl));
         if (!original || !isGoogleNewsArticleUrl(original)) return original || sourceUrl;
         const cache = await ensureGoogleNewsUrlCache();
+        const accepted = value => {
+            const clean = cleanGoogleNewsDestination(value);
+            return clean && matchesGoogleNewsPublisher(clean, hints) ? clean : '';
+        };
         let cached = cache.get(original);
-        if (cached?.resolvedUrl && !matchesGoogleNewsPublisher(cached.resolvedUrl, hints)) {
+        if (cached?.resolvedUrl && !accepted(cached.resolvedUrl)) {
             forgetGoogleNewsUrl(cache, original);
+            scheduleGoogleNewsUrlCacheSave();
             cached = undefined;
         }
-        if (cached) {
-            // LRU bump
-            cache.delete(original);
+        if (cached?.resolvedUrl && accepted(cached.resolvedUrl) !== cached.resolvedUrl) {
+            cached = { ...cached, resolvedUrl: accepted(cached.resolvedUrl) };
             cache.set(original, cached);
+            scheduleGoogleNewsUrlCacheSave();
         }
+        const recentDecoderFailure = cached?.decodersOnly && !cached.resolvedUrl && now() - cached.cachedAt < GOOGLE_NEWS_URL_FAILURE_TTL_MS;
+        if (recentDecoderFailure && !options.decodersOnly) cached = undefined;
         const ttl = cached?.resolvedUrl ? GOOGLE_NEWS_URL_CACHE_TTL_MS : GOOGLE_NEWS_URL_FAILURE_TTL_MS;
-        if (cached?.cachedAt && Date.now() - cached.cachedAt < ttl && (cached.resolvedUrl || !options.force)) return cached.resolvedUrl || original;
+        if (cached?.cachedAt && now() - cached.cachedAt < ttl && !options.force) {
+            if (cached.resolvedUrl) scheduleRepair(original, accepted(cached.resolvedUrl));
+            return accepted(cached.resolvedUrl) || original;
+        }
         if (googleNewsUrlPending.has(original)) {
-            return options.backgroundResolve ? (cached?.resolvedUrl || original) : googleNewsUrlPending.get(original);
+            const existing = googleNewsUrlPending.get(original);
+            if (options.backgroundResolve || existing.backgroundResolve) return accepted(cached?.resolvedUrl) || original;
+            return accepted(await existing.promise) || original;
         }
-        if (options.isSubItem && !cached?.resolvedUrl) {
-            return cached?.resolvedUrl || original;
-        }
-        if (options.backgroundResolve && (Date.now() < _googleNewsCircuitBreakerUntil || googleNewsUrlPending.size > 15)) {
-            return cached?.resolvedUrl || original;
-        }
+        // Bound card-triggered work. Related members use the same deduplicated
+        // queue; they must also eventually get repaired.
+        if (googleNewsUrlPending.size >= 16) return accepted(cached?.resolvedUrl) || original;
 
-        const pending = (async () => {
-            let resolvedUrl = '';
+        const work = async () => {
+            let resolvedUrl = accepted(decodeGoogleNewsOffline(original));
             let resolutionError = '';
-            try {
-                const result = await googleDecoder.decode(original);
-                if (result && result.decoded_url) {
-                    resolvedUrl = result.decoded_url;
-                }
-            } catch (error) {
-                resolutionError = error.message;
+            const attempt = async task => {
+                try { resolvedUrl = accepted(await task()); }
+                catch (error) { resolutionError += (resolutionError ? '; ' : '') + error.message; }
+            };
+            if (!resolvedUrl && !(recentDecoderFailure && !options.force) && !options.skipDecode) await attempt(async () => {
+                const result = await networkDecoder.decode(original);
+                if (!result?.decoded_url) throw Error(result?.message || 'Google News decoding failed');
+                return result.decoded_url;
+            });
+            if (!resolvedUrl && !options.decodersOnly && !options.skipSearch) await attempt(() => resolveGoogleNewsViaPublisherSearch(hints));
+            // OpenCLI search itself drives a browser too, so both browser
+            // fallbacks are strictly background work, after network decoding.
+            if (!resolvedUrl && options.backgroundResolve && !options.decodersOnly && !(now() < networkDecoder.blockedUntil)) {
+                if (!options.decodersOnly) await attempt(() => resolveGoogleNewsViaOpenCliSearch(hints));
+                await (!resolvedUrl ? attempt(() => browserRedirect(original)) : Promise.resolve());
             }
-            if (resolvedUrl && !matchesGoogleNewsPublisher(resolvedUrl, hints)) resolvedUrl = '';
-            if (!resolvedUrl) {
-                try {
-                    resolvedUrl = await decodeGoogleNewsArticleUrl(original);
-                } catch (error) {
-                    resolutionError += (resolutionError ? '; ' : '') + error.message;
-                }
-            }
-            if (resolvedUrl && !matchesGoogleNewsPublisher(resolvedUrl, hints)) resolvedUrl = '';
-            if (!resolvedUrl) {
-                try {
-                    resolvedUrl = await decodeGoogleNewsOriginalUrl(original, hints);
-                } catch (error) {
-                    resolutionError += (resolutionError ? '; ' : '') + error.message;
-                }
-            }
-            if (resolvedUrl && !matchesGoogleNewsPublisher(resolvedUrl, hints)) resolvedUrl = '';
-            if (!resolvedUrl) {
-                try {
-                    resolvedUrl = await resolveGoogleNewsViaPublisherSearch(hints);
-                } catch (error) {
-                    resolutionError += (resolutionError ? '; ' : '') + error.message;
-                }
-            }
-            if (resolvedUrl && !matchesGoogleNewsPublisher(resolvedUrl, hints)) resolvedUrl = '';
-            if (!resolvedUrl) {
-                try {
-                    resolvedUrl = await resolveGoogleNewsViaOpenCliSearch(hints, { foreground: !options.backgroundResolve });
-                } catch (error) {
-                    resolutionError += (resolutionError ? '; ' : '') + 'OpenCLI search: ' + error.message;
-                }
-            }
-            if (resolvedUrl && !matchesGoogleNewsPublisher(resolvedUrl, hints)) resolvedUrl = '';
-            if (!resolvedUrl && resolutionError) console.error('[GOOGLE NEWS] Destination resolution failed:', resolutionError);
-            cache.set(original, { resolvedUrl, individuallyDecoded: true, cachedAt: Date.now(), error: resolvedUrl ? '' : resolutionError });
+            cache.set(original, { resolvedUrl, individuallyDecoded: true, cachedAt: now(),
+                decodersOnly: Boolean(options.decodersOnly), error: resolvedUrl ? '' : resolutionError });
             if (cache.size > 3000) cache.delete(cache.keys().next().value);
             scheduleGoogleNewsUrlCacheSave();
+            if (resolvedUrl) scheduleRepair(original, resolvedUrl);
             return resolvedUrl || original;
-        })().finally(() => googleNewsUrlPending.delete(original));
-        googleNewsUrlPending.set(original, pending);
+        };
+        // Defer all decoder/search/browser activity until after the card call
+        // returns. A cold cache load is local storage IO only.
+        const pending = (options.backgroundResolve ? new Promise(resolve => setImmediate(resolve)).then(work) : Promise.resolve().then(work))
+            .finally(() => googleNewsUrlPending.delete(original));
+        googleNewsUrlPending.set(original, { promise: pending, backgroundResolve: Boolean(options.backgroundResolve) });
         if (options.backgroundResolve) {
-            return cached?.resolvedUrl || original;
+            pending.catch(error => console.error('[GOOGLE NEWS] Background resolution failed:', error.message));
+            return accepted(cached?.resolvedUrl) || original;
         }
-        return pending;
+        const destination = await pending;
+        // Reader and feed sync never await browser work. Bypass the fresh
+        // decoder-only failure once so the background job can try fallbacks.
+        if (destination === original && !options.decodersOnly) {
+            setImmediate(() => resolveGoogleNewsUrl(original, hints, { backgroundResolve: true, force: true, skipDecode: true, skipSearch: true }).catch(() => {}));
+        }
+        return destination;
+    }
+
+    async function resolveArticleSourceUrl(url, hints = {}) {
+        const destination = await resolveGoogleNewsUrl(url, hints);
+        if (isGoogleNewsArticleUrl(destination)) {
+            throw Object.assign(Error('Google News destination is resolving in the background; please retry shortly'), { code: 'GOOGLE_NEWS_PENDING', status: 503 });
+        }
+        return normalizeArticleSourceUrl(destination);
     }
 
     async function resolveSmartArticleDestinations(sourceResults = []) {
-        const articles = sourceResults.flatMap(result => Array.isArray(result?.articles) ? result.articles : []);
+        const articles = [];
+        const collect = article => { if (!article) return; articles.push(article); for (const member of article.relatedArticles || []) collect(member); };
+        for (const result of sourceResults) for (const article of result?.articles || []) collect(article);
         const wrappers = [...new Set(articles.map(article => article?.link).filter(isGoogleNewsArticleUrl))];
         if (!wrappers.length) return { attempted: 0, resolved: 0 };
 
         const cache = await ensureGoogleNewsUrlCache();
-        const now = Date.now();
-        const uncached = wrappers.filter(url => {
-            const entry = cache.get(url);
-            return !entry?.resolvedUrl || now - Number(entry.cachedAt || 0) >= GOOGLE_NEWS_URL_CACHE_TTL_MS;
-        });
-
-        if (uncached.length) {
-            try {
-                const decoded = await decodeGoogleNewsIndividually(googleDecoder, uncached);
-                for (const result of decoded || []) {
-                    const sourceUrl = safeHttpUrl(result?.source_url);
-                    const destination = safeHttpUrl(result?.decoded_url);
-                    if (!sourceUrl || !destination || isGoogleNewsArticleUrl(destination)) continue;
-                    cache.set(sourceUrl, { resolvedUrl: destination, individuallyDecoded: true, cachedAt: Date.now(), error: '' });
-                }
-                scheduleGoogleNewsUrlCacheSave();
-            } catch (error) {
-                console.warn('[SMART NEWS] Could not batch-resolve Google News destinations:', error.message);
-            }
-        }
+        // Concurrent submissions coalesce into RPC batches; actual Google IO
+        // remains serial. Failure-cache entries are respected here as on cards.
+        await googleDecoder.decodeBatch(wrappers);
 
         let resolvedCount = 0;
         for (const article of articles) {
@@ -366,12 +288,11 @@ export function createGoogleNewsResolver({
             }
             if (!destination || isGoogleNewsArticleUrl(destination) || !matchesGoogleNewsPublisher(destination, article)) continue;
 
-            article.originalLink = wrapper;
-            article.link = normalizeArticleSourceUrl(destination);
+            applyGoogleNewsDestinations(article, { [wrapper]: destination });
             article.domain = new URL(article.link).hostname.replace(/^www\./, '');
             article.feedIcon = publisherIcon(article.link);
             if (!article.image || isInvalidImage(article.image) || isGoogleNewsHostedThumbnail(article.image)) {
-                const cachedArticle = await getLastKnownCachedArticle(article.link);
+                const cachedArticle = await getLastKnownCachedArticle?.(article.link);
                 const cachedImage = safeHttpUrl(cachedArticle?.image);
                 article.image = cachedImage && !isInvalidImage(cachedImage)
                     ? cachedImage
@@ -385,6 +306,7 @@ export function createGoogleNewsResolver({
     return {
         googleDecoder,
         resolveGoogleNewsUrl,
+        resolveArticleSourceUrl,
         get googleNewsUrlCache() { return googleNewsUrlCache; },
         decodeGoogleNews,
         resolveSmartArticleDestinations

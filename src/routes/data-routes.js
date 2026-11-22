@@ -21,6 +21,7 @@ export function registerDataRoutes({
     let visibleKeywordSignature;
     let visibleSnapshotArticles;
     let unreadSnapshot;
+    let forumSnapshot;
 
     app.get('/api/data', authMiddleware, registerFeedPagePost(app, authMiddleware, async (req, res) => {
         progress.activeForegroundRequests++;
@@ -313,14 +314,19 @@ export function registerDataRoutes({
                 const stickyIds = new Set(['.1216621/', '.641432/', '.617079/']);
                 const isStickyLink = (link) => { for (const id of stickyIds) if (link.includes(id)) return true; return false; };
 
-                // Pre-filter articles by forum once (avoids scanning all 1500+ articles twice)
-                const diemBaoPool = [];
-                const chuyenTroPool = [];
-                for (const a of allArticles) {
-                    if (!a.feedUrl || hiddenSet.has(a.link) || isStickyLink(a.link)) continue;
-                    if (a.feedUrl.includes('diem-bao.33')) diemBaoPool.push(a);
-                    else if (a.feedUrl.includes('chuyen-tro-linh-tinh-tm.17')) chuyenTroPool.push(a);
+                // Forum membership depends only on the immutable article snapshot.
+                // Keep time windows and hidden-state filtering live on every request.
+                if (forumSnapshot?.articles !== allArticles) {
+                    const diemBao = [], chuyenTro = [];
+                    for (const article of allArticles) {
+                        if (!article.feedUrl || isStickyLink(article.link)) continue;
+                        if (article.feedUrl.includes('diem-bao.33')) diemBao.push(article);
+                        else if (article.feedUrl.includes('chuyen-tro-linh-tinh-tm.17')) chuyenTro.push(article);
+                    }
+                    forumSnapshot = { articles: allArticles, diemBao, chuyenTro };
                 }
+                const diemBaoPool = forumSnapshot.diemBao.filter(a => !hiddenSet.has(a.link));
+                const chuyenTroPool = forumSnapshot.chuyenTro.filter(a => !hiddenSet.has(a.link));
 
                 // Helper to guarantee exactly 5 articles from a pre-filtered pool
                 const getTop5 = (pool) => {

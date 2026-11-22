@@ -310,6 +310,9 @@ export function registerArticleRoutes({
                     feedIcon: req.query.feedIcon,
                     domain: req.query.domain
                 }, { force: bypassCache, backgroundResolve: false });
+                if (isGoogleNewsArticleUrl(url)) {
+                    return res.status(503).json({ error: 'Google News destination is resolving in the background; please retry shortly', code: 'GOOGLE_NEWS_PENDING' });
+                }
             }
 
             retargetPublisherFallbacks(url);
@@ -318,7 +321,7 @@ export function registerArticleRoutes({
             if (!bypassCache) {
                 const resume = await getCachedVozResumePage(requestedUrl, req.query.resumePage, getCachedArticle);
                 if (resume) url = resume.url;
-                let directCached = resume?.cached || await getCachedArticle(requestedUrl);
+                let directCached = resume?.cached || await getCachedArticle(url);
                 if (!directCached && googleNews.googleNewsUrlCache && googleNews.googleNewsUrlCache.has(requestedUrl) && googleNews.googleNewsUrlCache.get(requestedUrl).resolvedUrl) {
                     url = googleNews.googleNewsUrlCache.get(requestedUrl).resolvedUrl;
                     directCached = await getCachedArticle(url);

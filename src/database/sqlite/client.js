@@ -123,6 +123,11 @@ export function createSqliteClient(options) {
         findArticles:(key,query={})=>queue.run(()=>request('findArticles',{key,options:query})),
         getEntries:(key,ids)=>queue.run(()=>request('getEntries',{key,ids})),
         patchEntries:gated((key,values,remove=[])=>queue.run(async()=>{const result=await request('patchEntries',{key,values,remove});if(result.changed)cache.invalidate(key);return result;})),
+        repairGoogleNewsUrls:gated(destinations=>queue.run(async()=>{
+            const result=await request('repairGoogleNewsUrls',{destinations});
+            for(const key of result.changed)cache.invalidate(key);
+            return result;
+        })),
         keys:()=>queue.run(()=>request('keys')),
         async backup(opts={}){await start();return maintenanceRequest('backup',opts);},
         // compact=false stops after the row phase; the VACUUM phase (which

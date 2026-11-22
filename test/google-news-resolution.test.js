@@ -29,7 +29,7 @@ test('OpenCLI publisher search rejects malformed output and Google News wrappers
 
 test('Smart ingestion batch-resolves publisher destinations and replaces Google-hosted thumbnails', () => {
     assert.match(server, /async function resolveSmartArticleDestinations/);
-    assert.match(server, /decodeGoogleNewsIndividually\(googleDecoder, uncached\)/);
+    assert.match(server, /await googleDecoder\.decodeBatch\(wrappers\)/);
     assert.match(server, /isGoogleNewsHostedThumbnail\(article\.image\)/);
     assert.match(server, /`\/api\/og-image\?url=\$\{encodeURIComponent\(article\.link\)\}`/);
     assert.match(smartNews, /helpers\s*\.resolveSmartArticleDestinations/);

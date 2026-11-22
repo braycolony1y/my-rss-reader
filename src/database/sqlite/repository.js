@@ -1,3 +1,4 @@
+import { applyGoogleNewsDestinations } from '../../articles/google-news-repair.js';
 import { boundCacheObject, CACHE_RETENTION } from './cache-retention.js';
 import { createHash } from 'node:crypto';
 import { hash, describe, tableFor, rowIdentity, CRITICAL_ARRAYS, CHILD_FIELDS } from './codec.js';
@@ -215,9 +216,44 @@ export function createRepository(db) {
             const effective=CHILD_FIELDS[key]?.has(row.row_key)?info(`$${key}.${row.row_key}`)?.digest??row.digest:row.digest;
             digest.update((count?',':'')+JSON.stringify([row.row_key,effective]));count++;
         }
-        digest.update(']');return finishCollection(key,prior,encoding,'object',digest.digest('hex'),count);
+        digest.update(']');return finishCollection(key,prior,encoding,prior?.shape || 'object',digest.digest('hex'),count);
     }
-    return { info, read, write, record, entries, beginCollection, finishCollection, findArticles,linkProjection,mapEntries,patchMap,refreshDigest,
+    function repairGoogleNewsUrls(destinations) {
+        const links = JSON.stringify(Object.keys(destinations));
+        if (links === '[]') return { changed: [] };
+        const changed = new Set();
+        // Indexed selection of primary links and related members. Keep row keys
+        // and ordering stable; update payloads and their relational columns together.
+        const collections = sql('SELECT name FROM collections').all().map(row => row.name);
+        for (const key of collections.filter(key => tableFor(key) === 'articles')) {
+            const rows = sql(`SELECT * FROM articles WHERE collection=? AND (link IN (SELECT value FROM json_each(?))
+                OR row_key IN (SELECT cluster_key FROM cluster_members WHERE collection=? AND link IN (SELECT value FROM json_each(?))))`).all(key, links, key, links);
+            for (const row of rows) {
+                const article = materialize(row, key);
+                if (applyGoogleNewsDestinations(article, destinations)) {
+                    record(key, row.row_key, row.position, article);
+                    changed.add(key);
+                }
+            }
+        }
+        // Snapshot metadata is partitioned into rows; touch only the derived
+        // article snapshots, never personal state or identity ledgers.
+        for (const key of ['universalPrefetchTargets', 'topStoriesState', 'storyBriefings']) {
+            if (!info(key)) continue;
+            for (const row of sql("SELECT * FROM metadata_entries WHERE collection=? AND instr(value,'news.google.com')>0").all(key)) {
+                const value = materialize(row, key);
+                if (applyGoogleNewsDestinations(value, destinations)) { record(key, row.row_key, row.position, value); changed.add(key); }
+            }
+        }
+        for (const key of [...changed]) {
+            refreshDigest(key);
+            for (const [parent, fields] of Object.entries(CHILD_FIELDS)) {
+                if ([...fields].some(field => key === `$${parent}.${field}`) && info(parent)) { refreshDigest(parent); changed.add(parent); }
+            }
+        }
+        return { changed: [...changed] };
+    }
+    return { info, read, write, record, entries, beginCollection, finishCollection, findArticles,linkProjection,mapEntries,patchMap,refreshDigest,repairGoogleNewsUrls,
         keys: ({internal=false}={}) => sql(internal?'SELECT name FROM collections ORDER BY name':"SELECT name FROM collections WHERE name NOT LIKE '$%' ORDER BY name").all().map(row=>row.name),
         stats: () => ({writes,unchanged,statements:prepared.size}),
     };

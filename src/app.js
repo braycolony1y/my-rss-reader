@@ -111,6 +111,7 @@ export async function createApplication({ isMainModule = false, databaseStore } 
     });
 
     const readers = createArticleReaders({
+        resolveArticleSourceUrl: googleNews.resolveArticleSourceUrl,
         VIETSERVER_PROXY_BASE: config.VIETSERVER_PROXY_BASE,
         articleReaderSessions: progress.articleReaderSessions,
         updateArticleFetchProgress: progress.updateArticleFetchProgress,
@@ -121,6 +122,7 @@ export async function createApplication({ isMainModule = false, databaseStore } 
 
 
     const parser = createArticleParser({
+        resolveArticleSourceUrl: googleNews.resolveArticleSourceUrl,
         updateArticleFetchProgress: progress.updateArticleFetchProgress,
         fetchViaJina: readers.fetchViaJina,
         recordArticleFetchOutcome: policy.recordArticleFetchOutcome,
@@ -130,6 +132,7 @@ export async function createApplication({ isMainModule = false, databaseStore } 
     });
 
     const pipeline = createArticlePipeline({
+        resolveArticleSourceUrl: googleNews.resolveArticleSourceUrl,
         fetchViaJina: readers.fetchViaJina,
         fetchViaOpenCli: readers.fetchViaOpenCli,
         fetchArticleHtmlByStrategy: readers.fetchArticleHtmlByStrategy,
@@ -340,6 +343,7 @@ export async function createApplication({ isMainModule = false, databaseStore } 
         fetchWithCookies: (...args) => withArticleFetchLane('p3', () => readers.fetchWithCookies(...args)),
         runParserWorker: worker.runParserWorker,
         googleDecoder: googleNews.googleDecoder,
+        resolveGoogleNewsUrl: googleNews.resolveGoogleNewsUrl,
         fetchPdfCreationDate: (...args) => sourceCooldown.run(args[0], () => images.fetchPdfCreationDate(...args)),
         hasOnlyOpenCliFetchMethod: pipeline.hasOnlyOpenCliFetchMethod,
         scheduleEagerArticleImage: images.scheduleEagerArticleImage,

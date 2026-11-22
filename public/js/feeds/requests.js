@@ -72,7 +72,7 @@ async fetchData(isLoadMore = false, skipPageReset = false, keepVisible = false) 
                     }
                     // The user-preference and recent-read maps are ~85% of a list payload
                     // and unchanged by navigation; ask the server to omit them once held.
-                    if (this._fullStateLoaded && this.selectedFilterType !== 'smart' && (isLoadMore || !keepVisible)) params.set('lean', '1');
+                    if (this._fullStateLoaded && (isLoadMore || !keepVisible)) params.set('lean', '1');
                     params.append('_t', Date.now().toString());
 
                     try {
@@ -151,7 +151,7 @@ async fetchData(isLoadMore = false, skipPageReset = false, keepVisible = false) 
                                 }
                                 this.articles = [...this.articles, ...newUniqueArticles];
                             } else {
-                                this.feeds = data.feeds || [];
+                                if (data.feeds) this.feeds = data.feeds;
                                 this.readStates = new Set([...(data.readStates || []), ...this.pendingReadLinks].filter(link => !this.pendingUnreadLinks.has(link)));
                                 if (data.recentReadAt) {
                                     const localPending = Object.fromEntries([...this.pendingRecentReadLinks].map(link => [link, this.recentReadAt[link] || Date.now()]));
@@ -195,7 +195,7 @@ async fetchData(isLoadMore = false, skipPageReset = false, keepVisible = false) 
                                 this.userPreferences = { ...incomingPreferences, ...this.pendingPreferences };
                                 this.userPreferences.boardFolders = [...new Set(['cache', ...(this.userPreferences.boardFolders || [])])];
                                 this.userPreferences.boardFolderMappings = this.userPreferences.boardFolderMappings || {};
-                                this.categoryOrder = data.categoryOrder || [];
+                                if (data.categoryOrder) this.categoryOrder = data.categoryOrder;
                                 if (data.unreadCounts) this.unreadCounts = data.unreadCounts;
                                 if (data.smartClusterVersion) {
                                     this.smartClusterVersion = data.smartClusterVersion;

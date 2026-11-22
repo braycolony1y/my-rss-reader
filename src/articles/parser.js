@@ -8,6 +8,7 @@ import { isUnsafeVozThreadPayload } from '../voz-thread-state.js';
 import { normalizeArticleMediaMarkup } from '../../article-media.js';
 
 export function createArticleParser({
+    resolveArticleSourceUrl = async url => url,
     updateArticleFetchProgress,
     fetchViaJina,
     recordArticleFetchOutcome,
@@ -92,6 +93,7 @@ export function createArticleParser({
     }
 
     async function parseArticleHtmlContent(html, url, htmlStrategy, attemptedStrategiesInput = [], availableStrategies = [], methodPreferences = {}, requestId = null, excludedStrategiesInput = new Set()) {
+        url = await resolveArticleSourceUrl(url);
         const attemptedStrategies = attemptedStrategiesInput instanceof Set ? attemptedStrategiesInput : new Set(attemptedStrategiesInput || []);
         const excludedStrategies = excludedStrategiesInput instanceof Set ? excludedStrategiesInput : new Set(excludedStrategiesInput || []);
         let hostname = '';

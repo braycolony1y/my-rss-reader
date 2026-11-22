@@ -9,6 +9,7 @@ function fixture(fetch) {
     vm.runInContext(fs.readFileSync(new URL('../public/js/article/prefetch-lifecycle.js',import.meta.url),'utf8'),context);
     for(const file of ['list-publication','page-session','requests','pagination','list'])vm.runInContext(fs.readFileSync(new URL(`../public/js/feeds/${file}.js`,import.meta.url),'utf8'),context);
     const app=vm.runInContext('ReaderFeedsList.create()',context);
+    app.publication = vm.runInContext('ReaderListPublication', context);
     Object.assign(app,{selectedFilterType:'category',selectedFilterValue:'Forums',isMobile:true,
         hideRead:false,searchQuery:'',articles:[{link:'old'}],pendingReadLinks:[],pendingUnreadLinks:new Set(),pendingRecentReadLinks:new Set(),
         readStates:new Set(),pendingPreferences:{},applyPendingStateMutations:(_,v)=>v,hideTooltip(){},$nextTick:async()=>{},saveState(){}});
@@ -58,4 +59,56 @@ test('HTTP failure rolls back the cursor and restores the mobile page',async()=>
 test('expired snapshot does not replace the list with page one and restart infinite loading',async()=>{
     const app=fixture(async()=>response({viewReset:true,articles:[{link:'page-one'}],hasMore:true}));
     app.currentPage=7;await app.loadMore();assert.equal(app.currentPage,7);assert.equal(app.articles[0].link,'old');assert.equal(app.hasMore,false);
+});
+
+test('cached tab paints immediately and revalidation applies authoritative order with existing row identity', async () => {
+    let finish;
+    const app = fixture(async () => { await new Promise(resolve => { finish = resolve; }); return response({ articles: [{ link: 'b', title: 'Fresh B' }, { link: 'a', title: 'Fresh A' }], hasMore: false }); });
+    const a = { link: 'a', title: 'Old A' }, b = { link: 'b', title: 'Old B' };
+    app.articles = [a, b]; app.currentPage = 1; app.hasMore = true;
+    app.publication.commit(app);
+    app.articles = [];
+    assert.equal(app.publication.restore(app), true);
+    assert.equal(app.articles[0], a);
+    const pending = app.fetchData();
+    assert.equal(app.articles[0], a, 'cached row remains visible during the request');
+    finish(); await pending;
+    assert.deepEqual(Array.from(app.articles, article => article.link), ['b', 'a']);
+    assert.equal(app.articles[0].title, 'Fresh B');
+    assert.equal(app.articles[0], b, 'the accepted response reuses the cached row');
+});
+
+test('tab cache rejects changed read, hidden, keyword and feed state and stores only first pages', () => {
+    let now = 100;
+    const publication = vm.runInNewContext(fs.readFileSync(new URL('../public/js/feeds/list-publication.js', import.meta.url), 'utf8') + ';ReaderListPublication', { Date: { now: () => now } });
+    const app = { selectedFilterType: 'smart', selectedFilterValue: 'news_global', smartRegion: 'global',
+        currentPage: 1, articles: [{ link: 'a' }], readStates: new Set(), hiddenStates: [], blockedKeywords: [], feeds: [] };
+    const restore = () => { app.articles = []; return publication.restore(app); };
+    publication.commit(app);
+    assert.equal(restore(), true);
+    app.readStates.add('a'); assert.equal(restore(), false);
+    app.readStates.clear(); assert.equal(restore(), true);
+    app.hiddenStates.push('a'); assert.equal(restore(), false);
+    app.hiddenStates = []; app.blockedKeywords = ['a']; assert.equal(restore(), false);
+    app.blockedKeywords = []; app.feeds = [{ url: 'new-feed' }]; assert.equal(restore(), false);
+    app.feeds = []; app.isMobile = true; assert.equal(restore(), false);
+    app.isMobile = false; now += 60001; assert.equal(restore(), false);
+    app.articles = [{ link: 'page-two' }]; app.currentPage = 2; publication.commit(app);
+    assert.equal(restore(), false, 'page two is never restored as page one');
+});
+
+test('lean Stories requests preserve held metadata and reconcile authoritative state', async () => {
+    let params;
+    const app = fixture(async url => { params = new URL(url, 'http://reader').searchParams;
+        return response({ articles: [{ link: 'new' }], readStates: ['server-read'], savedStates: [], boardStates: [], hiddenStates: [] }); });
+    Object.assign(app, { selectedFilterType: 'smart', selectedFilterValue: 'news_global', smartRegion: 'global',
+        normalizeSmartDestination: value => value, getFilterFromHash: () => ({}), _fullStateLoaded: true,
+        feeds: [{ url: 'feed' }], categoryOrder: ['news'], userPreferences: { held: true }, hiddenStates: ['stale-hidden'] });
+    await app.fetchData();
+    assert.equal(params.get('lean'), '1');
+    assert.equal(app.feeds[0].url, 'feed');
+    assert.equal(app.categoryOrder[0], 'news');
+    assert.equal(app.userPreferences.held, true);
+    assert.deepEqual([...app.readStates], ['server-read']);
+    assert.equal(app.hiddenStates.length, 0);
 });

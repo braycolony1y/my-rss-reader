@@ -1,8 +1,10 @@
+import { createHash } from 'node:crypto';
+import { readMany } from '../database/read-many.js';
 import { createClientArticlePreparer } from './client-preparer.js';
 import { smartDestination } from '../utils/smart-destinations.js';
 import { rankStory, storyMembers } from './story-ranking.js';
 import { rankClassicStories } from '../ranking/classic.js';
-import { classicRankingMode, vectorWaitMs } from '../ranking/config.js';
+import { classicRankingMode } from '../ranking/config.js';
 import { getSharedVectorStore } from '../ranking/vector-store.js';
 import { normalizeStateUrl, mapWithConcurrency, NormalizedSet } from '../utils/article-utils.js';
 import { cleanStoredCluster, calculateHotness, buildCluster } from '../../smart-news.js';
@@ -29,6 +31,19 @@ export function createArticlePresentation({
     let latestSmartApiVersion = '';
     const freshViewCache = new Map();
     const classicRankedViews = new Map();
+
+    // Shared database snapshots are immutable and replaced on writes. Hash each
+    // snapshot once; signatures survive replacement with identical content.
+    let snapshotSignatures = new WeakMap();
+    const signature = value => {
+        if (!value || typeof value !== 'object') return JSON.stringify(value ?? null);
+        let digest = snapshotSignatures.get(value);
+        if (!digest) {
+            digest = createHash('sha256').update(JSON.stringify(value)).digest('hex');
+            snapshotSignatures.set(value, digest);
+        }
+        return digest;
+    };
 
     let unavailableSourceMutation = Promise.resolve();
 
@@ -225,27 +240,13 @@ export function createArticlePresentation({
         // All of these values are read-only in this request. Reuse the
         // already-parsed global DB values rather than structuredClone()
         // arrays/objects on every Stories request.
-        const [
-            feeds,
-            readStates,
-            savedStates,
-            boardStates,
-            hiddenStates,
-            categoryOrder,
-            userPreferences,
-            blockedKeywords,
-            unavailableSourceUrls
-        ] = await Promise.all([
-            env.RSS_DATA.get('feeds', { type: 'json', shared: true }),
-            env.RSS_DATA.get('readStates', { type: 'json', shared: true }),
-            env.RSS_DATA.get('savedStates', { type: 'json', shared: true }),
-            env.RSS_DATA.get('boardStates', { type: 'json', shared: true }),
-            env.RSS_DATA.get('hiddenStates', { type: 'json', shared: true }),
-            env.RSS_DATA.get('categoryOrder', { type: 'json', shared: true }),
-            env.RSS_DATA.get('userPreferences', { type: 'json', shared: true }),
-            env.RSS_DATA.get('blockedArticleKeywords', { type: 'json', shared: true }),
-            env.RSS_DATA.get('unavailableSourceUrls', { type: 'json', shared: true })
-        ]);
+        const values = await readMany(env.RSS_DATA, [
+            'feeds', 'readStates', 'savedStates', 'boardStates', 'hiddenStates',
+            'categoryOrder', 'userPreferences', 'blockedArticleKeywords', 'unavailableSourceUrls'
+        ], { shared: true });
+        const { feeds, readStates, savedStates, boardStates, hiddenStates,
+            categoryOrder, userPreferences, blockedArticleKeywords: blockedKeywords,
+            unavailableSourceUrls } = values;
 
         // Stories is the only view. Legacy smartMode query values and any stored
         // userPreferences.smartTabModes ('top' or 'classic') are accepted and ignored.
@@ -324,23 +325,19 @@ export function createArticlePresentation({
                 `${smartClusterVersion}:${filterValue}:${smartRegionKey}`;
             let freshView = freshViewCache.get(freshKey);
             if (!freshView || freshView.raw !== rawArticles || freshView.clusters !== rawClusters) {
-                const represented = new NormalizedSet(rawClusters.flatMap(article =>
-                    [article.link, ...(article.relatedArticles || []).map(related => related.link)]));
+                const represented = freshView?.clusters === rawClusters ? freshView.represented
+                    : new NormalizedSet(rawClusters.flatMap(article =>
+                        [article.link, ...(article.relatedArticles || []).map(related => related.link)]));
                 const freshArticles = rawArticles.filter(article => !represented.has(article.link)
                     && smartArticleMatchesSection(
                         article,
                         filterValue,
                         smartRegion
                     ));
-                const articles = [
-                    ...filteredArticles,
-                    ...buildSmartApiView(
-                        freshArticles,
-                        filterValue,
-                        smartRegion
-                    )
-                ];
-                freshView = { raw: rawArticles, clusters: rawClusters, articles };
+                const freshCandidates = buildSmartApiView(freshArticles, filterValue, smartRegion);
+                const articles = [...filteredArticles, ...freshCandidates];
+                freshView = { raw: rawArticles, clusters: rawClusters, articles, represented,
+                    signature: `${signature(filteredArticles)}:${signature(freshArticles)}` };
                 freshViewCache.set(freshKey, freshView);
                 while (freshViewCache.size > 7) freshViewCache.delete(freshViewCache.keys().next().value);
             }
@@ -348,7 +345,6 @@ export function createArticlePresentation({
             classicInput = freshView;
             mark("candidate-collection");
         }
-        mark('ranking-total');
         const readSet = new NormalizedSet(readStates || []);
         const hiddenSet = new NormalizedSet(hiddenStates || []);
         const unavailableSet = new NormalizedSet(unavailableSourceUrls || []);
@@ -360,15 +356,21 @@ export function createArticlePresentation({
             smartRegionKey,
             hideRead,
             searchQuery,
-            hiddenStates,
-            hideRead ? readStates : [],
-            blockedKeywords,
-            unavailableSourceUrls
+            signature(hiddenStates),
+            hideRead ? signature(readStates) : null,
+            signature(blockedKeywords),
+            signature(unavailableSourceUrls)
         ]);
         const classicMode = classicRankingMode();
-        const classicKey = JSON.stringify([filterSignature, Math.floor(Date.now() / 60000), classicMode, rankingVectors.revision]);
+        const classicKey = JSON.stringify([smartClusterVersion, classicInput.signature, filterSignature, classicMode]);
         const classicEntry = classicRankedViews.get(classicKey);
-        const cachedClassic = classicEntry?.input === classicInput ? classicEntry : null;
+        const configuredMaxStaleMs = Number(process.env.SMART_RANKING_MAX_STALE_MS || 10 * 60000);
+        const maxStaleMs = Number.isFinite(configuredMaxStaleMs) && configuredMaxStaleMs >= 0
+            ? configuredMaxStaleMs : 10 * 60000;
+        // New views must apply time decay after a long idle period. Existing
+        // smartView tokens retain their pinned ranking for pagination.
+        const cachedClassic = classicEntry && Date.now() - classicEntry.createdAt <= maxStaleMs
+            ? classicEntry : null;
         if (cachedClassic) {
             filteredArticles = cachedClassic.articles;
         }
@@ -419,9 +421,10 @@ export function createArticlePresentation({
             filterValue === 'tech' ? smartRegion : null,
             hideRead,
             searchQuery,
-            hiddenStates,
-            hideRead ? readStates : [],
-            blockedKeywords
+            signature(hiddenStates),
+            hideRead ? signature(readStates) : null,
+            signature(blockedKeywords),
+            signature(unavailableSourceUrls)
         ]);
 
         const priorView = storyViews.get(req.query.smartView);
@@ -438,26 +441,41 @@ export function createArticlePresentation({
         // When there is a reusable smartView the pinned ranked array is used and nothing is
         // ranked at all.
         const needsClassicRanking = !reusableView && !cachedClassic;
-        if (needsClassicRanking && classicMode !== 'legacy') {
-            // Vectors come from the clustering's cache. Wait briefly for a cold start; after that
-            // missing vectors only degrade the e5 features of those stories.
-            const loading = rankingVectors.warm(filteredArticles.flatMap(storyMembers));
-            if (loading) await Promise.race([loading, new Promise(resolve => setTimeout(resolve, vectorWaitMs()).unref?.())]);
-        }
-        const ranked =
-            reusableView
-                ? priorView.articles
-                : cachedClassic
-                    ? cachedClassic.articles
-                    : classicMode === 'legacy'
-                        ? legacyClassicRank(filteredArticles, filterValue)
-                        : rankClassicStories(filteredArticles, { destination, now: Date.now(), vectorOf: article => rankingVectors.get(article) });
-
-        if (!cachedClassic && !reusableView) {
-            classicRankedViews.set(classicKey, { input: classicInput, articles: ranked });
+        const rank = input => classicMode === 'legacy'
+            ? legacyClassicRank(input, filterValue)
+            : rankClassicStories(input, { destination, now: Date.now(), vectorOf: article => rankingVectors.get(article) });
+        mark('filtering');
+        const ranked = reusableView ? priorView.articles : cachedClassic ? cachedClassic.articles : rank(filteredArticles);
+        let entry = cachedClassic;
+        if (needsClassicRanking) {
+            entry = { input: filteredArticles, articles: ranked, createdAt: Date.now(), revision: rankingVectors.revision };
+            classicRankedViews.set(classicKey, entry);
             while (classicRankedViews.size > 6) classicRankedViews.delete(classicRankedViews.keys().next().value);
         }
-        mark("filtering");
+        // Keep the last complete ranking available at minute boundaries and
+        // while vectors load. Pinned pagination retains its original array.
+        const refresh = () => {
+            if (!entry || entry.refreshing || classicRankedViews.get(classicKey) !== entry) return;
+            entry.refreshing = true;
+            setImmediate(() => {
+                try {
+                    if (classicRankedViews.get(classicKey) !== entry) return;
+                    entry.articles = rank(entry.input);
+                    entry.createdAt = Date.now();
+                    entry.revision = rankingVectors.revision;
+                } catch (error) { console.warn('[RANKING] Background refresh failed:', error.message); }
+                finally { entry.refreshing = false; }
+            }).unref?.();
+        };
+        const staleRanking = entry && (Date.now() - entry.createdAt >= 60000 || entry.revision !== rankingVectors.revision);
+        if (staleRanking) refresh();
+        if ((needsClassicRanking || staleRanking) && classicMode !== 'legacy') {
+            // warm() only reads the existing vector cache; never await disk here.
+            Promise.resolve().then(() => rankingVectors.warm(entry.input.flatMap(storyMembers)))
+                .then(() => { if (entry?.revision !== rankingVectors.revision) refresh(); })
+                .catch(error => console.warn('[RANKING] Vector warm failed:', error.message));
+        }
+        mark("ranking-total");
 
         let smartViewToken = req.query.smartView;
         filteredArticles = reusableView ? priorView.articles : ranked;
@@ -481,16 +499,15 @@ export function createArticlePresentation({
         mark('card-preparation');
         res.setHeader('X-Smart-View-Cache', cacheHit ? 'hit' : 'miss');
         const payload = {
-            feeds: feeds || [],
+            ...(req.query.lean === '1' ? {} : {
+                feeds: feeds || [],
+                categoryOrder: categoryOrder || [], userPreferences: userPreferences || {}
+            }),
+            readStates: readStates || [], savedStates: savedStates || [],
+            boardStates: boardStates || [], hiddenStates: hiddenStates || [],
             articles: paginatedArticles,
             smartViewToken,
             viewReset,
-            readStates: readStates || [],
-            savedStates: savedStates || [],
-            boardStates: boardStates || [],
-            hiddenStates: hiddenStates || [],
-            categoryOrder: categoryOrder || [],
-            userPreferences: userPreferences || {},
             hasMore: endIndex < filteredArticles.length,
             currentPage: page,
             smartClusterVersion
@@ -518,6 +535,7 @@ export function createArticlePresentation({
     return {
         releaseTransientCaches() {
             _smartClustersHistory = {};
+            snapshotSignatures = new WeakMap();
             smartApiViewCache.clear();
             freshViewCache.clear();
             classicRankedViews.clear();
