@@ -17,7 +17,8 @@ const num = (name, fallback, min, max) => {
  *           many hours): pinned to #1 of the section, "Breaking" whatever the score. Only while fresh:
  *           at most `tier2MaxAgeHours` after the first report and while a new outlet reported within `tier2StallHours`;
  *           afterwards the story falls back to its normal score (no floor at all).
- * Stories of one tier are ordered by outlet count (desc), then score.
+ * Tier 2 stories are ordered by outlet count (desc), then score. Tier 1 stories are ordered by score like everything else:
+ * they are only lifted when their natural rank is below the guarantee (rank maxRank or better), never placed above a higher score otherwise.
  */
 export const HOT_FLOOR = Object.freeze({
   minOutlets: num('RANKING_HOT_MIN_OUTLETS', 3, 2, 20),

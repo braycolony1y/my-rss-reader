@@ -48,10 +48,11 @@ export function hotTier(item, now, cfg = HOT_FLOOR) {
 export const earnsHotFloor = (item, now, cfg = HOT_FLOOR) => hotTier(item, now, cfg) > 0;
 
 /**
- * Order one section: natural order is score descending. Tier 2 stories are pinned to the top ranks
- * (outlet count desc, then score; tier 2 counts all outlets so far, tier 1 those in the window). Every tier 1 story is lifted to at most 1-based rank `maxRank + k`
- * (k = its index among tier 1 stories, ordered by outlet count desc then score), so several simultaneous
- * hot stories keep their order and do not crowd out each other; stories already above stay where they are.
+ * Order one section. Natural order is score descending (ties: id). Tier 2 stories are pinned to the top ranks
+ * (outlet count desc, then score; tier 2 counts all outlets so far). Tier 1 stories only LIFT: they keep their natural
+ * score order, and one is moved up only when its natural position would be below the guarantee, i.e. the h-th tier 1
+ * story (0-based, in score order) must sit at 1-based rank max(maxRank, h + 1) or better. A tier 1 story therefore never
+ * ranks below a tier 1 story with a lower score, and a story is displaced only by a tier 1 story that needed the lift.
  * Items carry `tier` (0/1/2) or, for backwards compatibility, `hot` (= tier 1). Stable and deterministic.
  * @param {Array<{id:string,score:number,tier?:number,hot?:boolean,hotOutlets?:number}>} list scored items of one section
  * @returns same items, ordered
@@ -59,17 +60,16 @@ export const earnsHotFloor = (item, now, cfg = HOT_FLOOR) => hotTier(item, now, 
 export function applyHotFloor(list, cfg = HOT_FLOOR) {
   const tierOf = r => r.tier ?? (r.hot ? 1 : 0);
   const natural = [...list].sort((a, b) => b.score - a.score || (a.id < b.id ? -1 : 1));
-  const count = r => (tierOf(r) === 2 ? r.outlets ?? r.hotOutlets : r.hotOutlets) || 0;
-  const byTier = (t) => natural.filter(r => tierOf(r) === t).sort((a, b) => count(b) - count(a) || b.score - a.score || (a.id < b.id ? -1 : 1));
-  const top = byTier(2), hot = byTier(1);
+  const tier2Count = r => r.outlets ?? r.hotOutlets ?? 0;
+  const top = natural.filter(r => tierOf(r) === 2).sort((a, b) => tier2Count(b) - tier2Count(a) || b.score - a.score || (a.id < b.id ? -1 : 1));
+  const hot = natural.filter(r => tierOf(r) === 1);
   if (!top.length && !hot.length) return natural;
   const rest = natural.filter(r => !tierOf(r));
   const out = [...top];
-  // Merge: next tier 1 story is forced out once the output position reaches its allowed rank.
   let h = 0, r = 0;
   while (h < hot.length || r < rest.length) {
     const pos = out.length;               // 0-based position about to be filled
-    const forced = h < hot.length && pos >= cfg.maxRank - 1 + h;
+    const forced = h < hot.length && pos >= Math.max(cfg.maxRank - 1, h);
     const hotNext = h < hot.length && (forced || r >= rest.length || hot[h].score >= rest[r].score);
     out.push(hotNext ? hot[h++] : rest[r++]);
   }

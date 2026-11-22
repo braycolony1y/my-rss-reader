@@ -206,13 +206,13 @@ test('graded floor: 3-7 outlets are tier 1 (Hot, top 3), 8 or more are tier 2 (p
   assert.equal(run([vn(HOT_FLOOR.tier2Outlets)]).byId.get('vn').tier, 2);
 });
 
-test('stories of one tier are ordered by outlet count, then by score', () => {
+test('tier 2 stories are ordered by outlet count then score; tier 1 by score', () => {
   const items = [
     { id: 'a', score: 0.9, tier: 2, hotOutlets: 8 }, { id: 'b', score: 0.1, tier: 2, hotOutlets: 11 }, { id: 'c', score: 0.5, tier: 2, hotOutlets: 11 },
     { id: 'd', score: 0.2, tier: 1, hotOutlets: 6 }, { id: 'e', score: 0.1, tier: 1, hotOutlets: 7 }, { id: 'f', score: 0.8, tier: 0 }, { id: 'g', score: 0.7, tier: 0 },
     { id: 'h', score: 0.6, tier: 0 }, { id: 'i', score: 0.3, tier: 0 }
   ];
-  assert.deepEqual(applyHotFloor(items, { maxRank: 3 }).map(r => r.id), ['c', 'b', 'a', 'e', 'd', 'f', 'g', 'h', 'i']); // tier 2 first, then tier 1 (7 outlets before 6), already past rank 3
+  assert.deepEqual(applyHotFloor(items, { maxRank: 3 }).map(r => r.id), ['c', 'b', 'a', 'd', 'e', 'f', 'g', 'h', 'i']); // tier 2 first (outlets desc), then tier 1 by score, already past rank 3
   // End to end: the story with more outlets comes first even when it scores lower.
   const small = story('small', 'Council schedules a routine meeting for next week', outletNames(8));
   const big = story('big', 'Mayor announces a routine budget review hearing', outletNames(12).map(d => 'x' + d));
@@ -289,4 +289,21 @@ test('the vector store loads once, caches misses, and is inert when disabled', a
   assert.equal(calls.length, 1);
   const inert = createVectorStore({ enabled: false, load: async () => assert.fail('must not load') });
   assert.equal(inert.warm(articles), null);
+});
+
+test('regression: a high-scoring tier 1 story is never placed below a lower-scored tier 1 or untiered story (live news_global pattern)', () => {
+  // Observed live: Nigeria boat (5 outlets, 5.5, Hot) sat at #3 and Indonesia fire (3 outlets, 8.1, Hot) at #4 below 6.3s,
+  // because tier 1 was ordered by outlet count and forced into fixed slots.
+  const items = [
+    { id: 'pentagon', score: 0.63, tier: 0 }, { id: 'banda', score: 0.63, tier: 0 }, { id: 'databricks', score: 0.62, tier: 0 },
+    { id: 'nigeria', score: 0.55, tier: 1, hotOutlets: 5 }, { id: 'indonesia', score: 0.81, tier: 1, hotOutlets: 3 }, { id: 'tail', score: 0.4, tier: 0 }
+  ];
+  const out = applyHotFloor(items, { maxRank: 3 }).map(r => r.id);
+  assert.deepEqual(out, ['indonesia', 'banda', 'nigeria', 'pentagon', 'databricks', 'tail']);
+  // Output is score descending except for the lift: every story ahead of a lifted one that scores lower is a lift, nothing else is inverted.
+  const score = new Map(items.map(r => [r.id, r.score]));
+  for (let i = 0; i < out.length - 1; i++) if (score.get(out[i]) < score.get(out[i + 1])) assert.equal(out[i], 'nigeria', 'only the lifted story may precede a higher score');
+  // Tier 1 guarantee: within the top max(maxRank, count) ranks, and a tier 2 story stays pinned at #1.
+  assert.ok(out.indexOf('nigeria') <= 2);
+  assert.equal(applyHotFloor([...items, { id: 'breaking', score: 0.1, tier: 2, outlets: 9 }], { maxRank: 3 })[0].id, 'breaking');
 });
