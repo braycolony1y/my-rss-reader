@@ -72,10 +72,16 @@ export function createVectorStore({ file = EMBEDDING_CACHE_FILE, load, keyOf = e
         if (!vectors.has(k) && !(misses.get(k) > t - MISS_TTL_MS)) wanted.add(k);
       }
       if (!wanted.size) return inflight;
-      if (inflight) { queued = new Set([...(queued || []), ...wanted]); return inflight; }
+      if (inflight) { queued ||= new Set(); for (const k of wanted) queued.add(k); return inflight; }
       const run = async wantedKeys => {
         await fill(wantedKeys);
-        if (queued) { const next = queued; queued = null; await run(next); }
+        if (queued) {
+          // Drop what the load that just finished already resolved (found or missed), so a
+          // concurrent warm() for the same articles never triggers a second base-file scan.
+          const next = queued, t2 = now(); queued = null;
+          for (const k of [...next]) if (vectors.has(k) || misses.get(k) > t2 - MISS_TTL_MS) next.delete(k);
+          if (next.size) await run(next);
+        }
       };
       inflight = run(wanted).finally(() => { inflight = null; });
       return inflight;
