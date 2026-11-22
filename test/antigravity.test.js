@@ -4,8 +4,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import {
  createAntigravityProvider as providerFactory,
- parseAntigravityOutput,
- withAntigravityRequestContext
+ parseAntigravityOutput
 } from '../src/ai/antigravity.js';
 const createAntigravityProvider = options => providerFactory({ ...options, quotaRuntime: {retryAt:0,lastCheckAt:Infinity,stateLoaded:true,startupCheckStarted:true,checkPromise:null} });
 const success=JSON.stringify({status:'SUCCESS',response:'{"ok":true}',usage:{input_tokens:12,output_tokens:4,total_tokens:16}});
@@ -51,7 +50,7 @@ test('provider slots respect the limit without assuming callback arrival order',
  };
  const first = generate('old-a'), second = generate('old-b');
  await Promise.all([waitFor('old-a'), waitFor('old-b')]);
- const briefing = withAntigravityRequestContext({type: 'story-briefing', isInteractive: () => true}, () => generate('visible-briefing'));
+ const briefing = generate('visible-briefing');
  const other = generate('other-ai');
  try {
   callbacks.get('old-b')(null, success); await second;

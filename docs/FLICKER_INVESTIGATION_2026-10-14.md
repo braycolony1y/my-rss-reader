@@ -142,7 +142,7 @@ No reproduced wrong-article substitution was observed in the checked frames/race
 
 `test/smart-refresh-identity.test.js` covers authoritative ordering/removal/insertion, object reuse, ambiguous/missing identities, changed cluster identity despite a shared URL, delayed polling versus pushed completion, changed material versions, stale generation/destination/filter/mode, full-publication briefing downgrade, and omitted thumbnail/metadata removal. `test/flicker-diagnostics.test.js` covers ring volume/age limits, oversized payload rejection, method/fetch cleanup and absence of raw article identifiers/headlines in exported evidence. Existing normal-feed identity, pagination, request recovery, image, source and VOZ tests remain present.
 
-`flicker-replay.mjs`, `briefing-race-replay.mjs`, `flicker-scenarios.mjs` and `smart-refresh-benchmark.mjs` reproduce transitions against the production component assembly. The existing image-observer probe now accepts a captured bundle and Smart revalidation mode. These remain diagnostic modules, not production polling.
+`flicker-replay.mjs`, `flicker-scenarios.mjs` and `smart-refresh-benchmark.mjs` reproduce transitions against the production component assembly. The existing image-observer probe now accepts a captured bundle and Smart revalidation mode. These remain diagnostic modules, not production polling.
 
 ### Rollback
 
