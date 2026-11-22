@@ -53,7 +53,7 @@ const ReaderAppPersistence = {
                             'image', 'imageUrl', 'feedTitle', 'feedIcon', 'feedUrl',
                             'feedCategory', 'smartCategory', 'siteName', 'sourceWeight',
                             'region', 'language', 'domain', 'isCluster', 'clusterId',
-                            'clusterCount', 'sourceCount', 'sources', 'hotness',
+                            'clusterCount', 'sourceCount', 'sources', 'hotness', 'hotnessLabel',
                             'aiClustered', 'replyCount', 'viewCount', 'vozSummary'
                         ];
                         for (const field of fields) {

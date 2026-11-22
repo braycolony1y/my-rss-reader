@@ -7,6 +7,9 @@ import { smartDestination } from '../utils/smart-destinations.js';
 import { createTopStoriesSnapshots } from './top-stories-snapshot.js';
 import { createTopStoriesIndex } from './top-stories.js';
 import { rankStory, storyMembers } from './story-ranking.js';
+import { rankClassicStories } from '../ranking/classic.js';
+import { classicRankingMode, vectorWaitMs } from '../ranking/config.js';
+import { createVectorStore } from '../ranking/vector-store.js';
 import { createStoryBriefings } from './story-briefing.js';
 import { generateStoryBriefing } from '../../summary-engine.js';
 import { normalizeStateUrl, mapWithConcurrency, NormalizedSet } from '../utils/article-utils.js';
@@ -21,6 +24,7 @@ export function createArticlePresentation({
     env,
     generateBriefing = generateStoryBriefing,
     topStoriesConfig = {},
+    rankingVectors = createVectorStore(),
 } = {}) {
     // Cache for parsed JSON strings (e.g. smartClusters) to avoid CPU-heavy parsing on tab clicks
     let _smartClustersHistory = {};
@@ -875,6 +879,15 @@ export function createArticlePresentation({
     }
 
 
+    // CLASSIC_RANKING=legacy: the original rule-only ordering (rankStory), without briefing input.
+    function legacyClassicRank(articles, filterValue) {
+        const now = Date.now();
+        return articles.map(article => {
+            const ranking = rankStory(storyMembers(article), filterValue, now, null);
+            return { ...article, ranking, hotness: ranking.score, sourceCount: ranking.independentSources };
+        }).sort((a, b) => b.hotness - a.hotness || b.ranking.updatedAt.localeCompare(a.ranking.updatedAt) || a.link.localeCompare(b.link));
+    }
+
     async function serveSmartData(req, res) {
         const startedAt = Date.now();
         const timings = Object.fromEntries(['rank-state-read','cluster-reconciliation','relevance-computation','signal-computation','sorting-ranking','top-cutoff','rank-persistence'].map(name=>[name,0])); let phaseAt = performance.now();
@@ -1120,7 +1133,8 @@ export function createArticlePresentation({
             blockedKeywords,
             unavailableSourceUrls
         ]);
-        const classicKey = JSON.stringify([filterSignature, Math.floor(Date.now() / 60000), briefings.rankingRevision]);
+        const classicMode = classicRankingMode();
+        const classicKey = JSON.stringify([filterSignature, Math.floor(Date.now() / 60000), classicMode, rankingVectors.revision]);
         const classicEntry = !isTop && classicRankedViews.get(classicKey);
         const cachedClassic = classicEntry?.input === classicInput ? classicEntry : null;
         const cachedFiltered = isTop ? filteredTopViews.get(filterSignature) : cachedClassic;
@@ -1200,15 +1214,20 @@ export function createArticlePresentation({
             priorView.signature === viewSignature &&
             Date.now() - priorView.createdAt < 30 * 60000;
 
-        // Classic retains its existing ranking.
+        // Classic ranking (Stories): the deterministic ranker in src/ranking (rules, source weights,
+        // corroboration and the existing e5 vectors; no generative AI). CLASSIC_RANKING=legacy
+        // restores the old rankStory() ordering. Neither mode reads briefings any more.
         //
-        // Important: when Classic has a reusable smartView, the old code
-        // ranked every story and then immediately discarded that result in
-        // favor of priorView.articles. Skip that completely.
-        //
-        // Top remains unchanged: its ranking is already precomputed in the
-        // published Top snapshot.
+        // When Classic has a reusable smartView the pinned ranked array is used and nothing is
+        // ranked at all. Top is unchanged: its ranking is precomputed in the published snapshot.
         filteredArticles = await filterNavigationView(env.RSS_DATA, filteredArticles, filterValue, 'pre_classic_ranking');
+        const needsClassicRanking = !isTop && !reusableView && !cachedClassic;
+        if (needsClassicRanking && classicMode !== 'legacy') {
+            // Vectors come from the clustering's cache. Wait briefly for a cold start; after that
+            // missing vectors only degrade the e5 features of those stories.
+            const loading = rankingVectors.warm(filteredArticles.flatMap(storyMembers));
+            if (loading) await Promise.race([loading, new Promise(resolve => setTimeout(resolve, vectorWaitMs()).unref?.())]);
+        }
         const ranked =
             !isTop && reusableView
                 ? priorView.articles
@@ -1216,38 +1235,9 @@ export function createArticlePresentation({
                     ? cachedClassic.articles
                 : isTop
                     ? filteredArticles
-                    : (
-                        await mapWithConcurrency(
-                            filteredArticles,
-                            8,
-                            async article => {
-                                const ranking = rankStory(
-                                    storyMembers(article),
-                                    filterValue,
-                                    Date.now(),
-                                    await briefings.peek(
-                                        article,
-                                        filterValue
-                                    )
-                                );
-
-                                return {
-                                    ...article,
-                                    ranking,
-                                    hotness: ranking.score,
-                                    sourceCount:
-                                        ranking.independentSources
-                                };
-                            }
-                        )
-                    ).sort(
-                        (a, b) =>
-                            b.hotness - a.hotness ||
-                            b.ranking.updatedAt.localeCompare(
-                                a.ranking.updatedAt
-                            ) ||
-                            a.link.localeCompare(b.link)
-                    );
+                    : classicMode === 'legacy'
+                        ? legacyClassicRank(filteredArticles, filterValue)
+                        : rankClassicStories(filteredArticles, { destination, now: Date.now(), vectorOf: article => rankingVectors.get(article) });
 
         if (!isTop && !cachedClassic && !reusableView) {
             classicRankedViews.set(classicKey, { input: classicInput, articles: ranked });

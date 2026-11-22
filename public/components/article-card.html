@@ -118,6 +118,7 @@
                                         <span x-show="!usesTopStories" class="flex items-center gap-1 text-orange-300 whitespace-nowrap">
                                             <span>🔥</span><span x-text="article.hotness"></span>
                                         </span>
+                                        <span x-show="!usesTopStories && article.hotnessLabel" class="px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-200 text-[10px] font-semibold uppercase tracking-wide whitespace-nowrap" x-text="article.hotnessLabel"></span>
                                         <span x-show="Number(article.sourceCount) > 1" class="flex items-center gap-1 text-cyan-300 whitespace-nowrap">
                                             <span x-text="article.sourceCount"></span><span
                                                 x-text="article.sourceCount === 1 ? 'source' : 'sources'"></span>

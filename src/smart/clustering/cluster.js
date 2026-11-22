@@ -1,4 +1,5 @@
 import { rankStory, retainStoryIds } from '../../articles/story-ranking.js';
+import { hotnessLabel } from '../../ranking/classic.js';
 import { isInvestingComSource } from '../articles/categories.js';
 import { stableId } from '../articles/identity.js';
 import { isVietnameseArticle } from '../articles/language.js';
@@ -15,32 +16,15 @@ function calculateHotness(articles) {
   return rankStory(articles).score;
 }
 
+// Label on the 1..10 hotness scale of the deterministic Classic ranker (src/ranking/classic.js):
+// Breaking / Hot come from the hot-news floor or a very high score, Widely reported from outlet count.
 function getHotnessLabel(cluster) {
-  const sourceCount =
-    Number(cluster.sourceCount || 1);
-
-  const hotness =
-    Number(cluster.hotness || 1);
-
-  if (
-    sourceCount >= 4 &&
-    hotness >= 7.5
-  ) {
-    return 'Breaking';
-  }
-
-  if (
-    sourceCount >= 6 &&
-    hotness >= 6.5
-  ) {
-    return 'Widely reported';
-  }
-
-  if (hotness >= 5.5) {
-    return 'Hot';
-  }
-
-  return '';
+  return hotnessLabel({
+    hot: Boolean(cluster.ranking?.hot),
+    hotOutlets: Number(cluster.ranking?.hotOutlets || 0),
+    hotness: Number(cluster.hotness || 1),
+    sourceCount: Number(cluster.sourceCount || 1)
+  });
 }
 
 function buildCluster(
