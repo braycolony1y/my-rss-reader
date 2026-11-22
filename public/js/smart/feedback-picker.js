@@ -7,33 +7,41 @@ const ReaderSmartFeedback = {
     maxKeywords: 12,
     maxKeywordLength: 80,
     fields: ['title', 'subtitle', 'subheadline', 'description', 'excerpt', 'summary', 'contentSnippet', 'content'],
-    entities: { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'", '&apos;': "'", '&nbsp;': ' ' },
-
-    // Same normalization the server uses for matching: plain text, NFC, lower case. Diacritics are kept.
+    // Mirror normalizeBlockedText on the server, including one pass of HTML entity decoding.
     plain(value) {
-        return String(value || '').replace(/<[^>]+>/g, ' ').replace(/&(?:amp|lt|gt|quot|apos|nbsp|#39);/g, entity => ReaderSmartFeedback.entities[entity])
-            .normalize('NFC').replace(/\s+/g, ' ').trim().toLowerCase();
+        let text = String(value || '').replace(/<[^>]+>/g, ' ');
+        if (text.includes('&')) {
+            const decoder = ReaderSmartFeedback.entityDecoder ??= document.createElement('textarea');
+            // Pass only character references to the HTML parser, so all other text stays literal.
+            text = text.replace(/&(?:#[xX][\da-fA-F]+;?|#\d+;?|[a-zA-Z][a-zA-Z\d]*;?)/g, reference => {
+                decoder.innerHTML = reference;
+                return decoder.textContent;
+            });
+        }
+        return text.normalize('NFC').replace(/\s+/g, ' ').trim().toLowerCase();
     },
     keyword(value) {
         return String(value || '').normalize('NFC').replace(/\s+/g, ' ').trim().toLocaleLowerCase('vi-VN').slice(0, ReaderSmartFeedback.maxKeywordLength);
     },
-    members(article) { return [article, ...(Array.isArray(article?.relatedArticles) ? article.relatedArticles : [])]; },
+    members(article) { return [article, ...(Array.isArray(article?.relatedArticles) ? article.relatedArticles : [])].filter(Boolean); },
     texts: new WeakMap(),
     textsOf(article) {
+        const values = ReaderSmartFeedback.fields.map(field => article[field]);
         let cached = ReaderSmartFeedback.texts.get(article);
-        if (!cached) {
-            cached = ReaderSmartFeedback.fields.map(field => ReaderSmartFeedback.plain(article?.[field])).filter(Boolean);
+        if (!cached || values.some((value, index) => value !== cached.values[index])) {
+            cached = { values, texts: values.map(ReaderSmartFeedback.plain).filter(Boolean) };
             ReaderSmartFeedback.texts.set(article, cached);
         }
-        return cached;
+        return cached.texts;
     },
     matches(article, keywords) {
         return !!keywords.length && ReaderSmartFeedback.textsOf(article).some(text => keywords.some(keyword => text.includes(keyword)));
     },
     // A story is hidden when every member matches, like the server's per-member filtering.
     storyHidden(article, keywords) {
-        const members = ReaderSmartFeedback.members(article).filter(Boolean);
-        return !!keywords.length && members.length > 0 && members.every(member => ReaderSmartFeedback.matches(member, keywords));
+        if (!keywords.length) return false;
+        const members = ReaderSmartFeedback.members(article);
+        return members.length > 0 && members.every(member => ReaderSmartFeedback.matches(member, keywords));
     },
 
     create() {
@@ -145,14 +153,28 @@ const ReaderSmartFeedback = {
                 return chosen;
             },
             get feedbackPreviewText() {
-                const keywords = this.feedbackKeywords;
+                const keywords = this.feedbackKeywords.map(ReaderSmartFeedback.plain).filter(Boolean);
                 if (!keywords.length) return '';
-                const hidden = new Set(this.feedbackHiddenLinks);
-                const count = (this.articles || []).filter(article => !hidden.has(article.link) && ReaderSmartFeedback.storyHidden(article, keywords)).length;
-                return count === 1 ? '1 story in view would be hidden' : `${count} stories in view would be hidden`;
+                let hiddenStories = 0, partialStories = 0, hiddenMembers = 0;
+                for (const article of this.articles || []) {
+                    if (this.isSmartFeedbackHidden(article)) continue;
+                    const members = ReaderSmartFeedback.members(article);
+                    const matches = members.filter(member => ReaderSmartFeedback.matches(member, keywords)).length;
+                    if (!matches) continue;
+                    if (matches === members.length) hiddenStories++;
+                    else {
+                        partialStories++;
+                        hiddenMembers += matches;
+                    }
+                }
+                const full = `${hiddenStories} ${hiddenStories === 1 ? 'story' : 'stories'} in view would be hidden`;
+                if (!partialStories) return full;
+                const articles = `${hiddenMembers} matching ${hiddenMembers === 1 ? 'article' : 'articles'}`;
+                const stories = partialStories === 1 ? 'a story' : `${partialStories} stories`;
+                return `${full}. ${articles} would be removed from ${stories} with other coverage.`;
             },
             get feedbackConfirmLabel() {
-                return this.feedbackKeywords.length ? 'Hide matching stories' : 'Hide this story';
+                return this.feedbackKeywords.length ? 'Hide matching articles' : 'Hide this story';
             },
 
             async feedbackKeywordList(method = 'GET', keywords) {
@@ -169,8 +191,8 @@ const ReaderSmartFeedback = {
             // True once a fresh, already filtered list has replaced the one on screen.
             async refreshAfterFeedbackChange() {
                 try {
-                    const result = await this.fetchData(false, false, true);
-                    return !result?.skipped;
+                    const result = await this.fetchData();
+                    return result?.ok === true;
                 } catch { return false; }
             },
             showFeedbackToast(toast) {
@@ -204,11 +226,11 @@ const ReaderSmartFeedback = {
                     const existing = new Set(this.normalizeKeywordList(current));
                     const added = [...new Set(keywords)].filter(keyword => !existing.has(this.normalizeKeywordPhrase(keyword)));
                     if (added.length) this.applyFeedbackKeywordList(await this.feedbackKeywordList('POST', [...current, ...added]));
-                    this.feedbackHiddenKeywords = [...this.feedbackHiddenKeywords, ...keywords];
+                    this.feedbackHiddenKeywords = [...this.feedbackHiddenKeywords, ...keywords.map(ReaderSmartFeedback.plain).filter(Boolean)];
                     this.feedbackBusy = false;
                     this.cancelSmartFeedback();
                     const quoted = keywords.map(keyword => `“${keyword}”`).join(', ');
-                    this.showFeedbackToast({ kind: 'keywords', added, message: added.length ? `Hiding stories containing ${quoted}.` : `Already in Content filters: ${quoted}.` });
+                    this.showFeedbackToast({ kind: 'keywords', added, message: added.length ? `Hiding articles containing ${quoted}.` : `Already in Content filters: ${quoted}.` });
                     if (!added.length || await this.refreshAfterFeedbackChange()) this.feedbackHiddenKeywords = [];
                 } catch (error) {
                     this.feedbackBusy = false;
@@ -244,7 +266,7 @@ const ReaderSmartFeedback = {
             isSmartFeedbackHidden(article) {
                 if (this.selectedFilterType !== 'smart') return false;
                 if (this.feedbackHiddenLinks.includes(article.link)) return true;
-                return this.feedbackHiddenKeywords.length > 0 && ReaderSmartFeedback.storyHidden(article, this.feedbackHiddenKeywords.map(keyword => ReaderSmartFeedback.keyword(keyword)));
+                return ReaderSmartFeedback.storyHidden(article, this.feedbackHiddenKeywords);
             },
             trapFeedbackFocus(event) {
                 const panel = event.currentTarget;

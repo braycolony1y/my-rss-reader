@@ -2,6 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { readFile } from 'node:fs/promises';
+import { JSDOM } from 'jsdom';
+import { createArticlePresentation } from '../src/articles/presentation.js';
+import { normalizeBlockedText } from '../src/filters/content-filter.js';
 
 const story = {
     link: 'https://example.test/s1', clusterId: 'c1', title: 'VinFast khởi công nhà máy xe điện tại Hà Tĩnh', content: 'Dự án VinFast.',
@@ -44,7 +47,7 @@ async function setup({ keywords = ['giá vàng'], suggestions = [{ keyword: 'vin
             toggles.push([list, article]);
             return states.toggleState.call(this, list, article);
         },
-        fetchData: async () => ({}), openContentFilterSettings() { this.opened = true; },
+        fetchData: async () => ({ ok: true }), openContentFilterSettings() { this.opened = true; },
     });
     const feedbackWrites = [];
     const proxies = new WeakMap();
@@ -83,7 +86,71 @@ test('opening loads suggestions as unselected chips and the preview line stays e
     assert.equal(ui.feedbackConfirmLabel, 'Hide this story');
     ui.toggleFeedbackChip(ui.feedbackSession.chips[0]);
     assert.equal(ui.feedbackPreviewText, '1 story in view would be hidden');
-    assert.equal(ui.feedbackConfirmLabel, 'Hide matching stories');
+    assert.equal(ui.feedbackConfirmLabel, 'Hide matching articles');
+});
+
+test('a matching lead article is removed and other coverage keeps the story', async () => {
+    const { ui, stored } = await setup();
+    const article = {
+        ...story,
+        title: 'Tôn vinh bản sắc văn hóa, nâng tầm thương hiệu tôm Cà Mau',
+        content: '',
+        pubDate: new Date().toISOString(),
+        smartCategory: 'news_vietnam',
+        verification: { method: 'test' },
+        relatedArticles: [
+            { link: 'https://example.test/festival', title: 'Khai mạc Festival tôm Cà Mau năm 2026' },
+            { link: 'https://example.test/coverage', title: 'Cà Mau lan tỏa bản sắc văn hóa' },
+        ],
+    };
+    ui.articles = [article];
+    ui.openSmartFeedback(article, {});
+    ui.feedbackSession.input = 'tôn vinh bản sắc văn hóa';
+    assert.equal(ui.feedbackPreviewText, '0 stories in view would be hidden. 1 matching article would be removed from a story with other coverage.');
+    ui.addFeedbackInput();
+    assert.match(ui.feedbackPreviewText, /1 matching article/);
+    assert.equal(ui.isSmartFeedbackHidden(article), false);
+
+    // Use the same presentation path that runs after saving to Content filters.
+    const state = { smartClusters: [article], smartRawArticles: [], smartClusterVersion: 'fixture' };
+    const presentation = createArticlePresentation({
+        env: { RSS_DATA: { get: async key => key === 'blockedArticleKeywords' ? stored() : state[key] } },
+        rankingVectors: { revision: 0, get: () => null, warm: async () => {} },
+    });
+    ui.fetchData = async (_loadMore, _skipPageReset, keepVisible) => {
+        assert.ok(!keepVisible, 'publish the filtered list instead of merging by the old lead link');
+        await presentation.serveSmartData({ query: { filterValue: article.smartCategory } }, {
+            setHeader() {},
+            json(data) { ui.articles = data.articles; },
+        });
+        return { ok: true };
+    };
+    await ui.confirmSmartFeedback();
+    assert.deepEqual(stored(), ['giá vàng', 'tôn vinh bản sắc văn hóa']);
+    assert.equal(ui.articles.length, 1);
+    assert.equal(ui.articles[0].clusterId, article.clusterId);
+    assert.equal(ui.articles[0].title, article.relatedArticles[0].title);
+    assert.deepEqual(ui.articles[0].relatedArticles.map(member => member.title), [article.relatedArticles[1].title]);
+    ui.dismissFeedbackToast();
+});
+
+test('preview uses server normalization for decimal, hex and named entities and Unicode composition', async t => {
+    const { ui, context } = await setup();
+    const { window } = new JSDOM();
+    t.after(() => window.close());
+    context.document.createElement = window.document.createElement.bind(window.document);
+    const article = { ...other, content: '<p>T&#244;n vinh bản sắc văn h&#xF3;a&nbsp;&hellip;</p>' };
+    assert.equal(context.factory.plain(article.content), normalizeBlockedText(article.content));
+    ui.articles = [article];
+    ui.openSmartFeedback(article, {});
+    ui.feedbackSession.input = 'TÔN VINH BẢN SẮC VĂN HÓA'.normalize('NFD');
+    assert.equal(ui.feedbackPreviewText, '1 story in view would be hidden');
+    ui.feedbackSession.input = 'tôn vinh bản sắc văn hoá';
+    assert.equal(ui.feedbackPreviewText, '0 stories in view would be hidden');
+    ui.feedbackSession.input = 't&ocirc;n vinh bản sắc văn hóa';
+    assert.equal(ui.feedbackPreviewText, '1 story in view would be hidden');
+    article.content = 'The same card was refreshed with different article text.';
+    assert.equal(ui.feedbackPreviewText, '0 stories in view would be hidden');
 });
 
 test('typed text becomes chips on comma, Enter or the Add button; duplicates re-select instead of repeating', async () => {
@@ -117,7 +184,7 @@ test('confirm adds only new keywords to Content filters, hides cards at once and
     const post = calls.find(call => call.method === 'POST');
     assert.deepEqual(post.body.keywords, ['giá vàng', 'vinfast', 'hà tĩnh', 'nhà máy']);
     assert.deepEqual(JSON.parse(JSON.stringify(ui.feedbackToast.added)), ['hà tĩnh', 'nhà máy']);
-    assert.match(ui.feedbackToast.message, /Hiding stories containing/);
+    assert.match(ui.feedbackToast.message, /Hiding articles containing/);
     assert.deepEqual(JSON.parse(JSON.stringify(ui.blockedKeywords)), ['giá vàng', 'vinfast', 'hà tĩnh', 'nhà máy']);
     // Another edit made meanwhile survives Undo.
     await ui.feedbackKeywordList('POST', [...stored(), 'bitcoin']);
