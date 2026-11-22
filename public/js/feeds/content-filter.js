@@ -270,7 +270,7 @@ const ReaderFeedsContentFilter = {
                         this.blockedKeywordsDraft = [...this.blockedKeywords];
                         this.contentFilterSettingsOpen = false;
                         this.feedbackHiddenKeywords = [];
-                        void this.fetchData(false, false, true);
+                        void this.fetchData(false, false, this.selectedFilterType !== 'smart');
                     } catch (error) {
                         this.contentFilterError = error.message;
                         this.contentFilterSettingsOpen = true;

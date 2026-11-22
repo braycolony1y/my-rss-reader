@@ -23,7 +23,6 @@ const ReaderSmartFeedback = {
     keyword(value) {
         return String(value || '').normalize('NFC').replace(/\s+/g, ' ').trim().toLocaleLowerCase('vi-VN').slice(0, ReaderSmartFeedback.maxKeywordLength);
     },
-    members(article) { return [article, ...(Array.isArray(article?.relatedArticles) ? article.relatedArticles : [])].filter(Boolean); },
     texts: new WeakMap(),
     textsOf(article) {
         const values = ReaderSmartFeedback.fields.map(field => article[field]);
@@ -37,11 +36,14 @@ const ReaderSmartFeedback = {
     matches(article, keywords) {
         return !!keywords.length && ReaderSmartFeedback.textsOf(article).some(text => keywords.some(keyword => text.includes(keyword)));
     },
-    // A story is hidden when every member matches, like the server's per-member filtering.
     storyHidden(article, keywords) {
-        if (!keywords.length) return false;
-        const members = ReaderSmartFeedback.members(article);
-        return members.length > 0 && members.every(member => ReaderSmartFeedback.matches(member, keywords));
+        if (!article || !keywords.length) return false;
+        const leadTexts = article.contentFilterLeadTexts;
+        if (!leadTexts) return ReaderSmartFeedback.matches(article, keywords);
+        if (leadTexts.some(text => keywords.some(keyword => text.includes(keyword)))) return true;
+        // A manual hide has already removed the stored lead from this card.
+        return ReaderSmartFeedback.matches(article, keywords)
+            && (article.relatedArticles || []).every(member => ReaderSmartFeedback.matches(member, keywords));
     },
 
     create() {
@@ -158,11 +160,14 @@ const ReaderSmartFeedback = {
                 let hiddenStories = 0, partialStories = 0, hiddenMembers = 0;
                 for (const article of this.articles || []) {
                     if (this.isSmartFeedbackHidden(article)) continue;
-                    const members = ReaderSmartFeedback.members(article);
-                    const matches = members.filter(member => ReaderSmartFeedback.matches(member, keywords)).length;
-                    if (!matches) continue;
-                    if (matches === members.length) hiddenStories++;
-                    else {
+                    if (ReaderSmartFeedback.storyHidden(article, keywords)) {
+                        hiddenStories++;
+                        continue;
+                    }
+                    const related = Array.isArray(article.relatedArticles) ? article.relatedArticles : [];
+                    const members = article.contentFilterLeadTexts ? [article, ...related] : related;
+                    const matches = members.filter(member => member && ReaderSmartFeedback.matches(member, keywords)).length;
+                    if (matches) {
                         partialStories++;
                         hiddenMembers += matches;
                     }
@@ -174,7 +179,7 @@ const ReaderSmartFeedback = {
                 return `${full}. ${articles} would be removed from ${stories} with other coverage.`;
             },
             get feedbackConfirmLabel() {
-                return this.feedbackKeywords.length ? 'Hide matching articles' : 'Hide this story';
+                return this.feedbackKeywords.length ? 'Apply content filters' : 'Hide this story';
             },
 
             async feedbackKeywordList(method = 'GET', keywords) {
@@ -230,7 +235,7 @@ const ReaderSmartFeedback = {
                     this.feedbackBusy = false;
                     this.cancelSmartFeedback();
                     const quoted = keywords.map(keyword => `“${keyword}”`).join(', ');
-                    this.showFeedbackToast({ kind: 'keywords', added, message: added.length ? `Hiding articles containing ${quoted}.` : `Already in Content filters: ${quoted}.` });
+                    this.showFeedbackToast({ kind: 'keywords', added, message: added.length ? `Content filters applied for ${quoted}.` : `Already in Content filters: ${quoted}.` });
                     if (!added.length || await this.refreshAfterFeedbackChange()) this.feedbackHiddenKeywords = [];
                 } catch (error) {
                     this.feedbackBusy = false;

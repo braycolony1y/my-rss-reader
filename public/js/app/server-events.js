@@ -249,7 +249,7 @@ const ReaderAppServerEvents = {
                             const data = JSON.parse(event.data || '{}');
                             this.blockedKeywords = this.normalizeKeywordList(data.keywords || []);
                             if (!this.contentFilterSettingsOpen) this.blockedKeywordsDraft = [...this.blockedKeywords];
-                            if (!this.savingContentFilter) this.fetchData(false, false, true);
+                            if (!this.savingContentFilter) this.fetchData(false, false, this.selectedFilterType !== 'smart');
                         } catch {}
                     });
 

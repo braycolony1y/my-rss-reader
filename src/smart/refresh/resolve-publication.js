@@ -7,7 +7,7 @@ import { getSharedVectorStore } from '../../ranking/vector-store.js';
 // Resolves the ambiguous review groups deterministically (no LLM) and builds the final cluster
 // snapshot. Pairs without strong shared evidence stay separate; see clustering/resolver.js.
 export async function resolveSmartCandidates(context) {
-  let { candidates, autoMergedClusters, reviewGroups, clusterVersionChanged, existingClusters, isTargeted, targetCategory, storyIdRetentionClusters, storedStoryRelationships, metrics, ambiguousGroupCount, notify, vectors = getSharedVectorStore() } = context;
+  let { candidates, autoMergedClusters, reviewGroups, clusterVersionChanged, existingClusters, contentFilteredClusters, isTargeted, targetCategory, storyIdRetentionClusters, storedStoryRelationships, metrics, ambiguousGroupCount, notify, vectors = getSharedVectorStore() } = context;
   context = null;
 
   // Candidates carry no vectors in this thread; the clustering worker persisted them in the embedding cache.
@@ -36,6 +36,7 @@ export async function resolveSmartCandidates(context) {
       reviewGroups,
       clusterVersionChanged,
       existingClusters,
+      contentFilteredClusters,
       isTargeted,
       targetCategory,
       storyIdRetentionClusters,

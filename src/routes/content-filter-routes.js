@@ -137,78 +137,82 @@ export function registerContentFilterRoutes({
                         cleanStoredCluster(article)
                 );
 
-            const candidates = [
-                ...articles.map(
-                    article => ({
-                        article,
-                        surface: 'Feed'
-                    })
-                ),
-                ...smartRawArticles.map(
-                    article => ({
-                        article,
-                        surface: 'Smart'
-                    })
-                ),
-                ...smartClusters.map(
-                    article => ({
-                        article,
-                        surface: 'Smart'
-                    })
-                )
-            ];
             const affected = [];
             const byLink = new Map();
             const bySignature = new Map();
-            for (const candidate of candidates) {
-                const details = articleContentFilterMatches(candidate.article, keywordEntries, true);
-                if (!details.length) continue;
-                const article = candidate.article;
+            const matchDetails = article => articleContentFilterMatches(article, keywordEntries, true);
+            const addAffected = (article, surface, details) => {
+                if (!details.length) return;
                 const title = normalizeArticleTitle(article.title) || 'Untitled article';
-                const feedTitle = article.feedTitle || article.siteName || article.sourceName || (candidate.surface === 'Smart' ? 'Stories' : 'Unknown source');
+                const feedTitle = article.feedTitle || article.siteName || article.sourceName || (surface === 'Smart' ? 'Stories' : 'Unknown source');
                 const pubDate = article.pubDate || article.date || article.createDate || '';
                 const linkKey = contentFilterPreviewLinkKey(article.link || '');
+                const originalKey = contentFilterPreviewLinkKey(article.originalLink || '');
                 const timeKey = Number.isFinite(Date.parse(pubDate)) ? Math.floor(Date.parse(pubDate) / 60000) : '';
                 const signature = [normalizeBlockedText(title), normalizeBlockedText(feedTitle), timeKey].join('|');
-                let record = (linkKey && byLink.get(linkKey)) || bySignature.get(signature);
+                let record = byLink.get(linkKey) || byLink.get(originalKey) || bySignature.get(signature);
                 if (!record) {
                     record = {
-                        id: 'affected:' + (article.clusterId || linkKey || signature || affected.length),
-                        surfaces: [],
+                        id: 'affected:' + (linkKey || originalKey || signature),
                         title,
                         link: safeHttpUrl(article.link || ''),
                         feedTitle,
                         feedIcon: safeHttpUrl(article.feedIcon || article.icon || ''),
                         category: article.feedCategory || article.smartCategory || '',
                         pubDate,
-                        rawMatches: []
+                        rawMatches: [],
+                        surfacesByKeyword: new Map()
                     };
                     affected.push(record);
                 }
-                if (!record.surfaces.includes(candidate.surface)) record.surfaces.push(candidate.surface);
                 record.rawMatches.push(...details);
+                for (const { keyword } of details) {
+                    if (!record.surfacesByKeyword.has(keyword)) record.surfacesByKeyword.set(keyword, new Set());
+                    record.surfacesByKeyword.get(keyword).add(surface);
+                }
                 if (linkKey) byLink.set(linkKey, record);
+                if (originalKey) byLink.set(originalKey, record);
                 bySignature.set(signature, record);
+            };
+            for (const article of articles) addAffected(article, 'Feed', matchDetails(article));
+            for (const article of smartRawArticles) addAffected(article, 'Smart', matchDetails(article));
+            for (const cluster of smartClusters) {
+                const leadMatches = matchDetails(cluster);
+                addAffected(cluster, 'Smart', leadMatches);
+                if (!Array.isArray(cluster?.relatedArticles)) continue;
+                const inheritedMatches = leadMatches.map(detail => ({
+                    ...detail, fieldLabel: `Story lead (${detail.fieldLabel})`
+                }));
+                for (const member of cluster.relatedArticles) {
+                    const directMatches = matchDetails(member);
+                    if (!inheritedMatches.length) {
+                        addAffected(member, 'Smart', directMatches);
+                        continue;
+                    }
+                    addAffected(member, 'Smart', [
+                        ...directMatches,
+                        ...inheritedMatches.filter(detail => !directMatches.some(match => match.keyword === detail.keyword))
+                    ]);
+                }
             }
-            affected.forEach(record => {
-                record.matches = combineContentFilterMatchDetails(record.rawMatches);
-                delete record.rawMatches;
-            });
             affected.sort((a, b) => (Date.parse(b.pubDate) || 0) - (Date.parse(a.pubDate) || 0));
             const groups = new Map(keywordEntries.map(entry => [entry.normalized, { keyword: entry.keyword, matches: [] }]));
-            for (const record of affected) {
-                for (const detail of record.matches) {
+            for (const { rawMatches, surfacesByKeyword, ...record } of affected) {
+                for (const detail of combineContentFilterMatchDetails(rawMatches)) {
                     const key = normalizeBlockedText(detail.keyword);
                     const group = groups.get(key);
                     if (!group) continue;
-                    group.matches.push({ ...record, id: record.id + ':' + key, matches: [detail] });
+                    group.matches.push({
+                        ...record, id: record.id + ':' + key,
+                        surfaces: [...surfacesByKeyword.get(detail.keyword)], matches: [detail]
+                    });
                 }
             }
-            cacheEntry = { key: cacheKey, timestamp: now, affected, groups };
+            cacheEntry = { key: cacheKey, timestamp: now, overallTotal: affected.length, groups };
             _contentFilterPreviewCache = cacheEntry;
         }
 
-        const { affected, groups } = cacheEntry;
+        const { overallTotal, groups } = cacheEntry;
         const selectedKey = requestedKeyword && groups.has(requestedKeyword.normalized)
             ? requestedKeyword.normalized
             : keywordEntries[keywordEntries.length - 1].normalized;
@@ -216,7 +220,7 @@ export function registerContentFilterRoutes({
         const keywordTotals = [...groups.values()].map(group => ({ keyword: group.keyword, total: group.matches.length }));
         res.json({
             total: selectedGroup.matches.length,
-            overallTotal: affected.length,
+            overallTotal,
             offset,
             limit,
             selectedKeyword: selectedGroup.keyword,

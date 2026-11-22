@@ -86,14 +86,15 @@ test('opening loads suggestions as unselected chips and the preview line stays e
     assert.equal(ui.feedbackConfirmLabel, 'Hide this story');
     ui.toggleFeedbackChip(ui.feedbackSession.chips[0]);
     assert.equal(ui.feedbackPreviewText, '1 story in view would be hidden');
-    assert.equal(ui.feedbackConfirmLabel, 'Hide matching articles');
+    assert.equal(ui.feedbackConfirmLabel, 'Apply content filters');
 });
 
-test('a matching lead article is removed and other coverage keeps the story', async () => {
+test('a matching Nhân Dân lead hides a six-article story in the preview and after saving', async () => {
     const { ui, stored } = await setup();
     const article = {
         ...story,
         title: 'Tôn vinh bản sắc văn hóa, nâng tầm thương hiệu tôm Cà Mau',
+        feedTitle: 'Nhân Dân',
         content: '',
         pubDate: new Date().toISOString(),
         smartCategory: 'news_vietnam',
@@ -101,15 +102,17 @@ test('a matching lead article is removed and other coverage keeps the story', as
         relatedArticles: [
             { link: 'https://example.test/festival', title: 'Khai mạc Festival tôm Cà Mau năm 2026' },
             { link: 'https://example.test/coverage', title: 'Cà Mau lan tỏa bản sắc văn hóa' },
+            { link: 'https://example.test/growth', title: 'Cà Mau phát triển ngành tôm' },
+            { link: 'https://example.test/market', title: 'Đưa tôm Cà Mau ra thị trường quốc tế' },
+            { link: 'https://example.test/visitors', title: 'Festival tôm thu hút khách đến Cà Mau' },
         ],
     };
     ui.articles = [article];
     ui.openSmartFeedback(article, {});
     ui.feedbackSession.input = 'tôn vinh bản sắc văn hóa';
-    assert.equal(ui.feedbackPreviewText, '0 stories in view would be hidden. 1 matching article would be removed from a story with other coverage.');
+    assert.equal(ui.feedbackPreviewText, '1 story in view would be hidden');
     ui.addFeedbackInput();
-    assert.match(ui.feedbackPreviewText, /1 matching article/);
-    assert.equal(ui.isSmartFeedbackHidden(article), false);
+    assert.equal(ui.feedbackPreviewText, '1 story in view would be hidden');
 
     // Use the same presentation path that runs after saving to Content filters.
     const state = { smartClusters: [article], smartRawArticles: [], smartClusterVersion: 'fixture' };
@@ -127,11 +130,47 @@ test('a matching lead article is removed and other coverage keeps the story', as
     };
     await ui.confirmSmartFeedback();
     assert.deepEqual(stored(), ['giá vàng', 'tôn vinh bản sắc văn hóa']);
-    assert.equal(ui.articles.length, 1);
-    assert.equal(ui.articles[0].clusterId, article.clusterId);
-    assert.equal(ui.articles[0].title, article.relatedArticles[0].title);
-    assert.deepEqual(ui.articles[0].relatedArticles.map(member => member.title), [article.relatedArticles[1].title]);
+    assert.deepEqual(ui.articles, []);
     ui.dismissFeedbackToast();
+});
+
+test('the popup counts matching members while keeping the story visible when its lead is clean', async () => {
+    const { ui } = await setup();
+    const article = {
+        ...story,
+        relatedArticles: [
+            { link: 'https://example.test/festival', title: 'Khai mạc Festival tôm Cà Mau năm 2026' },
+            ...story.relatedArticles,
+        ],
+    };
+    ui.articles = [article];
+    ui.openSmartFeedback(article, {});
+    ui.feedbackSession.input = 'festival tôm';
+    assert.equal(ui.feedbackPreviewText, '0 stories in view would be hidden. 1 matching article would be removed from a story with other coverage.');
+    ui.feedbackHiddenKeywords = ['festival tôm'];
+    assert.equal(ui.isSmartFeedbackHidden(article), false);
+});
+
+test('the popup checks the stored lead when a manual hide has promoted a related article', async () => {
+    const { ui } = await setup();
+    const article = {
+        ...story,
+        title: 'Khai mạc Festival tôm Cà Mau năm 2026',
+        content: '',
+        contentFilterLeadTexts: ['tôn vinh bản sắc văn hóa'],
+    };
+    ui.articles = [article];
+    ui.openSmartFeedback(article, {});
+    ui.feedbackSession.input = 'festival tôm';
+    assert.equal(ui.feedbackPreviewText, '0 stories in view would be hidden. 1 matching article would be removed from a story with other coverage.');
+    ui.feedbackSession.input = 'tôn vinh bản sắc văn hóa';
+    assert.equal(ui.feedbackPreviewText, '1 story in view would be hidden');
+    ui.feedbackHiddenKeywords = ['tôn vinh bản sắc văn hóa'];
+    assert.equal(ui.isSmartFeedbackHidden(article), true);
+    ui.feedbackHiddenKeywords = [];
+    article.relatedArticles = [];
+    ui.feedbackSession.input = 'festival tôm';
+    assert.equal(ui.feedbackPreviewText, '1 story in view would be hidden');
 });
 
 test('preview uses server normalization for decimal, hex and named entities and Unicode composition', async t => {
@@ -184,7 +223,7 @@ test('confirm adds only new keywords to Content filters, hides cards at once and
     const post = calls.find(call => call.method === 'POST');
     assert.deepEqual(post.body.keywords, ['giá vàng', 'vinfast', 'hà tĩnh', 'nhà máy']);
     assert.deepEqual(JSON.parse(JSON.stringify(ui.feedbackToast.added)), ['hà tĩnh', 'nhà máy']);
-    assert.match(ui.feedbackToast.message, /Hiding articles containing/);
+    assert.match(ui.feedbackToast.message, /Content filters applied for/);
     assert.deepEqual(JSON.parse(JSON.stringify(ui.blockedKeywords)), ['giá vàng', 'vinfast', 'hà tĩnh', 'nhà máy']);
     // Another edit made meanwhile survives Undo.
     await ui.feedbackKeywordList('POST', [...stored(), 'bitcoin']);

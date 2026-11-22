@@ -8,7 +8,7 @@ import { classicRankingMode } from '../ranking/config.js';
 import { getSharedVectorStore } from '../ranking/vector-store.js';
 import { normalizeStateUrl, NormalizedSet, hasArticleState } from '../utils/article-utils.js';
 import { cleanStoredCluster, calculateHotness, buildCluster } from '../../smart-news.js';
-import { normalizeBlockedKeywordEntries, articleContentFilterMatches } from '../filters/content-filter.js';
+import { normalizeBlockedKeywordEntries, articleContentFilterMatches, contentFilterFieldValues } from '../filters/content-filter.js';
 
 export function createArticlePresentation({
     resolveGoogleNewsUrl,
@@ -329,8 +329,8 @@ export function createArticlePresentation({
             if (!freshView || freshView.raw !== rawArticles || freshView.clusters !== rawClusters) {
                 const represented = freshView?.clusters === rawClusters ? freshView.represented
                     : new NormalizedSet(rawClusters.flatMap(article =>
-                        [article.link, ...(article.relatedArticles || []).map(related => related.link)]));
-                const freshArticles = rawArticles.filter(article => !represented.has(article.link)
+                        storyMembers(article).flatMap(member => [member.link, member.originalLink])));
+                const freshArticles = rawArticles.filter(article => !hasArticleState(represented, article)
                     && smartArticleMatchesSection(
                         article,
                         filterValue,
@@ -384,39 +384,32 @@ export function createArticlePresentation({
             filteredArticles = filteredArticles
                 .map(article => {
                     if (!needsMemberFiltering) return article;
-                    const members = storyMembers(article).filter(a => !hasArticleState(hiddenSet, a) && !articleContentFilterMatches(a, blockedKeywordEntries));
+                    // Keyword filtering uses the stored lead, before a manual hide can promote related coverage.
+                    if (articleContentFilterMatches(article, blockedKeywordEntries)) return null;
+                    const members = storyMembers(article).filter(member => !hasArticleState(hiddenSet, member)
+                        && (member === article || !articleContentFilterMatches(member, blockedKeywordEntries)));
                     if (!members.length) return null;
                     const representative = members[0];
-                    return markUnavailableSmartSources({ ...article, ...representative, isCluster: true, clusterId: article.clusterId,
-                        relatedArticles: members.slice(1), clusterCount: members.length }, unavailableSet);
+                    return markUnavailableSmartSources({
+                        ...article, ...representative, isCluster: true, clusterId: article.clusterId,
+                        relatedArticles: members.slice(1), clusterCount: members.length,
+                        ...(representative !== article && {
+                            contentFilterLeadTexts: contentFilterFieldValues(article).map(field => field.normalized)
+                        })
+                    }, unavailableSet);
                 })
                 .filter(Boolean)
                 .filter(article => {
-                if (hasArticleState(hiddenSet, article) || articleContentFilterMatches(article, blockedKeywordEntries)) return false;
-                if (hideRead && storyMembers(article).every(member => hasArticleState(readSet, member))) return false;
-                if (!searchQuery) return true;
-                return matchesSearch(article.title) ||
-                    matchesSearch(article.feedTitle) ||
-                    matchesSearch(article.content) ||
-                    (Array.isArray(article.relatedArticles) && article.relatedArticles.some(related =>
-                        matchesSearch(related.title) || matchesSearch(related.feedTitle)
-                    ));
+                    if (hasArticleState(hiddenSet, article)) return false;
+                    if (hideRead && storyMembers(article).every(member => hasArticleState(readSet, member))) return false;
+                    if (!searchQuery) return true;
+                    return matchesSearch(article.title) ||
+                        matchesSearch(article.feedTitle) ||
+                        matchesSearch(article.content) ||
+                        (Array.isArray(article.relatedArticles) && article.relatedArticles.some(related =>
+                            matchesSearch(related.title) || matchesSearch(related.feedTitle)
+                        ));
                 });
-
-            // In the normal path there is nothing to mutate. Avoid
-            // shallow-copying thousands of full article/cluster objects merely
-            // to recreate an identical relatedArticles array.
-            if (needsMemberFiltering) {
-                filteredArticles = filteredArticles.map(article => ({
-                    ...article,
-                    relatedArticles: (article.relatedArticles || []).filter(
-                        a =>
-                            !hasArticleState(hiddenSet, a) &&
-                            !articleContentFilterMatches(a, blockedKeywordEntries)
-                    )
-                }));
-            }
-
         }
         const viewSignature = JSON.stringify([
             filterValue,

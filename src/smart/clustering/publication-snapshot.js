@@ -110,6 +110,7 @@ function buildPublicationClusterSnapshot({
   reviewGroups,
   clusterVersionChanged,
   existingClusters,
+  contentFilteredClusters = [],
   isTargeted,
   targetCategory,
   storyIdRetentionClusters,
@@ -145,9 +146,8 @@ function buildPublicationClusterSnapshot({
   );
   const sevenDaysAgo = Date.now() - 7 * DAY_MS;
 
-  const untouchedOldClusters = clusterVersionChanged
-    ? []
-    : existingClusters
+  const untouchedOldClusters =
+    [...(clusterVersionChanged ? [] : existingClusters), ...contentFilteredClusters]
       .filter(cluster => {
         const links = getClusterArticleLinks(cluster);
 

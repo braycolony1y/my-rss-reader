@@ -1,7 +1,9 @@
-import { buildCluster } from '../clustering/cluster.js';
+import { buildCluster, cleanStoredCluster } from '../clustering/cluster.js';
 import { sourceWorkView } from '../prefilter/source-work.js';
 import { preparePrefilterCandidates, prefilterConfiguration, hydrateStoredClusters, survivingClusters } from '../prefilter/boundaries.js';
 import { normalizeBlockedKeywordEntries, articleContentFilterMatches } from '../../filters/content-filter.js';
+import { storyMembers } from '../../articles/story-ranking.js';
+import { NormalizedSet, hasArticleState } from '../../utils/article-utils.js';
 import { isInvestingComSource } from '../articles/categories.js';
 import { stableId, getArticleId } from '../articles/identity.js';
 import { detectArticleLanguage } from '../articles/language.js';
@@ -284,19 +286,37 @@ export async function prepareSmartCandidates({ db, smartSources, getSettings, se
       .comparisonWindowHours *
     HOUR_MS;
 
+  const blockedKeywordEntries = normalizeBlockedKeywordEntries(
+    await db.get('blockedArticleKeywords', { type: 'json', shared: true })
+  );
+  const contentFilteredClusters = [];
+  const contentFilteredLinks = [];
+  const clustersForClustering = [];
+
   // These collections are large enough to freeze Express if processed in
   // one uninterrupted array chain. Yield every small batch so cached page
   // and API requests remain responsive while Smart clustering prepares.
   let activeStoredArticles = [];
   for (let index = 0; index < existingClusters.length; index++) {
     const cluster = existingClusters[index];
-    if (isActiveCluster(cluster)) {
-      activeStoredArticles.push(...extractActiveClusterArticles(cluster).filter(article =>
-        !isExcludedFromSmart(article, dynamicExcludedUrls) &&
-        (!article.hiddenSmartSource || smartSources.some(source => source.url === article.feedUrl))));
+    const cleaned = cluster.relatedArticles?.length && articleContentFilterMatches(cluster, blockedKeywordEntries)
+      ? cleanStoredCluster(cluster) : null;
+    if (cleaned?.relatedArticles.length) {
+      // Keep the stored lead in the snapshot so this gate cannot turn its coverage into new stories.
+      contentFilteredClusters.push(cleaned);
+      for (const article of storyMembers(cleaned)) contentFilteredLinks.push(article.link, article.originalLink);
+    }
+    else {
+      clustersForClustering.push(cluster);
+      if (isActiveCluster(cluster)) {
+        activeStoredArticles.push(...extractActiveClusterArticles(cluster).filter(article =>
+          !isExcludedFromSmart(article, dynamicExcludedUrls) &&
+          (!article.hiddenSmartSource || smartSources.some(source => source.url === article.feedUrl))));
+      }
     }
     if (index > 0 && index % 150 === 0) await new Promise(resolve => setImmediate(resolve));
   }
+  if (contentFilteredClusters.length) existingClusters = clustersForClustering;
 
   let normalArticles = [];
   for (let index = 0; index < existingArticles.length; index++) {
@@ -374,30 +394,16 @@ export async function prepareSmartCandidates({ db, smartSources, getSettings, se
   //
   // Use the exact same canonical matcher as the normal Feed/UI filters.
 
-  const blockedArticleKeywordsForSmart =
-    (
-      await db.get(
-        'blockedArticleKeywords',
-        { type: 'json', shared: true }
-      )
-    ) || [];
-
-  const blockedKeywordEntriesForSmart =
-    normalizeBlockedKeywordEntries(
-      blockedArticleKeywordsForSmart
-    );
-
+  const contentFilteredMembers = new NormalizedSet(contentFilteredLinks);
   const articleIsContentFilteredForSmart =
     article =>
-      articleContentFilterMatches(
-        article,
-        blockedKeywordEntriesForSmart
-      );
+      hasArticleState(contentFilteredMembers, article) ||
+      articleContentFilterMatches(article, blockedKeywordEntries);
 
   const rawCandidateCountBeforeContentFilter =
     rawCandidates.length;
 
-  if (blockedKeywordEntriesForSmart.length) {
+  if (blockedKeywordEntries.length) {
     rawCandidates =
       rawCandidates.filter(
         article =>
@@ -416,7 +422,7 @@ export async function prepareSmartCandidates({ db, smartSources, getSettings, se
   const previousRawArticleCountBeforeContentFilter =
     previousRawArticles.length;
 
-  if (blockedKeywordEntriesForSmart.length) {
+  if (blockedKeywordEntries.length) {
     previousRawArticles =
       previousRawArticles.filter(
         article =>
@@ -438,7 +444,7 @@ export async function prepareSmartCandidates({ db, smartSources, getSettings, se
       '[CONTENT FILTER] Smart heavy-work gate',
       JSON.stringify({
         keywordCount:
-          blockedKeywordEntriesForSmart.length,
+          blockedKeywordEntries.length,
         currentSkipped:
           contentFilteredSmartCandidateCount,
         previousSkipped:
@@ -698,5 +704,5 @@ export async function prepareSmartCandidates({ db, smartSources, getSettings, se
   }
 
 
-return { candidates, existingClusters, storyIdRetentionClusters, sourceCounts, sourceErrors, successfulSourceCount, hiddenArticleCount, currentSignature, aiConfiguration, embeddingIdentity, clusterVersionChanged, storedClusterVersion, existingClusterCountBeforeRebuild, storedStoryRelationships };
+return { candidates, existingClusters, contentFilteredClusters, storyIdRetentionClusters, sourceCounts, sourceErrors, successfulSourceCount, hiddenArticleCount, currentSignature, aiConfiguration, embeddingIdentity, clusterVersionChanged, storedClusterVersion, existingClusterCountBeforeRebuild, storedStoryRelationships };
 }

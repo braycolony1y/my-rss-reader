@@ -4,7 +4,7 @@
             :style="feedbackPosition" @keydown="trapFeedbackFocus($event)" x-transition.opacity.duration.140ms>
             <h2 id="feedback-heading">Hide stories like this</h2>
             <p id="feedback-article" class="feedback-article" x-text="stripHtml(feedbackSession?.article?.title || '')"></p>
-            <p class="feedback-help">Choose words or phrases to add to Content filters. Matching articles will be hidden.</p>
+            <p class="feedback-help">Add words or phrases to Content filters. A match in the lead article hides the whole story. Matches in related coverage hide only those articles.</p>
             <div class="feedback-reasons" role="group" aria-label="Suggested words and phrases" :aria-busy="feedbackSession?.loading || false">
                 <p class="feedback-loading" x-show="feedbackSession?.loading" role="status">Finding keywords…</p>
                 <template x-for="chip in feedbackSession?.chips || []" :key="chip.keyword">

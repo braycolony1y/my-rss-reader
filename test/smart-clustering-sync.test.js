@@ -8,7 +8,7 @@ test('A/B/P/Q/R/S refresh, deterministic resolution, failure retention and expli
   process.env.GEMINI_WEB_ENABLED = 'false';
   const oldFetch = global.fetch, oldEnabled = process.env.ANTIGRAVITY_ENABLED, oldKey = process.env.GEMINI_API_KEY;
   process.env.ANTIGRAVITY_ENABLED = 'false'; delete process.env.GEMINI_API_KEY;
-  const values = {}; let failPersistence = false, workerCalls = 0, aiCalls = 0, ambiguity = false;
+  const values = {}; let failPersistence = false, workerCalls = 0, aiCalls = 0, ambiguity = false, workerLinks;
   let articles = [{link:'https://fixture.test/one', title:'NASA launches Artemis rocket from Kennedy Space Center', content:'NASA launched Artemis from Kennedy Space Center.',pubDate:new Date().toISOString()}];
   const commits = [], stages = [];
   const db = {
@@ -19,6 +19,7 @@ test('A/B/P/Q/R/S refresh, deterministic resolution, failure retention and expli
   const worker = new EventEmitter();
   worker.postMessage = message => {
     workerCalls++;
+    workerLinks = message.articles.map(article => article.link);
     queueMicrotask(()=>worker.emit('message',{type:'result',result:{
       autoMergedClusters:message.articles.map((article,index)=>({id:String(index),articles:[article],established:article._status==='UNCHANGED'})),
       ambiguousGroups:ambiguity ? [{articles:message.articles}] : [],
@@ -92,7 +93,26 @@ test('A/B/P/Q/R/S refresh, deterministic resolution, failure retention and expli
     result=await engine.sync(progress,category,{forceRebuild:true});
     assert.equal(result.ok,false);assert.equal(values.smartClusters,deferredSnapshot);assert.equal(values.smartClusterVersion,deferredVersion);
     assert.notEqual(firstVersion,undefined);
-    
+
+    failPersistence = false;
+    const lead = { ...articles[0], link: 'https://fixture.test/camau', title: 'Tôn vinh bản sắc văn hóa ở Cà Mau' };
+    const member = { ...articles[0], link: 'https://fixture.test/festival', title: 'Cà Mau khai mạc lễ hội tôm' };
+    const hiddenCluster = {
+      ...lead, clusterId: 'camau', isCluster: true, smartCategory: category,
+      verification: { method: 'test' }, relatedArticles: [{ ...member, smartCategory: category }],
+    };
+    values.smartClusters = JSON.stringify([...JSON.parse(values.smartClusters), hiddenCluster]);
+    values.blockedArticleKeywords = JSON.stringify(['tôn vinh bản sắc văn hóa']);
+    articles.push(lead, member);
+    result = await engine.sync(progress, category, { forceRebuild: true });
+    assert.equal(result.ok, true, result.error);
+    assert.ok(workerLinks.length);
+    assert.ok(!workerLinks.includes(lead.link) && !workerLinks.includes(member.link));
+    const snapshot = JSON.parse(values.smartClusters);
+    const retained = snapshot.find(cluster => cluster.clusterId === hiddenCluster.clusterId);
+    assert.equal(retained?.link, lead.link);
+    assert.deepEqual(retained.relatedArticles.map(article => article.link), [member.link]);
+    assert.ok(!snapshot.some(cluster => cluster.link === member.link));
   } finally {
     global.fetch=oldFetch;
     if(oldWebEnabled===undefined)delete process.env.GEMINI_WEB_ENABLED;else process.env.GEMINI_WEB_ENABLED=oldWebEnabled;
