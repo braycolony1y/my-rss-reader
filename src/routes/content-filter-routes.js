@@ -2,7 +2,7 @@ import { authMiddleware } from '../middleware/auth.js';
 import { normalizeBlockedKeywordEntries, articleContentFilterMatches, contentFilterPreviewLinkKey, normalizeBlockedText, combineContentFilterMatchDetails } from '../filters/content-filter.js';
 import { cleanStoredCluster } from '../../smart-news.js';
 import { normalizeArticleTitle } from '../../feed-parsers.js';
-import { safeHttpUrl } from '../utils/article-utils.js';
+import { safeHttpUrl, normalizeStateUrl } from '../utils/article-utils.js';
 import { publishAppEvent } from '../events.js';
 import { articlesByLinks } from '../database/article-lookups.js';
 import { createIdfProvider, suggestKeywords, suggestionInputFor, SUGGESTION_LIMIT } from '../filters/keyword-suggestions.js';
@@ -29,10 +29,18 @@ export function registerContentFilterRoutes({
         },
     });
 
-    async function findSuggestionSubject(link, clusterId) {
+    async function findSuggestionSubject(link, clusterId, originalLink) {
+        const normalizedLink = normalizeStateUrl(link);
+        const links = originalLink && originalLink !== link ? [link, originalLink] : [link];
+        // Google News repair also replaces cluster IDs that are the story URL.
+        const hasLinkClusterId = links.some(url => normalizeStateUrl(url) === normalizeStateUrl(clusterId));
         for (const key of ['smartClusters', 'articles', 'smartRawArticles']) {
-            const rows = await articlesByLinks(env.RSS_DATA, key, [link]);
-            const found = rows.find(row => row.link === link && (!clusterId || !row.clusterId || row.clusterId === clusterId)) || null;
+            const rows = await articlesByLinks(env.RSS_DATA, key, links, { normalized: true, includeOriginalLink: true });
+            const matching = rows.filter(row => !clusterId || !row.clusterId || row.clusterId === clusterId
+                || (hasLinkClusterId && (row.clusterId === row.link || row.clusterId === row.originalLink)));
+            const found = matching.find(row => row.link === link)
+                || matching.find(row => normalizeStateUrl(row.link) === normalizedLink)
+                || matching[0];
             if (found) return found;
         }
         return null;
@@ -42,8 +50,9 @@ export function registerContentFilterRoutes({
         try {
             const link = String(req.query.link || '').slice(0, 2000);
             if (!safeHttpUrl(link)) return res.status(400).json({ error: 'A story link is required.' });
-            const clusterId = String(req.query.clusterId || '').slice(0, 200);
-            const article = await findSuggestionSubject(link, clusterId);
+            const clusterId = String(req.query.clusterId || '').slice(0, 2000);
+            const originalLink = String(req.query.originalLink || '').slice(0, 2000);
+            const article = await findSuggestionSubject(link, clusterId, safeHttpUrl(originalLink) ? originalLink : '');
             if (!article) return res.status(404).json({ error: 'This story is no longer available. Refresh and try again.' });
             const requested = Math.floor(Number(req.query.limit));
             const limit = Number.isFinite(requested) && requested > 0 ? Math.min(SUGGESTION_LIMIT, requested) : SUGGESTION_LIMIT;

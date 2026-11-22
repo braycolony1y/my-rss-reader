@@ -50,11 +50,10 @@ const ReaderSmartFeedback = {
                 const left = Math.max(12, Math.min(window.innerWidth - 452, (bounds?.right || window.innerWidth / 2) - 430));
                 const top = Math.max(12, Math.min(window.innerHeight - 560, (bounds?.bottom || 90) + 8));
                 this.feedbackPosition = `left:${left}px;top:${top}px`;
-                const session = { token: crypto.randomUUID(), article, chips: [], input: '', loading: true, failed: false };
-                this.feedbackSession = session;
+                this.feedbackSession = { token: crypto.randomUUID(), article, chips: [], input: '', loading: true, failed: false };
                 this.feedbackMessage = '';
                 this.$nextTick(() => document.querySelector('#smart-feedback-picker .feedback-input')?.focus());
-                this.loadFeedbackSuggestions(session);
+                this.loadFeedbackSuggestions(this.feedbackSession);
             },
             async loadFeedbackSuggestions(session) {
                 const controller = new AbortController();
@@ -62,11 +61,13 @@ const ReaderSmartFeedback = {
                 suggestionRequest = controller;
                 const timer = setTimeout(() => controller.abort(), ReaderSmartFeedback.suggestionTimeoutMs);
                 try {
-                    const query = new URLSearchParams({ link: session.article.link || '' });
-                    if (session.article.clusterId) query.set('clusterId', session.article.clusterId);
+                    const { link, originalLink, clusterId } = session.article;
+                    const query = new URLSearchParams({ link: link || '' });
+                    if (clusterId) query.set('clusterId', clusterId);
+                    if (originalLink && originalLink !== link) query.set('originalLink', originalLink);
                     const response = await fetch('/api/content-filters/suggest?' + query, { signal: controller.signal, cache: 'no-store' });
+                    if (!response.ok) throw new Error('Could not load suggestions.');
                     const data = await response.json();
-                    if (!response.ok) throw new Error(data.error || 'Could not load suggestions.');
                     if (this.feedbackSession?.token !== session.token) return;
                     const known = new Set(session.chips.map(chip => chip.keyword));
                     const suggested = (data.suggestions || []).map(item => ReaderSmartFeedback.keyword(item.keyword)).filter(keyword => keyword && !known.has(keyword));
@@ -175,7 +176,8 @@ const ReaderSmartFeedback = {
             showFeedbackToast(toast) {
                 clearTimeout(toastTimer);
                 this.feedbackToast = toast;
-                toastTimer = setTimeout(() => { if (this.feedbackToast === toast) this.feedbackToast = null; }, ReaderSmartFeedback.toastMs);
+                const activeToast = this.feedbackToast;
+                toastTimer = setTimeout(() => { if (this.feedbackToast === activeToast) this.feedbackToast = null; }, ReaderSmartFeedback.toastMs);
             },
             dismissFeedbackToast() {
                 clearTimeout(toastTimer);

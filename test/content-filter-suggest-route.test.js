@@ -1,16 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { DatabaseSync } from 'node:sqlite';
+import { createClientArticlePreparer } from '../src/articles/client-preparer.js';
+import { createRepository } from '../src/database/sqlite/repository.js';
+import { SCHEMA } from '../src/database/sqlite/schema.js';
 import { registerContentFilterRoutes } from '../src/routes/content-filter-routes.js';
 
 const now = Date.now();
 const iso = ageDays => new Date(now - ageDays * 86400000).toISOString();
 
-function setup(state) {
+function setup(state, findArticles) {
     const routes = new Map();
     const reads = [];
     registerContentFilterRoutes({
         app: { get: (path, ...handlers) => routes.set('GET ' + path, handlers), post: (path, ...handlers) => routes.set('POST ' + path, handlers) },
-        env: { RSS_DATA: { get: async key => { reads.push(key); return state[key]; }, put: async () => {} } },
+        env: { RSS_DATA: { findArticles, get: async key => { reads.push(key); return state[key]; }, put: async () => {} } },
     });
     const call = async query => {
         const handlers = routes.get('GET /api/content-filters/suggest');
@@ -56,6 +60,50 @@ test('suggest route finds plain list articles and validates input', async () => 
     assert.equal((await call({})).status, 400);
     assert.equal((await call({ link: 'javascript:alert(1)' })).status, 400);
     assert.equal((await call({ link: 'https://example.test/missing' })).status, 404);
+});
+
+function setupIndexedLookup(t, clusters) {
+    const db = new DatabaseSync(':memory:');
+    t.after(() => db.close());
+    db.exec(SCHEMA);
+    const repository = createRepository(db);
+    repository.write('smartClusters', clusters);
+    return setup({ articles: filler }, repository.findArticles);
+}
+
+test('suggest route finds the indexed VOZ story after card preparation removes /unread', async t => {
+    const link = 'https://voz.vn/t/tam-dung-tuyen-dung-dieu-chuyen-can-bo-cong-chuc-tren-ca-nuoc.1300654';
+    const stored = { ...story, title: 'Tạm dừng tuyển dụng, điều chuyển cán bộ, công chức trên cả nước', link: link + '/unread' };
+    const { call } = setupIndexedLookup(t, [stored]);
+    const prepare = createClientArticlePreparer({ getLastKnownCachedArticleImage: async () => null });
+    const card = await prepare(stored);
+    assert.equal(card.link, link);
+    const { status, body } = await call({ link: card.link, clusterId: card.clusterId });
+    assert.equal(status, 200);
+    assert.equal(body.title, stored.title);
+    assert.ok(body.suggestions.some(item => item.keyword.includes('tuyển dụng')));
+    assert.equal((await call({ link: card.link, clusterId: 'other-cluster' })).status, 404);
+});
+
+test('suggest route accepts projected Google News cards and old wrapper links across repair', async t => {
+    const wrapper = 'https://news.google.com/rss/articles/CBMi' + 'A'.repeat(220);
+    const stored = { ...story, link: wrapper, clusterId: wrapper };
+    const prepare = createClientArticlePreparer({
+        resolveGoogleNewsUrl: async () => story.link,
+        getLastKnownCachedArticleImage: async () => null,
+    });
+    const card = await prepare(stored);
+    assert.equal(card.link, story.link);
+    assert.equal(card.originalLink, wrapper);
+    assert.equal(card.clusterId, story.link);
+    const beforeRepair = setupIndexedLookup(t, [stored]);
+    const afterRepair = setupIndexedLookup(t, [card]);
+    const projected = await beforeRepair.call({ link: card.link, originalLink: card.originalLink, clusterId: card.clusterId });
+    const stale = await afterRepair.call({ link: wrapper, clusterId: stored.clusterId });
+    assert.equal(projected.status, 200);
+    assert.equal(projected.body.title, story.title);
+    assert.ok(projected.body.suggestions.length > 0);
+    assert.deepEqual(stale, projected);
 });
 
 test('the recent-article index is built once and reused within 30 minutes; embeddings are never read', async () => {

@@ -16,7 +16,7 @@ async function setup({ keywords = ['giá vàng'], suggestions = [{ keyword: 'vin
         const path = String(url);
         calls.push({ path, method: options.method || 'GET', body: options.body ? JSON.parse(options.body) : null });
         if (path.startsWith('/api/content-filters/suggest')) {
-            if (failSuggest) return { ok: false, json: async () => ({ error: 'nope' }) };
+            if (failSuggest) return new Response('<html>Service unavailable</html>', { status: 503 });
             return { ok: true, json: async () => ({ title: story.title, suggestions }) };
         }
         if (path === '/api/content-filter-settings') {
@@ -46,16 +46,36 @@ async function setup({ keywords = ['giá vàng'], suggestions = [{ keyword: 'vin
         },
         fetchData: async () => ({}), openContentFilterSettings() { this.opened = true; },
     });
-    return { ui, calls, toggles, stored: () => stored, context };
+    const feedbackWrites = [];
+    const proxies = new WeakMap();
+    // Alpine wraps assigned objects on read. Mutations to a retained raw object bypass its effects.
+    const reactiveUi = new Proxy(ui, {
+        get(target, key, receiver) {
+            const value = Reflect.get(target, key, receiver);
+            if ((key !== 'feedbackSession' && key !== 'feedbackToast') || !value) return value;
+            if (!proxies.has(value)) {
+                proxies.set(value, new Proxy(value, {
+                    set(state, field, next) {
+                        feedbackWrites.push(field);
+                        return Reflect.set(state, field, next);
+                    },
+                }));
+            }
+            return proxies.get(value);
+        },
+    });
+    return { ui: reactiveUi, feedbackWrites, calls, toggles, stored: () => stored, context };
 }
 const settle = () => new Promise(resolve => setTimeout(resolve, 0));
 
 test('opening loads suggestions as unselected chips and the preview line stays empty until something is chosen', async () => {
-    const { ui, calls } = await setup();
+    const { ui, calls, feedbackWrites } = await setup();
     ui.openSmartFeedback(story, {});
     assert.equal(ui.feedbackSession.loading, true);
     await settle();
     assert.equal(ui.feedbackSession.loading, false);
+    assert.ok(feedbackWrites.includes('loading'), 'loading must update through the reactive session');
+    assert.ok(feedbackWrites.includes('chips'), 'chips must update through the reactive session');
     assert.deepEqual(JSON.parse(JSON.stringify(ui.feedbackSession.chips)), [
         { keyword: 'vinfast', typed: false, selected: false }, { keyword: 'hà tĩnh', typed: false, selected: false }]);
     assert.match(calls[0].path, /^\/api\/content-filters\/suggest\?link=https%3A%2F%2Fexample\.test%2Fs1&clusterId=c1$/);
@@ -118,6 +138,7 @@ test('cards matching the new keywords are hidden immediately, only in Stories', 
     assert.equal(ui.isSmartFeedbackHidden(other), false);
     ui.selectedFilterType = 'today';
     assert.equal(ui.isSmartFeedbackHidden(story), false);
+    ui.dismissFeedbackToast();
 });
 
 test('with no keyword chosen the default action hides just this story, and Undo restores it', async () => {
@@ -125,6 +146,8 @@ test('with no keyword chosen the default action hides just this story, and Undo 
     const article = { ...story, originalLink: 'https://news.google.com/read/stable' };
     ui.openSmartFeedback(article, {});
     await settle();
+    const suggestionUrl = new URL(calls[0].path, 'https://reader.test');
+    assert.equal(suggestionUrl.searchParams.get('originalLink'), article.originalLink);
     await ui.confirmSmartFeedback();
     assert.deepEqual(toggles.map(([list, article]) => [list, article.link]), [['hiddenStates', story.link]]);
     assert.ok(!calls.some(call => call.path === '/api/content-filter-settings'));
@@ -152,20 +175,32 @@ test('hiding and undoing a repaired story honor its wrapper alias', async () => 
     assert.equal(ui.hiddenStates.length, 0);
 });
 
-test('suggestion failure still allows typing; cancel and context changes close without writing', async () => {
-    const { ui, calls } = await setup({ failSuggest: true });
+test('a non-JSON HTTP error clears reactive loading and still allows typing', async () => {
+    const { ui, calls, feedbackWrites } = await setup({ failSuggest: true });
     ui.openSmartFeedback(story, {});
     await settle();
     assert.equal(ui.feedbackSession.failed, true);
+    assert.equal(ui.feedbackSession.loading, false);
+    assert.ok(feedbackWrites.includes('failed'));
+    assert.ok(feedbackWrites.includes('loading'));
     assert.match(ui.feedbackMessage, /type your own/);
     ui.feedbackSession.input = 'bitcoin';
-    ui.addFeedbackInput();
+    assert.equal(ui.addFeedbackInput(), 1);
     ui.cancelSmartFeedback();
     assert.equal(ui.feedbackSession, null);
     ui.openSmartFeedback(story, {});
     ui.feedbackContextChanged();
     assert.equal(ui.feedbackSession, null);
     assert.ok(calls.every(call => call.method === 'GET'));
+});
+
+test('a reactive feedback toast expires', async t => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const { ui, context } = await setup();
+    ui.showFeedbackToast({ kind: 'story', message: 'Story hidden.' });
+    assert.equal(ui.feedbackToast.message, 'Story hidden.');
+    t.mock.timers.tick(context.factory.toastMs);
+    assert.equal(ui.feedbackToast, null);
 });
 
 test('focus stays inside the dialog on Tab', async () => {
