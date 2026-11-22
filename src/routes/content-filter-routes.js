@@ -57,6 +57,7 @@ export function registerContentFilterRoutes({
                 suggestions: suggestKeywords({ ...input, blockedKeywords: blocked || [], index, limit }),
             });
         } catch (error) {
+            console.error('[CONTENT FILTER] Keyword suggestion failed:', error);
             res.status(500).json({ error: 'Could not suggest keywords.' });
         }
     });

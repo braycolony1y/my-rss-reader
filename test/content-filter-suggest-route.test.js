@@ -65,3 +65,15 @@ test('the recent-article index is built once and reused within 30 minutes; embed
     assert.equal(reads.filter(key => key === 'articles').length, 1, 'a single index build serves both requests');
     assert.ok(reads.every(key => !/embedding|vector/i.test(key)), reads.join(','));
 });
+
+test('a failing suggestion lookup returns 500 and logs the error', async () => {
+    const { call } = setup({ articles: filler, smartClusters: [story], get blockedArticleKeywords() { throw new Error('storage down'); } });
+    const logged = [], original = console.error;
+    console.error = (...args) => logged.push(args);
+    try {
+        const { status, body } = await call({ link: story.link });
+        assert.equal(status, 500);
+        assert.equal(body.error, 'Could not suggest keywords.');
+    } finally { console.error = original; }
+    assert.ok(logged.some(args => args.some(arg => arg instanceof Error && /storage down/.test(arg.message))));
+});
