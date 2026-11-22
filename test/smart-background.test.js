@@ -152,3 +152,83 @@ test('monthly source evaluation is single-flight and survives gemini-web failure
     resetSourceEvaluationStateForTests();
   }
 });
+
+test('source evaluation runs anyway after the maximum number of deferrals', async () => {
+  resetSourceEvaluationStateForTests();
+  const timers = fakeTimers();
+  const db = memoryDb({});
+  let calls = 0;
+  const log = console.log; console.log = () => {};
+  try {
+    const { checkEvaluation } = await scheduleMonthlySourceEvaluation(db, async () => [{ domain: 'a.test' }], {
+      evaluate: async () => { calls++; return { 'a.test': 1 }; }
+    });
+    beginSmartRefresh();
+    try {
+      for (let i = 0; i < 48; i++) assert.equal((await checkEvaluation()).status, 'deferred');
+      assert.equal(calls, 0);
+      assert.equal((await checkEvaluation()).status, 'done', 'the 49th consecutive deferral runs anyway');
+      assert.equal(calls, 1);
+    } finally { endSmartRefresh(); }
+  } finally { console.log = log; timers.restore(); resetSourceEvaluationStateForTests(); }
+});
+
+test('source evaluation runs anyway after more than two days of deferral', async () => {
+  resetSourceEvaluationStateForTests();
+  const timers = fakeTimers();
+  const db = memoryDb({});
+  let clock = 1e12, calls = 0;
+  const log = console.log; console.log = () => {};
+  try {
+    const { checkEvaluation } = await scheduleMonthlySourceEvaluation(db, async () => [{ domain: 'a.test' }], {
+      now: () => clock, evaluate: async () => { calls++; return { 'a.test': 1 }; }
+    });
+    beginSmartRefresh();
+    try {
+      assert.equal((await checkEvaluation()).status, 'deferred');
+      clock += 2 * 86400000 + 1;
+      assert.equal((await checkEvaluation()).status, 'done');
+      assert.equal(calls, 1);
+    } finally { endSmartRefresh(); }
+  } finally { console.log = log; timers.restore(); resetSourceEvaluationStateForTests(); }
+});
+
+test('partial source coverage merges scores without stamping, then retries only the missing domains after backoff', async () => {
+  resetSourceEvaluationStateForTests();
+  const timers = fakeTimers();
+  const db = memoryDb({});
+  let clock = 1e12; const calls = [];
+  const log = console.log, warn = console.warn; console.log = () => {}; console.warn = () => {};
+  const domains = ['a', 'b', 'c', 'd', 'e'].map(d => ({ domain: d + '.test' }));
+  try {
+    const { checkEvaluation } = await scheduleMonthlySourceEvaluation(db, async () => domains, {
+      now: () => clock,
+      evaluate: async list => { calls.push(list); return calls.length === 1 ? { 'a.test': 1, 'b.test': 1.1 } : Object.fromEntries(list.map(d => [d, 1.2])); }
+    });
+    const first = await checkEvaluation();
+    assert.equal(first.status, 'partial');
+    assert.equal(db.store.has('lastSourceEvalTime'), false, '40% coverage is not a full run');
+    assert.deepEqual(Object.keys(JSON.parse(db.store.get('smartSourceScores'))).sort(), ['a.test', 'b.test']);
+    assert.equal((await checkEvaluation()).status, 'backoff');
+    clock += 6 * 3600000 + 1;
+    const second = await checkEvaluation();
+    assert.deepEqual(calls[1], ['c.test', 'd.test', 'e.test'], 'only the missing domains are retried');
+    assert.equal(second.status, 'done');
+    assert.equal(second.coverage, 1);
+    assert.ok(db.store.has('lastSourceEvalTime'));
+  } finally { console.log = log; console.warn = warn; timers.restore(); resetSourceEvaluationStateForTests(); }
+});
+
+test('80 percent coverage counts as a full run', async () => {
+  resetSourceEvaluationStateForTests();
+  const timers = fakeTimers();
+  const db = memoryDb({});
+  const log = console.log; console.log = () => {};
+  try {
+    const { checkEvaluation } = await scheduleMonthlySourceEvaluation(db, async () => ['a', 'b', 'c', 'd', 'e'].map(d => ({ domain: d })), {
+      evaluate: async () => ({ a: 1, b: 1, c: 1, d: 1 })
+    });
+    assert.equal((await checkEvaluation()).status, 'done');
+    assert.ok(db.store.has('lastSourceEvalTime'));
+  } finally { console.log = log; timers.restore(); resetSourceEvaluationStateForTests(); }
+});
