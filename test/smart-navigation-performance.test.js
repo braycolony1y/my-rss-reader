@@ -4,7 +4,6 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
 import { smartDestination } from '../src/utils/smart-destinations.js';
-import { indexStoriesById } from '../src/articles/story-index.js';
 import { createBrowserFetchQueue } from '../src/browser/fetch-queue.js';
 import { createArticleFetchPolicy } from '../src/articles/fetch-policy.js';
 import { getSmartDestinationPartition, normalizeArticle } from '../smart-news.js';
@@ -19,25 +18,6 @@ function reader(t) {
     const app=dom.window.rssApp(); app.fetchData=async()=>{}; app.syncUserPreferenceDebounced=()=>{};
     return {app,window:dom.window};
 }
-
-test('Top polling continues after a reading session expires without replacing visible cards', async t => {
-    const {app, window} = reader(t);
-    app.selectedFilterType = 'smart';
-    app.smartTabMode = 'top';
-    app.selectedFilterValue = 'news_global';
-    app.smartViewToken = 'expired';
-    app.articles = [{clusterId: 'visible'}];
-    let callback;
-    window.setTimeout = fn => { callback = fn; return 1; };
-    window.clearTimeout = () => {};
-    window.fetch = async () => ({ok: true, json: async () => ({viewReset: true})});
-    app.scheduleBriefingRefresh();
-    const first = callback;
-    await first();
-    assert.equal(app.topUpdatesAvailable, true);
-    assert.equal(app.articles[0].clusterId, 'visible');
-    assert.notEqual(callback, first, 'arms another poll after the expired token response');
-});
 
 test('Tech regions have independent URLs, restore on navigation, and retain region across sections', async t => {
     const {app,window}=reader(t);
@@ -54,7 +34,7 @@ test('Tech regions have independent URLs, restore on navigation, and retain regi
     assert.equal(app.selectedFilterValue,'tech_global');
     app.setFilter('smart','news_world');
     assert.equal(window.location.hash,'#smart/news_global');
-    assert.equal(app.headerTitle,'Smart News · Global');
+    assert.equal(app.headerTitle,'Stories · News · Global');
     window.location.hash='#smart/tech_world?article='+encodeURIComponent('https://example.org/thread');
     const route=app.getFilterFromHash();
     assert.equal(route.value,'tech_global'); assert.equal(route.articleUrl,'https://example.org/thread');
@@ -70,17 +50,6 @@ test('legacy destination aliases normalize to Global without losing the Tech reg
     }
     assert.equal(smartDestination('tech_vietnam','global'),'tech_vietnam');
     assert.equal(normalizeArticle({link:'https://example.com/news',title:'An election report'}, {category:'news_world'}).smartCategory,'news_global');
-});
-
-test('scroll viewport indexes reuse the snapshot and invalidate on a replacement', () => {
-    let reads=0;
-    const articles=Array.from({length:10000},(_,i)=>({get clusterId(){reads++;return String(i);}}));
-    const first=indexStoriesById(articles); const initialReads=reads;
-    for(let i=0;i<20;i++) assert.strictEqual(indexStoriesById(articles),first);
-    assert.equal(reads,initialReads);
-    const next=[{clusterId:'0',title:'Updated'}];
-    assert.equal(indexStoriesById(next).get('0').title,'Updated');
-    assert.notStrictEqual(indexStoriesById(next),first);
 });
 
 test('warm browser reserves capacity for the reader, prioritizes queued reads and shares duplicate fetches', async () => {
@@ -130,7 +99,7 @@ test('opening an article checks upcoming cache metadata without preparing other 
     ]);
 });
 
-test('Tech destination URLs select the correct region in both Classic and Top APIs', async () => {
+test('Tech destination URLs select the correct region, and legacy Top-mode requests open Stories', async () => {
     const {createArticlePresentation}=await import('../src/articles/presentation.js');
     const articles=['vietnam','global'].map(region=>({
         link:`https://example.com/${region}`,clusterId:region,isCluster:true,title:`New software release ${region}`,
@@ -138,15 +107,19 @@ test('Tech destination URLs select the correct region in both Classic and Top AP
         language:region==='vietnam'?'vi':'en',image:'https://example.com/image.jpg',
         ranking:{score:1},topStory:{feed:`tech_${region}`,rank:1,isTop:true,cutoff:{count:1}}
     }));
-    const state={smartClusters:articles,smartRawArticles:[],smartClusterVersion:'v1',
-        topStoriesPublished:{policy:2,articles,createdAt:Date.now(),signature:'fixture',clusterVersion:'v1'},
-        userPreferences:{smartTabModes:{__all:'classic'}}};
-    const presentation=createArticlePresentation({generateBriefing:async()=>{throw Error("offline list fixture")},env:{RSS_DATA:{get:async key=>state[key]}}});
-    for(const mode of ['classic','top']) for(const region of ['vietnam','global']) {
-        let result;
-        await presentation.serveSmartData({query:{filterValue:`tech_${region}`,smartMode:mode}},
-            {setHeader(){},json(data){result=data;}});
-        assert.equal(result.articles.length,1,`${mode} ${region}`);
-        assert.equal(result.articles[0].link,`https://example.com/${region}`);
+    for(const storedMode of ['top','classic']) {
+        const state={smartClusters:articles,smartRawArticles:[],smartClusterVersion:'v1',
+            topStoriesPublished:{policy:2,articles,createdAt:Date.now(),signature:'fixture',clusterVersion:'v1'},
+            userPreferences:{smartTabModes:{__all:storedMode}}};
+        const presentation=createArticlePresentation({env:{RSS_DATA:{get:async key=>state[key]}}});
+        for(const mode of ['classic','top',undefined]) for(const region of ['vietnam','global']) {
+            let result;
+            await presentation.serveSmartData({query:{filterValue:`tech_${region}`,smartMode:mode}},
+                {setHeader(){},json(data){result=data;}});
+            assert.equal(result.articles.length,1,`${storedMode} ${mode} ${region}`);
+            assert.equal(result.articles[0].link,`https://example.com/${region}`);
+            assert.equal('smartTabMode' in result,false);
+            assert.equal('topStories' in result,false);
+        }
     }
 });

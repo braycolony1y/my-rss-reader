@@ -53,8 +53,8 @@
             style="scrollbar-width: none; -ms-overflow-style: none;">
             <div class="flex-1 pb-4">
                 <ul class="space-y-1 px-2 mb-6 mt-2">
-                    <!-- Smart Briefing as regular nav item -->
-                    <li @click="setSmartSection('news')"
+                    <!-- Stories as regular nav item -->
+                    <li @click="setSmartSection('news')" title="Stories" aria-label="Stories" role="button"
                         class="relative flex items-center justify-between px-3 py-2 rounded-md cursor-pointer transition-all duration-300 font-medium text-sm overflow-hidden"
                         :class="selectedFilterType === 'smart' ? (theme === 'glass-light' ? 'bg-emerald-50 text-emerald-700 shadow-sm' : 'bg-teal-900/40 text-teal-400 shadow-[inset_0_0_10px_rgba(20,184,166,0.1)]') : (theme === 'glass-light' ? 'text-gray-600 hover:bg-gray-100/50 hover:text-gray-900' : 'text-gray-400 hover:bg-white/5 hover:text-white')">
                         <div class="flex items-center gap-2">
@@ -67,8 +67,7 @@
                                 </svg>
                             </div>
                             <span class="transition-opacity duration-300 truncate delay-75"
-                                :class="!sidebarExpanded && !isMobile ? 'opacity-0' : 'opacity-100'">Smart
-                                Briefing</span>
+                                :class="!sidebarExpanded && !isMobile ? 'opacity-0' : 'opacity-100'">Stories</span>
                         </div>
                     </li>
                     <div x-show="sidebarExpanded || isMobile"

@@ -34,16 +34,18 @@
                     hideRead: String(localStorage.getItem('hideRead') === 'true'),
                     searchQuery: ''
                 };
-                const route = location.hash.slice(1).split('?article=')[0].split('/');
-                if (route[0] && route[0] !== 'smart') return;
-                if (route[1]) {
-                    let destination = decodeURIComponent(route[1]).replace(/_(world|foreign)$/, '_global');
+                const route = location.hash.slice(1).replace(/[?&](?:smartMode|smart_mode|mode)=(?:top|classic)(?=$|[?&#])/gi, '').split('?article=')[0].split('/');
+                // Old links: smart, top, classic and stories all open Stories; mode words and smartMode= are ignored.
+                if (route[0] && !['smart', 'top', 'classic', 'stories'].includes(route[0].toLowerCase())) return;
+                const segments = route.slice(1).map(part => decodeURIComponent(part)).filter(part => part && !['top', 'classic'].includes(part.toLowerCase()));
+                const named = segments.find(part => /^(?:news|finance|tech)(?:_(?:vietnam|global|world|foreign))?$/i.test(part)) || segments[0];
+                if (named) {
+                    let destination = named.replace(/_(world|foreign)$/, '_global');
                     if (['news', 'finance', 'tech'].includes(destination)) destination += '_global';
                     if (!/^(news|finance|tech)_(vietnam|global)$/.test(destination)) return;
                     request.filterValue = destination;
                 }
                 request.smartRegion = request.filterValue.endsWith('_vietnam') ? 'vietnam' : 'global';
-                request.smartMode = 'top';
                 const params = new URLSearchParams(request);
                 window.__rssInitialDataRequest = {
                     ...request,

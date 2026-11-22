@@ -103,7 +103,7 @@ export function registerContentFilterRoutes({
                 if (!details.length) continue;
                 const article = candidate.article;
                 const title = normalizeArticleTitle(article.title) || 'Untitled article';
-                const feedTitle = article.feedTitle || article.siteName || article.sourceName || (candidate.surface === 'Smart' ? 'Smart Briefing' : 'Unknown source');
+                const feedTitle = article.feedTitle || article.siteName || article.sourceName || (candidate.surface === 'Smart' ? 'Stories' : 'Unknown source');
                 const pubDate = article.pubDate || article.date || article.createDate || '';
                 const linkKey = contentFilterPreviewLinkKey(article.link || '');
                 const timeKey = Number.isFinite(Date.parse(pubDate)) ? Math.floor(Date.parse(pubDate) / 60000) : '';

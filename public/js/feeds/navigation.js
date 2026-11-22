@@ -43,17 +43,17 @@ const ReaderFeedsNavigation = {
                 get headerTitle() {
                     if (this.selectedFilterType === 'smart') {
                         const labels = {
-                            news_vietnam: 'Smart News · Vietnam',
-                            news_global: 'Smart News · Global',
-                            finance_vietnam: 'Smart Finance · Vietnam',
-                            finance_global: 'Smart Finance · Global',
-                            tech_vietnam: 'Smart Technology · Vietnam',
-                            tech_global: 'Smart Technology · Global',
+                            news_vietnam: 'Stories · News · Vietnam',
+                            news_global: 'Stories · News · Global',
+                            finance_vietnam: 'Stories · Finance · Vietnam',
+                            finance_global: 'Stories · Finance · Global',
+                            tech_vietnam: 'Stories · Technology · Vietnam',
+                            tech_global: 'Stories · Technology · Global',
                             tech: this.smartRegion === 'vietnam'
-                                ? 'Smart Technology · Vietnam'
-                                : 'Smart Technology · Global'
+                                ? 'Stories · Technology · Vietnam'
+                                : 'Stories · Technology · Global'
                         };
-                        return labels[this.selectedFilterValue] || 'Smart News';
+                        return labels[this.selectedFilterValue] || 'Stories';
                     }
                     if (this.selectedFilterType === 'today') return 'Today';
                     if (this.selectedFilterType === 'recent') return 'Recently Read';

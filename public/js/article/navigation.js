@@ -141,7 +141,7 @@ const ReaderArticleNavigation = {
                 },
 
                 getFilterFromHash() {
-                    const hash = window.location.hash.substring(1);
+                    const hash = ReaderSmartLegacyRoutes.stripModeQuery(window.location.hash.substring(1));
                     if (hash) {
                         const articleMarker = '?article=';
                         const markerIndex = hash.lastIndexOf(articleMarker);
@@ -150,11 +150,14 @@ const ReaderArticleNavigation = {
                         const parts = filterPath.split('/');
                         let articleUrl = '';
                         try { articleUrl = encodedArticle ? this.normalizeArticleSourceUrl(decodeURIComponent(encodedArticle)) : ''; } catch (e) { }
-                        return {
-                            type: parts[0],
-                            value: parts.length > 1 ? (() => { let value; try { value = decodeURIComponent(parts.slice(1).join('/')); } catch { value = parts.slice(1).join('/'); } return parts[0] === 'smart' ? this.normalizeSmartDestination(value) : value; })() : null,
-                            articleUrl
-                        };
+                        // smart, top, classic and stories all open Stories.
+                        const type = ReaderSmartLegacyRoutes.type(parts[0]);
+                        const decodePath = () => { try { return decodeURIComponent(parts.slice(1).join('/')); } catch { return parts.slice(1).join('/'); } };
+                        const destination = type === 'smart' ? ReaderSmartLegacyRoutes.destination(parts.slice(1)) : null;
+                        const value = type === 'smart'
+                            ? (destination ? this.normalizeSmartDestination(destination) : null)
+                            : (parts.length > 1 ? decodePath() : null);
+                        return { type, value, articleUrl };
                     }
                     return null;
                 },
