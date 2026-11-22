@@ -64,7 +64,6 @@ Custom self-hosted RSS reader with AI summarization capabilities, offline cachin
 - **Jina Reader** (`r.jina.ai`): Used as a generic fallback for converting URLs to Markdown.
 - **Google News URL Decoder**: Decodes obfuscated Google News links.
 - **Gemini API**: Used for online AI summaries and contextual content analysis.
-- **Local Qwen through Ollama**: Optional offline fallback for Smart clustering; no Qwen Cloud API is used.
 - **Vietserver Proxy**: Configurable proxy for bypassing blocked regional sites.
 - **OpenCLI**: Used for scraping heavy, JS-rendered pages when lightweight scraping fails.
 

@@ -23,12 +23,6 @@ WantedBy=multi-user.target
 
 # /etc/systemd/system/rss-reader.service.d/ai-limits.conf
 [Service]
-Environment="SMART_LOCAL_AI_CHUNK_SIZE=32"
-Environment="SMART_LOCAL_AI_NUM_CTX=8192"
-Environment="SMART_LOCAL_AI_NUM_PREDICT=2048"
-Environment="SMART_LOCAL_AI_TIMEOUT_MS=480000"
-Environment="SMART_LOCAL_AI_KEEP_ALIVE=2m"
-Environment="SMART_LOCAL_AI_MAX_GROUPS_PER_CATEGORY=80"
 Environment="SMART_ENABLE_LOCAL_EMBEDDINGS=true"
 CPUWeight=500
 OOMScoreAdjust=-250

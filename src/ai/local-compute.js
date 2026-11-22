@@ -4,7 +4,7 @@ import {
 
 // LOCAL_COMPUTE_MUTEX_V1
 //
-// Xenova/ONNX and Ollama must not actively compute at the same time on this
+// Local compute jobs (Xenova/ONNX embeddings, clustering) must not run at the same time on this
 // 2-vCPU ARM server.  This is intentionally a mutex, not a model unloader.
 // smart-news.js documents that onnxruntime-node 1.14.0 cannot safely recreate
 // the Xenova worker after termination in this process.

@@ -4,7 +4,7 @@ import { performance } from 'node:perf_hooks';
 const [backend,root,output]=process.argv.slice(2);
 if(!['legacy','sqlite'].includes(backend)||!root?.startsWith('/tmp/')||!output)throw Error('Usage: sqlite-storage.mjs legacy|sqlite /tmp/ISOLATED_ROOT OUTPUT');
 process.chdir(root);
-process.env.ANTIGRAVITY_ENABLED='false';process.env.GEMINI_WEB_ENABLED='false';process.env.SMART_LOCAL_AI_ENABLED='false';delete process.env.GEMINI_API_KEY;
+process.env.ANTIGRAVITY_ENABLED='false';process.env.GEMINI_WEB_ENABLED='false';delete process.env.GEMINI_API_KEY;
 const {createLegacyDatabaseStore}=await import('../../../src/database/store.js');
 const {createSqliteDatabaseStore}=await import('../../../src/database/sqlite/store.js');
 const rows=[];
