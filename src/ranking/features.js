@@ -7,7 +7,7 @@
 //   vec    L2-normalised multilingual-e5-small vector of the member, optional
 import { LEX, GUARDS, POLICY_EXCLUDE } from './lexicons.js';
 import { NOVELTY_WINDOW_HOURS } from './config.js';
-import { isAggregator, outletGroups } from './outlets.js';
+import { isAggregator, outletGroups, outletOf } from './outlets.js';
 
 export const FEEDS = ['news_vietnam', 'news_global', 'finance_vietnam', 'finance_global', 'tech_vietnam', 'tech_global'];
 export const HOURS = 3600000;
@@ -94,6 +94,9 @@ export function coverage(cluster, now) {
   let t0 = Infinity, tLast = 0;
   const sorted = [...use].sort((a, b) => (a.t || 0) - (b.t || 0));
   const groups = outletGroups(sorted, sorted.map(publisherOf));
+  // Hot-floor outlets: an aggregator item counts as the real publisher it resolves to (m.outlet); one that cannot be resolved counts as none.
+  const outletKeys = sorted.map(m => outletOf(publisherOf(m), m));
+  const realGroups = outletGroups(sorted, outletKeys.map((o, i) => o || publisherOf(sorted[i])));
   for (let i = 0; i < sorted.length; i++) {
     const m = sorted[i];
     const p = publisherOf(m);
@@ -101,7 +104,7 @@ export function coverage(cluster, now) {
     const k = headlineKey(m.title);
     const opinion = LEX.x_opinion.test(m.title || '');
     if (!seenTitles.has(k) && !opinion && !independent.has(p)) { independent.set(p, m.t || 0); if (!distinctAll.has(groups[i])) distinctAll.set(groups[i], m.t || 0); }
-    if (!opinion && !isAggregator(p) && !distinct.has(groups[i])) distinct.set(groups[i], m.t || 0);
+    if (!opinion && outletKeys[i] && !distinct.has(realGroups[i])) distinct.set(realGroups[i], m.t || 0);
     seenTitles.add(k);
     if (m.t) { t0 = Math.min(t0, m.t); tLast = Math.max(tLast, m.t); }
   }

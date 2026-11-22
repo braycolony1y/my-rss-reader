@@ -27,6 +27,64 @@ export function registrableDomain(host) {
 
 export const isAggregator = publisher => AGGREGATOR_DOMAINS.has(publisher) || AGGREGATOR_DOMAINS.has(registrableDomain(publisher));
 
+/** Publisher name reduced to a comparable key: no diacritics, lowercase, no "the", no ".com"-style tail, letters and digits only. */
+export const publisherNameKey = (name, keepThe = false) => {
+  const k = String(name || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/gi, 'd').toLowerCase()
+    .replace(/&[a-z#0-9]+;/g, ' ').replace(/\.(com|net|org|vn|co\.uk|io)\b/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+  return keepThe ? k : k.replace(/^the /, '');
+};
+
+/** Well-known publisher names (as written by Google News) whose name does not spell their domain. Keys are publisherNameKey values. */
+const PUBLISHER_ALIASES = new Map(Object.entries({
+  'reuters': 'reuters.com', 'ap': 'apnews.com', 'ap news': 'apnews.com', 'associated press': 'apnews.com', 'bloomberg': 'bloomberg.com', 'bloomberg com': 'bloomberg.com',
+  'cnbc': 'cnbc.com', 'cnn': 'cnn.com', 'bbc': 'bbc.co.uk', 'bbc news': 'bbc.co.uk', 'new york times': 'nytimes.com', 'ny times': 'nytimes.com', 'washington post': 'washingtonpost.com',
+  'wall street journal': 'wsj.com', 'wsj': 'wsj.com', 'financial times': 'ft.com', 'guardian': 'theguardian.com', 'al jazeera': 'aljazeera.com', 'al jazeera english': 'aljazeera.com',
+  'ars technica': 'arstechnica.com', 'verge': 'theverge.com', 'techcrunch': 'techcrunch.com', 'wired': 'wired.com', 'engadget': 'engadget.com', 'zdnet': 'zdnet.com',
+  'fox news': 'foxnews.com', 'nbc news': 'nbcnews.com', 'abc news': 'abcnews.go.com', 'cbs news': 'cbsnews.com', 'npr': 'npr.org', 'politico': 'politico.com', 'axios': 'axios.com',
+  'forbes': 'forbes.com', 'business insider': 'businessinsider.com', 'marketwatch': 'marketwatch.com', 'yahoo finance': 'finance.yahoo.com', 'south china morning post': 'scmp.com',
+  'nikkei asia': 'asia.nikkei.com', 'vnexpress': 'vnexpress.net', 'vnexpress international': 'vnexpress.net', 'tuoi tre': 'tuoitre.vn', 'tuoi tre online': 'tuoitre.vn', 'tuoi tre news': 'tuoitre.vn',
+  'thanh nien': 'thanhnien.vn', 'dan tri': 'dantri.com.vn', 'bao dan tri': 'dantri.com.vn', 'vietnamnet': 'vietnamnet.vn', 'vietnamnet news': 'vietnamnet.vn', 'zing news': 'znews.vn', 'znews': 'znews.vn',
+  'tien phong': 'tienphong.vn', 'nhan dan': 'nhandan.vn', 'bao nhan dan': 'nhandan.vn', 'lao dong': 'laodong.vn', 'vietnamplus': 'vietnamplus.vn', 'vov': 'vov.vn', 'vtv': 'vtv.vn', 'vtv news': 'vtv.vn',
+  'bao chinh phu': 'baochinhphu.vn', 'cafef': 'cafef.vn', 'cafebiz': 'cafebiz.vn', 'kenh14': 'kenh14.vn', 'bao dau tu': 'baodautu.vn', 'vietnam investment review': 'vir.com.vn',
+  'cong an nhan dan': 'cand.com.vn', 'bao phap luat': 'baophapluat.vn', 'tap chi cong san': 'tapchicongsan.org.vn', 'bao quan doi nhan dan': 'qdnd.vn', 'sai gon giai phong': 'sggp.org.vn', 'sggp': 'sggp.org.vn',
+  'nguoi lao dong': 'nld.com.vn', 'tuoitre vn': 'tuoitre.vn', 'vnexpress net': 'vnexpress.net', 'thanhnien vn': 'thanhnien.vn', 'vietnam news': 'vietnamnews.vn', 'the saigon times': 'thesaigontimes.vn', 'saigon times': 'thesaigontimes.vn'
+}));
+
+/** Normalised outlet key for a publisher name: a domain for a known alias, otherwise the compact name (no dots), which outletGroups matches against domain labels. */
+export function publisherKey(name) {
+  const k = publisherNameKey(name);
+  if (k.length < 2) return null;
+  // "The" is kept in the compact key because domains keep it (thenextweb.com, theglobeandmail.com).
+  return PUBLISHER_ALIASES.get(k) || publisherNameKey(name, true).replace(/ /g, '');
+}
+
+/** Trailing " - Publisher" / " | Publisher" of a Google News headline, or null. */
+export const titlePublisher = title => String(title || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().match(/\s[-–—|]\s+([^-–—|]{2,40})$/u)?.[1]?.trim() || null;
+
+/**
+ * Real publisher of an aggregator item as an outlet key (domain or compact name), or null when it cannot be told.
+ * Order: a source field if the feed gave one (`source` string or {title|name, url}); the host of the resolved
+ * article link when it is not itself an aggregator; the trailing " - Publisher" of the headline.
+ */
+export function resolveAggregatorPublisher(article) {
+  const src = article?.source ?? article?.sourceName;
+  const srcName = typeof src === 'string' ? src : src?.title || src?.name;
+  const srcUrl = typeof src === 'object' ? src?.url : '';
+  for (const url of [srcUrl, article?.link]) {
+    try {
+      const host = registrableDomain(new URL(url).hostname);
+      if (host && !isAggregator(host)) return host;
+    } catch { /* not a URL */ }
+  }
+  const host = registrableDomain(String(article?.domain || '').toLowerCase());
+  // Techmeme and Memeorandum end a headline with "(Author/Publisher)".
+  const paren = host === 'techmeme.com' || host === 'memeorandum.com' ? String(article?.title || '').match(/\(([^()]{2,80})\)\s*$/)?.[1]?.split('/').pop() : null;
+  return publisherKey(srcName) || publisherKey(paren) || publisherKey(titlePublisher(article?.title));
+}
+
+/** Outlet key used to count a member as an outlet: its own domain, or the resolved publisher for an aggregator item (null = uncountable). */
+export const outletOf = (publisher, member) => (isAggregator(publisher) ? member?.outlet || null : publisher);
+
 const clean = s => String(s || '').replace(/<[^>]*>/g, ' ').replace(/&[a-z#0-9]+;/gi, ' ').replace(/\s+/g, ' ').trim();
 /** Headline reduced to comparable words: lowercase, no punctuation, no trailing " - Publisher" / " | Publisher" tag. */
 export const syndicationKey = title => clean(title).replace(/\s+[-–—|]\s+[^-–—|]{2,40}$/u, '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
@@ -76,6 +134,8 @@ export function outletGroups(members, publishers) {
   const find = i => { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
   const union = (a, b) => { a = find(a); b = find(b); if (a !== b) parent[Math.max(a, b)] = Math.min(a, b); };
   const reg = publishers.map(registrableDomain);
+  // A publisher known only by name ("thenextweb") matches the domain whose first label spells it (thenextweb.com).
+  const label = r => (r.includes('.') ? r.split('.')[0] : r);
   const keys = members.map(m => syndicationKey(m.title));
   const tokens = keys.map(k => new Set(k.split(' ').filter(Boolean)));
   const leads = members.map(m => leadKey(m.content));
@@ -83,6 +143,7 @@ export function outletGroups(members, publishers) {
   for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
     if (find(i) === find(j)) continue;
     if (reg[i] === reg[j]) { union(i, j); continue; }
+    if ((!reg[i].includes('.') || !reg[j].includes('.')) && label(reg[i]).length >= 3 && label(reg[i]) === label(reg[j])) { union(i, j); continue; }
     if (keys[i] && (keys[i] === keys[j] || jaccard(tokens[i], tokens[j]) >= titleSimilarity ||
       (Math.abs(keys[i].length - keys[j].length) <= 0.1 * Math.max(keys[i].length, keys[j].length) && levenshteinSimilarity(keys[i], keys[j], titleSimilarity) >= titleSimilarity))) { union(i, j); continue; }
     if (leads[i].length >= minLeadChars && leads[i] === leads[j]) union(i, j);

@@ -4,6 +4,7 @@ import { canonicalSmartCategory } from '../utils/smart-destinations.js';
 import { FEEDS } from './features.js';
 import { LABEL_THRESHOLDS } from './config.js';
 import { scoreStories } from './score.js';
+import { isAggregator, resolveAggregatorPublisher } from './outlets.js';
 
 const HOUR = 3600000;
 const headlineKey = a => storyText(a.title || a.link).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
@@ -25,7 +26,10 @@ export function toRankingCluster(article, destination, vectorOf = () => null) {
     const t = a.publicationTimeReliable === false ? 0 : Date.parse(a.pubDate) || 0;
     const key = headlineKey(a);
     if (!earliest.has(key) || t < earliest.get(key)) earliest.set(key, t);
-    return { title: a.title || '', content: a.content || a.description || a.summary || '', domain: publisherId(a), sw: Number(a.sourceWeight) || 1, t, vec: vectorOf(a) };
+    const domain = publisherId(a);
+    // Aggregator items (Google News ...) carry the real publisher so they count as outlets of the hot floor.
+    const outlet = isAggregator(domain) ? resolveAggregatorPublisher(a) : null;
+    return { title: a.title || '', content: a.content || a.description || a.summary || '', domain, ...(outlet ? { outlet } : {}), sw: Number(a.sourceWeight) || 1, t, vec: vectorOf(a) };
   });
   const latestT = Math.max(0, ...earliest.values());
   return { id: article.clusterId || article.link, feed: sectionOf(article, destination), latestT, members: mapped };
