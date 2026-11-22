@@ -55,6 +55,8 @@ article_cache/
 # Playwright / Puppeteer
 playwright-report/
 test-results/
+test/fixtures/generated/
+tools/experiments/output/
 
 # =========================
 # Local databases & backups
@@ -92,8 +94,46 @@ venv/
 # Secrets
 # =========================
 pwd.txt
+gemini-keys.txt
+qwen-keys.txt
+
+# =========================
+# Atomic-write leftovers and local diagnostics
+# =========================
+*.tmp-*
+*.cpuprofile
+*.before-*
+*.corrupted.js
+.codex-staging-*/
+backups/
+smart-embeddings-worker.json
+
+# The backup job's own public-safe operational log is intentionally versioned.
+!ops/backup/logs/
+!ops/backup/logs/*.log
 
 # =========================
 # Optional large generated files
 # =========================
 *.pdf
+
+# Durable lightweight Board state (local runtime data)
+database-state.json
+
+# Local API keys
+gemini-keys.txt
+qwen-keys.txt
+
+smart-state.json
+smart-state.json.tmp-*
+
+# Durable per-key state overlay parts
+/database_state/
+
+# =========================
+# Local backups, profiles, agent worktrees
+# =========================
+*.bak
+*.bak-*
+*.heapprofile
+.claude/

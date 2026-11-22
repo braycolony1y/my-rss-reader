@@ -1,0 +1,215 @@
+        /* Article Overlay Panel */
+        /* Article content styling */
+        .article-rendered-content {
+            color: #d1d5db;
+            font-size: 17px;
+            line-height: 1.82;
+            width: 100%;
+            max-width: 760px;
+            margin: 0 auto;
+            overflow-wrap: anywhere;
+            white-space: normal;
+        }
+
+        /* The direct X iframe is retained as a no-script/network fallback.
+           Once widgets.js has measured the post, it is swapped for X's
+           self-sized iframe so long quoted posts never gain an inner scroller. */
+        .voz-twitter-embed {
+            position: relative;
+            width: 100%;
+            max-width: 550px;
+            min-width: 0;
+            margin: 0.75rem auto;
+            overflow: hidden;
+            border-radius: 0.75rem;
+            background: #fff;
+        }
+
+        .voz-twitter-embed iframe {
+            display: block !important;
+            width: 100% !important;
+            max-width: 550px !important;
+            min-width: 0 !important;
+            margin: 0 auto !important;
+            border: 0 !important;
+        }
+
+        .voz-twitter-embed__fallback {
+            height: 1100px !important;
+            overflow: hidden !important;
+        }
+
+        .voz-twitter-embed__staging {
+            position: absolute;
+            inset: 0 auto auto 0;
+            width: 100%;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .voz-twitter-embed__staging.is-ready {
+            position: static;
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        @media (max-width: 640px) {
+            .voz-twitter-embed__fallback {
+                height: 1250px !important;
+            }
+        }
+
+        .voz-reddit-embed {
+            width: 100%;
+            max-width: 640px;
+            min-width: 0;
+            margin: 0.85rem auto;
+            overflow: hidden;
+            border: 1px solid rgba(148, 163, 184, 0.24);
+            border-radius: 14px;
+            background: #ffffff;
+            box-shadow: 0 10px 28px rgba(15, 23, 42, 0.11);
+        }
+
+        .voz-reddit-embed__frame {
+            display: block !important;
+            width: 100% !important;
+            height: 760px !important;
+            min-width: 0 !important;
+            margin: 0 !important;
+            border: 0 !important;
+            background: #ffffff;
+        }
+
+        .voz-reddit-embed__fallback,
+        .voz-reddit-embed__fallback:visited {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.4rem;
+            min-height: 42px;
+            padding: 8px 14px;
+            color: #475569 !important;
+            background: #f8fafc;
+            border-top: 1px solid #e2e8f0;
+            font-size: 13px;
+            font-weight: 650;
+            line-height: 1.35;
+            text-decoration: none !important;
+        }
+
+        .voz-reddit-embed__fallback:hover,
+        .voz-reddit-embed__fallback:focus-visible {
+            color: #ff4500 !important;
+            background: #fff7f3;
+        }
+
+        @media (max-width: 640px) {
+            .voz-reddit-embed__frame {
+                height: 560px !important;
+            }
+        }
+
+        .source-deleted-warning {
+            position: relative;
+            isolation: isolate;
+            overflow: hidden;
+            display: flex;
+            align-items: flex-start;
+            gap: 13px;
+            max-width: 760px;
+            margin: 0 auto 22px;
+            padding: 16px 18px;
+            color: #e2e8f0;
+            background: linear-gradient(145deg, rgba(30, 41, 59, 0.72), rgba(15, 23, 42, 0.58));
+            border: 1px solid rgba(255, 255, 255, 0.11);
+            border-radius: 20px;
+            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(22px) saturate(130%);
+            -webkit-backdrop-filter: blur(22px) saturate(130%);
+        }
+
+        .source-deleted-warning::before {
+            content: "";
+            position: absolute;
+            z-index: -1;
+            inset: 0;
+            pointer-events: none;
+            background: radial-gradient(circle at 7% 0%, rgba(251, 191, 36, 0.1), transparent 42%);
+        }
+
+        .source-deleted-warning__icon {
+            display: grid;
+            place-items: center;
+            flex: 0 0 34px;
+            width: 34px;
+            height: 34px;
+            color: #fcd34d;
+            background: rgba(251, 191, 36, 0.1);
+            border: 1px solid rgba(251, 191, 36, 0.18);
+            border-radius: 12px;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+        }
+
+        .source-deleted-warning__title {
+            display: block;
+            margin: 1px 0 2px;
+            color: #f8fafc;
+            font-size: 13px;
+            font-weight: 800;
+            letter-spacing: 0.03em;
+            text-transform: uppercase;
+        }
+
+        .source-deleted-warning__message {
+            display: block;
+            color: #cbd5e1;
+            font-size: 13px;
+            line-height: 1.55;
+        }
+
+        .theme-glass-light .source-deleted-warning {
+            color: #334155;
+            background: linear-gradient(145deg, rgba(255, 255, 255, 0.82), rgba(248, 250, 252, 0.62));
+            border-color: rgba(148, 163, 184, 0.2);
+            box-shadow: 0 18px 46px rgba(51, 65, 85, 0.09), inset 0 1px 0 rgba(255, 255, 255, 0.96);
+            backdrop-filter: blur(24px) saturate(125%);
+            -webkit-backdrop-filter: blur(24px) saturate(125%);
+        }
+
+        .theme-glass-light .source-deleted-warning::before {
+            background:
+                radial-gradient(circle at 5% -12%, rgba(203, 213, 225, 0.34), transparent 45%),
+                radial-gradient(circle at 100% 120%, rgba(253, 230, 138, 0.16), transparent 38%);
+        }
+
+        .theme-glass-light .source-deleted-warning__icon {
+            color: #64748b;
+            background: rgba(241, 245, 249, 0.72);
+            border-color: rgba(148, 163, 184, 0.22);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.95);
+        }
+
+        .theme-glass-light .source-deleted-warning__title {
+            color: #334155;
+        }
+
+        .theme-glass-light .source-deleted-warning__message {
+            color: #64748b;
+        }
+
+        @media (max-width: 640px) {
+            .source-deleted-warning {
+                gap: 11px;
+                padding: 13px 14px;
+                border-radius: 16px;
+            }
+
+            .source-deleted-warning__icon {
+                flex-basis: 31px;
+                width: 31px;
+                height: 31px;
+                border-radius: 10px;
+            }
+        }
+

@@ -26,6 +26,48 @@ export default class Kenh14Source {
     async parseArticleHtmlContent(html, url, result, utils) {
         let detailContent = utils.extractBalancedElementByClass(html, 'detail-content');
         if (!detailContent) return false;
+
+        const removeBalanced = (htmlStr, className) => {
+            const regex = new RegExp(`<div\\b[^>]*class=["'][^"']*${className}[^"']*["'][^>]*>`, 'i');
+            let match;
+            let attempts = 0;
+            while ((match = regex.exec(htmlStr)) !== null && attempts++ < 20) {
+                const startIndex = match.index;
+                let count = 1;
+                let i = startIndex + match[0].length;
+                while (count > 0 && i < htmlStr.length) {
+                    const nextDivOpen = htmlStr.toLowerCase().indexOf('<div', i);
+                    const nextDivClose = htmlStr.toLowerCase().indexOf('</div', i);
+                    if (nextDivClose === -1) break;
+                    
+                    if (nextDivOpen !== -1 && nextDivOpen < nextDivClose) {
+                        count++;
+                        i = nextDivOpen + 4;
+                    } else {
+                        count--;
+                        i = nextDivClose + 5;
+                    }
+                }
+                const closeTagEnd = htmlStr.indexOf('>', i);
+                const endIndex = closeTagEnd !== -1 ? closeTagEnd + 1 : i;
+                htmlStr = htmlStr.substring(0, startIndex) + htmlStr.substring(endIndex);
+            }
+            return htmlStr;
+        };
+
+        detailContent = removeBalanced(detailContent, 'link-source-detail');
+        detailContent = removeBalanced(detailContent, 'knc-rate-link');
+        detailContent = removeBalanced(detailContent, 'klw-new-tags');
+        detailContent = removeBalanced(detailContent, 'same-category-stream');
+        detailContent = removeBalanced(detailContent, 'tincungmucfocus');
+
+        // Kenh14 inserts a visible label for an in-article advertising slot.
+        // It is page chrome rather than editorial copy, so never render it in
+        // the reader. The surrounding article paragraphs must remain intact.
+        detailContent = detailContent.replace(
+            /<(p|div|span|section)\b[^>]*>\s*Quảng cáo\s*<\/\1>/giu,
+            ''
+        );
         
         const fetchOgImage = async (absUrl) => {
             if (!utils || !utils.fetchWithTimeout) return '';

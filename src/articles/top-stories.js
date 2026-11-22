@@ -1,0 +1,1165 @@
+import { prepareRankingCandidates } from '../smart/prefilter/publication.js';
+import { allowedDestinations } from './top-story-destinations.js';
+export { allowedDestinations } from './top-story-destinations.js';
+// Top Stories editorial state. Classic deliberately continues using story-ranking.js.
+import { detectRoundup, splitContainerMembers, attachRoundupCoverage } from './story-roundups.js';
+import { createHash } from 'node:crypto';
+import { storyMembers, storyText, storyRevision, publisherId } from './story-ranking.js';
+
+export const TOP_STORIES_DEFAULTS = {
+    weights: { impact: 3.6, relevance: 1.2, novelty: 1.2, confidence: 1, attention: .3, independentCorroboration: .7 },
+    freshnessHours: 48, topImpact: .55, topRelevance: .55, cutoffDeviation: .35, cutoffHysteresis: .15,
+    representativeImprovement: .3, materialSimilarity: .6, batchSize: 12, lookAheadBatches: 2,
+    substantialRankMove: 5, roundupMatchSimilarity: .65, roundupMinSharedTokens: 4, roundupMatchMargin: .1,
+
+    eventMergeHours: 36,
+    eventMergeTitleSimilarity: .58,
+    eventMergeMinSharedTokens: 5,
+
+    diversitySimilarity: .42,
+    diversityPenalty: .32,
+    diversityWindowHours: 48,
+    diversityLookback: 50
+};
+const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex').slice(0, 24);
+const textOf = a => storyText(`${a.title || ''} ${a.content || a.description || ''}`).toLowerCase();
+const tokens = text => new Set(text.match(/[\p{L}\p{N}]+/gu) || []);
+const overlap = (a, b) => { const x = tokens(a), y = tokens(b); return [...x].filter(t => y.has(t)).length / Math.max(1, Math.min(x.size, y.size)); };
+
+
+// TOP_STORIES_EVENT_RECONCILIATION_V1
+
+const canonicalDestination = value =>
+    String(value || '')
+        .replace(/_world$/, '_global')
+        .replace(/_foreign$/, '_global');
+
+
+const EVENT_STOPWORDS = new Set([
+    'the','a','an','and','or','of','to','in','on','at','for','from',
+    'with','as','by','after','before','over','into','about','amid',
+    'new','latest','says','say','said','report','reports','live',
+    'what','why','how','this','that','these','those',
+
+    'va','cua','cho','trong','tren','tai','voi','tu','den','sau',
+    'truoc','khi','theo','duoc','bi','co','la','mot','nhung','cac',
+    'nay','do','ve','se','dang','da','nhieu','moi',
+
+    'video','bao','news'
+]);
+
+
+const normalizeEventText = value =>
+    storyText(value || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/\p{M}+/gu, '')
+        .replace(/đ/g, 'd')
+        .replace(/\basian games\b/g, 'asiad')
+        .replace(/\bhuy chuong dong\b/g, 'hcd')
+        .replace(/\bhuy chuong vang\b/g, 'hcv')
+        .replace(/\bhuy chuong bac\b/g, 'hcb')
+        .replace(/\bparliamentary elections?\b/g, 'parliament election')
+        .replace(/\belections\b/g, 'election')
+        .replace(/\bwins\b/g, 'win')
+        .replace(/\bwon\b/g, 'win')
+        .replace(/\bshuts? down\b/g, 'shutdown');
+
+
+const eventTitleTokens = value =>
+    new Set(
+        (
+            normalizeEventText(value)
+                .match(/[a-z0-9]+/g) ||
+            []
+        )
+            .filter(
+                token =>
+                    !EVENT_STOPWORDS.has(token) &&
+                    (
+                        token.length >= 3 ||
+                        /\d/.test(token)
+                    )
+            )
+    );
+
+
+const eventTokenStats = (
+    left,
+    right
+) => {
+    const a =
+        eventTitleTokens(left);
+
+    const b =
+        eventTitleTokens(right);
+
+    if (
+        !a.size ||
+        !b.size
+    ) {
+        return {
+            shared: 0,
+            similarity: 0
+        };
+    }
+
+    const shared =
+        [...a]
+            .filter(
+                token => b.has(token)
+            )
+            .length;
+
+    return {
+        shared,
+        similarity:
+            shared /
+            Math.max(
+                1,
+                Math.min(
+                    a.size,
+                    b.size
+                )
+            )
+    };
+};
+
+
+const groupMembersForEventCheck = group =>
+    (
+        Array.isArray(group?.members) &&
+        group.members.length
+            ? group.members
+            : storyMembers(group)
+    ).slice(0, 4);
+
+
+const groupTerms = group => {
+    const terms =
+        new Set();
+
+    for (
+        const article of
+        groupMembersForEventCheck(group)
+    ) {
+        for (
+            const token of
+            eventTitleTokens(
+                article?.title
+            )
+        ) {
+            terms.add(token);
+        }
+    }
+
+    return terms;
+};
+
+
+const groupDestinations = (
+    group,
+    sources
+) =>
+    new Set(
+        groupMembersForEventCheck(group)
+            .flatMap(
+                article =>
+                    allowedDestinations(
+                        article,
+                        sources
+                    )
+            )
+            .map(
+                canonicalDestination
+            )
+            .filter(Boolean)
+    );
+
+
+const latestGroupStamp = group =>
+    Math.max(
+        0,
+        ...groupMembersForEventCheck(group)
+            .map(stamp)
+            .filter(Boolean)
+    );
+
+
+function likelySameTopStoryEvent(
+    left,
+    right,
+    sources,
+    settings
+) {
+    if (
+        left?.roundup ||
+        right?.roundup
+    ) {
+        return false;
+    }
+
+    const leftFeeds =
+        groupDestinations(
+            left,
+            sources
+        );
+
+    const rightFeeds =
+        groupDestinations(
+            right,
+            sources
+        );
+
+    if (
+        !leftFeeds.size ||
+        !rightFeeds.size ||
+        ![...leftFeeds]
+            .some(
+                feed =>
+                    rightFeeds.has(feed)
+            )
+    ) {
+        return false;
+    }
+
+    const leftTime =
+        latestGroupStamp(left);
+
+    const rightTime =
+        latestGroupStamp(right);
+
+    if (
+        !leftTime ||
+        !rightTime ||
+        Math.abs(
+            leftTime -
+            rightTime
+        ) >
+            settings.eventMergeHours *
+            3600000
+    ) {
+        return false;
+    }
+
+    let bestShared = 0;
+    let bestSimilarity = 0;
+
+    for (
+        const a of
+        groupMembersForEventCheck(left)
+    ) {
+        for (
+            const b of
+            groupMembersForEventCheck(right)
+        ) {
+            const stats =
+                eventTokenStats(
+                    a?.title,
+                    b?.title
+                );
+
+            if (
+                stats.similarity >
+                    bestSimilarity ||
+                (
+                    stats.similarity ===
+                        bestSimilarity &&
+                    stats.shared >
+                        bestShared
+                )
+            ) {
+                bestSimilarity = stats.similarity;
+
+                bestShared = stats.shared;
+            }
+        }
+    }
+
+    return (
+        (
+            bestShared >=
+                settings
+                    .eventMergeMinSharedTokens &&
+            bestSimilarity >=
+                settings
+                    .eventMergeTitleSimilarity
+        ) ||
+        (
+            bestShared >=
+                settings
+                    .eventMergeMinSharedTokens +
+                2 &&
+            bestSimilarity >=
+                Math.max(
+                    .45,
+                    settings
+                        .eventMergeTitleSimilarity -
+                        .10
+                )
+        )
+    );
+}
+
+
+function reconcileNearDuplicateGroups(
+    groups,
+    sources,
+    settings
+) {
+    const result = [];
+
+    const index =
+        new Map();
+
+    const groupTermsCache =
+        [];
+
+    const addToIndex = (
+        indexNumber,
+        terms
+    ) => {
+        for (const term of terms) {
+            if (!index.has(term)) {
+                index.set(
+                    term,
+                    new Set()
+                );
+            }
+
+            if (
+                index.get(term).size <
+                250
+            ) {
+                index.get(term)
+                    .add(indexNumber);
+            }
+        }
+    };
+
+    for (const group of groups) {
+        const terms =
+            groupTerms(group);
+
+        const candidates =
+            new Map();
+
+        for (const term of terms) {
+            for (
+                const id of
+                index.get(term) ||
+                []
+            ) {
+                candidates.set(
+                    id,
+                    (
+                        candidates.get(id) ||
+                        0
+                    ) + 1
+                );
+            }
+        }
+
+        const possible =
+            [...candidates.entries()]
+                .filter(
+                    ([, shared]) =>
+                        shared >= 3
+                )
+                .sort(
+                    (a, b) =>
+                        b[1] - a[1]
+                )
+                .slice(0, 16);
+
+        let match = -1;
+
+        for (
+            const [candidateId] of
+            possible
+        ) {
+            if (
+                likelySameTopStoryEvent(
+                    result[candidateId],
+                    group,
+                    sources,
+                    settings
+                )
+            ) {
+                match = candidateId;
+
+                break;
+            }
+        }
+
+        if (match < 0) {
+            const id =
+                result.length;
+
+            result.push(group);
+
+            groupTermsCache.push(
+                new Set(terms)
+            );
+
+            addToIndex(
+                id,
+                terms
+            );
+
+            continue;
+        }
+
+        const target =
+            result[match];
+
+        target.members.push(
+            ...group.members
+        );
+
+        target.clusterReason =
+            'Top Stories conservative same-event reconciliation';
+
+        const existing =
+            groupTermsCache[match];
+
+        const added =
+            new Set();
+
+        for (const term of terms) {
+            if (!existing.has(term)) {
+                existing.add(term);
+                added.add(term);
+            }
+        }
+
+        addToIndex(
+            match,
+            added
+        );
+    }
+
+    return result;
+}
+
+
+// ------------------------------------------------------------
+// Topic diversity / saturation
+// ------------------------------------------------------------
+
+const topStoryTopicSimilarity = (
+    left,
+    right
+) => {
+    const leftStory =
+        left?.broaderStory?.id;
+
+    const rightStory =
+        right?.broaderStory?.id;
+
+    if (
+        leftStory &&
+        leftStory === rightStory
+    ) {
+        return 1;
+    }
+
+    const stats =
+        eventTokenStats(
+            left?.title,
+            right?.title
+        );
+
+    if (
+        stats.shared < 3
+    ) {
+        return 0;
+    }
+
+    return stats.similarity;
+};
+
+
+function applyTopStoryDiversity(
+    results,
+    settings
+) {
+    const feeds =
+        new Map();
+
+    for (const item of results) {
+        const feed =
+            canonicalDestination(
+                item?.topStory?.feed
+            );
+
+        if (!feed) continue;
+
+        if (!feeds.has(feed)) {
+            feeds.set(
+                feed,
+                []
+            );
+        }
+
+        feeds.get(feed)
+            .push(item);
+    }
+
+    const finalOrder =
+        new Map();
+
+    for (
+        const [feed, items] of
+        feeds
+    ) {
+        const previous =
+            [];
+
+        for (const item of items) {
+            const baseScore =
+                Number(
+                    item?.ranking?.score
+                ) || 0;
+
+            let repeated = 0;
+            let strongest = 0;
+
+            const itemTime =
+                stamp(item);
+
+            for (const prior of previous) {
+                const sameBroader =
+                    item?.broaderStory?.id &&
+                    item.broaderStory.id ===
+                        prior?.broaderStory?.id;
+
+                const priorTime =
+                    stamp(prior);
+
+                if (
+                    !sameBroader &&
+                    (
+                        !itemTime ||
+                        !priorTime ||
+                        Math.abs(
+                            itemTime -
+                            priorTime
+                        ) >
+                            settings
+                                .diversityWindowHours *
+                            3600000
+                    )
+                ) {
+                    continue;
+                }
+
+                const similarity =
+                    topStoryTopicSimilarity(
+                        item,
+                        prior
+                    );
+
+                strongest = Math.max(
+                        strongest,
+                        similarity
+                    );
+
+                if (
+                    similarity >=
+                    settings
+                        .diversitySimilarity
+                ) {
+                    repeated++;
+                }
+            }
+
+            repeated = Math.min(
+                    repeated,
+                    3
+                );
+
+            const factor =
+                repeated
+                    ? Math.pow(
+                        Math.max(
+                            .05,
+                            1 -
+                                settings
+                                    .diversityPenalty
+                        ),
+                        repeated
+                    )
+                    : 1;
+
+            const score =
+                baseScore *
+                factor;
+
+            const ranking = {
+                ...item.ranking,
+                baseScore,
+                score,
+                diversity: {
+                    repeated,
+                    strongestSimilarity:
+                        strongest,
+                    factor
+                }
+            };
+
+            item.ranking =
+                ranking;
+
+            item.hotness =
+                score;
+
+            item.topStory = {
+                ...item.topStory,
+                feed:
+                    canonicalDestination(
+                        item.topStory.feed
+                    ),
+                ranking
+            };
+
+            previous.push(item);
+
+            if (
+                previous.length >
+                settings
+                    .diversityLookback
+            ) {
+                previous.shift();
+            }
+        }
+
+        items.sort(
+            (a, b) =>
+                (
+                    b.ranking?.score ||
+                    0
+                ) -
+                (
+                    a.ranking?.score ||
+                    0
+                ) ||
+                String(
+                    a.clusterId
+                ).localeCompare(
+                    String(
+                        b.clusterId
+                    )
+                )
+        );
+
+        items.forEach(
+            (item, index) =>
+                finalOrder.set(
+                    item.clusterId,
+                    index
+                )
+        );
+    }
+
+    results.sort(
+        (a, b) => {
+            const feedA =
+                canonicalDestination(
+                    a?.topStory?.feed
+                );
+
+            const feedB =
+                canonicalDestination(
+                    b?.topStory?.feed
+                );
+
+            return (
+                feedA.localeCompare(
+                    feedB
+                ) ||
+                (
+                    finalOrder.get(
+                        a.clusterId
+                    ) -
+                    finalOrder.get(
+                        b.clusterId
+                    )
+                )
+            );
+        }
+    );
+}
+
+
+const canonicalizeTopCardArticle =
+    article => {
+        if (!article) {
+            return article;
+        }
+
+        const smartCategory =
+            canonicalDestination(
+                article.smartCategory
+            );
+
+        const feedCategory =
+            canonicalDestination(
+                article.feedCategory
+            );
+
+        return {
+            ...article,
+            ...(smartCategory
+                ? { smartCategory }
+                : {}),
+            ...(feedCategory
+                ? { feedCategory }
+                : {})
+        };
+    };
+
+const stamp = a => a.publicationTimeReliable === false ? 0 : Date.parse(a.pubDate) || 0;
+const iso = time => new Date(time || 0).toISOString();
+const vi = /[ăâđêôơưạảấầẩẫậắằẳẵặẹẻẽếềểễệỉịọỏốồổỗộớờởỡợụủứừửữựỳỵỷỹ]/iu;
+export const articleLanguage = a => /^(vi|en)/i.exec(a.language || a.lang || '')?.[1].toLowerCase() || (vi.test(storyText(a.title + ' ' + (a.content || ''))) ? 'vi' : 'en');
+// Editorial scope is independent of publisher membership and writing language.
+export function feedRelevance(article, feed) {
+    const editorial =
+        article?.editorialAssessment;
+
+    if (!editorial) return 0;
+
+    const destination =
+        canonicalDestination(
+            editorial.destination
+        );
+
+    if (
+        editorial.exclude === true ||
+        destination === 'none' ||
+        destination !==
+            canonicalDestination(feed)
+    ) {
+        return 0;
+    }
+
+    const relevance =
+        Number(
+            editorial.relevance
+        );
+
+    return Number.isFinite(relevance)
+        ? Math.max(
+            0,
+            Math.min(
+                1,
+                relevance
+            )
+        )
+        : 0;
+}
+const evidenceIdentity = value => {
+    const identity = String(typeof value === 'object' ? value?.name || value?.url || '' : value || '').toLowerCase();
+    if (/\breuters\b/.test(identity)) return 'reuters';
+    if (/\b(associated press|apnews|ap)\b/.test(identity)) return 'associated press';
+    if (/\bafp\b/.test(identity)) return 'afp';
+    return identity;
+};
+export function evidencePaths(members) {
+    const paths = new Map();
+    const derived = [];
+    const fingerprints = new Map();
+    for (const article of [...members].sort((a,b) => stamp(a)-stamp(b))) {
+        const text = textOf(article);
+        const opinion = article.opinion || /\b(opinion|editorial|commentary)\b|góc nhìn/u.test(storyText(article.title).toLowerCase());
+        const dependency = article.syndicatedFrom || article.wireSource || article.originalSource || (/(?:according to|reported by|via|source:|copyright|theo|nguồn:)\s+(reuters|associated press|afp)\b/i.exec(text)?.[1] || /\((reuters|ap|afp)\)/i.exec(text)?.[1]);
+        const fingerprint = storyText(article.title).toLowerCase();
+        const copyOf = fingerprints.get(fingerprint);
+        const path = evidenceIdentity(dependency || copyOf || publisherId(article));
+        if (!fingerprints.has(fingerprint)) fingerprints.set(fingerprint, path);
+        if (opinion || dependency || copyOf) derived.push({ link: article.link, dependency: path, reason: opinion ? 'opinion is not factual confirmation' : dependency ? 'attributed reporting' : 'matching headline' });
+        if (!opinion) {
+            if (!paths.has(path)) paths.set(path, []);
+            paths.get(path).push(article.link);
+        }
+    }
+    return { independentSources: paths.size, paths: [...paths].map(([identity, links]) => ({ identity, links })), derived };
+}
+const representativeQuality = a => (Number(a.sourceWeight) || 1) + (a.isPrimarySource || a.originalReporting || a.directEvidence ? .6 : 0)
+    - (a.syndicatedFrom || a.wireSource ? .5 : 0) - (/\b(opinion|rumor|rumour)\b/i.test(a.title) ? .4 : 0);
+function signalsFor(members, evidence, prior, materialChanged, isRoundup = false) {
+    if (isRoundup) {
+        return {
+            impact: 0,
+            relevance: 0,
+            novelty: 0,
+            confidence: 0,
+            attention: 0,
+            independentCorroboration: 0,
+            uncertain: false,
+            conflict: false
+        };
+    }
+
+    const editorial =
+        members
+            .map(
+                article =>
+                    article?.editorialAssessment
+            )
+            .find(Boolean);
+
+    const clamp =
+        value =>
+            Math.max(
+                0,
+                Math.min(
+                    1,
+                    Number(value) || 0
+                )
+            );
+
+    const sourceConfidence =
+        Math.max(
+            .15,
+            Math.min(
+                1,
+                Math.max(
+                    ...members.map(
+                        article =>
+                            Number(
+                                article.sourceWeight
+                            ) || 1
+                    )
+                ) / 1.5
+            )
+        );
+
+    const semanticConfidence =
+        editorial
+            ? clamp(
+                editorial.confidence
+            )
+            : 0;
+
+    return {
+        impact:
+            editorial
+                ? clamp(
+                    editorial.impact
+                )
+                : 0,
+
+        relevance:
+            editorial
+                ? clamp(
+                    editorial.relevance
+                )
+                : 0,
+
+        novelty:
+            editorial
+                ? clamp(
+                    editorial.novelty
+                )
+                : 0,
+
+        // Source evidence remains the primary confidence signal.
+        confidence:
+            editorial
+                ? clamp(
+                    sourceConfidence * .7 +
+                    semanticConfidence * .3
+                )
+                : sourceConfidence,
+
+        attention:
+            Math.min(
+                1,
+                Math.log1p(
+                    new Set(
+                        members.map(
+                            publisherId
+                        )
+                    ).size
+                ) /
+                Math.log(32)
+            ),
+
+        independentCorroboration:
+            1 -
+            1 /
+            Math.max(
+                1,
+                evidence.independentSources
+            ),
+
+        uncertain: false,
+        conflict: false
+    };
+}
+export function createTopStoriesIndex({ db, config = {} } = {}) {
+    const configured = process.env.TOP_STORIES_CONFIG ? JSON.parse(process.env.TOP_STORIES_CONFIG) : {};
+    config = { ...configured, ...config, weights: { ...configured.weights, ...config.weights } };
+    for (const [key, value] of Object.entries(config)) {
+        if (key === 'weights') {
+            for (const [signal, weight] of Object.entries(value)) if (!(signal in TOP_STORIES_DEFAULTS.weights) || !Number.isFinite(weight) || weight < 0) throw new Error('Invalid Top Stories ranking weight');
+        } else if (!(key in TOP_STORIES_DEFAULTS) || !Number.isFinite(value) || value < 0) throw new Error('Invalid Top Stories configuration');
+    }
+
+    for (const key of ['freshnessHours', 'batchSize']) if (config[key] !== undefined && config[key] <= 0) throw new Error('Top Stories window and batch size must be positive');
+    const settings = { ...TOP_STORIES_DEFAULTS, ...config, weights: { ...TOP_STORIES_DEFAULTS.weights, ...config.weights } };
+    if (!Object.values(settings.weights).some(weight => weight > 0)) throw new Error('At least one Top Stories ranking weight must be positive');
+    let states;
+    let loading;
+    let persistence = Promise.resolve();
+    const cutoffs = new Map();
+    return {
+        settings,
+        async rank(clusters, sources = [], now = Date.now(), timings = {}) {
+            clusters = await prepareRankingCandidates(db, clusters, sources);
+            let phaseAt=performance.now();
+            const mark=name=>{const t=performance.now();timings[name]=(timings[name]||0)+t-phaseAt;phaseAt=t;};
+            states ||= await (loading ||= db.get('topStoriesState', { type: 'json' }).then(value => value || {}));
+            mark("rank-state-read");
+            const previousByLink = new Map();
+            for (const state of Object.values(states)) for (const link of state.links) {
+                if (!previousByLink.has(link)) previousByLink.set(link, []);
+                previousByLink.get(link).push(state);
+            }
+            const results = [], active = new Set();
+            let dirty = false;
+            // Upstream clustering supplies event matches; overlapping links or exact
+            // headlines reconcile cross-feed copies without broad topic merging.
+            const containers = new Map();
+            const classified = new Map();
+            const classify = article => {
+                if (!classified.has(article.link)) classified.set(article.link, detectRoundup(article));
+                return classified.get(article.link);
+            };
+            const eventClusters = [];
+            for (const cluster of clusters) {
+                const members = storyMembers(cluster);
+                const regular = members.filter(article => {
+                    const roundup = classify(article);
+                    if (!roundup.isRoundup) return true;
+                    containers.set(article.link, { ...article, relatedArticles:[], roundup });
+                    return false;
+                });
+                if (!regular.length) continue;
+                const partitions = regular.length === members.length ? [regular] : splitContainerMembers(regular, settings);
+                for (const partition of partitions) eventClusters.push({ ...cluster, ...partition[0], relatedArticles:partition.slice(1), roundup:undefined });
+            }
+            const groups = [];
+            const byKey = new Map();
+            for (const cluster of [...eventClusters, ...containers.values()]) {
+                const members = storyMembers(cluster);
+                const keys = cluster.roundup ? [`container:${cluster.link}`] : members.flatMap(a => [a.link, `${articleLanguage(a)}:${storyText(a.title).toLowerCase()}`]);
+                const matches = [...new Set(keys.map(k => byKey.get(k)).filter(Boolean))];
+                const group = matches[0] || { ...cluster, members: [] };
+                if (!matches.length) groups.push(group);
+                for (const other of matches.slice(1)) {
+                    group.members.push(...other.members);
+                    groups.splice(groups.indexOf(other), 1);
+                    for (const [key, value] of byKey) if (value === other) byKey.set(key, group);
+                }
+                group.members.push(...members);
+                for (const key of keys) byKey.set(key, group);
+            }
+            const reconciledGroups =
+                reconcileNearDuplicateGroups(
+                    groups,
+                    sources,
+                    settings
+                );
+
+            mark("cluster-reconciliation");
+
+            for (const cluster of reconciledGroups) {
+                phaseAt=performance.now();
+                const all = [...new Map([...cluster.members].reverse().map(a => [a.link, a])).values()];
+                const eligible = all.map(a => ({ article: a, feeds: allowedDestinations(a, sources) })).filter(a => a.feeds.length);
+                if (!eligible.length) continue;
+                const candidates = [...new Set(eligible.flatMap(a => a.feeds))];
+                const relevanceFor = feed => Math.min(...eligible.filter(a => a.feeds.includes(feed)).map(a => feedRelevance(a.article, feed)));
+                const home = [...candidates].sort((a,b) => relevanceFor(b)-relevanceFor(a))[0];
+                const relevance = relevanceFor(home);
+                const members = eligible.filter(a => a.feeds.includes(home)).map(a => a.article);
+                mark("relevance-computation");
+                const overlaps = [...new Set(all.flatMap(a => previousByLink.get(a.link) || []))];
+                const inherited = overlaps.find(s => !active.has(s.id));
+                const memberLinks = members.map(a => a.link).sort();
+                let id = inherited?.id || (cluster.clusterId && !active.has(cluster.clusterId) ? cluster.clusterId : digest(memberLinks));
+                // A split's content-derived ID can already belong to its sibling
+                // through inherited state. Every output needs a distinct identity
+                // before indexing state, or the entire publication is invalid.
+                for (let collision = 1; active.has(id); collision++) {
+                    id = digest([memberLinks, home, collision]);
+                }
+                active.add(id);
+                const prior = states[id];
+                const isRoundup = Boolean(cluster.roundup?.isRoundup);
+                const broaderStoryEvents = Array.isArray(cluster.broaderStory?.events) ? cluster.broaderStory.events : [];
+                const broaderStorySignature = broaderStoryEvents.length > 1
+                    ? digest(broaderStoryEvents.map(event => [event.clusterId,event.title,event.date]))
+                    : '';
+                const relationScopeChanged = Boolean(prior && String(prior.broaderStorySignature || '') !== broaderStorySignature);
+                const scopeChanged = Boolean(prior && ((prior.roundupPolicyVersion !== 1 && prior.links.some(link => containers.has(link))) || (!isRoundup && prior.links.some(link => containers.has(link))) || (prior.isRoundup !== undefined && prior.isRoundup !== isRoundup)));
+                const revision = storyRevision({ ...members[0], relatedArticles: members.slice(1) });
+                const editorialRevision = digest(
+                    members
+                        .map(
+                            article =>
+                                article?.editorialAssessment?.revision ||
+                                'unassessed'
+                        )
+                        .sort()
+                );
+                let state = prior;
+                if (!prior || prior.relevancePolicyVersion !== 4 || prior.evidence_version !== revision || prior.editorial_revision !== editorialRevision || prior.feed !== home || scopeChanged || relationScopeChanged) {
+                    dirty = true;
+                    const evidence = isRoundup ? { independentSources:0, paths:[], derived:members.map(a=>({link:a.link,reason:'Multi-event container, not independent event evidence'})) } : evidencePaths(members);
+                    const ordered = [...members].sort((a,b) => representativeQuality(b)-representativeQuality(a) || stamp(a)-stamp(b));
+                    const oldRepresentative = ordered.find(a => a.link === prior?.representative);
+                    let representative = oldRepresentative && representativeQuality(ordered[0])-representativeQuality(oldRepresentative) < settings.representativeImprovement ? oldRepresentative : ordered[0];
+                    const correction = members.find(a => /\b(correction|corrected|retracts?)\b|đính chính/iu.test(textOf(a)) && (!prior?.links.includes(a.link) || prior.contents?.[a.link] !== digest(textOf(a))));
+                    // Conservative material detection: repeats/independent confirmations
+                    // do not change the event clock. Explicit corrections do.
+                    const changed = prior && members.filter(a => (!prior.links.includes(a.link) || prior.contents?.[a.link] !== digest(textOf(a))) && !evidence.derived.some(d => d.link === a.link)
+                        && Math.max(...(prior.materialTexts || []).map(t => overlap(t, textOf(a))), 0) < settings.materialSimilarity);
+                    const materialChanged = !prior || scopeChanged || Boolean(correction) || Boolean(changed?.length) || Boolean(prior && members.some(a => { const claims = textOf(a).match(/\d+\s+(?:suspected cases|cases|patients|deaths|dead|killed|injured|ca|bệnh nhân)/gu) || []; return claims.some(claim => !(prior.materialTexts || []).some(text => text.includes(claim))); }));
+                    const updates = correction ? [correction] : changed?.length ? changed : [members.reduce((a,b) => stamp(a)<stamp(b) ? a : b)];
+                    if (correction) representative = correction;
+                    else if (changed?.length && stamp(updates[0]) > stamp(representative) && representativeQuality(updates[0]) >= representativeQuality(representative) - settings.representativeImprovement) representative = updates[0];
+                    const latestMaterial = materialChanged ? Math.max(...updates.map(stamp)) : prior.latest_material_update;
+                    const signals = signalsFor(members, evidence, prior, materialChanged, isRoundup);
+                    signals.relevance = isRoundup ? 0 : relevance;
+                    const numericalClaims = new Map();
+                    for (const article of (isRoundup ? [] : members)) for (const match of textOf(article).matchAll(/(\d+)\s+(suspected cases|cases|patients|deaths|dead|killed|injured|casualties|ca nghi ngờ|ca nghi|ca|bệnh nhân|người chết|người thiệt mạng|người nghi)/gu)) {
+                        const claim = /deaths|dead|killed|người chết|người thiệt mạng/.test(match[2]) ? 'death toll' : /cases|patients|ca|bệnh nhân|người nghi/.test(match[2]) ? 'reported affected people' : match[2];
+                        if (!numericalClaims.has(claim)) numericalClaims.set(claim, []);
+                        numericalClaims.get(claim).push({value:match[1],link:article.link,date:article.pubDate,text:storyText(article.title)});
+                    }
+                    const numericalConflicts = [...numericalClaims].filter(([,claims])=>new Set(claims.map(c=>c.value)).size>1).map(([claim,claims])=>({claim,claims,reason:'Different reported figures; unresolved or revised'}));
+                    if (numericalConflicts.length) { signals.confidence = Math.max(.15,signals.confidence-.2); signals.conflict=true; }
+
+                    const materialVersion = (prior?.material_version || 0) + (materialChanged ? 1 : 0);
+                    const timeline = isRoundup ? [] : [...(prior?.timeline || [])]
+                        .filter(event => !event.broaderStory)
+                        .filter(event => !scopeChanged || (!detectRoundup({title:event.text}).isRoundup && event.sources?.some(source => members.some(a=>a.link===source.link))));
+                    if (!materialChanged && timeline.length) timeline[timeline.length - 1] = { ...timeline.at(-1), sources:[...new Map([...timeline.at(-1).sources, ...members.map(a => ({link:a.link,name:a.feedTitle}))].map(a=>[a.link,a])).values()] };
+                    if (materialChanged && !isRoundup) timeline.push({ id: digest([id, materialVersion]), date: iso(latestMaterial), text: storyText(updates[0].title), correction: Boolean(correction), sources: updates.map(a => ({ link:a.link, name:a.feedTitle })) });
+                    if (!isRoundup && broaderStoryEvents.length > 1) {
+                        for (const event of broaderStoryEvents) {
+                            if (event.clusterId === cluster.clusterId || !event.title || !Date.parse(event.date)) continue;
+                            timeline.push({
+                                id: `broader:${cluster.broaderStory.id}:${event.clusterId}`,
+                                date: iso(Date.parse(event.date)),
+                                text: storyText(event.title),
+                                correction: false,
+                                broaderStory: true,
+                                broaderStoryId: cluster.broaderStory.id,
+                                sourceClusterId: event.clusterId,
+                                sources: Array.isArray(event.sources) ? event.sources : []
+                            });
+                        }
+                        timeline.sort((left,right) => Date.parse(left.date)-Date.parse(right.date) || String(left.id).localeCompare(String(right.id)));
+                    }
+                    state = { id, feed:home, relevancePolicyVersion:4, editorial_revision:editorialRevision, isRoundup, roundup:cluster.roundup || null, roundupPolicyVersion:1, broaderStorySignature, briefing_scope_version:(prior?.briefing_scope_version || 1) + ((scopeChanged || relationScopeChanged) ? 1 : 0), evidence_version:revision, material_version:materialVersion, links:all.map(a=>a.link),
+                        contents: Object.fromEntries(members.map(a => [a.link, digest(textOf(a))])),
+                        materialTexts: materialChanged ? updates.map(textOf) : prior.materialTexts,
+                        representative:representative.link, representativeReason: oldRepresentative?.link === representative.link ? 'Retained: no materially stronger representative' : 'Source authority, direct reporting and original headline',
+                        first_seen: prior?.first_seen || now, latest_article:Math.max(...members.map(stamp)), latest_evidence:now,
+                        latest_material_update:latestMaterial, evidence, ranking:{ signals }, timeline,
+                        conflicts: [...numericalConflicts, ...members.filter(a => /\b(disputed|conflicting|preliminary|corrected)\b|đính chính|mâu thuẫn/iu.test(textOf(a))).map(a=>({link:a.link, text:storyText(a.title)}))],
+                        history:[...(prior?.history || []), ...(scopeChanged ? [{type:'roundup-detached',at:now,previousLinks:prior.links}] : []), ...(relationScopeChanged ? [{type:'broader-story-updated',at:now,broaderStoryId:cluster.broaderStory?.id || null}] : []), ...(overlaps.length > 1 ? [{type:'merge', ids:overlaps.map(s=>s.id), at:now}] : []), ...(inherited ? [] : overlaps.length ? [{type:'split', ids:overlaps.map(s=>s.id), at:now}] : [])],
+                        rankHistory:prior?.rankHistory || [], clusterReason:cluster.verification || cluster.clusterReason || 'Upstream event cluster / exact headline or shared article' };
+                    states[id] = state;
+                }
+                const s = state.ranking.signals;
+                const total = Object.values(settings.weights).reduce((a,b)=>a+b,0);
+                const raw = Object.entries(settings.weights).reduce((sum,[key,weight])=>sum+weight*s[key],0)/total;
+                const freshness = Math.exp(-Math.max(0,now-state.latest_material_update)/3600000/settings.freshnessHours);
+                const semanticRelevance = Math.max(0, Math.min(1, Number(s.relevance) || 0));
+                const score = raw * semanticRelevance * (.45 + .55*freshness);
+                const representative = members.find(a=>a.link===state.representative) || members[0];
+                const coverage = [representative, ...members.filter(a=>a.link!==representative.link).sort((a,b)=>Number(state.evidence.derived.some(d=>d.link===a.link))-Number(state.evidence.derived.some(d=>d.link===b.link)) || representativeQuality(b)-representativeQuality(a))];
+                const publishedCoverage =
+                    coverage.map(
+                        canonicalizeTopCardArticle
+                    );
+
+                const publishedRepresentative =
+                    publishedCoverage[0];
+
+                results.push({ ...cluster, ...publishedRepresentative, members:undefined, clusterId:id, isCluster:true,
+                    relatedArticles:publishedCoverage.slice(1), clusterCount:members.length, sourceCount:new Set(members.map(publisherId)).size,
+                    topStory:{...state, ranking:{score, signals:s}, briefing_version:null},
+                    imageCandidates:[...new Set(publishedCoverage.map(a=>a.image).filter(Boolean))], ranking:{score, signals:s}, hotness:score });
+                mark("signal-computation");
+            }
+            mark("signal-computation");
+            attachRoundupCoverage(
+                results,
+                [...containers.values()],
+                article =>
+                    allowedDestinations(
+                        article,
+                        sources
+                    ),
+                settings
+            );
+
+            results.sort(
+                (a, b) =>
+                    b.ranking.score -
+                        a.ranking.score ||
+                    a.clusterId.localeCompare(
+                        b.clusterId
+                    )
+            );
+
+            applyTopStoryDiversity(
+                results,
+                settings
+            );
+
+            mark("sorting-ranking");
+            for (const feed of new Set(results.map(a=>a.topStory.feed))) {
+                const items=results.filter(a=>a.topStory.feed===feed);
+                const scores=items.map(a=>a.ranking.score), mean=scores.reduce((a,b)=>a+b,0)/scores.length;
+                const deviation=Math.sqrt(scores.reduce((sum,v)=>sum+(v-mean)**2,0)/scores.length);
+                const boundary=mean+deviation*settings.cutoffDeviation;
+                const old=cutoffs.get(feed) || new Set(Object.values(states).filter(s=>s.feed===feed && s.isTop).map(s=>s.id));
+                let count=0;
+                for (const item of items) {
+                    if (
+                        item.topStory.isRoundup ||
+                        item.ranking.signals.relevance < settings.topRelevance ||
+                        item.ranking.score < boundary - (
+                            old.has(item.clusterId)
+                                ? deviation * settings.cutoffHysteresis
+                                : 0
+                        )
+                    ) break;
+                    count++;
+                }
+                cutoffs.set(feed,new Set(items.slice(0,count).map(a=>a.clusterId)));
+                items.forEach((item,i)=> {
+                    const state=states[item.clusterId];
+                    if (state.rank && Math.abs(state.rank-i-1)>=settings.substantialRankMove) { state.rankHistory.push({from:state.rank,to:i+1,at:now}); state.rankHistory=state.rankHistory.slice(-20); dirty=true; }
+                    state.rank=i+1;
+                    if (state.isTop !== (i<count)) { state.cutoffHistory=[...(state.cutoffHistory || []),{at:now,isTop:i<count,boundary}].slice(-20); dirty=true; }
+                    state.isTop=i<count;
+                    Object.assign(item.topStory,{...state,ranking:item.topStory.ranking,rank:i+1,isTop:i<count,cutoff:{count,boundary,mean,deviation,reason:'Contiguous AI-semantic quality prefix relative to feed strength; no count quota'}});
+                });
+            }
+            mark("top-cutoff");
+            for (const id of Object.keys(states)) if (!active.has(id)) { delete states[id]; dirty=true; }
+            if (dirty) { const snapshot=JSON.stringify(states); persistence=persistence.catch(()=>{}).then(()=>db.put('topStoriesState',snapshot)); await persistence; }
+            mark("rank-persistence");
+            return results;
+        }
+    };
+}

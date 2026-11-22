@@ -1,0 +1,70 @@
+[
+  {
+    "theme": "classic",
+    "events": 2203,
+    "work": {
+      "Layout": {
+        "count": 1,
+        "durationMs": 2.369
+      },
+      "UpdateLayoutTree": {
+        "count": 1,
+        "durationMs": 11.758
+      },
+      "Paint": {
+        "count": 35,
+        "durationMs": 2.577
+      },
+      "Layerize": {
+        "count": 40,
+        "durationMs": 0.66
+      },
+      "MajorGC": {
+        "count": 0,
+        "durationMs": 0
+      },
+      "MinorGC": {
+        "count": 0,
+        "durationMs": 0
+      },
+      "LayoutShift": {
+        "count": 0,
+        "durationMs": 0
+      }
+    }
+  },
+  {
+    "theme": "glass-light",
+    "events": 2004,
+    "work": {
+      "Layout": {
+        "count": 1,
+        "durationMs": 57.8
+      },
+      "UpdateLayoutTree": {
+        "count": 10,
+        "durationMs": 15.024
+      },
+      "Paint": {
+        "count": 35,
+        "durationMs": 6.118
+      },
+      "Layerize": {
+        "count": 27,
+        "durationMs": 0.573
+      },
+      "MajorGC": {
+        "count": 0,
+        "durationMs": 0
+      },
+      "MinorGC": {
+        "count": 0,
+        "durationMs": 0
+      },
+      "LayoutShift": {
+        "count": 0,
+        "durationMs": 0
+      }
+    }
+  }
+]

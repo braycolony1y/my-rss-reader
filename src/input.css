@@ -62,3 +62,484 @@
     @apply text-[14px] md:text-[15px] space-y-3;
   }
 }
+.top-stories-heading { display:flex; align-items:center; justify-content:space-between; gap:1rem; margin:0 0 1rem; padding:0 .5rem; }
+.top-stories-heading h2 { font-size:1.25rem; font-weight:700; }
+.top-stories-kicker { color:#34d399; font-size:.7rem; text-transform:uppercase; letter-spacing:.12em; }
+.smart-view-toggle { display:flex; padding:3px; border:1px solid #ffffff1a; background:#0b101e; border-radius:999px; flex-shrink:0; }
+.smart-view-toggle button { border-radius:999px; padding:.45rem .7rem; color:#9ca3af; font-size:.75rem; font-weight:600; white-space:nowrap; }
+.smart-view-toggle button[aria-pressed="true"] { background:#10b981; color:#052e25; }
+.top-story-section { margin-top:1rem; font-size:.9rem; line-height:1.65; color:#d1d5db; overflow-wrap:anywhere; }
+.top-story-section:first-child { margin-top:0; }
+.top-story-section h4 { font-weight:700; color:#e5e7eb; font-size:.8rem; margin-bottom:.25rem; }
+.top-story-citations { display:flex; gap:.6rem; flex-wrap:wrap; margin-top:.3rem; }
+.top-story-citations a { color:#6ee7b7; font-size:.75rem; text-decoration:underline; text-underline-offset:3px; }
+.top-story-note { font-size:.75rem; color:#9ca3af; }
+.theme-glass-light .top-story-section { color:#374151; }
+.theme-glass-light .top-story-section h4 { color:#111827; }
+.theme-glass-light .top-story-citations a,.theme-glass-light .top-stories-kicker { color:#047857; }
+.theme-glass-light .top-story-note { color:#6b7280; }
+.theme-glass-light .smart-view-toggle { background:#ffffff80; border-color:#d1d5db; }
+.theme-glass-light .smart-view-toggle button { color:#4b5563; }
+.theme-glass-light .smart-view-toggle button[aria-pressed="true"] { color:#052e25; }
+@media(max-width:400px) { .top-stories-heading { gap:.5rem; } .smart-view-toggle button { padding:.4rem .55rem; font-size:.7rem; } .top-stories-kicker { font-size:.6rem; } }
+
+/* Let briefing headlines and publisher details remain readable on narrow screens. */
+.story-divider { color:#617783; text-transform:uppercase; letter-spacing:.15em; font-size:11px; padding-bottom:18px; }
+.story-tab-rail { display:flex; flex-wrap:nowrap; gap:8px; overflow-x:auto; max-width:100%; padding:4px 0 8px; scrollbar-width:thin; }
+.story-tab-rail button { flex-shrink:0; white-space:nowrap; border:1px solid #c9dedb; border-radius:999px; padding:7px 12px; color:#395f61; background:#ffffff91; font-size:12px; }
+.story-tab-rail button[aria-expanded="true"],.story-tab-rail button[aria-pressed="true"] { background:#d7eee5; border-color:#9cc9bb; color:#205748; }
+.story-tab-rail button:focus-visible { outline:2px solid #318776; outline-offset:2px; }
+.story-update-notice { border-radius:999px; background:#dceee6; color:#205748; font-size:13px; padding:8px 16px; margin-bottom:16px; }
+
+.story-publisher { flex:0 0 auto; max-width:280px; font-size:12px; color:#395f61; }
+.story-publisher summary { cursor:pointer; white-space:nowrap; border:1px solid #c9dedb; border-radius:999px; padding:7px 12px; background:#ffffff91; }
+.story-publisher a { white-space:normal; margin-top:5px; }
+
+/*
+ * Disable the old color-gradient pseudo overlay.
+ * The alpha mask above now performs the blending.
+ */
+
+/*
+ * Let text intentionally enter the transparent portion of the image.
+ * It stops before the photograph becomes fully opaque.
+ */
+
+/* Everything below the headline stays above the photograph. */
+
+/* Rank / More Stories labels must never fall behind the image. */
+
+
+/* -------------------------
+   Tablet
+   ------------------------- */
+
+
+/* -------------------------
+   Mobile
+   ------------------------- */
+
+
+/* Very narrow phones */
+
+/*
+ * Keep the photograph itself fully sharp.
+ * The visible fade is now handled by the overlay instead of relying
+ * only on mask-image, which was too subtle in Chrome.
+ */
+
+/*
+ * Stop text before the photograph becomes visually strong.
+ * It may enter only the very soft part of the fade.
+ */
+
+/*
+ * Briefing/facts/analysis remain on top of the image fade.
+ */
+
+
+/* ---------- tablet ---------- */
+
+
+/* ---------- mobile ---------- */
+
+
+/* ------------------------------------------------------------
+   CLASSIC
+
+   Preserve the existing Classic geometry.
+   Only replace its painted gradient with real alpha blending.
+   ------------------------------------------------------------ */
+
+
+/*
+ * The IMG itself must stay fully opaque.
+ * The parent controls transparency.
+ */
+
+
+/* ------------------------------------------------------------
+   HOVER
+
+   Do not swap or paint another image background on hover.
+   Keep the exact same alpha blend so no vertical seam appears
+   when entering/leaving hover.
+   ------------------------------------------------------------ */
+
+/*
+ * Keep the image completely untouched once it reaches the
+ * opaque portion of the mask.
+ */
+
+/* Reset every visual effect that may be inherited from older rules. */
+
+
+/* The real <img> must also be completely clean. */
+
+
+/* Absolutely no pseudo-element may wash the photograph out. */
+
+
+/* Hover must not alter the photograph. */
+
+
+/* Mobile: slightly wider blend strip, but most remains untouched. */
+
+/* Reset every visual effect that may be inherited from older rules. */
+
+
+/* The real <img> must also be completely clean. */
+
+
+/* Absolutely no pseudo-element may wash the photograph out. */
+
+
+/* Hover must not alter the photograph. */
+
+
+/* Mobile: slightly wider blend strip, but most remains untouched. */
+
+
+/* Keep the actual photograph untouched.
+   Only the container mask performs blending. */
+
+
+/* Mobile: slightly longer transition because text overlaps
+   proportionally more of the photograph. */
+
+
+/* Keep the actual photograph untouched.
+   Only the container mask performs blending. */
+
+
+/* Mobile: slightly longer transition because text overlaps
+   proportionally more of the photograph. */
+
+.story-divider-outside {
+    position: relative;
+    z-index: 4;
+
+    padding: 0 !important;
+    margin: 6px 0 14px 8px;
+
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1;
+
+    letter-spacing: .16em;
+    text-transform: uppercase;
+
+    color: #607a81;
+}
+
+@media (max-width: 640px) {
+    .story-divider-outside {
+        margin: 4px 0 11px 4px;
+        font-size: 10px;
+    }
+}
+
+/* ---------- Top-right Full Coverage publisher orbs ---------- */
+
+
+/* ---------- Key fact strip ---------- */
+
+
+/* ---------- Analysis tabs/panel ---------- */
+
+
+/* ---------- Expanded publishers after +N ---------- */
+
+
+/* ============================================================
+   Mobile image/readability
+   ============================================================ */
+
+
+/* ------------------------------------------------------------
+   ANALYSIS PANEL — desktop + mobile
+   ------------------------------------------------------------ */
+
+
+/* ------------------------------------------------------------
+   MOBILE IMAGE
+   ------------------------------------------------------------ */
+
+
+/*
+ * These remain very transparent.
+ * The shell blur does the readability work.
+ */
+
+/*
+ * Hide only the section-level citation/footer:
+ *   Cong An Nhan Dan
+ *   Reuters World
+ *   Tuoi Tre
+ * etc.
+ *
+ * Timeline event citations remain available.
+ */
+
+
+/* Make foreground article text a little stronger. */
+
+
+/*
+ * Keep child layers light.
+ * They should NOT each be 70–90% opaque, otherwise the combination
+ * becomes the solid-white panel you disliked earlier.
+ */
+
+
+/* Analysis text contrast */
+
+
+/* Headline / excerpt */
+
+
+/* Analysis panel */
+
+
+/* Mobile gets just a touch more */
+
+
+/*
+ * Remove the old hard rectangular active-tab fill.
+ */
+
+
+/* Same internal transparency on every screen size. */
+
+
+/* Same foreground contrast too. */
+
+
+/*
+ * Keep the individual buttons visually clean.
+ */
+
+
+/* ------------------------------------------------------------
+   DESKTOP ONLY
+   ------------------------------------------------------------ */
+
+
+/* Desktop: float at right-center, as originally intended. */
+
+
+/* Mobile: float at bottom-right. */
+
+
+/* ------------------------------------------------------------
+   STABLE ANALYSIS HEIGHT
+   ------------------------------------------------------------ */
+
+
+/*
+ * Normal analysis content fills whatever space remains.
+ */
+
+
+/*
+ * More-analysis selector remains inside the fixed-height body.
+ */
+
+
+/* ------------------------------------------------------------
+   ACTION TOOLBAR
+   ------------------------------------------------------------ */
+
+
+/* ------------------------------------------------------------
+   MOBILE
+   ------------------------------------------------------------ */
+
+
+/*
+ * Top-only containers must stay absent in Classic even if a future
+ * markup/CSS change accidentally overrides Alpine's display state.
+ */
+
+
+/* ------------------------------------------------------------
+   Classic +N popup
+   ------------------------------------------------------------ */
+
+
+/* ------------------------------------------------------------
+   Mobile coverage position
+   ------------------------------------------------------------ */
+
+/*
+ * Respect Alpine x-show.
+ * Previous display:flex!important overrode x-show's display:none.
+ */
+
+
+/*
+ * Normal / non-Smart articles NEVER show Full Coverage.
+ */
+
+/* Mobile — bias article image slightly right so subjects stay centered */
+
+/* Mobile — move photo content right */
+
+/* Analysis tabs — stronger contrast over image */
+
+/* Desktop — final readability bump */
+@media (min-width: 641px) {
+    header button,
+    header [class~="rounded-full"] {
+        box-shadow:
+            inset 0 1px 0 rgba(255,255,255,.90) !important;
+
+        border-color:
+            rgba(176,200,208,.30) !important;
+    }
+
+    /* Keep the larger grouped controls clean too */
+    header .flex.items-center[class~="rounded-full"] {
+        box-shadow:
+            inset 0 1px 0 rgba(255,255,255,.90) !important;
+
+        border-color:
+            rgba(176,200,208,.28) !important;
+    }
+}
+
+/* Desktop — remove outer shadow seams from category/filter pills */
+@media (min-width: 641px) {
+    button.flex-shrink-0.rounded-full {
+        box-shadow:
+            inset 0 1px 0 rgba(255,255,255,.82) !important;
+
+        border-color:
+            rgba(176,200,208,.24) !important;
+
+        filter: none !important;
+    }
+}
+
+/* ---------- Desktop ---------- */
+
+
+/* ---------- Mobile ---------- */
+
+/* Mobile normal articles — clear the right-side photo like Smart Classic */
+
+/* =========================================================
+   Edit Source — clearer fetch method selection
+   ========================================================= */
+
+.edit-source-card:has(.edit-source-method-row) {
+    padding: 8px !important;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.edit-source-method-row {
+    min-height: 52px;
+    padding: 11px 14px !important;
+    border-radius: 16px;
+    border: 1px solid rgba(100, 116, 139, 0.16);
+    background: rgba(255, 255, 255, 0.46);
+    transition:
+        background 160ms ease,
+        border-color 160ms ease,
+        box-shadow 160ms ease,
+        transform 160ms ease;
+}
+
+.edit-source-method-row:hover {
+    background: rgba(255, 255, 255, 0.72);
+    border-color: rgba(124, 58, 237, 0.22);
+}
+
+.edit-source-checkbox {
+    appearance: none;
+    -webkit-appearance: none;
+    flex: 0 0 auto;
+    width: 25px;
+    height: 25px;
+    border-radius: 8px;
+    border: 2px solid rgba(71, 85, 105, 0.72);
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow:
+        0 1px 2px rgba(15, 23, 42, 0.08),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.5);
+    cursor: pointer;
+    transition:
+        background 150ms ease,
+        border-color 150ms ease,
+        box-shadow 150ms ease,
+        transform 150ms ease;
+}
+
+.edit-source-checkbox:hover {
+    border-color: rgba(109, 40, 217, 0.85);
+    box-shadow:
+        0 0 0 4px rgba(124, 58, 237, 0.09),
+        0 2px 5px rgba(15, 23, 42, 0.10);
+}
+
+.edit-source-checkbox:checked {
+    border-color: rgb(124, 58, 237);
+    background-color: rgb(124, 58, 237);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 20 20'%3E%3Cpath d='M5 10.2l3.1 3.1L15.5 6' fill='none' stroke='white' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 19px 19px;
+    box-shadow:
+        0 0 0 4px rgba(124, 58, 237, 0.12),
+        0 3px 8px rgba(109, 40, 217, 0.20);
+}
+
+.edit-source-method-row:has(.edit-source-checkbox:checked) {
+    background:
+        linear-gradient(
+            135deg,
+            rgba(139, 92, 246, 0.12),
+            rgba(255, 255, 255, 0.72)
+        );
+    border-color: rgba(124, 58, 237, 0.32);
+    box-shadow:
+        inset 0 0 0 1px rgba(255, 255, 255, 0.50),
+        0 5px 18px rgba(109, 40, 217, 0.08);
+}
+
+.edit-source-method-row > span {
+    font-weight: 600;
+    color: rgba(30, 41, 59, 0.94);
+}
+
+.edit-source-checkbox:focus-visible {
+    outline: none;
+    box-shadow:
+        0 0 0 4px rgba(124, 58, 237, 0.20),
+        0 2px 6px rgba(15, 23, 42, 0.10);
+}
+
+
+
+/* FIX: readable VOZ/XenForo inline code in light theme */
+.theme-glass-light .article-rendered-content code {
+    color: #0f172a !important;
+    background-color: #e2e8f0 !important;
+}
+
+.theme-glass-light .article-rendered-content pre code {
+    color: inherit !important;
+    background: transparent !important;
+    border: 0 !important;
+}
+
+/* The page marks itself before first paint; reveal only a prepared crop.
+ * With JS disabled (or if the module fails to start), normal images remain. */
+
+/* Leave the top and right clear, as in the reference. Only the text-facing
+ * and bottom transitions dissolve; no filter touches the sharp photograph. */
+
+/* Read status still dims the text, but must not wash out the photo itself.
+ * The higher-specificity pending-image rule above still prevents crop flashes. */

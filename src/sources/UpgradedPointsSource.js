@@ -12,14 +12,31 @@ export default class UpgradedPointsSource {
             result.authorAvatar = avatarUrl;
         }
 
-        const articleRegex = /<article\b[^>]*>([\s\S]*?)<\/article>/i;
-        const match = html.match(articleRegex);
-        if (match) {
-            let articleHtml = match[1];
+        let articleHtml = utils.extractBalancedElementByClass(html, 'articleContent');
+        if (articleHtml) {
             // Remove TOC, author bio, social shares, disclosures, ads
-            articleHtml = articleHtml.replace(/<div[^>]*class=["'][^"']*(?:toc|table-of-contents|author-bio|social-share|disclosure|contentAdvertiserDisclosure|top-partner-offers-mobile-dropdown|we-recommend-esi|upgp-display-ad-wrapper)[^"']*["'][^>]*>[\s\S]*?<\/div>/ig, '');
-            articleHtml = articleHtml.replace(/<section[^>]*class=["'][^"']*(?:feedback-form|authorInfo|upgp-email-optin|featured-image-credit)[^"']*["'][^>]*>[\s\S]*?<\/section>/ig, '');
-            articleHtml = articleHtml.replace(/<details[^>]*class=["'][^"']*(?:top-partner-offers-mobile-dropdown|table-of-contents__container)[^"']*["'][^>]*>[\s\S]*?<\/details>/ig, '');
+            const removeClasses = [
+                'toc', 'table-of-contents', 'author-bio', 'social-share', 'disclosure', 
+                'contentAdvertiserDisclosure', 'top-partner-offers-mobile-dropdown', 
+                'we-recommend-esi', 'upgp-display-ad-wrapper', 'feedback-form', 
+                'authorInfo', 'upgp-email-optin', 'featured-image-credit', 
+                'we-recommend__disclosure', 'weRecommendContent', 'pulseContent', 
+                'footerContent', 'table-of-contents__container'
+            ];
+            
+            for (const cls of removeClasses) {
+                while (true) {
+                    const el = utils.extractBalancedElementByClass(articleHtml, cls);
+                    if (el) {
+                        articleHtml = articleHtml.replace(el, '');
+                    } else {
+                        break;
+                    }
+                }
+            }
+            
+            // Also remove asides
+            articleHtml = articleHtml.replace(/<aside\b[^>]*>[\s\S]*?<\/aside>/ig, '');
             
             return articleHtml;
         }

@@ -1,0 +1,106 @@
+[
+  {
+    "engine": "chromium",
+    "width": 1440,
+    "theme": "classic",
+    "stale": {
+      "x": 0.9,
+      "palette": [
+        50,
+        50,
+        200
+      ],
+      "source": "/api/og-image?url=source-B&v=32",
+      "deferred": false
+    },
+    "responsive": {
+      "source": "/api/og-image?url=source-C",
+      "current": "http://127.0.0.1:35105/api/og-image?url=source-C"
+    },
+    "fallbacks": [
+      "http://127.0.0.1:35105/api/og-image?url=next-D&v=32",
+      "http://127.0.0.1:35105/api/og-image?url=next-E&v=32"
+    ],
+    "removed": true,
+    "diagnosticEvents": 86,
+    "errors": []
+  },
+  {
+    "engine": "chromium",
+    "width": 1440,
+    "theme": "glass-light",
+    "stale": {
+      "x": 0.9,
+      "palette": [
+        50,
+        50,
+        200
+      ],
+      "source": "/api/og-image?url=source-B&v=32",
+      "deferred": false
+    },
+    "responsive": {
+      "source": "/api/og-image?url=source-C",
+      "current": "http://127.0.0.1:35105/api/og-image?url=source-C"
+    },
+    "fallbacks": [
+      "http://127.0.0.1:35105/api/og-image?url=next-D&v=32",
+      "http://127.0.0.1:35105/api/og-image?url=next-E&v=32"
+    ],
+    "removed": true,
+    "diagnosticEvents": 104,
+    "errors": []
+  },
+  {
+    "engine": "chromium",
+    "width": 390,
+    "theme": "classic",
+    "stale": {
+      "x": 0.9,
+      "palette": [
+        50,
+        50,
+        200
+      ],
+      "source": "/api/og-image?url=source-B&v=32",
+      "deferred": false
+    },
+    "responsive": {
+      "source": "/api/og-image?url=source-C",
+      "current": "http://127.0.0.1:35105/api/og-image?url=source-C"
+    },
+    "fallbacks": [
+      "http://127.0.0.1:35105/api/og-image?url=next-D&v=32",
+      "http://127.0.0.1:35105/api/og-image?url=next-E&v=32"
+    ],
+    "removed": true,
+    "diagnosticEvents": 89,
+    "errors": []
+  },
+  {
+    "engine": "chromium",
+    "width": 390,
+    "theme": "glass-light",
+    "stale": {
+      "x": 0.9,
+      "palette": [
+        50,
+        50,
+        200
+      ],
+      "source": "/api/og-image?url=source-B&v=32",
+      "deferred": false
+    },
+    "responsive": {
+      "source": "/api/og-image?url=source-C",
+      "current": "http://127.0.0.1:35105/api/og-image?url=source-C"
+    },
+    "fallbacks": [
+      "http://127.0.0.1:35105/api/og-image?url=next-D&v=32",
+      "http://127.0.0.1:35105/api/og-image?url=next-E&v=32"
+    ],
+    "removed": true,
+    "diagnosticEvents": 117,
+    "errors": []
+  }
+]

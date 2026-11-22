@@ -1,0 +1,135 @@
+{
+  "first": "2026-10-14T19:55:14.630Z",
+  "last": "2026-10-15T07:54:50.212Z",
+  "records": 1433,
+  "uniqueResourceSamples": 720,
+  "hours": 11.993217222222222,
+  "segments": [
+    {
+      "pid": 3849854,
+      "hours": 11.993217222222222,
+      "physicalGiB": 270.8788146972656,
+      "physicalGiBPerHour": 22.586000876841826,
+      "memoryMiB": {
+        "heapUsed": {
+          "median": 1926.7305870056152,
+          "p75": 2211.808074951172,
+          "p95": 2440.08260345459,
+          "max": 2566.3569717407227
+        },
+        "heapTotal": {
+          "median": 2074.853515625,
+          "p75": 2338.0625,
+          "p95": 2542.765625,
+          "max": 2705.3828125
+        },
+        "rss": {
+          "median": 3378.19140625,
+          "p75": 3687.3125,
+          "p95": 3890.04296875,
+          "max": 4094.07421875
+        },
+        "external": {
+          "median": 346.9752621650696,
+          "p75": 417.2384777069092,
+          "p95": 487.7090072631836,
+          "max": 631.3243541717529
+        },
+        "arrayBuffers": {
+          "median": 303.8240990638733,
+          "p75": 312.2346820831299,
+          "p95": 354.45358180999756,
+          "max": 385.95311546325684
+        }
+      },
+      "cpuPercent": {
+        "median": 8,
+        "p75": 17,
+        "p95": 74,
+        "max": 163
+      },
+      "eventLoopIntervalP95Ms": {
+        "median": 21.168127,
+        "p75": 21.839871,
+        "p95": 55.181311,
+        "max": 245.891071
+      },
+      "eventLoopMaxMs": {
+        "median": 789.3155830000001,
+        "p75": 2077.229055,
+        "p95": 5276.434431,
+        "max": 21860.712447
+      },
+      "cgroupSwapMiB": {
+        "median": 865.94140625,
+        "p75": 955.9296875,
+        "p95": 1095.625,
+        "max": 1181.046875
+      }
+    }
+  ],
+  "rssCompletionMarkers": 69,
+  "smartCompletionMarkers": 9,
+  "idleCandidateCycles": [
+    {
+      "completedAt": "2026-10-15T07:01:12.866+07:00",
+      "state": "error",
+      "samples": 12,
+      "minHeapMiB": 1403.7993240356445,
+      "maxHeapMiB": 1536.7761154174805
+    },
+    {
+      "completedAt": "2026-10-15T09:08:50.515+07:00",
+      "state": "error",
+      "samples": 20,
+      "minHeapMiB": 1758.5820922851562,
+      "maxHeapMiB": 2046.1733627319336
+    },
+    {
+      "completedAt": "2026-10-15T10:21:39.029+07:00",
+      "state": "error",
+      "samples": 26,
+      "minHeapMiB": 1971.9209899902344,
+      "maxHeapMiB": 2166.032127380371
+    },
+    {
+      "completedAt": "2026-10-15T11:09:31.128+07:00",
+      "state": "ready",
+      "samples": 1,
+      "minHeapMiB": 1982.487174987793,
+      "maxHeapMiB": 1982.487174987793
+    },
+    {
+      "completedAt": "2026-10-15T11:53:35.992+07:00",
+      "state": "ready",
+      "samples": 15,
+      "minHeapMiB": 2068.425437927246,
+      "maxHeapMiB": 2308.674758911133
+    },
+    {
+      "completedAt": "2026-10-15T12:36:17.188+07:00",
+      "state": "ready",
+      "samples": 8,
+      "minHeapMiB": 2153.6594009399414,
+      "maxHeapMiB": 2294.392723083496
+    },
+    {
+      "completedAt": "2026-10-15T13:23:48.865+07:00",
+      "state": "ready",
+      "samples": 8,
+      "minHeapMiB": 2199.1003799438477,
+      "maxHeapMiB": 2406.590019226074
+    },
+    {
+      "completedAt": "2026-10-15T14:22:29.389+07:00",
+      "state": "ready",
+      "samples": 5,
+      "minHeapMiB": 2243.4253540039062,
+      "maxHeapMiB": 2441.138626098633
+    }
+  ],
+  "maxPendingTransactions": 2,
+  "maxAiPending": 69,
+  "afterCollectionOomUtc": "2026-10-15T08:02:23Z",
+  "caveat": "Idle candidate is not proof of complete quiescence; no matched before/after service comparison."
+}

@@ -1,0 +1,25 @@
+.voz-bluesky-embed {
+    width: 100%;
+    max-width: 600px;
+    min-width: 0;
+    margin: 0.85rem auto;
+}
+
+.article-rendered-content .voz-bluesky-embed__frame {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 600px;
+    min-width: 0 !important;
+    margin: 0 !important;
+    border: 0 !important;
+    aspect-ratio: auto !important;
+}
+
+.voz-bluesky-embed__fallback {
+    display: block;
+    padding: 8px 0;
+    text-align: center;
+    font-size: 13px;
+    line-height: 1.4;
+}

@@ -1,0 +1,46 @@
+[
+  {
+    "theme": "classic",
+    "errors": [],
+    "actions": [
+      {
+        "mode": "feed",
+        "count": 23,
+        "error": "",
+        "focusActive": "active"
+      },
+      {
+        "mode": "top",
+        "count": 40,
+        "error": "",
+        "focusActive": "active"
+      }
+    ],
+    "cachedOpen": {
+      "tested": false,
+      "reason": "No cached card in this view"
+    }
+  },
+  {
+    "theme": "glass-light",
+    "errors": [],
+    "actions": [
+      {
+        "mode": "feed",
+        "count": 23,
+        "error": "",
+        "focusActive": "active"
+      },
+      {
+        "mode": "top",
+        "count": 40,
+        "error": "",
+        "focusActive": "active"
+      }
+    ],
+    "cachedOpen": {
+      "tested": false,
+      "reason": "No cached card in this view"
+    }
+  }
+]

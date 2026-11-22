@@ -1,0 +1,8 @@
+ExecStart=/usr/bin/node --max-old-space-size=2560 --expose-gc /home/ubuntu/my-rss-reader/server.js
+WorkingDirectory=/home/ubuntu/my-rss-reader
+User=ubuntu
+LoadState=loaded
+ActiveState=active
+SubState=running
+FragmentPath=/etc/systemd/system/rss-reader.service
+DropInPaths=/etc/systemd/system/rss-reader.service.d/ai-limits.conf /etc/systemd/system/rss-reader.service.d/gemini-debug.conf /etc/systemd/system/rss-reader.service.d/override.conf

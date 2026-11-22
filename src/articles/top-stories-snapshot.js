@@ -1,0 +1,466 @@
+import { createTaskWorker } from '../runtime/task-worker.js';
+import { rankingInputs, readRankingInputs } from './ranking-input.js';
+import { prefilterWorkerState, filterPublishedSnapshot } from '../smart/prefilter/publication.js';
+import { Worker } from 'node:worker_threads';
+import { boundedWorkerOptions, hasWorkerHeadroom } from '../observability/memory-budget.js';
+import { createHash } from 'node:crypto';
+import { getHeapStatistics } from 'node:v8';
+import { storyText } from './story-ranking.js';
+import { TOP_STORIES_DEFAULTS } from './top-stories.js';
+import { storyMembers } from './story-ranking.js';
+import { publicationSection } from './publication-section.js';
+
+const POLICY = 2;
+const MB = 1024 * 1024;
+const valid = value => {
+    if (value?.policy !== POLICY || !Array.isArray(value.articles) || !value.articles.length) return false;
+    const ids = new Set(), feeds = new Map();
+    for (const a of value.articles) {
+        if (!a.clusterId || ids.has(a.clusterId) || !a.link || !a.title || !a.topStory?.feed || !Number.isFinite(a.ranking?.score)) return false;
+        ids.add(a.clusterId);
+        const feed = feeds.get(a.topStory.feed) || {rank:0, count:a.topStory.cutoff?.count};
+        if (!Number.isInteger(feed.count) || feed.count < 0 || a.topStory.rank !== ++feed.rank || a.topStory.cutoff?.count !== feed.count || a.topStory.isTop !== (feed.rank <= feed.count)) return false;
+        feeds.set(a.topStory.feed, feed);
+    }
+    return [...feeds.values()].every(feed=>feed.count<=feed.rank);
+};
+const PRIVATE_PUBLISHED_FIELDS = new Set([
+    'contents',
+    'materialTexts',
+    'evidence',
+    'links',
+    'representative',
+    'representativeReason',
+    'rankHistory',
+    'cutoffHistory',
+    'history',
+    // article.ranking already carries the public ranking result.
+    'ranking'
+]);
+
+const hasPrivatePublishedState = value =>
+    Boolean(
+        value &&
+        typeof value === 'object' &&
+        [...PRIVATE_PUBLISHED_FIELDS].some(key =>
+            Object.prototype.hasOwnProperty.call(value, key)
+        )
+    );
+
+const compactPublishedTopStory = value => {
+    if (!value || typeof value !== 'object') return value;
+
+    const compact = { ...value };
+    for (const key of PRIVATE_PUBLISHED_FIELDS) delete compact[key];
+    return compact;
+};
+
+const compactPublishedArticlesInPlace = articles => {
+    let changed = false;
+
+    for (const article of articles || []) {
+        if (!article?.topStory || !hasPrivatePublishedState(article.topStory)) {
+            continue;
+        }
+
+        article.topStory = compactPublishedTopStory(article.topStory);
+        changed = true;
+    }
+
+    return changed;
+};
+
+const extractFullStates = articles => {
+    const states = {};
+
+    for (const article of articles || []) {
+        if (!article?.clusterId || !article?.topStory) continue;
+        states[article.clusterId] = article.topStory;
+    }
+
+    return states;
+};
+
+const rawStateJson = async db => {
+    const value = await db.get('topStoriesState');
+
+    if (typeof value === 'string') return value || '{}';
+
+    return JSON.stringify(value || {});
+};
+
+// Short idle reuse only: an idle worker keeps its post-ranking heap resident.
+const rankingWorker=createTaskWorker({idleMs:5000,workerKey:input=>input.workerHeapMB,createWorker:input=>new Worker(new URL('./top-stories-worker.js',import.meta.url),boundedWorkerOptions(input.workerHeapMB))});
+const rankInWorker=input=>rankingWorker.run(input);
+
+// A display envelope around the existing index, including its editorial state.
+// Publication is one durable write; no intermediate worker state is visible.
+export function createTopStoriesSnapshots({ db, config, compute = rankInWorker, now = Date.now, report = console.warn, memoryUsage = process.memoryUsage, heapStatistics = getHeapStatistics, workerHeadroom = hasWorkerHeadroom } = {}) {
+    let current, loading, pending, scheduled, checked, retryAt = 0;
+    const serializedWorker = compute === rankInWorker;
+    const load = async () => {
+        if (!loading) {
+            loading = db
+                .get('topStoriesPublished', { type: 'json', shared: true })
+                .then(async value => {
+                    if (!valid(value)) return;
+
+                    const needsMigration = (value.articles || []).some(
+                        article => hasPrivatePublishedState(article?.topStory)
+                    );
+
+                    if (needsMigration) {
+                        let fullStates = extractFullStates(value.articles);
+                        let fullStatesJson = JSON.stringify(fullStates);
+                        fullStates = null;
+
+                        // State first. If interrupted, migration is safely
+                        // repeatable from the old published snapshot.
+                        await db.put('topStoriesState', fullStatesJson);
+                        fullStatesJson = null;
+
+                        compactPublishedArticlesInPlace(value.articles);
+
+                        let publishedJson = JSON.stringify(value);
+                        await db.put('topStoriesPublished', publishedJson);
+                        publishedJson = null;
+
+                        if (typeof global.gc === 'function') global.gc();
+                    }
+
+                    current = value;
+                });
+        }
+
+        await loading;
+        return current;
+    };
+    async function migrate() {
+        const states = await db.get(
+            'topStoriesState',
+            { type: 'json', shared: true }
+        );
+        if (!states || !Object.keys(states).length) return;
+        const [clusters, raw] = await Promise.all(['smartClusters','smartRawArticles'].map(key=>db.get(key,{type:'json',shared:true})));
+        const byLink = new Map([...(clusters || []).flatMap(storyMembers), ...(raw || [])].map(a=>[a.link,a]));
+        const articles = [];
+        const weights = {...TOP_STORIES_DEFAULTS.weights,...config?.weights};
+        for (const state of Object.values(states)) {
+            // Old persistence did not include full cards. Derive only when all
+            // ranked evidence is still present and byte-equivalent after normalization.
+            if (
+                !state.contents ||
+                !state.rank ||
+                !state.ranking?.signals ||
+                state.relevancePolicyVersion !== 4
+            ) return;
+            const members = Object.keys(state.contents).map(link=>byLink.get(link));
+            if (members.some(a=>!a)) return;
+            for (const a of members) {
+                const text = storyText(`${a.title || ''} ${a.content || a.description || ''}`).toLowerCase();
+                const hash = createHash('sha256').update(JSON.stringify(text)).digest('hex').slice(0,24);
+                if (hash !== state.contents[a.link]) return;
+            }
+            const representative = members.find(a=>a.link===state.representative);
+            if (!representative) return;
+            const signals=state.ranking.signals;
+            const rawScore=Object.entries(weights).reduce((sum,[key,w])=>sum+w*signals[key],0)/Object.values(weights).reduce((a,b)=>a+b,0);
+            const score=rawScore*Math.max(0,Math.min(1,Number(signals.relevance)||0))*(.45+.55*Math.exp(-Math.max(0,now()-state.latest_material_update)/3600000/(config?.freshnessHours || 48)));
+            articles.push({...representative,clusterId:state.id,isCluster:true,relatedArticles:members.filter(a=>a!==representative),clusterCount:members.length,
+                topStory:{...state,ranking:{score,signals}},ranking:{score,signals},hotness:score,imageCandidates:members.map(a=>a.image).filter(Boolean)});
+        }
+        articles.sort((a,b)=>a.topStory.feed.localeCompare(b.topStory.feed)||a.topStory.rank-b.topStory.rank);
+        for (const feed of new Set(articles.map(a=>a.topStory.feed))) {
+            const items=articles.filter(a=>a.topStory.feed===feed);
+            const count=items.filter(a=>a.topStory.isTop).length;
+            if (items.some((a,i)=>a.topStory.rank!==i+1 || a.topStory.isTop!==(i<count))) return;
+            for (const a of items) a.topStory.cutoff={count,reason:'Preserved persisted editorial cutoff'};
+        }
+        compactPublishedArticlesInPlace(articles);
+const migrated={policy:POLICY,articles,createdAt:now(),signature:'legacy',clusterVersion:'persisted-top'};
+        if (valid(migrated)) { await db.put('topStoriesPublished',JSON.stringify(migrated)); current=migrated; }
+    }
+    async function rebuild() {
+        const [clusterState, finalVersion, status, progressiveState] = await Promise.all([
+            db.get('smartClusterState', {type:'json'}),
+            db.get('smartClusterVersion'),
+            db.get('smartStatus', {type:'json'}),
+            db.get('smartProgressiveClusterState', {type:'json'})
+        ]);
+        const progressiveVersion = String(progressiveState?.version || '');
+        const progressiveActive = Boolean(
+            progressiveState?.active === true &&
+            progressiveState?.provisional === true &&
+            progressiveVersion
+        );
+        // During a refresh Top can rank a membership-valid progressive snapshot.
+        // Without one, retain the last durable ranking instead of reading a
+        // half-built cluster state.
+        /*
+         * Large corpora can disable progressive cluster publication.
+         *
+         * Do not freeze Top Stories on the previous snapshot for the entire
+         * AI-review run. The durable smartClusters value remains the last
+         * completed cluster graph, while smartRawArticles is refreshed before
+         * clustering starts. Ranking those together safely exposes fresh
+         * headlines as temporary singleton stories until final clustering
+         * replaces them.
+         */
+        const refreshRawOverlay =
+            status?.state === 'refreshing' &&
+            !progressiveActive;
+
+        if (
+            !progressiveActive &&
+            clusterState?.provisional &&
+            !refreshRawOverlay
+        ) {
+            return current;
+        }
+
+        const selectedVersion = progressiveActive
+            ? progressiveVersion
+            : refreshRawOverlay
+                ? `${finalVersion || 'final'}:refresh:${String(
+                    status?.startedAt ||
+                    status?.updatedAt ||
+                    ''
+                )}`
+                : (finalVersion || '');
+        const progressiveRevision = progressiveActive
+            ? Number(progressiveState?.revision) || 0
+            : 0;
+
+        const heapLimitBytes = Number(heapStatistics().heap_size_limit) || (4 * 1024 * 1024 * 1024);
+        const configuredHeapMb = Number(
+            progressiveActive
+                ? process.env.TOP_STORIES_PROGRESSIVE_HEAP_MAX_MB
+                : process.env.TOP_STORIES_MAIN_HEAP_MAX_MB
+        );
+        const legacyHeapMaxBytes = Number.isFinite(configuredHeapMb) && configuredHeapMb > 0
+            ? configuredHeapMb * 1024 * 1024
+            : Math.floor(heapLimitBytes * (progressiveActive ? 0.45 : 0.55));
+        // The legacy threshold reserved room for parsing/cloning the whole
+        // corpus in this heap. Serialized worker input avoids that graph.
+        // Still reserve space for the returned cards and durable publication.
+        const reserveBytes = Math.max(512 * MB, heapLimitBytes * 0.15);
+        const hardHeapMaxBytes = Math.max(0, heapLimitBytes - reserveBytes);
+        const heapMaxBytes = serializedWorker
+            ? hardHeapMaxBytes
+            : Math.min(legacyHeapMaxBytes, hardHeapMaxBytes);
+        let memory = memoryUsage();
+        if (memory.heapUsed >= heapMaxBytes && typeof global.gc === 'function') {
+            global.gc();
+            memory = memoryUsage();
+        }
+        if (memory.heapUsed >= heapMaxBytes) {
+            retryAt = now() + 15000;
+            report('[TOP STORIES] Ranking deferred under memory pressure:', JSON.stringify({
+                heapUsedMB: Math.round(memory.heapUsed / 1024 / 1024),
+                heapLimitMB: Math.round(heapLimitBytes / 1024 / 1024),
+                thresholdMB: Math.round(heapMaxBytes / 1024 / 1024),
+                progressive: progressiveActive
+            }));
+            return current;
+        }
+
+        // Read canonical JSON strings on the production path: no parsed cache,
+        // structured clone, or candidate graph is retained by the HTTP server.
+        const inputOptions = serializedWorker ? {fingerprint: true} : {type:'json',shared:true};
+        let [publication, rawInput, sources] = await Promise.all([
+            db.get(progressiveActive ? 'smartProgressivePublication' : 'smartClusters', inputOptions),
+            db.get('smartRawArticles', inputOptions),
+            db.get('smartSources', {type:'json',shared:true})
+        ]);
+        let clusters, raw, publicationJson, rawJson, inputs;
+        if (serializedWorker) {
+            inputs = rankingInputs(publication, rawInput);
+        } else {
+            if (progressiveActive && (
+                publication?.version !== progressiveVersion ||
+                Number(publication?.revision || 0) !== progressiveRevision ||
+                !Array.isArray(publication?.clusters)
+            )) return current;
+            clusters = (progressiveActive ? publication.clusters : publication) || [];
+            raw = rawInput || [];
+            if (!clusters.length && !raw.length) return current;
+        }
+        publication = null;
+        rawInput = null;
+        sources ||= [];
+
+        const rerankIntervalMs = Math.max(
+            60_000,
+            Math.min(
+                15 * 60_000,
+                Number(process.env.TOP_STORIES_RERANK_INTERVAL_MS) || 60_000
+            )
+        );
+        const timeBucket = Math.floor(now() / rerankIntervalMs);
+        const sourceFingerprint = createHash('sha256').update(JSON.stringify(
+            sources.map(source => [
+                source.url,
+                source.category,
+                source.region,
+                source.weight,
+                source.enabled,
+                source.excludeFromSmart
+            ])
+        )).digest('hex').slice(0,24);
+        const prefilter = await prefilterWorkerState(db);
+        const signature = createHash('sha256').update(JSON.stringify([
+            ...prefilter.signature,
+            POLICY,
+            config,
+            selectedVersion,
+            progressiveRevision,
+            sourceFingerprint,
+            serializedWorker
+                ? inputs.digest
+                : raw.length,
+            timeBucket
+        ])).digest('hex');
+        if (checked === signature || signature === current?.signature) {
+            checked = signature;
+            return current;
+        }
+
+        let candidates;
+        if (!serializedWorker) {
+            const represented = new Set(clusters.flatMap(storyMembers).map(member => member?.link));
+            candidates = [...clusters];
+            for (const article of raw) {
+                if (article?.link && !represented.has(article.link)) {
+                    candidates.push(article);
+                    represented.add(article.link);
+                }
+            }
+        }
+
+        // Recheck after reads: publication itself also needs parent heap room.
+        memory = memoryUsage();
+        if (memory.heapUsed >= heapMaxBytes) {
+            retryAt = now() + 15000;
+            report('[TOP STORIES] Ranking deferred after input loading:', JSON.stringify({
+                heapUsedMB: Math.round(memory.heapUsed / MB),
+                thresholdMB: Math.round(heapMaxBytes / MB),
+                progressive: progressiveActive
+            }));
+            return current;
+        }
+
+        // Keep the full ranking state serialized in the parent process.
+        // The worker parses it in its isolated heap.
+        let statesJson = await rawStateJson(db);
+
+        // Size the bounded worker to the available headroom instead of waiting
+        // forever for the default 1.25 GiB reservation. Keep 256 MiB beyond its
+        // old-space limit for young space, native allocations and publication.
+        let workerHeapMB = Math.max(256, Math.min(1536, Number(process.env.TOP_STORIES_WORKER_HEAP_MB) || 1024));
+        const minimumHeapMB = Math.min(workerHeapMB, 512);
+        if (serializedWorker) {
+            while (workerHeapMB > minimumHeapMB && !workerHeadroom(workerHeapMB + 256)) {
+                workerHeapMB = Math.max(minimumHeapMB, workerHeapMB - 256);
+            }
+        }
+        if (serializedWorker && !workerHeadroom(workerHeapMB + 256)) {
+            retryAt = now() + 30000;
+            report('[TOP STORIES] Waiting for process memory headroom; retaining current ranking.');
+            return current;
+        }
+
+        if (serializedWorker) {
+            ({ publicationJson, rawJson } = await readRankingInputs(inputs));
+            inputs = null;
+        }
+        const result = await compute({
+            prefilterState: prefilter.state,
+            ...(serializedWorker
+                ? { publicationJson, rawJson, progressiveVersion: progressiveActive ? progressiveVersion : null, progressiveRevision, workerHeapMB }
+                : { candidates }),
+            sources,
+            statesJson,
+            config,
+            now: now()
+        });
+
+        // workerData has already been cloned. Drop the large input graph before
+        // serializing the replacement returned by the ranking worker.
+        candidates = null;
+        publicationJson = null;
+        rawJson = null;
+        clusters = null;
+        raw = null;
+        sources = null;
+        statesJson = null;
+        if (memoryUsage().heapUsed >= heapMaxBytes && typeof global.gc === 'function') global.gc();
+
+        if (result.skipped) return current;
+
+        // Normal worker path: full internal state comes back as one JSON
+        // string rather than another large parsed graph.
+        let nextStatesJson =
+            typeof result.statesJson === 'string'
+                ? result.statesJson
+                : null;
+
+        // Compatibility path for custom compute implementations/tests.
+        if (!nextStatesJson && Array.isArray(result.articles)) {
+            let fullStates = extractFullStates(result.articles);
+            nextStatesJson = JSON.stringify(fullStates);
+            fullStates = null;
+        }
+
+        compactPublishedArticlesInPlace(result.articles);
+
+        const replacement = {
+            policy: POLICY,
+            signature,
+            createdAt: now(),
+            clusterVersion: selectedVersion,
+            progressive: progressiveActive,
+            progressiveRevision,
+            articles: result.articles,
+            timings: result.timings
+        };
+        if (!valid(replacement)) throw new Error('Incomplete or empty ranked replacement');
+
+        if (nextStatesJson) await db.put('topStoriesState', nextStatesJson);
+        nextStatesJson = null;
+        let replacementJson = JSON.stringify(replacement);
+        await db.put('topStoriesPublished', replacementJson);
+        replacementJson = null;
+        current = replacement;
+        checked = signature;
+        retryAt = 0;
+        if (memoryUsage().heapUsed >= heapMaxBytes && typeof global.gc === 'function') global.gc();
+        return current;
+    }
+    function refresh() {
+        if (!pending && now() >= retryAt) {
+            pending = rebuild().catch(error => {
+                retryAt = now() + 30000;
+                report('[TOP STORIES] Keeping last valid snapshot:', error.message);
+                return current;
+            }).finally(() => {
+                pending = null;
+                // A deferred request must recover without another page visit.
+                if (retryAt > now()) schedule();
+            });
+        }
+        return pending || Promise.resolve(current);
+    }
+    function schedule() {
+        if (scheduled || pending) return;
+        scheduled = setTimeout(() => { scheduled = null; void refresh(); }, Math.max(25, retryAt - now()));
+        scheduled.unref?.();
+    }
+    return {
+        async get(destination) { await load(); if (!current) { await migrate(); if (!current) await refresh(); } return filterPublishedSnapshot(db, publicationSection(current, destination)); },
+        schedule,
+        releaseInputCache() { /* Input ownership now ends with each rebuild. */ },
+        async revalidate() { await load(); return refresh(); },
+        dispose() { clearTimeout(scheduled); scheduled = null; },
+        get pending() { return Boolean(pending || scheduled); }
+    };
+}

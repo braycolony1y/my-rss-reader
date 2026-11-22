@@ -1,0 +1,12 @@
+{
+  "h_ref": 125.21896786833042,
+  "c_ref": 0.05384676285332648,
+  "edgeL": 0.7490631524842064,
+  "k": 0.30187369503158723,
+  "ambientImage": "aerial-ambient.webp",
+  "meltImage": "aerial-melt.webp",
+  "assetBytes": {
+    "ambient": 116,
+    "melt": 526
+  }
+}

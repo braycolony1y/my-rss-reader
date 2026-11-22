@@ -1,6 +1,78 @@
+import { load } from 'cheerio';
+
 export default class TinhteSource {
     match(hostname) {
         return hostname === 'tinhte.vn' || hostname.endsWith('.tinhte.vn');
+    }
+
+    normalizeContent(content) {
+        const $ = load(content || '', null, false);
+        $('img[data-permalink]').each((_, element) => {
+            const image = $(element);
+            const candidate = image.attr('data-permalink') || '';
+            let permanent = '';
+            try {
+                const parsed = new URL(candidate);
+                if (['https:', 'http:'].includes(parsed.protocol)) permanent = parsed.href;
+            } catch {}
+            if (permanent) {
+                image.attr('src', permanent);
+                image.removeAttr('srcset data-srcset data-src data-url data-original');
+            }
+        });
+        $('.Tinhte_Galleria').each((_, element) => {
+            const gallery = $(element);
+            // Gallery anchors open a lightbox page; their href is not an image.
+            gallery.replaceWith($('<div class="tinhte-galleria"></div>').append(gallery.find('img')));
+        });
+        $('.bdImage_attachImage').each((_, element) => {
+            const wrapper = $(element);
+            wrapper.replaceWith(wrapper.find('img'));
+        });
+        $('[data-s9e-mediaembed], .LinkExpander_Ratio').each((_, element) => {
+            const wrapper = $(element);
+            const frame = wrapper.find('iframe').first();
+            if (frame.length) wrapper.replaceWith(frame);
+        });
+        $('iframe').each((_, element) => {
+            const frame = $(element);
+            if (/youtube(?:-nocookie)?\.com\/embed\//i.test(frame.attr('src') || '')) {
+                frame.removeAttr('height width').attr('style', 'display:block;width:100%;aspect-ratio:16/9;border:0;margin:12px 0;');
+            }
+        });
+        $('.xf-body-paragraph').each((_, element) => {
+            const node = $(element);
+            const body = (node.html() || '').replace(/^(?:\s|&nbsp;|<br\s*\/?>)+|(?:\s|&nbsp;|<br\s*\/?>)+$/gi, '');
+            if (!body) node.remove();
+            else node.replaceWith($('<p></p>').html(body));
+        });
+        // Media already has its own margin; publisher break placeholders double it.
+        $('br').each((_, element) => {
+            const node = $(element);
+            if (node.prev().is('img, iframe, .LinkExpander, h2, h3') || node.next().is('img, iframe, .LinkExpander, h2, h3')) node.remove();
+        });
+        if (!$('.tinhte-quick-view').length) {
+            const headings = $('h2, h3').filter((_, element) => !$(element).closest('.styled-rel-card, .LinkExpander').length);
+            if (headings.length > 1) {
+                const toc = $('<div class="tinhte-quick-view"><strong>Xem nhanh</strong><ul></ul></div>');
+                headings.each((index, element) => {
+                    const heading = $(element);
+                    const id = heading.attr('id') || `tinhte-section-${index + 1}`;
+                    heading.attr('id', id);
+                    toc.find('ul').append($('<li></li>').append($('<a></a>').attr('href', '#' + id).text(heading.text())));
+                });
+                $.root().prepend(toc);
+            }
+        }
+        if (!$('.tinhte-article').length) $.root().wrapInner('<div class="tinhte-article"></div>');
+        return $.root().html();
+    }
+
+    enhanceArticleResult(result, context = {}) {
+        if (!result?.content) return result;
+        // Old gallery output lost its image URLs; it needs fresh publisher HTML.
+        if (context.cacheMigration && /<img[^>]+src=["']https:\/\/tinhte\.vn\/misc\/lightbox/i.test(result.content)) return result;
+        return { ...result, content: this.normalizeContent(result.content) };
     }
 
     parseArticleHtmlContent(html, url, result, utils) {
@@ -27,7 +99,7 @@ export default class TinhteSource {
                 post = findPost(data);
                 
                 if (post) {
-                    articleHtml = post.post_body_html || '';
+                    articleHtml = this.normalizeContent(post.post_body_html || '');
                     if (post.poster_username) {
                         result.author = post.poster_username;
                     }
@@ -35,14 +107,6 @@ export default class TinhteSource {
                         result.authorAvatar = post.links.poster_avatar;
                     }
                     
-                    // Process Tinhte_Galleria to extract original images
-                    articleHtml = articleHtml.replace(/<ul[^>]*class="[^"]*Tinhte_Galleria[^"]*"[^>]*>([\s\S]*?)<\/ul>/ig, (match, inner) => {
-                        let newInner = inner.replace(/<a[^>]*href="([^"]+)"[^>]*>[\s\S]*?<img[^>]*>[\s\S]*?<\/a>/ig, (aMatch, href) => {
-                            return `<img src="${utils.escapeHtml(href)}">`;
-                        });
-                        return `<div class="tinhte-galleria">${newInner}</div>`;
-                    });
-
                     // Process Tinhte_PhotoCompare to create a slider
                     articleHtml = articleHtml.replace(/<span[^>]*class="[^"]*Tinhte_PhotoCompare[^"]*"[^>]*>([\s\S]*?)<\/span>/ig, (match, inner) => {
                         const images = [];
@@ -60,11 +124,6 @@ export default class TinhteSource {
                             </div>`;
                         }
                         return match;
-                    });
-
-                    // Process YouTube embeds
-                    articleHtml = articleHtml.replace(/<span[^>]*data-s9e-mediaembed="youtube"[^>]*>[\s\S]*?<iframe[^>]*src="([^"]+)"[^>]*>[\s\S]*?<\/iframe>[\s\S]*?<\/span>/ig, (match, src) => {
-                        return `<iframe src="${utils.escapeHtml(src)}" width="100%" style="aspect-ratio: 16/9; border: none; border-radius: 8px; margin: 16px 0;" allowfullscreen></iframe>`;
                     });
 
                     // Fix Survey iframe ratio
@@ -97,16 +156,17 @@ export default class TinhteSource {
 
                     if (post.attachments && Array.isArray(post.attachments)) {
                         post.attachments.forEach(att => {
+                            if (att.attachment_is_inserted === false) return;
                             if (att.attachment_is_video && att.links && (att.links.video_url || att.links.permalink)) {
                                 const url = att.links.video_url || att.links.permalink;
                                 const idStr = String(att.attachment_id || '');
-                                if (!articleHtml.includes(url) && (!idStr || !articleHtml.includes(idStr))) {
+                                if (!articleHtml.includes(url) && (!idStr || !(post.post_body_html || '').includes(idStr))) {
                                     articleHtml += `<br><video controls style="width: 100%; border-radius: 8px; margin: 16px 0;"><source src="${utils.escapeHtml(url)}" type="video/mp4"></video>`;
                                 }
                             } else if (att.links && att.links.permalink && !att.attachment_is_video) {
                                 const url = att.links.permalink;
                                 const idStr = String(att.attachment_id || '');
-                                if (!articleHtml.includes(url) && (!idStr || !articleHtml.includes(idStr))) {
+                                if (!articleHtml.includes(url) && (!idStr || !(post.post_body_html || '').includes(idStr))) {
                                     articleHtml += `<br><img src="${utils.escapeHtml(url)}" alt="${utils.escapeHtml(att.filename || '')}">`;
                                 }
                             }
@@ -132,6 +192,6 @@ export default class TinhteSource {
         }
         
         result.siteName = result.siteName || 'Tinh tế';
-        return articleHtml;
+        return this.normalizeContent(articleHtml);
     }
 }

@@ -1,0 +1,46 @@
+/* Shared desktop photos retain the coordinate system selected by the image fit.
+   Editorial offsets use the full card; contain/fit offsets use the right-hand hero. */
+@media (min-width: 768px) {
+    .theme-glass-light #scroll-container .article-card.has-story-briefing[data-image-layout="standard"][data-shared-card-style="desktop"][data-story-blend] .thumbnail-plate {
+        display: block !important; inset: 0 !important; width: 100% !important; height: 100% !important;
+        mask-image: none !important; -webkit-mask-image: none !important;
+    }
+    .theme-glass-light #scroll-container .article-card.has-story-briefing[data-image-layout="standard"][data-shared-card-style="desktop"][data-story-blend] .thumbnail-plate::after {
+        content: none !important;
+    }
+    .theme-glass-light #scroll-container .article-card.has-story-briefing[data-image-layout="standard"][data-shared-card-style="desktop"][data-story-blend][data-story-hero-placement="editorial"] .article-card-image {
+        inset: 0 !important; width: 100% !important; height: var(--smart-hero-height, 100%) !important;
+        min-height: 0 !important; z-index: 0 !important; overflow: visible !important;
+        mask-image: var(--hero-extent-mask, none) !important; -webkit-mask-image: var(--hero-extent-mask, none) !important;
+    }
+    .theme-glass-light #scroll-container .article-card.has-story-briefing[data-image-layout="standard"][data-shared-card-style="desktop"][data-story-blend][data-story-hero-placement="editorial"] .article-card-image .thumbnail-plate {
+        position: absolute !important; height: var(--smart-hero-height, 100%) !important;
+    }
+    .theme-glass-light #scroll-container .article-card.has-story-briefing[data-image-layout="standard"][data-shared-card-style="desktop"][data-story-blend][data-story-hero-placement="editorial"] .article-card-image :is(img.thumbnail-img, img.thumbnail-soft) {
+        inset: 0 auto auto var(--hero-photo-left) !important; width: var(--hero-photo-width) !important;
+        height: var(--smart-hero-height, 100%) !important; object-fit: cover !important; object-position: var(--hero-pos) !important;
+        mask-image: var(--hero-left-mask) !important; -webkit-mask-image: var(--hero-left-mask) !important; transform: none !important;
+    }
+    .theme-glass-light #scroll-container .article-card.has-story-briefing[data-image-layout="standard"][data-shared-card-style="desktop"][data-story-blend][data-story-hero-placement="editorial"] .article-card-image img.thumbnail-soft {
+        left: var(--hero-soft-left) !important; width: var(--hero-soft-width) !important;
+        opacity: .10 !important; filter: blur(14px) !important;
+        mask-image: var(--hero-soft-left-mask) !important; -webkit-mask-image: var(--hero-soft-left-mask) !important;
+    }
+    .theme-glass-light #scroll-container .article-card.has-story-briefing[data-image-layout="standard"][data-shared-card-style="desktop"][data-story-blend][data-story-hero-placement="editorial"][data-story-photo="cropped"] .article-card-image img.thumbnail-soft {
+        left: var(--hero-photo-left) !important; width: var(--hero-photo-width) !important; opacity: 1 !important; filter: none !important;
+        mask-image: var(--hero-left-mask) !important; -webkit-mask-image: var(--hero-left-mask) !important;
+    }
+    .theme-glass-light #scroll-container .article-card.has-story-briefing[data-image-layout="standard"][data-shared-card-style="desktop"][data-story-blend]:is([data-story-hero-placement="contain"], [data-story-hero-placement="fit"]) .article-card-image {
+        inset: 0 0 auto auto !important; width: var(--hero-w) !important; height: var(--hero-h) !important;
+    }
+    .theme-glass-light #scroll-container .article-card.has-story-briefing[data-image-layout="standard"][data-shared-card-style="desktop"][data-story-blend]:is([data-story-hero-placement="contain"], [data-story-hero-placement="fit"]) .article-card-image :is(img.thumbnail-img, img.thumbnail-soft) {
+        inset: auto !important; left: var(--hero-photo-x) !important; top: var(--hero-photo-y) !important;
+        width: var(--hero-photo-w) !important; height: var(--hero-photo-h) !important; object-fit: contain !important;
+        mask-image: var(--detail-mask) !important; -webkit-mask-image: var(--detail-mask) !important;
+        -webkit-mask-composite: source-in !important; mask-composite: intersect !important;
+    }
+    .theme-glass-light #scroll-container .article-card.has-story-briefing[data-image-layout="standard"][data-shared-card-style="desktop"][data-story-blend]:is([data-story-hero-placement="contain"], [data-story-hero-placement="fit"]):not([data-story-photo="cropped"]) .article-card-image img.thumbnail-soft {
+        opacity: .10 !important; filter: blur(14px) !important;
+        mask-image: var(--color-mask) !important; -webkit-mask-image: var(--color-mask) !important;
+    }
+}

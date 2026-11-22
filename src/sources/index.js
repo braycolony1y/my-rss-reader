@@ -1,3 +1,6 @@
+import GroundNewsSource from './GroundNewsSource.js';
+import YahooFinanceSource from './YahooFinanceSource.js';
+import AlJazeeraSource from './AlJazeeraSource.js';
 
 class SourceRegistry {
     constructor() {
@@ -21,12 +24,16 @@ class SourceRegistry {
 }
 
 const registry = new SourceRegistry();
+registry.register(new GroundNewsSource());
+registry.register(new YahooFinanceSource());
+registry.register(new AlJazeeraSource());
 
 // Register specific sources
 import VozSource from './VozSource.js';
 import VietnamplusSource from './VietnamplusSource.js';
 import TinhteSource from './TinhteSource.js';
 import TheVergeSource from './TheVergeSource.js';
+import FinancialTimesSource from './FinancialTimesSource.js';
 import VietnamnetSource from './VietnamnetSource.js';
 import TienPhongSource from './TienPhongSource.js';
 import VovSource from './VovSource.js';
@@ -48,10 +55,23 @@ import UpgradedPointsSource from './UpgradedPointsSource.js';
 import BBCSource from './BBCSource.js';
 import SggpSource from './SggpSource.js';
 import DanvietSource from './DanvietSource.js';
+import BaovanhoaSource from './BaovanhoaSource.js';
+import TechmemeSource from './TechmemeSource.js';
+import MicrosoftAiSource from './MicrosoftAiSource.js';
+import MacStoriesSource from './MacStoriesSource.js';
+import CnbcSource from './CnbcSource.js';
+import NbcNewsSource from './NbcNewsSource.js';
+import WashingtonPostSource from './WashingtonPostSource.js';
+import MarketWatchSource from './MarketWatchSource.js';
+import BloombergSource from './BloombergSource.js';
+import TheHillSource from './TheHillSource.js';
+import ReutersSource from './ReutersSource.js';
+import TechRadarSource from './TechRadarSource.js';
 registry.register(new VozSource());
 registry.register(new TinhteSource());
 registry.register(new VietnamplusSource());
 registry.register(new TheVergeSource());
+registry.register(new FinancialTimesSource());
 registry.register(new VietnamnetSource());
 registry.register(new TienPhongSource());
 registry.register(new VovSource());
@@ -73,5 +93,17 @@ registry.register(new UpgradedPointsSource());
 registry.register(new BBCSource());
 registry.register(new SggpSource());
 registry.register(new DanvietSource());
+registry.register(new BaovanhoaSource());
+registry.register(new BloombergSource());
+registry.register(new TheHillSource());
+registry.register(new ReutersSource());
+registry.register(new TechRadarSource());
+registry.register(new TechmemeSource());
+registry.register(new MicrosoftAiSource());
+registry.register(new MacStoriesSource());
+registry.register(new CnbcSource());
+registry.register(new NbcNewsSource());
+registry.register(new WashingtonPostSource());
+registry.register(new MarketWatchSource());
 
 export default registry;

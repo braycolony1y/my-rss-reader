@@ -1,0 +1,12 @@
+{
+  "h_ref": 250,
+  "c_ref": 0.04999999999999987,
+  "edgeL": 0.74595460450826,
+  "k": 0.30809079098348,
+  "ambientImage": "gray-ambient.webp",
+  "meltImage": "gray-melt.webp",
+  "assetBytes": {
+    "ambient": 82,
+    "melt": 328
+  }
+}

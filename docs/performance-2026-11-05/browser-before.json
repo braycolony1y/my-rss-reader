@@ -1,0 +1,377 @@
+[
+  {
+    "engine": "chromium",
+    "mobile": false,
+    "theme": "classic",
+    "baseline": true,
+    "errors": [],
+    "sameDestination": {
+      "requests": 6,
+      "counts": [
+        0,
+        0,
+        8,
+        8,
+        8,
+        8
+      ],
+      "reused": 0
+    },
+    "foregroundRefresh": {
+      "waitingCards": 0,
+      "reused": 0
+    },
+    "close": {
+      "beforeLength": 1630,
+      "frames": [
+        {
+          "ms": 331.19999998807907,
+          "display": "flex",
+          "opacity": "0",
+          "textLength": 0,
+          "scrollLocked": false
+        },
+        {
+          "ms": 940.8000000119209,
+          "display": "flex",
+          "opacity": "0.616469",
+          "textLength": 0,
+          "scrollLocked": false
+        },
+        {
+          "ms": 1739.1000000238419,
+          "display": "none",
+          "opacity": "1",
+          "textLength": 0,
+          "scrollLocked": false
+        }
+      ],
+      "clearedAfterHidden": true,
+      "blankVisibleFrames": 2
+    },
+    "reopen": {
+      "open": true,
+      "textLength": 1630,
+      "correctArticle": true
+    },
+    "sections": [
+      {
+        "section": "news_vietnam",
+        "selected": "news_vietnam",
+        "cards": 8
+      },
+      {
+        "section": "news_global",
+        "selected": "news_global",
+        "cards": 8
+      },
+      {
+        "section": "finance_vietnam",
+        "selected": "finance_vietnam",
+        "cards": 8
+      },
+      {
+        "section": "finance_global",
+        "selected": "finance_global",
+        "cards": 8
+      },
+      {
+        "section": "tech_vietnam",
+        "selected": "tech_vietnam",
+        "cards": 8
+      },
+      {
+        "section": "tech_global",
+        "selected": "tech_global",
+        "cards": 8
+      }
+    ],
+    "historyRace": {
+      "selected": "current",
+      "overlayOpen": true
+    }
+  },
+  {
+    "engine": "chromium",
+    "mobile": false,
+    "theme": "glass-light",
+    "baseline": true,
+    "errors": [],
+    "sameDestination": {
+      "requests": 6,
+      "counts": [
+        8,
+        8,
+        8,
+        8,
+        8,
+        8
+      ],
+      "reused": 0
+    },
+    "foregroundRefresh": {
+      "waitingCards": 0,
+      "reused": 0
+    },
+    "close": {
+      "beforeLength": 1630,
+      "frames": [
+        {
+          "ms": 292.4000000357628,
+          "display": "flex",
+          "opacity": "1",
+          "textLength": 0,
+          "scrollLocked": false
+        },
+        {
+          "ms": 1090.2000000476837,
+          "display": "flex",
+          "opacity": "1",
+          "textLength": 0,
+          "scrollLocked": false
+        },
+        {
+          "ms": 1819.9000000357628,
+          "display": "none",
+          "opacity": "1",
+          "textLength": 0,
+          "scrollLocked": false
+        }
+      ],
+      "clearedAfterHidden": true,
+      "blankVisibleFrames": 2
+    },
+    "reopen": {
+      "open": true,
+      "textLength": 1630,
+      "correctArticle": true
+    },
+    "sections": [
+      {
+        "section": "news_vietnam",
+        "selected": "news_vietnam",
+        "cards": 8
+      },
+      {
+        "section": "news_global",
+        "selected": "news_global",
+        "cards": 8
+      },
+      {
+        "section": "finance_vietnam",
+        "selected": "finance_vietnam",
+        "cards": 8
+      },
+      {
+        "section": "finance_global",
+        "selected": "finance_global",
+        "cards": 8
+      },
+      {
+        "section": "tech_vietnam",
+        "selected": "tech_vietnam",
+        "cards": 8
+      },
+      {
+        "section": "tech_global",
+        "selected": "tech_global",
+        "cards": 8
+      }
+    ],
+    "historyRace": {
+      "selected": "current",
+      "overlayOpen": true
+    }
+  },
+  {
+    "engine": "chromium",
+    "mobile": true,
+    "theme": "classic",
+    "baseline": true,
+    "errors": [],
+    "sameDestination": {
+      "requests": 6,
+      "counts": [
+        0,
+        0,
+        0,
+        0,
+        8,
+        8
+      ],
+      "reused": 0
+    },
+    "foregroundRefresh": {
+      "waitingCards": 0,
+      "reused": 0
+    },
+    "close": {
+      "beforeLength": 1630,
+      "frames": [
+        {
+          "ms": 49,
+          "display": "flex",
+          "opacity": "0",
+          "textLength": 0,
+          "scrollLocked": false
+        },
+        {
+          "ms": 305.5999999642372,
+          "display": "flex",
+          "opacity": "0",
+          "textLength": 0,
+          "scrollLocked": false
+        },
+        {
+          "ms": 571.3999999761581,
+          "display": "none",
+          "opacity": "1",
+          "textLength": 0,
+          "scrollLocked": false
+        }
+      ],
+      "clearedAfterHidden": true,
+      "blankVisibleFrames": 2
+    },
+    "reopen": {
+      "open": true,
+      "textLength": 1630,
+      "correctArticle": true
+    },
+    "sections": [
+      {
+        "section": "news_vietnam",
+        "selected": "news_vietnam",
+        "cards": 8
+      },
+      {
+        "section": "news_global",
+        "selected": "news_global",
+        "cards": 8
+      },
+      {
+        "section": "finance_vietnam",
+        "selected": "finance_vietnam",
+        "cards": 8
+      },
+      {
+        "section": "finance_global",
+        "selected": "finance_global",
+        "cards": 8
+      },
+      {
+        "section": "tech_vietnam",
+        "selected": "tech_vietnam",
+        "cards": 8
+      },
+      {
+        "section": "tech_global",
+        "selected": "tech_global",
+        "cards": 8
+      }
+    ],
+    "historyRace": {
+      "selected": "current",
+      "overlayOpen": true
+    }
+  },
+  {
+    "engine": "chromium",
+    "mobile": true,
+    "theme": "glass-light",
+    "baseline": true,
+    "errors": [],
+    "sameDestination": {
+      "requests": 6,
+      "counts": [
+        0,
+        0,
+        8,
+        8,
+        8,
+        8
+      ],
+      "reused": 0
+    },
+    "foregroundRefresh": {
+      "waitingCards": 0,
+      "reused": 0
+    },
+    "close": {
+      "beforeLength": 1630,
+      "frames": [
+        {
+          "ms": 161.80000001192093,
+          "display": "flex",
+          "opacity": "0",
+          "textLength": 0,
+          "scrollLocked": false
+        },
+        {
+          "ms": 760.8000000119209,
+          "display": "flex",
+          "opacity": "0.220695",
+          "textLength": 0,
+          "scrollLocked": false
+        },
+        {
+          "ms": 1074.8999999761581,
+          "display": "flex",
+          "opacity": "0",
+          "textLength": 0,
+          "scrollLocked": false
+        },
+        {
+          "ms": 1273.800000011921,
+          "display": "none",
+          "opacity": "1",
+          "textLength": 0,
+          "scrollLocked": false
+        }
+      ],
+      "clearedAfterHidden": true,
+      "blankVisibleFrames": 3
+    },
+    "reopen": {
+      "open": true,
+      "textLength": 1630,
+      "correctArticle": true
+    },
+    "sections": [
+      {
+        "section": "news_vietnam",
+        "selected": "news_vietnam",
+        "cards": 8
+      },
+      {
+        "section": "news_global",
+        "selected": "news_global",
+        "cards": 8
+      },
+      {
+        "section": "finance_vietnam",
+        "selected": "finance_vietnam",
+        "cards": 8
+      },
+      {
+        "section": "finance_global",
+        "selected": "finance_global",
+        "cards": 8
+      },
+      {
+        "section": "tech_vietnam",
+        "selected": "tech_vietnam",
+        "cards": 8
+      },
+      {
+        "section": "tech_global",
+        "selected": "tech_global",
+        "cards": 8
+      }
+    ],
+    "historyRace": {
+      "selected": "current",
+      "overlayOpen": true
+    }
+  }
+]

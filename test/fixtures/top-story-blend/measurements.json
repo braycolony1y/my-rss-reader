@@ -1,0 +1,116 @@
+[
+  {
+    "id": "S1",
+    "filename": "S1.heif",
+    "imageUrl": "https://media.vietnamplus.vn/images/1NRlHlv2ikBbd9jRTdcj2OTgjVoAA0D7f2m9N2ey9Gkzk9JG3EPZhh8RcizUoLqI23ny6FroLaZN-PSvbkDwFpgdxxYt7e--lb6ffYp7PJq-MvP0TF248r2BbnZgjENw/ttxvn_0110-tong-bi-thu-chu-tich-nuoc-ban-tuyen-giao-trung-uong-4.jpg.avif",
+    "avgL": 0.6132347094221487,
+    "meanChroma": 0.07383526990247641,
+    "hueCoherence": 0.9729345988374266,
+    "hMean": 64.42283239208274,
+    "busyness": 638.3970247217508,
+    "crop": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "graphic": false,
+    "accentH": 65.75643122457393,
+    "faces": 1
+  },
+  {
+    "id": "S2",
+    "filename": "S2.webp",
+    "imageUrl": "https://image.sggp.org.vn/w800/Uploaded/2026/ohpohuo/2026_10_01/sau-rieng-8-1250-4190jpg-7721-9416.jpg.webp",
+    "avgL": 0.63409336726304,
+    "meanChroma": 0.10701131083646684,
+    "hueCoherence": 0.9908599509274227,
+    "hMean": 108.13005842904545,
+    "busyness": 6716.490609759385,
+    "crop": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "graphic": false,
+    "accentH": 107.70715058371974,
+    "faces": 0
+  },
+  {
+    "id": "S3",
+    "filename": "S3.heif",
+    "imageUrl": "https://media.vietnamplus.vn/images/2Bp7XAns5lTd2E1LvH3sbwSryPWSAFM_o9IA2xN8sZzQlpRxt3CxIexFr6QREjUywO3Ky7n8KaArN9LCeI88tAmM4z7V96SWYKBGjn-Ghy3NtX_rkBrqho5W6KQCNWpz/ttxvn_tham-phan-nguyen-thi-lan-anh-tuyen-the-nham-chuc.jpg.avif",
+    "avgL": 0.5294930989971068,
+    "meanChroma": 0.05863403294651721,
+    "hueCoherence": 0.6341435451992988,
+    "hMean": 27.519979783891586,
+    "busyness": 4933.074421958312,
+    "crop": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "graphic": false,
+    "accentH": 26.45018427854137,
+    "faces": 2
+  },
+  {
+    "id": "S4",
+    "filename": "S4.heif",
+    "imageUrl": "https://media.vietnamplus.vn/images/UgzqAxPCwnUSi929yUMYvaVf2OyXAHVwmYIjmNycZtGcfdtqTi5WP6t-E_MpaYFc/ham-cao-toc.jpg.avif",
+    "avgL": 0.6230695835822826,
+    "meanChroma": 0.03393278508284446,
+    "hueCoherence": 0.5712837521767405,
+    "hMean": 90.49564544537861,
+    "busyness": 2981.969229209351,
+    "crop": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "graphic": false,
+    "accentH": 52.275421695823866,
+    "faces": 0
+  },
+  {
+    "id": "S5",
+    "filename": "S5.heif",
+    "imageUrl": "https://cdn.nhandan.vn/images/4EDwRt6_OcJW3vyPkkRYxr0pzV0PxXbC1Uqbs3czDFaBhsadYbmOJSmm-ZTn0B9xagJ8gNYr3SJY70GTlGBCIbubn9O_9ncwMQNq7cgFBUwQFK_X4IZjyY6ipm4SmFUQqsESqhdYNfGWf4GFxUNtn3WAhuFM1R0EpwvlNncN7z4/1790841519170-9125898567626638887-9125898567626638887-73de27ed35c559dfb1f03929c2f88e76.jpg.avif",
+    "avgL": 0.6550244860426041,
+    "meanChroma": 0.026952796274609416,
+    "hueCoherence": 0.7819137322741749,
+    "hMean": 280.2643067246304,
+    "busyness": 3951.2698159167408,
+    "crop": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "graphic": false,
+    "accentH": 296.5151571283369,
+    "faces": 7
+  },
+  {
+    "id": "S6",
+    "filename": "S6.webp",
+    "imageUrl": "https://image.sggp.org.vn/w800/Uploaded/2026/uiqpcwvo/2026_10_01/f72ba051-9196-4d0d-94e5-c223d19fc067-5166-1508.jpg.webp",
+    "avgL": 0.5959502618519024,
+    "meanChroma": 0.10478900511267476,
+    "hueCoherence": 0.9293473270704521,
+    "hMean": 230.01457861616916,
+    "busyness": 2452.7607859799396,
+    "crop": [
+      0.06435185185185185,
+      0.06435185185185185,
+      0.06435185185185185,
+      0.06435185185185185
+    ],
+    "graphic": true,
+    "accentH": 220.97151777298316,
+    "faces": 0
+  }
+]

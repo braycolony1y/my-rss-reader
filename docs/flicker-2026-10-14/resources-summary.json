@@ -1,0 +1,88 @@
+{
+  "elapsedSeconds": 60.237,
+  "samples": 7,
+  "physicalMiB": 472.859375,
+  "rssMiB": [
+    3956.4140625,
+    3966.80859375,
+    3966.80859375,
+    3966.80859375,
+    3966.80859375,
+    3969.53515625,
+    3969.53515625
+  ],
+  "metricSamples": [
+    {
+      "at": 1791949590747,
+      "heapMiB": 2212.2208709716797,
+      "externalMiB": 572.2604808807373,
+      "cpuPercent": 12,
+      "eventLoop": {
+        "meanMs": 21.874277204959885,
+        "p50Ms": 20.103167,
+        "p95Ms": 21.184511,
+        "p99Ms": 55.246847,
+        "maxMs": 637.009919
+      },
+      "smartRunning": true,
+      "parsedCache": {
+        "entries": 8,
+        "estimatedSourceBytes": 195581212,
+        "maxBytes": 201326592,
+        "hits": 8801,
+        "misses": 18520,
+        "evictions": 220,
+        "recovered": 311,
+        "persistentValues": {
+          "entries": 46,
+          "bufferedEntries": 18,
+          "utf8Bytes": 302269880,
+          "unbufferedStringChars": 414083
+        },
+        "transactions": {
+          "pending": 0,
+          "pendingBytes": 0,
+          "maxPending": 5,
+          "maxPendingBytes": 62844811,
+          "active": null
+        }
+      }
+    },
+    {
+      "at": 1791949650747,
+      "heapMiB": 2164.5912857055664,
+      "externalMiB": 569.8454389572144,
+      "cpuPercent": 18,
+      "eventLoop": {
+        "meanMs": 25.419036637288134,
+        "p50Ms": 20.103167,
+        "p95Ms": 24.166399,
+        "p99Ms": 79.953919,
+        "maxMs": 2797.600767
+      },
+      "smartRunning": true,
+      "parsedCache": {
+        "entries": 8,
+        "estimatedSourceBytes": 195581212,
+        "maxBytes": 201326592,
+        "hits": 8818,
+        "misses": 18536,
+        "evictions": 220,
+        "recovered": 311,
+        "persistentValues": {
+          "entries": 46,
+          "bufferedEntries": 18,
+          "utf8Bytes": 302275959,
+          "unbufferedStringChars": 414083
+        },
+        "transactions": {
+          "pending": 0,
+          "pendingBytes": 0,
+          "maxPending": 5,
+          "maxPendingBytes": 62844811,
+          "active": null
+        }
+      }
+    }
+  ]
+}

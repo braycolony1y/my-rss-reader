@@ -1,0 +1,349 @@
+section	decision	source	reason	title
+tech_vietnam	KEEP	deterministic	structural_capacity, binding_or_funded_action	Bộ Chính trị: Đến năm 2030 đưa vào vận hành 3 khu thử nghiệm UAV cấp quốc gia - VOV.VN
+tech_vietnam	KEEP	deterministic	major_failure	VNeID sắp tích hợp thêm loạt giấy tờ xe
+tech_vietnam	EXCLUDE	deterministic	TECH_VN_EVENT_OR_EXHIBITION	Gian hàng nổi bật tại triển lãm Đổi mới sáng tạo 2026
+tech_vietnam	KEEP	deterministic	ambiguous_keep	Phó thủ tướng Hồ Quốc Dũng: Chuyển từ 'có hoạt động' sang 'có kết quả' đổi mới sáng tạo
+tech_vietnam	KEEP	deterministic	meaningful_scale	Doanh nghiệp bán dẫn tại TP.HCM có thể được hỗ trợ tới 7 tỷ đồng
+tech_vietnam	KEEP	deterministic	major_failure, meaningful_scale	Taxi bay Trung Quốc sắp thử ở Hà Nội: Từng bán online giá hơn 9,2 tỷ đồng/chiếc, vé 1,16 triệu đồng, gập lại gọn như ô tô
+tech_vietnam	EXCLUDE	deterministic	TECH_VN_AWARD_OR_CONTEST	Nền tảng quang học siêu phổ thắng giải nhất Sáng kiến Khoa học 2026
+tech_vietnam	EXCLUDE	deterministic	TECH_VN_GENERIC_TARGET_OR_AMBITION	Việt Nam có thể trở thành trung tâm AI của ASEAN vào năm 2030
+tech_vietnam	EXCLUDE	deterministic	TECH_VN_AWARD_OR_CONTEST	Better Choice Awards 2026 vinh danh FPT.AI: Khi năng lực AI Việt được chứng minh bằng những bài toán thực tế
+tech_vietnam	EXCLUDE	deterministic	TECH_VN_SURVEY_OR_ADOPTION_STAT	95% độc giả VnExpress từng sử dụng AI
+tech_vietnam	EXCLUDE	deterministic	TECH_VN_MINOR_LOCAL_DIGITALIZATION	Cà Mau kết nối dữ liệu, hướng tới giải quyết hồ sơ tốt hơn cho người dân
+tech_vietnam	KEEP	deterministic	public_consequence	Nghị quyết 57 đưa công nghệ về vùng cao Sơn La: Gỡ điểm nghẽn để công nghệ vươn xa - VOV.VN
+tech_vietnam	KEEP	deterministic	ambiguous_keep	10.000 drone đang sử dụng tại Đồng bằng sông Cửu Long
+tech_vietnam	KEEP	deterministic	ambiguous_keep	Những thay đổi cần biết trên ứng dụng VNeID
+tech_vietnam	KEEP	deterministic	structural_capacity	Doanh nghiệp khai thác 40 triệu tấn "vàng đen" mỗi năm bắt tay Viettel, muốn thử nghiệm đưa robot vào đào lò - CafeF
+tech_vietnam	KEEP	deterministic	ambiguous_keep	Bộ trưởng Vũ Hải Quân: 'Khởi nguồn của những thay đổi là tư duy đổi mới'
+tech_vietnam	KEEP	deterministic	meaningful_scale	Phát triển khu vực gần 1.000 ha tại Hòa Lạc để thử nghiệm, thí điểm UAV - CafeF
+tech_vietnam	KEEP	deterministic	public_consequence	Ba cách số hóa giáo dục để giáo viên bớt 'hầu hạ công nghệ' - Báo Tuổi Trẻ
+tech_vietnam	EXCLUDE	deterministic	TECH_VN_EVENT_OR_EXHIBITION	Khai mạc VIMS 2026: Khách đến từ trước giờ mở cửa, khu trưng bày và khu lái thử kín người tham quan
+tech_vietnam	KEEP	deterministic	structural_capacity, meaningful_scale	Việt Nam lần đầu chế tạo thiết bị điện 500 kV thay thế hàng nhập khẩu - CafeF
+tech_vietnam	KEEP	deterministic	public_consequence	Kaspersky hợp tác với Cục An ninh mạng
+tech_vietnam	EXCLUDE	deterministic	TECH_VN_RANKING_OR_INDEX	Hà Nội tiếp tục dẫn đầu cả nước về đổi mới sáng tạo
+tech_vietnam	EXCLUDE	deterministic	TECH_VN_SURVEY_OR_ADOPTION_STAT	95% doanh nghiệp Việt dùng AI nhưng chỉ 15% ghi nhận tăng doanh thu
+tech_vietnam	KEEP	deterministic	ambiguous_keep	Loạt kết quả từ hợp tác công nghệ Việt Nam - Australia
+tech_vietnam	KEEP	deterministic	binding_or_funded_action	Vận hành doanh nghiệp với “lực lượng nhân sự AI” - Hơn 10 nghìn AI Agents của FPT đang làm việc như thế nào?
+tech_vietnam	KEEP	deterministic	meaningful_scale	Vượt Mỹ, Hàn Quốc và Ấn Độ, Việt Nam thành công đứng top 2 thế giới ở một mặt hàng quan trọng, thu về hơn 46 tỷ USD - SOHA
+tech_vietnam	KEEP	deterministic	ambiguous_keep	Cục trưởng Điện ảnh: Phim ngắn AI không thể lấy cớ 'clip mạng' để né luật
+tech_vietnam	KEEP	deterministic	public_consequence	Từ hôm nay, những trường hợp nào có thể bị khóa tài khoản VNeID?
+tech_vietnam	KEEP	deterministic	structural_capacity	Xây dựng nền tảng dữ liệu giao thông quốc gia, quản lý giao thông trên toàn quốc - VOV.VN
+tech_vietnam	KEEP	deterministic	ambiguous_keep	Thúc đẩy hệ sinh thái nghiên cứu chung Việt Nam - Hàn Quốc
+tech_vietnam	EXCLUDE	deterministic	TECH_VN_EVENT_OR_EXHIBITION	Chuỗi hoạt động hưởng ứng Ngày hội Đổi mới sáng tạo quốc gia
+tech_vietnam	EXCLUDE	deterministic	TECH_VN_EVENT_OR_EXHIBITION	Galaxy Z Fold8, robot đấu cờ và loạt công nghệ lạ hút khách tại Ngày hội Đổi mới sáng tạo Quốc gia 2026
+tech_vietnam	EXCLUDE	deterministic	TECH_VN_RANKING_OR_INDEX	'Việt Nam thuộc nhóm thăng hạng Chỉ số GII nhanh nhất'
+tech_vietnam	KEEP	deterministic	structural_capacity, binding_or_funded_action	Khởi công dự án KHCN cấp Quốc gia về làm chủ công nghệ chế tạo cuộn kháng bù ngang điện áp 500kV - VOV.VN
+tech_vietnam	KEEP	deterministic	ambiguous_keep	Đến năm 2045, 100% xã vùng dân tộc thiểu số được cung cấp thông tin số phù hợp - VOV4
+tech_vietnam	KEEP	deterministic	binding_or_funded_action	Bắc Ninh lọt "tầm ngắm" của "gã khổng lồ" công nghệ đến từ Trung Quốc, hé lộ cú rót vốn khổng lồ - SOHA
+tech_vietnam	EXCLUDE	deterministic	TECH_VN_AWARD_OR_CONTEST	15 công trình thắng giải Sáng kiến khoa học 2026
+tech_vietnam	KEEP	deterministic	ambiguous_keep	Hà Nội đề xuất thử nghiệm taxi bay - vtcnews.vn
+tech_vietnam	KEEP	deterministic	ambiguous_keep	Việt Nam đưa đổi mới sáng tạo làm động lực phát triển
+tech_vietnam	KEEP	deterministic	meaningful_scale	15 giải pháp AI bước vào cuộc đua giành giải thưởng một triệu USD
+tech_vietnam	EXCLUDE	deterministic	TECH_VN_MINOR_PILOT_OR_DEMO	'Robot hình người ở Việt Nam chủ yếu dùng để trình diễn'
+tech_vietnam	KEEP	deterministic	ambiguous_keep	HTV hợp tác cùng hãng phim TFS và CapCut đưa tiểu thuyết viễn tưởng lên màn ảnh bằng AI
+tech_vietnam	KEEP	deterministic	ambiguous_keep	Một ngành nghề mới liên quan đến robot vừa được Bộ GD&ĐT đưa vào danh mục đào tạo: Học gì, làm việc ở đâu? - CafeF
+tech_vietnam	KEEP	deterministic	ambiguous_keep	Thứ trưởng Trần Trung Tính đề xuất 4 giải pháp phát triển kinh tế biển
+tech_vietnam	KEEP	deterministic	structural_capacity, binding_or_funded_action	Phó Thủ tướng Hồ Quốc Dũng: Gỡ vướng cơ chế đầu tư, vận hành phòng thí nghiệm - VOV.VN
+tech_vietnam	KEEP	deterministic	ambiguous_keep	Bên trong xưởng phim AI: 11 nhân sự, mỗi ngày sản xuất 100 tập phim
+tech_vietnam	KEEP	deterministic	major_failure, meaningful_scale	Website doanh nghiệp tại Việt Nam 'sập' hàng loạt
+tech_vietnam	KEEP	deterministic	ambiguous_keep	Việt Nam đề xuất ba ưu tiên hợp tác sở hữu trí tuệ với Hàn Quốc
+tech_vietnam	EXCLUDE	deterministic	TECH_VN_CORPORATE_TECH_PR	The Hunter Group ra mắt Nolan, ứng dụng AI vào sản xuất nội dung
+tech_vietnam	KEEP	deterministic	binding_or_funded_action	Chuyên gia bán dẫn: 'Việt Nam cần làm thật, không đầu tư dàn trải'
+tech_vietnam	KEEP	deterministic	ambiguous_keep	Shopee, TikTok nắm gần 98% thị trường, hãng giao nhận cạnh tranh thế nào để được khách hàng chọn?
+tech_vietnam	KEEP	deterministic	structural_capacity	Đưa hệ thống thông tin cơ sở trở thành hạ tầng số chiến lược trọng yếu quốc gia - VOV.VN
+tech_vietnam	KEEP	deterministic	ambiguous_keep	Công nghệ nhuộm mô phát sáng giúp loại bỏ u não tối đa
+tech_vietnam	KEEP	deterministic	ambiguous_keep	Tập đoàn Mỹ muốn cùng TP HCM đưa công nghệ Việt ra thế giới
+tech_vietnam	KEEP	deterministic	ambiguous_keep	Gelex Electric muốn đổi tên, mở rộng sang lĩnh vực công nghiệp và công nghệ - CafeF
+tech_vietnam	KEEP	deterministic	ambiguous_keep	Trường học 'ngợp' vì quá nhiều phần mềm, chuyên gia đề xuất gì? - Báo Tuổi Trẻ
+tech_vietnam	KEEP	deterministic	public_consequence	Độc đáo Robot tuần tra, an ninh giám sát trong triển lãm của C06, Bộ Công an - VOV.VN
+tech_vietnam	KEEP	deterministic	ambiguous_keep	TikTok xác nhận gỡ bỏ video AI 18+ sau phản ánh của Dân trí
+tech_vietnam	KEEP	deterministic	public_consequence	Đổi điện thoại mới: Vì sao cần phải xác thực khuôn mặt gấp trong 2 giờ nếu không muốn bị khóa SIM? - SOHA
+tech_vietnam	EXCLUDE	deterministic	TECH_VN_MINOR_LOCAL_DIGITALIZATION	Cà Mau đưa chuyển đổi số đến gần người dân
+tech_vietnam	KEEP	deterministic	ambiguous_keep	Người Việt mê đồ ship, cả nước có 5 tỷ bưu gửi trong 1 năm
+tech_vietnam	EXCLUDE	deterministic	TECH_VN_MINOR_TRAINING_OR_RESEARCH	InnovaConnect kết nối nhà khoa học Việt với chuyên gia quốc tế
+tech_vietnam	KEEP	deterministic	structural_capacity	Việt Nam nghiên cứu tự sản xuất thiết bị lưới 500 kV
+tech_vietnam	EXCLUDE	deterministic	TECH_VN_GENERIC_TARGET_OR_AMBITION	'Doanh nghiệp cần chuyển từ sử dụng sang làm chủ, tạo ra công nghệ'
+tech_vietnam	EXCLUDE	deterministic	TECH_VN_ORDINARY_PRODUCT_OR_FEATURE	VssID có thêm một thay đổi người tham gia BHXH nên biết
+tech_vietnam	KEEP	deterministic	public_consequence	Đắk Lắk số hóa dữ liệu, chuyển đổi số giáo dục - VOV.VN
+tech_vietnam	EXCLUDE	deterministic	TECH_VN_EVENT_OR_EXHIBITION	Lý do Việt Nam có Ngày hội Đổi mới sáng tạo quốc gia
+tech_vietnam	KEEP	deterministic	ambiguous_keep	"Mang chuông đi đánh xứ người" - Sức mạnh của sáng chế và vị thế công nghệ Việt trên trường quốc tế
+tech_vietnam	KEEP	deterministic	public_consequence	Từ điều hòa, tủ lạnh đến đường sắt, Việt Nam bắt đầu siết quản lý môi chất lạnh - VOV.VN
+tech_vietnam	KEEP	deterministic	ambiguous_keep	Chuẩn bị hạ tầng Cloud cho giai đoạn cao điểm
+tech_vietnam	KEEP	deterministic	ambiguous_keep	‏Giải pháp container linh hoạt hơn cho ứng dụng số đến từ VNPT Cloud‏
+tech_vietnam	EXCLUDE	deterministic	TECH_VN_AWARD_OR_CONTEST	10 cuốn sách khoa học hay được đề cử giải thưởng năm 2026
+tech_vietnam	KEEP	deterministic	structural_capacity	Việt Nam muốn biến không gian tầm thấp thành ngành kinh tế mới
+tech_vietnam	KEEP	deterministic	ambiguous_keep	Rủi ro khi mua bán tiền số trên 'chợ đen'
+tech_vietnam	KEEP	deterministic	public_consequence, meaningful_scale	Chi tiêu y tế Việt Nam dự báo đạt 34,1 tỉ USD: Bài toán ứng dụng công nghệ và cơ hội kết nối - Báo Tuổi Trẻ
+tech_vietnam	EXCLUDE	deterministic	TECH_VN_ORDINARY_PRODUCT_OR_FEATURE	Robot hút bụi giá rẻ không còn được người Việt ưa chuộng
+tech_vietnam	KEEP	deterministic	ambiguous_keep	52% cuộc lừa đảo bằng AI thành công trong chưa đầy 30 phút - Tin tức 24h
+tech_vietnam	KEEP	deterministic	public_consequence	'An toàn phải được chuẩn bị cùng với phát triển' - Báo Tuổi Trẻ
+tech_vietnam	EXCLUDE	deterministic	TECH_VN_ORDINARY_PRODUCT_OR_FEATURE	Threads mở tính năng giám sát người dùng trẻ tại Việt Nam
+tech_vietnam	EXCLUDE	deterministic	TECH_VN_MINOR_TRAINING_OR_RESEARCH	Đưa kiến thức và kỹ năng số đến gần hơn với người dân
+tech_vietnam	EXCLUDE	deterministic	TECH_VN_CORPORATE_TECH_PR	MoMo AI Moni: lớp trợ thủ tài chính tiếng Việt xuyên suốt ứng dụng, hỗ trợ giao dịch 24/7 và bảo mật 99,999% độ chính xác
+tech_vietnam	EXCLUDE	deterministic	TECH_VN_RANKING_OR_INDEX	Việt Nam đứng thứ 7 thế giới về tỷ lệ sử dụng Internet thế hệ mới
+tech_vietnam	EXCLUDE	deterministic	TECH_VN_MINOR_TRAINING_OR_RESEARCH	Viện CNTT và Truyền thông CDIT mở rộng đào tạo ngành game, hướng tới thị trường toàn cầu - m.gamek.vn
+news_vietnam	KEEP	deterministic	ambiguous_keep	Cô giáo 44 tuổi tìm bạn đồng hành cho những năm tháng bình yên
+news_vietnam	KEEP	deterministic	ambiguous_keep	Tìm em - cô gái cùng tần số, thích cuộc sống giản đơn
+news_vietnam	KEEP	deterministic	ambiguous_keep	Tôi mệt mỏi vì vợ lấy phim ngắn AI làm tiêu chuẩn đời thật
+news_vietnam	KEEP	deterministic	ambiguous_keep	Thủ tướng Đức tới Kiev bất chấp cảnh báo của Nga
+news_vietnam	KEEP	deterministic	ambiguous_keep	Biển người phủ kín khu thắng cảnh ở Trung Quốc dịp Tuần lễ vàng
+news_vietnam	KEEP	deterministic	ambiguous_keep	Hà Nội tiếp tục dẫn đầu cả nước về đổi mới sáng tạo
+news_vietnam	KEEP	deterministic	public_consequence	Vì sao tóc bạc khi bạn còn trẻ?
+news_vietnam	KEEP	deterministic	ambiguous_keep	Ăn dứa có giúp thơm vùng kín?
+news_vietnam	KEEP	deterministic	major_failure	Vì sao người ngưng thở khi ngủ hay mệt mỏi ban ngày?
+news_vietnam	KEEP	deterministic	ambiguous_keep	Bộ trưởng Vũ Hải Quân: 'Khởi nguồn của những thay đổi là tư duy đổi mới'
+news_vietnam	KEEP	deterministic	ambiguous_keep	Lịch trực tiếp FIFA ASEAN Cup 2026: Việt Nam đấu Malaysia, Thái Lan gặp Indonesia
+news_vietnam	KEEP	deterministic	ambiguous_keep	Tin tức sáng 5-10: TP.HCM sẽ lập hệ thống báo ngập; Đề xuất người dưới 18 tuổi được hiến xác
+news_vietnam	KEEP	deterministic	ambiguous_keep	Thời tiết hôm nay 5-10: Không khí lạnh gây mưa to cho Bắc Bộ
+news_vietnam	KEEP	deterministic	public_consequence, major_failure	Sét đánh chết cả đàn heo sắp xuất chuồng, người nông dân mất trắng
+news_vietnam	KEEP	deterministic	ambiguous_keep	Israel: Cơ phó Flydubai có thể đã hành động đơn lẻ
+news_vietnam	KEEP	deterministic	ambiguous_keep	Vụ lật thuyền trên sông Lam: Tìm thấy thi thể người vợ trong đêm
+news_vietnam	KEEP	deterministic	public_consequence	Ông Trump chọn 'trùm siêu trí tuệ' và đặc phái viên con tin mới
+news_vietnam	KEEP	deterministic	ambiguous_keep	Hơn 400 triệu đồng giá trị giải thưởng tại Giải cầu lông trung cao tuổi TP.HCM
+news_vietnam	KEEP	deterministic	ambiguous_keep	‘Việt Nam ngày càng chủ động đóng góp sáng kiến vào những vấn đề chung của thế giới’
+news_vietnam	KEEP	deterministic	ambiguous_keep	Conan để người hâm mộ chọn nhạc phim yêu thích nhân kỷ niệm 30 năm
+news_vietnam	KEEP	deterministic	ambiguous_keep	Nàng thơ 'Em và Trịnh' được đề cử gương mặt đẹp nhất thế giới
+news_vietnam	KEEP	deterministic	binding_or_funded_action	TP.HCM lên kế hoạch giải quyết 50 điểm ngập nặng
+news_vietnam	KEEP	deterministic	binding_or_funded_action	Thể thao Việt Nam cần thay đổi tận gốc
+news_vietnam	KEEP	deterministic	ambiguous_keep	Hà Nội quá tải chất thải rắn xây dựng
+news_vietnam	KEEP	deterministic	ambiguous_keep	Bất ngờ nam sinh GDTX chinh phục IELTS 8.5, điểm SAT thuộc top 1% thế giới
+news_vietnam	KEEP	deterministic	ambiguous_keep	Học sinh Việt Nam giành 10 huy chương Olympic thiên văn quốc tế
+news_vietnam	KEEP	deterministic	ambiguous_keep	Đỗ ô tô trong hẻm: Không chắn cửa, xe khác vẫn qua là được?
+news_vietnam	KEEP	deterministic	ambiguous_keep	Phim ngắn AI: Đừng để giải trí nhanh thành 'bẫy' nội dung
+news_vietnam	KEEP	deterministic	ambiguous_keep	Kỷ vật kể chuyện cụ Huỳnh: Đọc lại Tiếng Dân từ gần 1 thế kỷ trước
+news_vietnam	KEEP	deterministic	ambiguous_keep	Du lịch lập kỷ lục nhưng chưa thể 'thở phào'
+news_vietnam	KEEP	deterministic	ambiguous_keep	Giữ chợ truyền thống, trước hết phải giữ người đi chợ
+news_vietnam	KEEP	deterministic	public_consequence	Robot, giải pháp AI gây chú ý tại Ngày hội đổi mới sáng tạo
+news_vietnam	KEEP	deterministic	ambiguous_keep	Giám đốc nhà tù Mỹ từ chức sau vụ tử tù bị tiêm thuốc độc không chết
+news_vietnam	KEEP	deterministic	ambiguous_keep	Alcaraz tiến vào bán kết Japan Open, Djokovic hạ Zverev ở China Open
+news_vietnam	KEEP	deterministic	ambiguous_keep	Thuyền chở đoàn kiểm lâm bị chìm trên sông Hồng, một người mất tích
+news_vietnam	KEEP	deterministic	ambiguous_keep	Không khí lạnh tràn về, Hà Nội và nhiều nơi ở miền Bắc mưa lạnh
+news_vietnam	KEEP	deterministic	ambiguous_keep	Ukraine tấn công mạnh hạ tầng năng lượng Nga, Moscow đáp trả đanh thép
+news_vietnam	KEEP	deterministic	public_consequence	Ukraine cảnh báo đáp trả "học thuyết" không kích mới của Nga
+news_vietnam	KEEP	deterministic	ambiguous_keep	Đình Bắc báo tin không vui trước trận đội tuyển Việt Nam gặp Malaysia
+news_vietnam	KEEP	deterministic	ambiguous_keep	Tranh tài kịch tính giải đua thuyền rồng trên hồ Tây
+news_vietnam	KEEP	deterministic	ambiguous_keep	Chủ tịch phường ở TPHCM lên tiếng sau phản ánh đường cao hơn nền nhà gần 1m
+news_vietnam	KEEP	deterministic	ambiguous_keep	Dự báo thời tiết 5/10/2026: Hà Nội chuyển lạnh, nhiều nơi mưa giông
+news_vietnam	KEEP	deterministic	public_consequence	Thời sự sáng 5/10: Danh tính nam thanh niên mặc áo mưa, bịt kín mặt cướp tiệm vàng
+news_vietnam	KEEP	deterministic	ambiguous_keep	Nhận 'kèo' gây sốc trên TikTok đến xâm phạm mồ mả: Người ra kèo có liên đới?
+news_vietnam	KEEP	deterministic	public_consequence	Mặt đường hầm chui dài 455m xuất hiện nhiều ổ gà, tài xế thót tim phanh gấp
+news_vietnam	KEEP	deterministic	ambiguous_keep	Hé lộ diễn biến vụ kiểm lâm viên mất tích trên sông Hồng
+news_vietnam	KEEP	deterministic	ambiguous_keep	Một kiểm lâm viên mất tích trên sông Hồng
+news_vietnam	KEEP	deterministic	ambiguous_keep	Không khí lạnh bắt đầu tràn về, Hà Nội giảm gần 10 độ, miền Bắc mưa lớn
+news_vietnam	KEEP	deterministic	ambiguous_keep	TPHCM ngập nặng sau mưa lớn: Loạt phương tiện chết máy, nước tràn vào cả xe buýt
+news_vietnam	KEEP	deterministic	ambiguous_keep	Xác minh vụ người đàn ông lên ô tô 7 chỗ rồi mất tích gần 1 tháng
+news_vietnam	KEEP	deterministic	ambiguous_keep	Tin tức XÃ HỘI đời sống MỚI NHẤT - BÁO LAO ĐỘNG | LAODONG.VN - Laodong.vn
+news_vietnam	KEEP	deterministic	ambiguous_keep	Giao lưu và chia sẻ trên dulich.laodong.vn | Chuyên trang DU LỊCH - Laodong.vn
+news_vietnam	KEEP	deterministic	ambiguous_keep	MEDIA - Chuyên mục truyền thông đa phương tiện - BÁO LAO ĐỘNG | LAODONG.VN - Laodong.vn
+news_vietnam	KEEP	deterministic	ambiguous_keep	Tin tức XÃ HỘI đời sống MỚI NHẤT - BÁO LAO ĐỘNG | LAODONG.VN - Laodong.vn
+news_vietnam	KEEP	deterministic	ambiguous_keep	Bản tin - Báo Lao Động | LAODONG.VN - Laodong.vn
+news_vietnam	KEEP	deterministic	ambiguous_keep	Hoạt động Mặt trận - Laodong.vn
+news_vietnam	KEEP	deterministic	public_consequence	An ninh hình sự - Laodong.vn
+news_vietnam	KEEP	deterministic	ambiguous_keep	Tin tức mới nhất về lao động cuối tuần - Laodong.vn - Laodong.vn
+news_vietnam	KEEP	deterministic	ambiguous_keep	Xem ngay video văn hoá - giải trí mới nhất - Lao Động - Laodong.vn
+news_vietnam	KEEP	deterministic	ambiguous_keep	Giải trí - Laodong.vn
+news_vietnam	KEEP	deterministic	ambiguous_keep	Video: 45 phút bùng nổ của Đình Bắc giúp tuyển Việt Nam đánh bại Pakistan - Báo Tuổi Trẻ
+news_vietnam	KEEP	deterministic	ambiguous_keep	'Tia chớp' Thái Lan và 'thần gió' Trung Quốc hẹn hò? - Báo Tuổi Trẻ
+news_vietnam	KEEP	deterministic	ambiguous_keep	Dự đoán tỉ số: Thắng chật vật Malaysia, Việt Nam giành hạng ba FIFA ASEAN Cup 2026 - Báo Tuổi Trẻ
+news_vietnam	KEEP	deterministic	ambiguous_keep	AFC thay đổi gây sốc, ảnh hưởng kế hoạch dự World Cup của Việt Nam - Báo Tuổi Trẻ
+news_vietnam	KEEP	deterministic	ambiguous_keep	HLV Kim Sang Sik: Càng khó khăn, tuyển Việt Nam càng quyết tâm thắng Malaysia - Báo Tuổi Trẻ
+news_vietnam	KEEP	deterministic	ambiguous_keep	Bảng xếp hạng bóng chuyền nam Asiad 20 - Báo Tuổi Trẻ
+news_vietnam	KEEP	deterministic	ambiguous_keep	Bất ngờ bị ‘đòi nợ’ tiền thuế đất - Báo Tuổi Trẻ
+news_vietnam	KEEP	deterministic	ambiguous_keep	Thiếu Messi, tuyển Argentina vẫn thắng dễ 7-0 - Báo Tuổi Trẻ
+news_vietnam	KEEP	deterministic	ambiguous_keep	Việt Nam hướng đến vé dự U17 nữ châu Á 2027 - Báo Tuổi Trẻ
+news_vietnam	KEEP	deterministic	public_consequence	Chất lượng cầu thủ nhập tịch Việt Nam không bằng Indonesia? - Báo Tuổi Trẻ
+news_vietnam	KEEP	deterministic	ambiguous_keep	Vóc dáng như siêu mẫu của 'bạn gái tổng tài hot nhất hiện tại'
+news_vietnam	KEEP	deterministic	major_failure	Goncalo Ramos đưa Bồ Đào Nha vào tứ kết UEFA Nations League
+news_vietnam	KEEP	deterministic	public_consequence	Lâm Đồng chỉnh trang đô thị đón Festival Hoa Đà Lạt
+news_vietnam	KEEP	deterministic	major_failure	Miền Trung đón mưa rất lớn
+news_vietnam	KEEP	deterministic	public_consequence	Chuyên gia hiến kế để TPHCM thoát ngập
+news_vietnam	KEEP	deterministic	ambiguous_keep	Hàng nghìn du khách vượt đêm lên núi, chờ săn biển mây ở Ba Vì
+news_vietnam	KEEP	deterministic	public_consequence, major_failure	Khuyến cáo miền Tây ứng phó hạn, mặn gay gắt mùa khô sắp tới
+news_vietnam	KEEP	deterministic	ambiguous_keep	Người trẻ 'nhăn mặt' với phim ngắn AI
+news_vietnam	KEEP	deterministic	public_consequence, major_failure	Giữ rừng ngập mặn, bảo vệ 'lá chắn xanh' ở Quảng Ngãi
+news_vietnam	KEEP	deterministic	major_failure	Thương vụ thâu tóm đắt giá nhất lịch sử
+news_vietnam	KEEP	deterministic	ambiguous_keep	Quan hệ hữu nghị truyền thống Việt Nam-Panama
+news_vietnam	KEEP	deterministic	ambiguous_keep	Thời tiết ngày 5/10: Không khí lạnh gây mưa lớn, vùng núi có nơi dưới 18 độ C
+news_vietnam	KEEP	deterministic	ambiguous_keep	Học sinh Việt Nam giành 6 HCV kỳ thi Olympic thiên văn, vật lý thiên văn quốc tế
+news_vietnam	KEEP	deterministic	ambiguous_keep	Bầu cử giữa kỳ Mỹ 2026: Cử tri gốc Latinh chuyển hướng sang đảng Dân chủ
+news_vietnam	KEEP	deterministic	ambiguous_keep	Quan hệ hữu nghị truyền thống Việt Nam-Panama ngày càng phát triển mạnh mẽ
+news_vietnam	KEEP	deterministic	public_consequence, binding_or_funded_action	Kết quả thực hiện Nghị quyết 57-NQ/TW về đột phá phát triển khoa học công nghệ
+news_vietnam	KEEP	deterministic	ambiguous_keep	Ghé thăm Văn Thánh-Khổng Miếu, khám phá di sản đất học xứ Quảng
+news_vietnam	KEEP	deterministic	ambiguous_keep	Đại sứ quán Việt Nam tại Hungary chào đón tân sinh viên năm học 2026-2027
+news_vietnam	KEEP	deterministic	ambiguous_keep	Thảo nguyên Nội Mông Cổ khoác lên mình chiếc "áo tuyết trắng" đẹp đến nao lòng
+news_vietnam	KEEP	deterministic	ambiguous_keep	Phnom Penh ủng hộ lời kêu gọi của LHQ liên quan xung đột Thái Lan-Campuchia
+news_vietnam	KEEP	deterministic	major_failure	Dấu mốc quan trọng trong lịch sử quan hệ Việt Nam-Panama
+news_vietnam	KEEP	deterministic	major_failure	Tổng thống Cộng hòa Panama bắt đầu thăm chính thức Việt Nam
+news_vietnam	KEEP	deterministic	public_consequence	[Video] Cán bộ, công chức cấp xã chính thức được hưởng phụ cấp công vụ 55%
+news_vietnam	KEEP	deterministic	public_consequence, binding_or_funded_action	[Video] Triển khai giá dịch vụ phục vụ hành khách tại sân bay Long Thành
+news_vietnam	KEEP	deterministic	public_consequence	[Video] Tăng mức phụ cấp ưu đãi nghề giữ chân cán bộ y tế vùng khó khăn
+news_vietnam	KEEP	deterministic	ambiguous_keep	Báo Nhân Dân số 25888
+news_vietnam	KEEP	deterministic	ambiguous_keep	[Video] Dự báo thời tiết ngày 5/10/2026: Không khí lạnh gây mưa ở Bắc Bộ, Trung Bộ; Nam Bộ chiều tối tăng dông
+news_vietnam	KEEP	deterministic	ambiguous_keep	Đồng Nai nâng cao kỹ năng số
+news_vietnam	KEEP	deterministic	ambiguous_keep	Vang mãi hồn dân tộc
+news_vietnam	KEEP	deterministic	ambiguous_keep	Kiến tạo không gian kinh tế đa cực
+news_vietnam	KEEP	deterministic	ambiguous_keep	9 tháng, GRDP tỉnh Quảng Ngãi tăng 9,16% so với cùng kỳ - vov.vn
+news_vietnam	KEEP	deterministic	ambiguous_keep	Xuất khẩu Việt Nam: Từ áp lực đến thế chủ động - vov.vn
+news_vietnam	KEEP	deterministic	ambiguous_keep	Quy định đặc biệt về trận đấu Việt Nam vs Malaysia ở FIFA ASEAN Cup - vov.vn
+news_vietnam	KEEP	deterministic	ambiguous_keep	Thai Nguyen to host international festival highlighting premier tea - VOV.VN
+news_vietnam	KEEP	deterministic	public_consequence, binding_or_funded_action	TP.HCM dành hơn 5.000 tỷ đồng đầu tư 5 dự án tại Bệnh viện Ung bướu - vov.vn
+news_vietnam	KEEP	deterministic	ambiguous_keep	Hôm nay 4/10, ASIAD 2026 chính thức bế mạc - vov.vn
+news_vietnam	KEEP	deterministic	ambiguous_keep	Vietnam sees 149,700 new businesses in nine months - VOV.VN
+news_vietnam	KEEP	deterministic	ambiguous_keep	Hến giàu dinh dưỡng đến đâu? Ai nên thận trọng khi ăn? - vov.vn
+news_vietnam	KEEP	deterministic	ambiguous_keep	Nghi phạm vụ Flydubai từng bị hãng khác loại khỏi chương trình đào tạo - vov.vn
+news_vietnam	KEEP	deterministic	ambiguous_keep	Phục dựng Điện Kính Thiên: Từ dấu tích đến sức sống di sản - VOV2.VN
+news_vietnam	KEEP	deterministic	ambiguous_keep	Ban Bí thư bổ nhiệm 3 Phó Tổng Giám đốc Đài Truyền hình Việt Nam - Báo điện tử VTC News
+news_vietnam	KEEP	deterministic	ambiguous_keep	GDP quý III/2026 tăng 9,95%, 9 tháng tăng 9,01% - VTC News - Báo điện tử VTC News
+news_vietnam	KEEP	deterministic	public_consequence	Tăng phụ cấp lên 55%, thu nhập cán bộ cấp xã thay đổi thế nào? - Báo điện tử VTC News
+news_vietnam	KEEP	deterministic	ambiguous_keep	Truy tìm nam thanh niên đi xe máy liên quan vụ ẩu đả dưới hầm chui ở Bắc Ninh - Báo điện tử VTC News
+news_vietnam	KEEP	deterministic	major_failure	'Taxi bay' không người lái sắp thử nghiệm tại Hà Nội có gì đặc biệt? - Báo điện tử VTC News
+news_vietnam	KEEP	deterministic	ambiguous_keep	Giấc mơ ô tô Việt dang dở, Vinaxuki giờ ra sao? - Báo điện tử VTC News
+news_vietnam	KEEP	deterministic	ambiguous_keep	Chuyên gia dự báo TP.HCM vẫn còn đợt mưa diện rộng vào đầu tháng 10 - Báo điện tử VTC News
+news_vietnam	KEEP	deterministic	ambiguous_keep	Thời tiết tháng 10: Biển Đông có thể đón bão, mưa lớn tập trung ở Trung Bộ - Báo điện tử VTC News
+news_vietnam	KEEP	deterministic	ambiguous_keep	Trực tiếp họp báo Việt Nam vs Pakistan: HLV Kim Sang-sik thoát hiểm - Báo điện tử VTC News
+news_vietnam	KEEP	deterministic	ambiguous_keep	Đội hình Việt Nam vs Pakistan: Đình Bắc, Adou Minh dự bị - Báo điện tử VTC News
+news_vietnam	KEEP	deterministic	ambiguous_keep	Tái khởi động dự án Golden Hills, đưa nguồn lực trở lại phục vụ phát triển - baochinhphu.vn
+news_vietnam	KEEP	deterministic	ambiguous_keep	Phó Thủ tướng Thường trực Phạm Gia Túc: Đánh giá thực chất tiến độ các công trình trọng điểm - baochinhphu.vn
+news_vietnam	KEEP	deterministic	ambiguous_keep	Thủ tướng: Quyết tâm cao nhất để GDP quý IV tăng trên 12,5% - baochinhphu.vn
+news_vietnam	KEEP	deterministic	ambiguous_keep	Dùng công nghệ giúp tài chính tiêu dùng minh bạch: vay đúng, trả đúng - baochinhphu.vn
+news_vietnam	KEEP	deterministic	ambiguous_keep	Không để nguồn lực bị ách tắc vì chậm trễ trong tổ chức thực hiện - baochinhphu.vn
+news_vietnam	KEEP	deterministic	ambiguous_keep	Thủ tướng: Cần những giải pháp mạnh hơn nữa trong giai đoạn nước rút của năm 2026 - baochinhphu.vn
+news_vietnam	KEEP	deterministic	ambiguous_keep	Địa phương tăng tốc 3 tháng cuối năm, cam kết đạt mục tiêu tăng trưởng hai con số - baochinhphu.vn
+news_vietnam	KEEP	deterministic	ambiguous_keep	Việt Nam hướng tới đáp ứng tiêu chí nâng hạng của MSCI, lên nhóm mới nổi bậc cao của FTSE - baochinhphu.vn
+news_vietnam	KEEP	deterministic	ambiguous_keep	Dự kiến Chương trình bồi dưỡng chuẩn nghề nghiệp giảng viên - baochinhphu.vn
+news_vietnam	KEEP	deterministic	public_consequence	Phê duyệt mở rộng khu kinh tế Vũng Áng, Hà Tĩnh - baochinhphu.vn
+news_vietnam	KEEP	deterministic	ambiguous_keep	Bitcoin hút tiền - Znews
+news_vietnam	KEEP	deterministic	ambiguous_keep	Thịt đông lạnh ồ ạt về Việt Nam - Znews
+news_vietnam	KEEP	deterministic	ambiguous_keep	Phương Mỹ Chi vượt 'thế khó' - Znews
+news_vietnam	KEEP	deterministic	ambiguous_keep	Ảnh hưởng của Kỷ Băng Hà nhỏ tới châu Á - Znews
+news_vietnam	KEEP	deterministic	ambiguous_keep	Tiền lãi có thực sự cần thiết? - Znews
+news_vietnam	KEEP	deterministic	ambiguous_keep	Sầu riêng siêu rẻ, giá chỉ vài chục nghìn đồng/kg - Znews
+news_vietnam	KEEP	deterministic	ambiguous_keep	Muốn tuổi 40 không hối tiếc, tuổi 30 cần làm gì? - Znews
+news_vietnam	KEEP	deterministic	ambiguous_keep	Điều kỳ lạ về ngôi sao 'Doctor Strange' - Znews
+news_vietnam	KEEP	deterministic	ambiguous_keep	Sói già trả giá - Znews
+news_vietnam	KEEP	deterministic	ambiguous_keep	Tàn Tuyết - người đang đứng đầu bảng cược Nobel - là ai? - Znews
+news_vietnam	KEEP	deterministic	ambiguous_keep	Nga kiểm soát Novaya Kazachya - Chuyên gia nêu lý do ông Putin đổi mục tiêu, khiến điều hiếm thấy xảy ra ở Ukraine
+news_vietnam	KEEP	deterministic	binding_or_funded_action	Đầu tư 30,8 tỷ rúp, Nga mang chuỗi công nghệ "độc bản, hiếm có khó tìm" sang châu Âu: Để làm gì?
+news_vietnam	KEEP	deterministic	ambiguous_keep	Lời khuyên cho những người để khăn mặt trong nhà vệ sinh 24/7
+news_vietnam	KEEP	deterministic	ambiguous_keep	Phát minh của Trung Quốc làm rung chuyển ngành xây dựng: Xi măng "sống" có thể xây nhà trên sao Hoả, bền ngang vật liệu thông thường
+news_vietnam	KEEP	deterministic	ambiguous_keep	Tất cả người dân chú ý mức phạt 20 triệu đồng liên quan đến khai báo tạm trú
+news_vietnam	KEEP	deterministic	ambiguous_keep	Nhiều gia đình trồng đu đủ trong sân vườn, hóa ra không chỉ để lấy quả
+news_vietnam	KEEP	deterministic	ambiguous_keep	56 kích thủy lực nâng khối mái 'cánh sen' có diện tích gần 20.000 m², nặng 5.300 tấn lên cao
+news_vietnam	KEEP	deterministic	public_consequence	Từ 5/10/2026, một số người được hưởng trợ cấp 1,35 triệu đồng/tháng: Điều kiện cụ thể thế nào?
+news_vietnam	KEEP	deterministic	ambiguous_keep	Chuyên gia: "Ai làm sai người đấy chịu, miễn là đừng chĩa S-400 ngược về phía Nga"
+news_vietnam	KEEP	deterministic	ambiguous_keep	Mỹ nhân Việt cao 1,55 m vào top đẹp nhất thế giới
+news_vietnam	KEEP	deterministic	ambiguous_keep	Trấn Thành bắt Bích Phương "thề" chuyện cưới Tăng Duy Tân
+news_vietnam	KEEP	deterministic	ambiguous_keep	Không cần đi gym, làm theo bài tập "lười" chỉ mất 3 phút này mỗi ngày có thể mang lại điều bất ngờ cho vóc dáng
+news_vietnam	KEEP	deterministic	ambiguous_keep	Đầu tháng 10 gửi ngân hàng 100 triệu, lãi tối đa bao nhiêu?
+news_vietnam	KEEP	deterministic	ambiguous_keep	Vì sao không nên tráng bát đĩa trước khi cho vào máy?
+news_vietnam	KEEP	deterministic	ambiguous_keep	3 con giáp sinh ra để theo đuổi khối ngành STEM, càng gắn bó càng giàu
+news_vietnam	KEEP	deterministic	ambiguous_keep	Bùng binh tình ái sốc nhất showbiz hiện tại: Nàng thơ gen Z giật bồ bạn thân, còn phũ phàng nhân đôi nỗi đau cho đối phương
+news_vietnam	KEEP	deterministic	ambiguous_keep	Nam NSND mang hàm Đại tá, cưới vợ kém 12 tuổi, ở chung cư cao cấp Hà Nội
+news_vietnam	KEEP	deterministic	ambiguous_keep	Bảng giá xe máy Honda Vision 2026 mới nhất tháng 10/2026
+news_vietnam	KEEP	deterministic	ambiguous_keep	Những địa chỉ đắt giá nhất Việt Nam: 1 góc ở Long Biên “chứa” hơn 2,35 triệu tỷ đồng vốn hóa, trụ sở FPT, Vinamilk xếp thứ mấy?
+news_vietnam	KEEP	deterministic	ambiguous_keep	Điểm danh 3 con giáp may mắn nhất ngày 5/10
+news_vietnam	KEEP	deterministic	ambiguous_keep	Xác minh vụ người đàn ông lên ô tô 7 chỗ rồi mất tích gần 1 tháng - Tin tức 24h
+news_vietnam	KEEP	deterministic	ambiguous_keep	Ba Lan bất ngờ lên tiếng về khả năng chiến tranh với Nga - Tin tức 24h
+news_vietnam	KEEP	deterministic	major_failure	Video tennis Alcaraz - Shapovalov: Sự cố cay đắng ở set 2 (Japan Open) - Tin tức 24h
+news_vietnam	KEEP	deterministic	ambiguous_keep	Ông Medvedev tiết lộ cách Nga giúp đỡ Iran - Tin tức 24h
+news_vietnam	KEEP	deterministic	ambiguous_keep	Video bóng đá Tây Ban Nha - CH Séc: Yamal ghi siêu phẩm (Nations League) - Tin tức 24h
+news_vietnam	KEEP	deterministic	ambiguous_keep	Ba "sao" Việt góp mặt trong Ủy ban Trung ương Hội LHTN Việt Nam khóa IX - Tin tức 24h
+news_vietnam	KEEP	deterministic	ambiguous_keep	Houthi tấn công thủ đô của Ả-rập Xê-út - Tin tức 24h
+news_vietnam	KEEP	deterministic	ambiguous_keep	Tháo dỡ quả cầu 18 tấn ở cửa ngõ TP HCM - Tin tức 24h
+news_vietnam	KEEP	deterministic	ambiguous_keep	Video bóng đá Croatia - Anh: Kinh hoàng sức mạnh "Tam sư" (Nations League) - Tin tức 24h
+news_vietnam	KEEP	deterministic	ambiguous_keep	Video tennis Zverev - Djokovic: Ngược dòng đẳng cấp (China Open) - Tin tức 24h
+news_vietnam	KEEP	deterministic	public_consequence	Bảo Việt được vinh danh Thương hiệu Mạnh năm 2026
+news_vietnam	KEEP	deterministic	ambiguous_keep	Việt Nam thắng lớn tại Olympic Thiên văn và Vật lý thiên văn quốc tế 2026
+news_vietnam	KEEP	deterministic	public_consequence	Phụ huynh học sinh ở TP Hồ Chí Minh mệt mỏi vì môn học liên kết
+news_vietnam	KEEP	deterministic	ambiguous_keep	Lễ bế mạc ASIAD 20: Lời tạm biệt từ Nhật Bản
+news_vietnam	KEEP	deterministic	ambiguous_keep	Câu chuyện về hành trình giữ bình yên thành phố của lực lượng PCCC và CNCH
+news_vietnam	KEEP	deterministic	ambiguous_keep	Đã quy tập được 718 bộ hài cốt liệt sĩ tại Công viên Lê Thị Riêng
+news_vietnam	KEEP	deterministic	public_consequence	Đại uý Hồ Đình Khánh nhiều lần dũng cảm cứu dân trong mưa bão
+news_vietnam	KEEP	deterministic	public_consequence	Tham khảo kinh nghiệm về bồi thường nhà nước, đăng ký tài sản
+news_vietnam	KEEP	deterministic	public_consequence	Nỗ lực bảo đảm an toàn giao thông đường thủy nội địa ở Khánh Hòa
+news_vietnam	KEEP	deterministic	public_consequence	Không thể nhân danh nhân quyền để đánh tráo bản chất, bao che khủng bố
+news_vietnam	KEEP	deterministic	binding_or_funded_action	9 tháng, giải ngân đầu tư công ước đạt 640.000 tỷ đồng - Báo Quân đội nhân dân
+news_vietnam	KEEP	deterministic	major_failure	Israel xác định sự cố trên chuyến bay FlyDubai là tấn công khủng bố - Báo Quân đội nhân dân
+news_vietnam	KEEP	deterministic	ambiguous_keep	Giá xăng dầu hôm nay (3-10): Giá dầu giảm sau khi châu Âu đồng ý xả kho dự trữ diesel - Báo Quân đội nhân dân
+news_vietnam	KEEP	deterministic	ambiguous_keep	Giá vàng hôm nay (2-10): Giá vàng miếng tăng nhẹ - Báo Quân đội nhân dân
+news_vietnam	KEEP	deterministic	ambiguous_keep	Giá xăng dầu hôm nay (2-10): Giá dầu tăng vọt 4% khi Trung Quốc dừng xuất khẩu nhiên liệu - Báo Quân đội nhân dân
+news_vietnam	KEEP	deterministic	ambiguous_keep	Hộp thư thông tin viên-cộng tác viên - Báo Quân đội nhân dân
+news_vietnam	KEEP	deterministic	ambiguous_keep	Bản tin tổng hợp tuần: Toàn quân nắm chắc tình hình, xử lý hiệu quả các tình huống - Báo Quân đội nhân dân
+news_vietnam	KEEP	deterministic	ambiguous_keep	Điều động, bổ nhiệm, kéo dài thời hạn giữ chức vụ một số cán bộ thuộc Bộ Quốc phòng - Báo Quân đội nhân dân
+news_vietnam	KEEP	deterministic	ambiguous_keep	Người quê thương người phố - ct.qdnd.vn
+news_vietnam	KEEP	deterministic	ambiguous_keep	Giá vàng hôm nay (3-10): Tăng, giảm không đồng nhất - Báo Quân đội nhân dân
+news_vietnam	KEEP	deterministic	public_consequence	Lý do Mỹ khẩn cấp rút toàn bộ oanh tạc cơ B-1 khỏi Anh
+news_vietnam	KEEP	deterministic	major_failure	Nhìn lại ASIAD 20: Những dấu ấn từ Aichi-Nagoya
+news_vietnam	KEEP	deterministic	major_failure	Tổng thống Trump chính thức tuyên bố thành lập 'Lực lượng Siêu trí tuệ'
+news_vietnam	KEEP	deterministic	binding_or_funded_action	Khoảnh khắc & sự kiện ngày 5/10
+news_vietnam	KEEP	deterministic	binding_or_funded_action	IOAA 2026: Học sinh Việt Nam giành 6 Huy chương Vàng
+news_vietnam	KEEP	deterministic	public_consequence	Iran phản hồi đề xuất chuyển urani làm giàu sang Nga
+news_vietnam	KEEP	deterministic	ambiguous_keep	Học, thực hành theo Bác: Nối dài mạch nguồn văn hóa Tây Nguyên
+news_vietnam	KEEP	deterministic	ambiguous_keep	Quan hệ hữu nghị truyền thống Việt Nam - Panama
+news_vietnam	KEEP	deterministic	public_consequence	Bộ trưởng Dầu mỏ Iran bất ngờ từ chức giữa chiến dịch gây sức ép kinh tế của Mỹ
+news_vietnam	KEEP	deterministic	ambiguous_keep	Các tân sinh viên Việt Nam niên khóa 2026 - 2027 được chào đón tại Hungary
+news_vietnam	KEEP	deterministic	ambiguous_keep	Báo Sài Gòn Giải Phóng ngày 5/10/2026
+news_vietnam	KEEP	deterministic	ambiguous_keep	Phân quyền hiệu quả
+news_vietnam	KEEP	deterministic	ambiguous_keep	Chủ động máy bơm, ứng phó ngập úng tại TPHCM
+news_vietnam	KEEP	deterministic	public_consequence	Thực thi luật phát triển đô thị: Phát huy tính chủ động, kiểm soát chặt quyền lực
+news_vietnam	KEEP	deterministic	public_consequence	Phim ngắn AI và hàng loạt hệ lụy: Bài 5: Giữ bản sắc điện ảnh Việt
+news_vietnam	KEEP	deterministic	ambiguous_keep	Mạnh về biển, phát triển bền vững từ biển - Bài 4: Kinh tế biển TPHCM vươn tầm thế giới
+news_vietnam	KEEP	deterministic	public_consequence	Người học không cần làm và nộp hồ sơ đề nghị xét hưởng học bổng
+news_vietnam	KEEP	deterministic	ambiguous_keep	Djokovic vượt qua Zverev, đạt thành tích 32-0 ở China Open
+news_vietnam	KEEP	deterministic	major_failure	Các đội tuyển Thể thao Việt Nam rời Aichi-Nagoya
+news_vietnam	KEEP	deterministic	major_failure	Chia tay ASIAD 20, hẹn gặp lại Qatar năm 2030
+news_vietnam	KEEP	deterministic	ambiguous_keep	Giá vàng hôm nay 2-10: SJC giảm 800.000 đồng/lượng - Báo Hànộimới
+news_vietnam	KEEP	deterministic	ambiguous_keep	Chuyên gia nghiêng về kịch bản nào với giá vàng trong tuần tới? - Báo Hànộimới
+news_vietnam	KEEP	deterministic	ambiguous_keep	Đại công trường Vành đai 2,5 chạy đua từng ngày để thông xe kỹ thuật vào dịp 10-10 - Báo Hànộimới
+news_vietnam	KEEP	deterministic	ambiguous_keep	Khai mạc Lễ hội Văn hóa thế giới tại Hà Nội lần thứ II-2026: Hội tụ di sản văn hóa thế giới, lan tỏa tình hữu nghị - Báo Hànộimới
+news_vietnam	KEEP	deterministic	ambiguous_keep	Giá vàng hôm nay 1-10: Vàng trong nước giảm, thế giới chịu áp lực - Báo Hànộimới
+news_vietnam	KEEP	deterministic	ambiguous_keep	Matcha Nhật Bản trong cuộc đua giá trị - Báo Hànộimới
+news_vietnam	KEEP	deterministic	ambiguous_keep	Siết chặt quản lý xe ghép - Báo Hànộimới
+news_vietnam	KEEP	deterministic	ambiguous_keep	Phường Bạch Mai: Tháo dỡ công trình phục vụ giải phóng mặt bằng Trục không gian Quốc lộ 1A - Báo Hànộimới
+news_vietnam	KEEP	deterministic	ambiguous_keep	Quy hoạch tổ hợp ga Ngọc Hồi, đầu mối đường sắt phía Nam Hà Nội - Báo Hànộimới
+news_vietnam	KEEP	deterministic	ambiguous_keep	Thông tin mới nhất về đợt không khí lạnh ảnh hưởng đến Hà Nội - Báo Hànộimới
+news_vietnam	KEEP	deterministic	ambiguous_keep	Khởi tố thanh niên người Lào tham gia buôn lậu đường kính vào Việt Nam - Báo điện tử VTC News
+news_vietnam	KEEP	deterministic	ambiguous_keep	Công an phát thông báo tìm kiếm phụ nữ nghi nhảy cầu Bảo Hà xuống sông Hồng - Báo điện tử VTC News
+news_vietnam	KEEP	deterministic	ambiguous_keep	HUAWEI MatePad Air thêm an tâm với Care+: Bảo hiểm tai nạn, thay pin miễn phí 1 năm - fptshop.com.vn
+news_vietnam	KEEP	deterministic	ambiguous_keep	52% cuộc lừa đảo bằng AI thành công trong chưa đầy 30 phút - Tin tức 24h
+news_vietnam	KEEP	deterministic	ambiguous_keep	Khởi tố loạt giám đốc, viện trưởng biến kết quả quan trắc từ không đạt thành đạt - Báo điện tử VTC News
+news_vietnam	KEEP	deterministic	public_consequence	Kịp thời hỗ trợ cụ ông 92 tuổi mang 7 cây vàng đi lạc trong đêm
+news_vietnam	KEEP	deterministic	ambiguous_keep	Sao Mai 2026 - Liveshow 1: Xuất hiện thí sinh được đánh giá như nghệ sĩ thực thụ
+news_vietnam	KEEP	deterministic	ambiguous_keep	Tô Dũng bật mí chặng cuối phim Mùa hè năm ấy
+news_vietnam	KEEP	deterministic	ambiguous_keep	Chung kết Anh trai vượt ngàn chông gai 2026: Kết quả cuộc đối đầu của các thủ lĩnh
+news_vietnam	KEEP	deterministic	ambiguous_keep	Bình Lư - Sa Pa: Mở rộng không gian phát triển Hoàng Liên Sơn
+news_vietnam	KEEP	deterministic	public_consequence	Nhiều người trẻ tại Nhật Bản bị lôi kéo vào cạm bẫy đổi đời
+news_vietnam	KEEP	deterministic	ambiguous_keep	Nhịp sống bình yên: Tri ân những người đi ngược chiều ngọn lửa
+news_vietnam	KEEP	deterministic	ambiguous_keep	Bạn trai tin đồn của nữ chính 'Đầu xuân tươi sáng' gây sốt với vai phản diện
+news_vietnam	KEEP	deterministic	public_consequence	Giao mùa - chủ động phòng bệnh cúm mùa
+news_vietnam	KEEP	deterministic	ambiguous_keep	Lee Byung Hun - Gương mặt giao thoa giữa Hollywood và Seoul
+news_vietnam	KEEP	deterministic	ambiguous_keep	Phú Thọ: Gỡ điểm nghẽn mặt bằng, đẩy nhanh các dự án đê kè khu vực Hoà Bình - Báo Xây dựng
+news_vietnam	KEEP	deterministic	ambiguous_keep	172 dự án điện tái tạo: EVN đề nghị đàm phán lại giá mua điện - Báo Xây dựng
+news_vietnam	KEEP	deterministic	ambiguous_keep	Từ hoài nghi đến hiệu quả: Những đoàn tàu riêng cho người đi làm - Báo Xây dựng
+news_vietnam	KEEP	deterministic	ambiguous_keep	Bài 4: Giữ tầm nhìn trăm năm trong cuộc kiến tạo sông Hồng - Báo Xây dựng
+news_vietnam	KEEP	deterministic	ambiguous_keep	Metro số 2 làm sẵn “cửa chờ” đón TOD - Báo Xây dựng
+news_vietnam	KEEP	deterministic	ambiguous_keep	Vỉa hè: Ranh giới giữa sử dụng và chiếm dụng - Báo Xây dựng
+news_vietnam	KEEP	deterministic	ambiguous_keep	Mở rộng không gian Vũng Áng, khơi thông nút thắt, tiếp lực cho "xương sống" công nghiệp - Báo Xây dựng
+news_vietnam	KEEP	deterministic	ambiguous_keep	Cao tốc Châu Đốc - Cần Thơ - Sóc Trăng bố trí 4 trạm dừng nghỉ - Báo Xây dựng
+news_vietnam	KEEP	deterministic	ambiguous_keep	Chính phủ chốt phương án nghỉ Tết Đinh Mùi 2027 trong 7 ngày, Quốc khánh nghỉ bốn ngày - Báo Xây dựng
+news_vietnam	KEEP	deterministic	ambiguous_keep	Mở rộng diện tích, tạo thêm không gian phát triển khu kinh tế Vũng Áng - Báo Xây dựng
+news_vietnam	KEEP	deterministic	public_consequence	Lâm Đồng: Bị xe bán tải quay đầu cán trúng, người đàn ông ngồi bên đường tử vong - Báo Xây dựng
+news_vietnam	KEEP	deterministic	ambiguous_keep	Toàn cảnh giao thông 4/10: Đường sắt giảm giá vé tháng 10, tăng phí trả vé dịp Tết - Báo Xây dựng
+news_vietnam	KEEP	deterministic	ambiguous_keep	Mất lái vì mải cúi nhìn đuôi xe, người đi xe máy gây tai nạn liên hoàn - Báo Xây dựng
+news_vietnam	KEEP	deterministic	ambiguous_keep	CSGT Đà Nẵng dùng xe đặc chủng đưa nạn nhân bị đột quỵ cấp cứu kịp thời - Báo Xây dựng
+news_vietnam	KEEP	deterministic	ambiguous_keep	Phát loa đi đòi nợ, một phụ nữ bị công an Khánh Hòa mời làm việc - Báo Xây dựng
+news_vietnam	KEEP	deterministic	binding_or_funded_action	Cục Đường bộ chấn chỉnh vận hành hệ thống giám sát giao thông trên cao tốc Bắc - Nam - Báo Xây dựng
+news_vietnam	KEEP	deterministic	ambiguous_keep	500 nhà báo, vận động viên cùng chinh phục con đường đá cổ PaVi ở Lai Châu - Báo Xây dựng
+news_vietnam	KEEP	deterministic	ambiguous_keep	Miền Đông Nam Bộ: Nối thông 3 tuyến cao tốc, mở đường giảm tải QL51 trong tháng 10 - Báo Xây dựng
+news_vietnam	KEEP	deterministic	ambiguous_keep	Lai Châu: Hàng nghìn khán giả hòa mình trong đêm đại nhạc hội Viettel Y-Fest 2026 - Báo Xây dựng
+news_vietnam	KEEP	deterministic	ambiguous_keep	Điều chỉnh quy hoạch khu kinh tế Nghi Sơn, bổ sung gần 59ha đất khoáng sản - Báo Xây dựng
+news_vietnam	KEEP	deterministic	ambiguous_keep	Nhân viên quán thịt dê ở Ninh Bình cầm điếu cày đuổi đánh người quay video, công an vào cuộc - Báo Dân Việt
+news_vietnam	KEEP	deterministic	ambiguous_keep	Giá vàng hôm nay (3/10): Lao dốc sau khi tăng mạnh, dự báo "còn giảm" - Báo Dân Việt
+news_vietnam	KEEP	deterministic	ambiguous_keep	Giá vàng hôm nay (2/10): Vàng miếng SJC bất ngờ tăng trở lại - Báo Dân Việt
+news_vietnam	KEEP	deterministic	ambiguous_keep	Giá xăng dầu hôm nay 3/10: Dầu thế giới neo cao, xăng dầu trong nước khó lường - Báo Dân Việt
+news_vietnam	KEEP	deterministic	binding_or_funded_action	Giá vàng hôm nay (4/10): Tiếp đà giảm sâu, nhà đầu tư có nên "bắt đáy"? - Báo Dân Việt
+news_vietnam	KEEP	deterministic	ambiguous_keep	TRỰC TIẾP ASIAD 2026 ngày 3/11 - Báo Dân Việt
+news_vietnam	KEEP	deterministic	ambiguous_keep	ĐT Pakistan hé lộ "vũ khí" trước trận gặp ĐT Việt Nam - Báo Dân Việt
+news_vietnam	KEEP	deterministic	ambiguous_keep	Mazda 2 nhập khẩu giảm giá không “phanh”, rẻ ngang Hyundai Grand i10 - Báo Dân Việt
+news_vietnam	KEEP	deterministic	ambiguous_keep	Nguyễn Thị Tâm mang về HCB cho thể thao Việt Nam tại ASIAD 2026 - Báo Dân Việt
+news_vietnam	KEEP	deterministic	ambiguous_keep	“Các đợt tấn công dồn dập của ĐT Việt Nam đã phá vỡ thế trận” - Báo Dân Việt

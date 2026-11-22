@@ -1,0 +1,41 @@
+{
+  "durationSeconds": 45,
+  "scope": "successful file write syscall bytes; not physical I/O; attached reader PID and threads/new descendants",
+  "groups": {
+    "article_cache": {
+      "bytes": 2258033,
+      "syscalls": 22,
+      "files": 20
+    },
+    "userPreferences.json": {
+      "bytes": 2101011,
+      "syscalls": 12,
+      "files": 6
+    },
+    "articleFetchStrategyStats.json": {
+      "bytes": 1880616,
+      "syscalls": 8,
+      "files": 4
+    },
+    "cacheMembers.json": {
+      "bytes": 617288,
+      "syscalls": 4,
+      "files": 2
+    },
+    "recentReadAt.json": {
+      "bytes": 139497,
+      "syscalls": 1,
+      "files": 1
+    },
+    "readStates.json": {
+      "bytes": 61121,
+      "syscalls": 1,
+      "files": 1
+    },
+    "other": {
+      "bytes": 15976,
+      "syscalls": 15,
+      "files": 2
+    }
+  }
+}

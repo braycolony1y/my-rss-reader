@@ -1,0 +1,5 @@
+/* Reserve the photo box without painting an unassigned image's broken icon
+   or duplicate alt text. Assigned and responsive sources retain visibility. */
+.article-card-image .thumbnail-plate > img.thumbnail-img:not([src]):not([srcset]) {
+    visibility: hidden;
+}

@@ -1,0 +1,246 @@
+{
+  "dataset": {
+    "clusters": 8460,
+    "rawArticles": 1735,
+    "cardsPerResponse": 40
+  },
+  "method": "Isolated stored-data fixtures; real database store in the disk test; real Alpine/Chromium in the browser test; AI and publisher/image network access disabled. See accompanying report for limitations.",
+  "serverDiskPhases": {
+    "beforeCold": {
+      "request-received": 0.15520199999991746,
+      "persisted-read": 1672.9809109999999,
+      "candidate-collection": 442.38169000000016,
+      "rank-state-read": 376.33108699999957,
+      "cluster-reconciliation": 415.60427100000015,
+      "relevance-computation": 222.12393699998393,
+      "signal-computation": 432.5875609999839,
+      "sorting-ranking": 179.93268799999987,
+      "top-cutoff": 44.532178999999815,
+      "rank-persistence": 1979.5200949999999,
+      "ranking-total": 3731.362217,
+      "filtering": 204.53373400000055,
+      "snapshot-construction": 4.456389999999374,
+      "card-preparation": 50.023776,
+      "serialization": 8.178055000000313,
+      "response-sent": 0.1301210000001447
+    },
+    "beforeWarm": {
+      "request-received": 0.005040000000008149,
+      "persisted-read": 47.54196000000047,
+      "candidate-collection": 0.036239999999452266,
+      "ranking-total": 16.934833999999682,
+      "filtering": 138.17640800000117,
+      "snapshot-construction": 0.8866060000000289,
+      "card-preparation": 10.446429999999964,
+      "serialization": 7.932933000000048,
+      "response-sent": 0.04340099999899394
+    },
+    "afterCold": {
+      "rank-state-read": 0,
+      "cluster-reconciliation": 0,
+      "relevance-computation": 0,
+      "signal-computation": 0,
+      "sorting-ranking": 0,
+      "top-cutoff": 0,
+      "rank-persistence": 0,
+      "request-received": 0.018119999998816638,
+      "persisted-read": 2136.278873000001,
+      "candidate-collection": 4.33686999999918,
+      "ranking-total": 0.04048000000148022,
+      "filtering": 211.3212599999988,
+      "snapshot-construction": 1.076006999999663,
+      "card-preparation": 9.641625000000204,
+      "serialization": 5.1040740000007645,
+      "response-sent": 0.3185620000003837
+    },
+    "afterWarm": {
+      "rank-state-read": 0,
+      "cluster-reconciliation": 0,
+      "relevance-computation": 0,
+      "signal-computation": 0,
+      "sorting-ranking": 0,
+      "top-cutoff": 0,
+      "rank-persistence": 0,
+      "request-received": 0.009000000000014552,
+      "persisted-read": 2.4981769999994867,
+      "candidate-collection": 2.016773999999714,
+      "ranking-total": 0.011800000000221189,
+      "filtering": 0.9585659999993368,
+      "snapshot-construction": 1.033647000000201,
+      "card-preparation": 4.081908000000112,
+      "serialization": 5.06299399999989,
+      "response-sent": 0.04024000000026717
+    }
+  },
+  "browser": [
+    {
+      "variant": "before",
+      "fetch": [
+        {
+          "duration": 2799.300000190735,
+          "server": [
+            {
+              "name": "request-received",
+              "duration": 0.032
+            },
+            {
+              "name": "persisted-read",
+              "duration": 0.358
+            },
+            {
+              "name": "candidate-collection",
+              "duration": 906.387
+            },
+            {
+              "name": "rank-state-read",
+              "duration": 0.065
+            },
+            {
+              "name": "cluster-reconciliation",
+              "duration": 427.892
+            },
+            {
+              "name": "relevance-computation",
+              "duration": 204.606
+            },
+            {
+              "name": "signal-computation",
+              "duration": 382.126
+            },
+            {
+              "name": "sorting-ranking",
+              "duration": 263.649
+            },
+            {
+              "name": "top-cutoff",
+              "duration": 67.266
+            },
+            {
+              "name": "rank-persistence",
+              "duration": 251.146
+            },
+            {
+              "name": "ranking-total",
+              "duration": 1672.626
+            },
+            {
+              "name": "filtering",
+              "duration": 149.531
+            },
+            {
+              "name": "snapshot-construction",
+              "duration": 2.343
+            },
+            {
+              "name": "card-preparation",
+              "duration": 30.967
+            },
+            {
+              "name": "serialization",
+              "duration": 6.126
+            }
+          ]
+        }
+      ],
+      "paint": [],
+      "timing": {
+        "fetchMs": 2658.6000003814697,
+        "renderMs": 1126.5999999046326,
+        "cards": 40
+      },
+      "cards": 40,
+      "duplicate": false,
+      "toggle": [
+        "Top stories",
+        "Classic"
+      ]
+    },
+    {
+      "variant": "after",
+      "fetch": [
+        {
+          "duration": 513.2999997138977,
+          "server": [
+            {
+              "name": "rank-state-read",
+              "duration": 0
+            },
+            {
+              "name": "cluster-reconciliation",
+              "duration": 0
+            },
+            {
+              "name": "relevance-computation",
+              "duration": 0
+            },
+            {
+              "name": "signal-computation",
+              "duration": 0
+            },
+            {
+              "name": "sorting-ranking",
+              "duration": 0
+            },
+            {
+              "name": "top-cutoff",
+              "duration": 0
+            },
+            {
+              "name": "rank-persistence",
+              "duration": 0
+            },
+            {
+              "name": "request-received",
+              "duration": 0.026
+            },
+            {
+              "name": "persisted-read",
+              "duration": 46.814
+            },
+            {
+              "name": "candidate-collection",
+              "duration": 11.652
+            },
+            {
+              "name": "ranking-total",
+              "duration": 0.034
+            },
+            {
+              "name": "filtering",
+              "duration": 357.707
+            },
+            {
+              "name": "snapshot-construction",
+              "duration": 3.264
+            },
+            {
+              "name": "card-preparation",
+              "duration": 8.99
+            },
+            {
+              "name": "serialization",
+              "duration": 8.919
+            }
+          ]
+        }
+      ],
+      "paint": [
+        {
+          "totalMs": 1411.2999997138977,
+          "cards": 40
+        }
+      ],
+      "timing": {
+        "fetchMs": 555.1999998092651,
+        "renderMs": 855.5999999046326,
+        "cards": 40
+      },
+      "cards": 40,
+      "duplicate": false,
+      "toggle": [
+        "Top stories",
+        "Classic"
+      ]
+    }
+  ]
+}

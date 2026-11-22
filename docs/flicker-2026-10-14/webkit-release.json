@@ -1,0 +1,34 @@
+[
+  {
+    "theme": "classic",
+    "mode": "top",
+    "removed": 0,
+    "inserted": 0,
+    "allNodesReused": true,
+    "errors": []
+  },
+  {
+    "theme": "classic",
+    "mode": "feed",
+    "removed": 0,
+    "inserted": 0,
+    "allNodesReused": true,
+    "errors": []
+  },
+  {
+    "theme": "glass-light",
+    "mode": "top",
+    "removed": 0,
+    "inserted": 0,
+    "allNodesReused": true,
+    "errors": []
+  },
+  {
+    "theme": "glass-light",
+    "mode": "feed",
+    "removed": 0,
+    "inserted": 0,
+    "allNodesReused": true,
+    "errors": []
+  }
+]

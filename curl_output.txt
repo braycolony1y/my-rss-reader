@@ -1,6 +1,0 @@
-data: {"type":"progress","stage":"crawling","current":0,"total":null,"message":"Starting thread crawl...","threadUrl":"https://voz.vn/t/cac-loi-khuyen-cua-cac-hr-va-sep-cu-da-nhau-the-nao-y-domain-vs-da-nang.1265202/unread"}
-
-data: {"type":"progress","stage":"crawling","current":1,"total":null,"message":"Collecting page 1...","threadUrl":"https://voz.vn/t/cac-loi-khuyen-cua-cac-hr-va-sep-cu-da-nhau-the-nao-y-domain-vs-da-nang.1265202/unread"}
-
-data: {"type":"error","error":"No posts found in thread"}
-

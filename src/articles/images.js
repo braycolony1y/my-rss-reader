@@ -1,0 +1,146 @@
+import { isInvalidImage, isRedditUrl } from '../utils/article-utils.js';
+import { getArticleThumbnail } from './thumbnail.js';
+import { withArticleFetchLane } from './fetch-lanes.js';
+import {articleFallbackAcquisition} from './fallback-request.js';
+
+export function createArticleImages({
+    getLastKnownCachedArticle,
+    getLastKnownCachedArticleImage = async url => getArticleThumbnail(url, await getLastKnownCachedArticle(url)),
+    getArticleFetchPolicy,
+    fetchParsedArticleByStrategy,
+    cacheArticleResult,
+} = {}) {
+    const pending = new Map();
+    const resolved = new Map();
+
+    async function resolveImageNow(targetUrl, rssFallback) {
+        const cachedImage = await getLastKnownCachedArticleImage(targetUrl);
+        if (cachedImage) return cachedImage;
+        if (rssFallback && !isInvalidImage(rssFallback)) return rssFallback;
+
+        // Share the article reader's source policy, ordering, and fetch pipeline.
+        // Source-specific image scrapers must not introduce unconfigured methods.
+        const policy = await getArticleFetchPolicy(targetUrl);
+        for (const strategy of policy.strategyOrder) {
+            try {
+                const result = await withArticleFetchLane('p2',
+                    () => fetchParsedArticleByStrategy(strategy, targetUrl, policy),
+                    { source: 'card-thumbnail' });
+                if (!result?.content || result.isDeletedSource || result.sourceDeleted) continue;
+                const image = getArticleThumbnail(targetUrl, result);
+                await cacheArticleResult(targetUrl, { ...result, ...(image ? { image } : {}) });
+                if (image) return image;
+            } catch { /* Try only the next method allowed by the source policy. */ }
+        }
+        return null;
+    }
+
+    const resolveImage = articleFallbackAcquisition(resolveImageNow, {lane: 'p2'});
+
+    async function getBestImage(targetUrl, _fetchFn, rssFallback = null, { throwWhenBusy = false } = {}) {
+        if (isRedditUrl(targetUrl)) return rssFallback || '';
+        targetUrl = targetUrl.replace(/\/unread\/?$/, '');
+        // /og-image receives rss="" from feed URLs; /image-focus resolves the
+        // same missing fallback as null. They must share the same extraction.
+        rssFallback = rssFallback || null;
+        const key = JSON.stringify([targetUrl, rssFallback]);
+        const cached=resolved.get(key);
+        if(cached && cached.expiresAt>Date.now()){
+            resolved.delete(key);resolved.set(key,cached);return cached.image;
+        }
+        resolved.delete(key);
+        if (!pending.has(key)) {
+            // Bounded in-flight lookups. HTTP callers get a retryable 503
+            // (not a cacheable "no image"); background callers just skip.
+            if(pending.size>=64){
+                if(throwWhenBusy)throw Object.assign(new Error('Image lookups are busy; retry later'),{code:'WORK_QUEUE_FULL',status:503});
+                return null;
+            }
+            pending.set(key, resolveImage(targetUrl, rssFallback).then(image=>{
+                // A failed lookup can recover immediately when a source or its
+                // cache becomes available; retain only successful resolutions.
+                if(image)resolved.set(key,{image,expiresAt:Date.now()+15*60000});
+                while(resolved.size>1000)resolved.delete(resolved.keys().next().value);
+                return image;
+            }).finally(() => pending.delete(key)));
+        }
+        return pending.get(key);
+    }
+
+    const EAGER_ARTICLE_IMAGE_CONCURRENCY = 2;
+
+    let activeEagerArticleImages = 0;
+
+    const eagerArticleImageQueue = [];
+
+    function scheduleEagerArticleImage(task) {
+        return new Promise((resolve, reject) => {
+            eagerArticleImageQueue.push({ task, resolve, reject });
+            const drain = () => {
+                while (activeEagerArticleImages < EAGER_ARTICLE_IMAGE_CONCURRENCY && eagerArticleImageQueue.length) {
+                    const job = eagerArticleImageQueue.shift();
+                    activeEagerArticleImages++;
+                    Promise.resolve()
+                        .then(job.task)
+                        .then(job.resolve, job.reject)
+                        .finally(() => {
+                            activeEagerArticleImages--;
+                            drain();
+                        });
+                }
+            };
+            drain();
+        });
+    }
+
+    async function fetchPdfCreationDate(url) {
+        if (!url || !url.toLowerCase().includes('.pdf')) return null;
+        try {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 8000);
+            const res = await fetch(url, { headers: { "Range": "bytes=-32768" }, signal: controller.signal });
+            let text = "";
+            let bytesRead = 0;
+            if (res.body && typeof res.body.getReader === "function") {
+                const reader = res.body.getReader();
+                const decoder = new TextDecoder();
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    text += decoder.decode(value, { stream: true });
+                    bytesRead += value.length;
+                    const match = text.match(/CreationDate\s*\(\s*D:(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})([-+\d'"Z]*)/);
+                    if (match) {
+                        controller.abort();
+                        clearTimeout(timeout);
+                        let iso = `${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}:${match[6]}`;
+                        let tz = match[7];
+                        if (tz) {
+                            if (tz.includes("Z")) iso += "Z";
+                            else {
+                                let signMatch = tz.match(/([-+])(\d{2})'?(\d{2})?'?/);
+                                if (signMatch) iso += `${signMatch[1]}${signMatch[2]}:${signMatch[3] || "00"}`;
+                                else iso += "Z";
+                            }
+                        } else iso += "Z";
+                        let d = new Date(iso);
+                        if (!isNaN(d.getTime())) return d.toISOString();
+                        break;
+                    }
+                    if (bytesRead > 5 * 1024 * 1024) { // abort if more than 5MB downloaded to save time
+                        controller.abort();
+                        break;
+                    }
+                }
+            }
+            clearTimeout(timeout);
+        } catch(e) {}
+        return null;
+    }
+
+    return {
+        fetchPdfCreationDate,
+        scheduleEagerArticleImage,
+        getBestImage
+    };
+}

@@ -1,0 +1,39 @@
+<div x-init="$watch('selectedFilterType', () => feedbackContextChanged()); $watch('selectedFilterValue', () => feedbackContextChanged()); $watch('smartTabMode', () => feedbackContextChanged()); $watch('smartRegion', () => feedbackContextChanged())">
+    <div class="smart-feedback-backdrop" x-show="feedbackSession" x-cloak @click.self="cancelSmartFeedback()" @keydown.escape.window="if (feedbackSession) cancelSmartFeedback()">
+        <section id="smart-feedback-picker" class="smart-glass-panel smart-feedback-picker" role="dialog" aria-modal="true" aria-labelledby="feedback-heading"
+            :style="feedbackPosition" @keydown="trapFeedbackFocus($event)" x-transition.opacity.duration.140ms>
+            <h2 id="feedback-heading">Why don't you want this story?</h2>
+            <p>Choose what you'd like Smart Articles to learn.</p>
+            <p class="feedback-scope" x-text="'Applies to Smart Articles · ' + (feedbackSession?.article.feedbackSection || '')"></p>
+            <div class="feedback-reasons" :aria-busy="feedbackBusy === 'suggestions'">
+                <template x-for="reason in feedbackSession?.displayed || []" :key="reason.id">
+                    <button type="button" class="feedback-chip" :aria-pressed="feedbackSession?.selected.includes(reason.id) || false"
+                        :disabled="!!feedbackBusy" @click="toggleFeedbackReason(reason)" x-text="reason.label"></button>
+                </template>
+            </div>
+            <div class="feedback-secondary">
+                <button type="button" :disabled="feedbackBusy === 'apply'" @click="openOtherFeedback()">Other…</button>
+                <button type="button" :disabled="!!feedbackBusy" @click="differentFeedbackReasons()">↻ None of these — show different reasons</button>
+            </div>
+            <div class="feedback-other" x-show="feedbackSession?.other">
+                <label for="feedback-text">Tell Smart Articles what you don't want about this story</label>
+                <textarea id="feedback-text" rows="2" maxlength="1000" :value="feedbackSession?.input || ''" @input="updateFeedbackText($event.target.value)" placeholder="For example: don't show minor VinFast sales updates"></textarea>
+                <button type="button" :disabled="!!feedbackBusy || !feedbackSession?.input.trim()" @click="interpretFeedbackText()">Review meaning</button>
+                <div x-show="feedbackSession?.interpretation" class="feedback-interpretation">
+                    <p><strong>We understood this as:</strong> <span x-text="feedbackSession?.interpretation?.label"></span></p>
+                    <label><input type="checkbox" :checked="feedbackSession?.reviewed" @change="feedbackSession.reviewed = $event.target.checked"> This matches what I mean</label>
+                </div>
+            </div>
+            <p role="status" aria-live="polite" class="feedback-status" x-text="feedbackMessage"></p>
+            <footer class="feedback-footer">
+                <button type="button" @click="cancelSmartFeedback()" :disabled="feedbackBusy === 'apply'">Cancel</button>
+                <button type="button" class="feedback-apply" :disabled="!feedbackCanApply" @click="applySmartFeedback()">Apply</button>
+            </footer>
+        </section>
+    </div>
+    <aside class="smart-feedback-toast smart-glass-panel" x-show="feedbackToast" x-cloak role="status" aria-live="polite">
+        <p x-text="feedbackToast?.message"></p>
+        <div><button type="button" :disabled="!!feedbackBusy" @click="undoSmartFeedback()">Undo</button><button type="button" @click="manageSmartFilters()">Manage filter</button><button type="button" @click="feedbackToast = null" aria-label="Dismiss notification">×</button></div>
+        <p x-show="feedbackMessage && !feedbackSession" x-text="feedbackMessage"></p>
+    </aside>
+</div>

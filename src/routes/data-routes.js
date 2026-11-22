@@ -1,0 +1,542 @@
+import { readMany } from '../database/read-many.js';
+import { feedPageKey, selectFeedPage, registerFeedPagePost } from '../feeds/page-selection.js';
+import { hydratePersonalArticles } from '../feeds/personal-articles.js';
+import { filterPersonalView } from '../smart/feedback/pipeline.js';
+import { canonicalIdentity } from '../board/thread-model.js';
+import { authMiddleware } from '../middleware/auth.js';
+import { normalizeBlockedKeywordEntries, articleContentFilterMatches } from '../filters/content-filter.js';
+import { NormalizedSet, NormalizedMap, mapWithConcurrency } from '../utils/article-utils.js';
+import { cleanStoredCluster, calculateHotness } from '../../smart-news.js';
+
+export function registerDataRoutes({
+    app,
+    serveSmartData,
+    env,
+    prepareArticleForClient,
+    presentation,
+    progress = { activeForegroundRequests: 0 },
+} = {}) {
+    let visibleSnapshot;
+    let visibleKeywordSignature;
+    let visibleSnapshotArticles;
+    let unreadSnapshot;
+
+    // SMART_VIEWPORT_ROUTE_V1
+    app.post(
+        '/api/ai/briefing-viewport',
+        authMiddleware,
+        async (req, res) => {
+            try {
+                const smartViewToken =
+                    String(
+                        req.body?.smartViewToken ||
+                        ''
+                    ).trim();
+
+                const filterValue =
+                    String(
+                        req.body?.filterValue ||
+                        ''
+                    ).trim();
+
+                const smartRegion =
+                    req.body?.smartRegion ===
+                        'vietnam'
+                        ? 'vietnam'
+                        : (
+                            req.body?.smartRegion ===
+                                'global'
+                                ? 'global'
+                                : ''
+                        );
+
+                const page =
+                    Math.max(
+                        1,
+                        Number(
+                            req.body?.page
+                        ) || 1
+                    );
+
+                const generation =
+                    Math.max(
+                        0,
+                        Number(
+                            req.body?.generation
+                        ) || 0
+                    );
+
+                const visibleClusterIds =
+                    Array.isArray(
+                        req.body?.visibleClusterIds
+                    )
+                        ? req.body.visibleClusterIds
+                            .map(value =>
+                                String(value || '')
+                                    .trim()
+                            )
+                            .filter(Boolean)
+                            .slice(0, 12)
+                        : [];
+
+                if (
+                    !smartViewToken ||
+                    smartViewToken.length > 160 ||
+                    filterValue.length > 80 ||
+                    visibleClusterIds.some(
+                        id =>
+                            id.length > 600
+                    )
+                ) {
+                    return res
+                        .status(400)
+                        .json({
+                            error:
+                                'Invalid Smart viewport payload'
+                        });
+                }
+
+                const result =
+                    await presentation
+                        .prioritizeVisibleBriefings({
+                            smartViewToken,
+                            filterValue,
+                            smartRegion,
+                            page,
+                            visibleClusterIds,
+                            generation
+                        });
+
+                res.json(result);
+            }
+            catch (error) {
+                res.status(500).json({
+                    error:
+                        error.message
+                });
+            }
+        }
+    );
+
+    app.get('/api/data', authMiddleware, registerFeedPagePost(app, authMiddleware, async (req, res) => {
+        progress.activeForegroundRequests++;
+        try {
+        const startedAt = performance.now();
+        const filterType = req.query.filterType || 'today';
+        if (filterType === 'smart') return await serveSmartData(req, res);
+
+        // BACKEND_STREAMING_SIMPLE_VIEW_V1
+        //
+        // These snapshots are treated as immutable for the lifetime of this
+        // request. Reuse the parsed global values rather than structuredClone()
+        // every array/object on every tab click.
+        const values=await readMany(env.RSS_DATA,['feeds','articles','readStates','savedStates','boardStates',
+            'hiddenStates','recentReadAt','categoryOrder','userPreferences','blockedArticleKeywords'],{shared:true});
+        const feeds=values.feeds||[],allArticles=values.articles||[],readStates=values.readStates||[],
+            savedStates=values.savedStates||[],boardStates=values.boardStates||[],hiddenStates=values.hiddenStates||[],
+            recentReadAt=values.recentReadAt||{},categoryOrder=values.categoryOrder||[],userPreferences=values.userPreferences||{},
+            blockedKeywords=values.blockedArticleKeywords||[];
+        const loadedAt = performance.now();
+        const blockedKeywordEntries = normalizeBlockedKeywordEntries(blockedKeywords);
+        const articleIsBlocked = article => articleContentFilterMatches(article, blockedKeywordEntries);
+        // The database replaces immutable article snapshots on updates. Reuse
+        // keyword filtering across tab clicks, but refresh on either input change.
+        const keywordSignature = JSON.stringify(blockedKeywordEntries);
+        if (visibleSnapshot !== allArticles || visibleKeywordSignature !== keywordSignature) {
+            visibleSnapshotArticles = allArticles.filter(article => !articleIsBlocked(article));
+            visibleSnapshot = allArticles;
+            visibleKeywordSignature = keywordSignature;
+        }
+        const visibleArticles = visibleSnapshotArticles;
+
+        const readSet = new NormalizedSet(readStates);
+        const savedSet = new NormalizedSet(savedStates);
+        const boardSet = new NormalizedSet(boardStates);
+        const hiddenSet = new NormalizedSet(hiddenStates);
+
+        // Build ordering indexes only for the views that actually use them.
+        // category/feed requests do not need these O(n) Maps.
+        const readIndex =
+            filterType === 'recent'
+                ? new NormalizedMap(
+                    readStates.map((link, i) => [link, i])
+                )
+                : null;
+
+        const recentReadIndex =
+            filterType === 'recent'
+                ? new NormalizedMap(Object.entries(recentReadAt))
+                : null;
+
+        const savedIndex =
+            filterType === 'saved'
+                ? new NormalizedMap(
+                    savedStates.map((link, i) => [link, i])
+                )
+                : null;
+
+        const boardIndex =
+            filterType === 'board'
+                ? new NormalizedMap(
+                    boardStates.map((link, i) => [link, i])
+                )
+                : null;
+
+        const hiddenIndex =
+            filterType === 'hidden'
+                ? new NormalizedMap(
+                    hiddenStates.map((link, i) => [link, i])
+                )
+                : null;
+
+        if (!unreadSnapshot || unreadSnapshot.articles !== visibleArticles ||
+            unreadSnapshot.read !== readStates || unreadSnapshot.hidden !== hiddenStates) {
+            const counts = { feeds: {}, categories: {}, total: 0 };
+            for (const article of visibleArticles) {
+                if (readSet.has(article.link) || hiddenSet.has(article.link)) continue;
+                counts.total++;
+                counts.feeds[article.feedUrl] = (counts.feeds[article.feedUrl] || 0) + 1;
+                const category = article.feedCategory || 'Others';
+                counts.categories[category] = (counts.categories[category] || 0) + 1;
+            }
+            unreadSnapshot = { articles: visibleArticles, read: readStates, hidden: hiddenStates, counts };
+        }
+        const unreadCounts = unreadSnapshot.counts;
+
+        const filterValue = req.query.filterValue || '';
+        const hideRead = req.query.hideRead === 'true';
+        const lean = req.query.lean === '1';
+        const searchQuery = req.query.searchQuery ? req.query.searchQuery.toLowerCase() : '';
+
+        // category/feed preserve the ordering already present in visibleArticles.
+        // They therefore do not need a complete filtered array before slicing
+        // one page. We can stream through the in-memory snapshot and stop as
+        // soon as page + 1 qualifying article has been found.
+        const simpleStreamingView =
+            filterType === 'category'
+            || filterType === 'feed';
+
+        let filteredArticles = visibleArticles;
+
+        let smartClusterVersion = await env.RSS_DATA.get('smartClusterVersion') || '';
+        if (filterType === 'smart') {
+            const requestedVersion = req.query.smartVersion || '';
+            let smartClusters = [];
+            if (requestedVersion && presentation._smartClustersHistory[requestedVersion]) {
+                smartClusters = presentation._smartClustersHistory[requestedVersion];
+                smartClusterVersion = requestedVersion;
+            } else {
+                smartClusters = await env.RSS_DATA.get('smartClusters', { type: 'json', shared: true }) || [];
+                smartClusters = smartClusters.map(article => cleanStoredCluster(article));
+                if (smartClusterVersion) {
+                    presentation._smartClustersHistory[smartClusterVersion] = smartClusters;
+
+                    for (const key of Object.keys(presentation._smartClustersHistory)) {
+                        if (
+                            /_progressive_/.test(String(key)) &&
+                            key !== smartClusterVersion
+                        ) {
+                            delete presentation._smartClustersHistory[key];
+                        }
+                    }
+
+                    const staleKeys = Object.keys(presentation._smartClustersHistory)
+                        .filter(key => key !== smartClusterVersion);
+
+                    while (
+                        Object.keys(presentation._smartClustersHistory).length > 2 &&
+                        staleKeys.length
+                    ) {
+                        delete presentation._smartClustersHistory[staleKeys.shift()];
+                    }
+                }
+            }
+            filteredArticles = smartClusters
+                .map(article => {
+                    const cleaned = cleanStoredCluster(article);
+                    // Recalculate hotness live using the current formula
+                    const allArticles = [cleaned, ...(Array.isArray(cleaned.relatedArticles) ? cleaned.relatedArticles : [])];
+                    cleaned.hotness = calculateHotness(allArticles);
+                    return cleaned;
+                })
+                .filter(article => !hiddenSet.has(article.link) && !articleIsBlocked(article));
+            filteredArticles = await filterPersonalView(env.RSS_DATA, filteredArticles, filterValue, 'classic_api');
+            if (filterValue === 'news') {
+                filteredArticles = filteredArticles.filter(article => ['news_vietnam', 'news_global'].includes(article.smartCategory));
+            } else if (filterValue === 'finance') {
+                filteredArticles = filteredArticles.filter(article => ['finance_vietnam', 'finance_global'].includes(article.smartCategory));
+            } else if (filterValue === 'tech') {
+                const isInvestingCom = (art) => {
+                    if (!art) return false;
+                    const text = [art.link, art.feedUrl, art.url, art.feedTitle, art.sourceName, art.source, ...(Array.isArray(art.sources) ? art.sources : [])]
+                        .filter(Boolean)
+                        .join(' ')
+                        .toLowerCase();
+                    return text.includes('investing.com');
+                };
+                filteredArticles = filteredArticles
+                    .filter(article => article.smartCategory === 'tech' && !isInvestingCom(article))
+                    .map(article => {
+                        if (!Array.isArray(article.relatedArticles) || !article.relatedArticles.length) return article;
+                        const cleanRelated = article.relatedArticles.filter(r => !isInvestingCom(r));
+                        if (cleanRelated.length === article.relatedArticles.length) return article;
+                        const sources = [...new Set([article.feedTitle, ...cleanRelated.map(r => r.feedTitle)].filter(Boolean))];
+                        return {
+                            ...article,
+                            relatedArticles: cleanRelated,
+                            clusterCount: cleanRelated.length + 1,
+                            sourceCount: sources.length,
+                            sources
+                        };
+                    });
+            } else if (filterValue) {
+                filteredArticles = filteredArticles.filter(article => article.smartCategory === filterValue);
+            }
+            if (hideRead) {
+                filteredArticles = filteredArticles.filter(article => !readSet.has(article.link)).map(article => {
+                    if (!article.relatedArticles || !article.relatedArticles.length) return article;
+                    const unreadRelated = article.relatedArticles.filter(r => !readSet.has(r.link));
+                    if (unreadRelated.length === article.relatedArticles.length) return article;
+                    const sources = [...new Set([article.feedTitle, ...unreadRelated.map(r => r.feedTitle)].filter(Boolean))];
+                    return {
+                        ...article,
+                        relatedArticles: unreadRelated,
+                        clusterCount: unreadRelated.length + 1,
+                        sourceCount: sources.length,
+                        sources
+                    };
+                });
+            }
+            filteredArticles.sort((a, b) =>
+                (b.hotness || 0) - (a.hotness || 0) ||
+                (b.sourceWeight || 1) - (a.sourceWeight || 1) ||
+                (new Date(b.pubDate || 0).getTime()) - (new Date(a.pubDate || 0).getTime())
+            );
+        } else if (filterType === 'hidden') {
+            filteredArticles = filteredArticles.filter(a => hiddenSet.has(a.link))
+                .sort((a, b) => hiddenIndex.get(b.link) - hiddenIndex.get(a.link));
+        } else {
+            if (['recent', 'saved', 'board'].includes(filterType)) {
+                const wanted = filterType === 'board'
+                    ? boardSet
+                    : filterType === 'saved'
+                        ? savedSet
+                        : readSet;
+                filteredArticles = await hydratePersonalArticles({db:env.RSS_DATA,articles:filteredArticles,wanted,filterType,articleIsBlocked});
+            }
+
+            if (!simpleStreamingView) filteredArticles = filteredArticles.filter(a => !hiddenSet.has(a.link));
+            if (filterType === 'recent') {
+                const oneWeekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+                const hasRecentTimeline = Object.keys(recentReadAt).length > 0;
+                filteredArticles = filteredArticles
+                    .filter(a => {
+                        if (!readSet.has(a.link)) return false;
+                        const explicitReadAt = Number(recentReadIndex?.get(a.link) || 0);
+                        if (explicitReadAt) return explicitReadAt > oneWeekAgo;
+                        // Migration fallback: keep the old seven-day Recently Read
+                        // population until each article naturally receives an explicit
+                        // lastReadAt. Explicit timestamps always rank above this tier.
+                        return new Date(a.pubDate || 0).getTime() > oneWeekAgo;
+                    })
+                    .sort((a, b) => {
+                        if (hasRecentTimeline) {
+                            const aAt = Number(recentReadIndex.get(a.link) || 0);
+                            const bAt = Number(recentReadIndex.get(b.link) || 0);
+                            if (aAt || bAt) return (bAt > 0) - (aAt > 0) || bAt - aAt;
+                        }
+                        return Number(readIndex.get(b.link) || 0) - Number(readIndex.get(a.link) || 0);
+                    });
+            } else if (filterType === 'saved') {
+                filteredArticles = filteredArticles.filter(a => savedSet.has(a.link));
+                if (hideRead) filteredArticles = filteredArticles.filter(a => !readSet.has(a.link));
+                filteredArticles.sort((a, b) => savedIndex.get(b.link) - savedIndex.get(a.link));
+            } else if (filterType === 'board') {
+                filteredArticles = deduplicateBoardArticles(filteredArticles.filter(a => boardSet.has(a.link)));
+                if (filterValue) {
+                    const mappings = userPreferences.boardFolderMappings || {};
+                    const folders = new Map(Object.entries(mappings).map(([url, folder]) => [canonicalIdentity(url), folder]));
+                    filteredArticles = filteredArticles.filter(a => folders.get(canonicalIdentity(a)) === filterValue);
+                }
+                if (hideRead) filteredArticles = filteredArticles.filter(a => !readSet.has(a.link));
+                filteredArticles.sort((a, b) => boardIndex.get(b.link) - boardIndex.get(a.link));
+            } else if (filterType === 'category') {
+                // Fast path below performs this predicate while streaming
+                // directly into the requested page.
+                if (!simpleStreamingView) {
+                    filteredArticles = filteredArticles.filter(
+                        a =>
+                            a.feedCategory === filterValue
+                            || (
+                                filterValue === 'Others'
+                                && !a.feedCategory
+                            )
+                    );
+                }
+            } else if (filterType === 'feed') {
+                // Fast path below performs this predicate while streaming
+                // directly into the requested page.
+                if (!simpleStreamingView) {
+                    filteredArticles = filteredArticles.filter(
+                        a => a.feedUrl === filterValue
+                    );
+                }
+            } else if (filterType === 'hot_today' || filterType === 'hot_week' || filterType === 'views_today' || filterType === 'views_week') {
+                // Use Vietnam timezone (UTC+7) for date comparison since Voz is a Vietnamese forum
+                const VN_OFFSET = 7 * 60 * 60 * 1000;
+                const nowVN = new Date(Date.now() + VN_OFFSET);
+
+                const isTodayVN = (dateStr) => {
+                    if (!dateStr) return false;
+                    const d = new Date(new Date(dateStr).getTime() + VN_OFFSET);
+                    return d.getUTCDate() === nowVN.getUTCDate() && d.getUTCMonth() === nowVN.getUTCMonth() && d.getUTCFullYear() === nowVN.getUTCFullYear();
+                };
+                const isThisWeekVN = (dateStr) => {
+                    if (!dateStr) return false;
+                    const d = new Date(dateStr);
+                    return (Date.now() - d.getTime()) <= 7 * 24 * 60 * 60 * 1000;
+                };
+
+                const isTimeMatch = (filterType.includes('today')) ? isTodayVN : isThisWeekVN;
+
+                // Sort by the relevant stat
+                const sortFn = filterType.includes('views')
+                    ? (a, b) => (b.viewCount || 0) - (a.viewCount || 0) || (b.replyCount || 0) - (a.replyCount || 0)
+                    : (a, b) => (b.replyCount || 0) - (a.replyCount || 0) || (b.viewCount || 0) - (a.viewCount || 0);
+
+                // O(1) lookup sets for hidden/sticky exclusion
+                const stickyIds = new Set(['.1216621/', '.641432/', '.617079/']);
+                const isStickyLink = (link) => { for (const id of stickyIds) if (link.includes(id)) return true; return false; };
+
+                // Pre-filter articles by forum once (avoids scanning all 1500+ articles twice)
+                const diemBaoPool = [];
+                const chuyenTroPool = [];
+                for (const a of allArticles) {
+                    if (!a.feedUrl || hiddenSet.has(a.link) || isStickyLink(a.link)) continue;
+                    if (a.feedUrl.includes('diem-bao.33')) diemBaoPool.push(a);
+                    else if (a.feedUrl.includes('chuyen-tro-linh-tinh-tm.17')) chuyenTroPool.push(a);
+                }
+
+                // Helper to guarantee exactly 5 articles from a pre-filtered pool
+                const getTop5 = (pool) => {
+                    // Tier 1: Strict match for requested time window (Today or This Week)
+                    let tier1 = pool.filter(a => a.createDate && isTimeMatch(a.createDate));
+                    tier1.sort(sortFn);
+                    if (tier1.length >= 5) return tier1.slice(0, 5);
+
+                    // Tier 2 Fallback: Match This Week
+                    let chosenLinks = new Set(tier1.map(a => a.link));
+                    let tier2 = pool.filter(a => !chosenLinks.has(a.link) && (!a.createDate || isThisWeekVN(a.createDate)));
+                    tier2.sort(sortFn);
+                    let combined = [...tier1, ...tier2];
+                    if (combined.length >= 5) return combined.slice(0, 5);
+
+                    // Tier 3 Guaranteed Fill: Take ANY available non-sticky threads to guarantee 5 slots
+                    chosenLinks = new Set(combined.map(a => a.link));
+                    let tier3 = pool.filter(a => !chosenLinks.has(a.link));
+                    tier3.sort(sortFn);
+                    return [...combined, ...tier3].slice(0, 5);
+                };
+
+                filteredArticles = [...getTop5(diemBaoPool), ...getTop5(chuyenTroPool)];
+                filteredArticles.sort(sortFn);
+            }
+
+            if (
+                !simpleStreamingView
+                && hideRead
+                && filterType !== 'recent'
+                && !filterType.startsWith('hot_')
+                && !filterType.startsWith('views_')
+            ) {
+                filteredArticles = filteredArticles.filter(
+                    a => !readSet.has(a.link)
+                );
+            }
+        }
+
+        if (!simpleStreamingView && searchQuery) {
+            const matchesSearch = value => String(value || '').toLowerCase().includes(searchQuery);
+            filteredArticles = filteredArticles.filter(a =>
+                matchesSearch(a.title) ||
+                matchesSearch(a.feedTitle) ||
+                matchesSearch(a.content) ||
+                (filterType === 'smart' && Array.isArray(a.relatedArticles) && a.relatedArticles.some(related =>
+                    matchesSearch(related.title) || matchesSearch(related.feedTitle)
+                ))
+            );
+        }
+
+        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const limit = Math.min(500, Math.max(1, parseInt(req.query.limit) || 40));
+        const startIndex = (page - 1) * limit;
+        const endIndex = page * limit;
+
+        let pageSourceArticles;
+        let hasMore = false;
+
+        if (simpleStreamingView) {
+            const selection = selectFeedPage({ articles: visibleArticles, query: req.query,
+                body: req.body, hiddenSet, readSet, page, limit });
+            pageSourceArticles = selection.articles;
+            hasMore = selection.hasMore;
+        } else {
+            hasMore = endIndex < filteredArticles.length;
+
+            pageSourceArticles =
+                filteredArticles.slice(
+                    startIndex,
+                    endIndex
+                );
+        }
+
+        const filteredAt = performance.now();
+
+        const paginatedArticles =
+            await mapWithConcurrency(
+                pageSourceArticles,
+                6,
+                simpleStreamingView && req.query.feedPageMode === 'unseen'
+                    ? async article => ({ ...await prepareArticleForClient(article), feedPageKey: feedPageKey(article) })
+                    : prepareArticleForClient
+            );
+
+        res.setHeader?.(
+            'Server-Timing',
+            `data;dur=${(loadedAt - startedAt).toFixed(1)}, `
+            + `filter;dur=${(filteredAt - loadedAt).toFixed(1)}, `
+            + `cards;dur=${(performance.now() - filteredAt).toFixed(1)}`
+        );
+        res.json({
+            feeds,
+            articles: paginatedArticles,
+            readStates,
+            savedStates,
+            boardStates,
+            hiddenStates,
+            // lean=1: the client already holds these (about 85% of a Read Later
+            // payload); it keeps its copy when the fields are absent.
+            ...(lean ? {} : { recentReadAt, userPreferences }),
+            categoryOrder,
+            hasMore,
+            currentPage: page,
+            feedPageMode: simpleStreamingView && req.query.feedPageMode === 'unseen' ? 'unseen' : undefined,
+            unreadCounts,
+            smartClusterVersion
+        });
+        } finally {
+            progress.activeForegroundRequests = Math.max(0, progress.activeForegroundRequests - 1);
+        }
+    }));
+
+}
+
+export function deduplicateBoardArticles(articles) {
+    const unique = new Map();
+    for (const article of articles) {
+        let id; try { id = canonicalIdentity(article); } catch { id = article.link; }
+        const previous = unique.get(id);
+        if (!previous || (!previous.image && article.image)) unique.set(id, article);
+    }
+    return [...unique.values()];
+}

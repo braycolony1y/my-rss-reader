@@ -1,0 +1,10 @@
+✔ resume uses a cached page only when it contains the permanent post ID (1.896053ms)
+✔ Washington Post cleanup keeps only the publisher preview and marks it partial (74.928847ms)
+ℹ tests 792
+ℹ suites 0
+ℹ pass 792
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 258252.340367

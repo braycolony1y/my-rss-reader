@@ -1,0 +1,14 @@
+/* Spatial color continuation stays below the existing sharp photo and text. */
+@media (max-width: 767px) {
+    .theme-glass-light #scroll-container .article-card.has-story-briefing[data-story-blend][data-mobile-clean="1"][data-edge-bleed="bottom"] {
+        background: var(--edge-bleed-background) !important;
+    }
+}
+@media (min-width: 768px) {
+    .theme-glass-light #scroll-container .article-card:is([data-image-layout="top"], [data-shared-card-style="desktop"])[data-story-blend][data-smart-hero-extent][data-edge-bleed="left"]::before {
+        /* Standard/Classic cards still inherit a legacy !important foreground
+           layer. The opaque color continuation must sit behind their content. */
+        z-index: -5 !important;
+        background: var(--edge-bleed-background) !important;
+    }
+}

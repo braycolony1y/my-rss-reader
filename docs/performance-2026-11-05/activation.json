@@ -1,0 +1,26 @@
+{
+  "status": 200,
+  "encoding": "gzip",
+  "wireBytes": 99673,
+  "decodedBytes": 499224,
+  "expectedHash": "32c0e25df24c830905f3a37b8b91ea1ac6afe46e9dcf442379071ab4a5ef5f29",
+  "servedHash": "32c0e25df24c830905f3a37b8b91ea1ac6afe46e9dcf442379071ab4a5ef5f29",
+  "match": true,
+  "conditionalStatus": 304,
+  "identityEncoding": null,
+  "identityBytes": 499224,
+  "conditionalBodyBytes": 0,
+  "conditionalMethod": "raw HTTP request without Fetch automatic cache-control overrides",
+  "service": {
+    "activeState": "active",
+    "subState": "running",
+    "automaticRestarts": 0,
+    "pid": 2990541,
+    "healthStatus": "ok",
+    "uptimeSecondsAtFinalCheck": 925,
+    "feedCount": 49,
+    "rssMiBAtFinalCheck": 1890.1,
+    "heapUsedMiBAtFinalCheck": 378.8,
+    "cgroupOomEvents": 0
+  }
+}

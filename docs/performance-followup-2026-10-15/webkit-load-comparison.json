@@ -1,0 +1,26 @@
+[
+  {
+    "variant": "before",
+    "outcome": "loaded",
+    "failure": null,
+    "errors": []
+  },
+  {
+    "variant": "after",
+    "outcome": "failed",
+    "failure": "page.goto: Page crashed\nCall log:\n\u001b[2m  - navigating to \"http://127.0.0.1:37927/\", waiting until \"load\"\u001b[22m\n",
+    "errors": []
+  },
+  {
+    "variant": "after",
+    "outcome": "loaded",
+    "failure": null,
+    "errors": []
+  },
+  {
+    "variant": "before",
+    "outcome": "loaded",
+    "failure": null,
+    "errors": []
+  }
+]

@@ -1,0 +1,51 @@
+[
+  {
+    "id": "officer",
+    "title": "Leadership in focus",
+    "description": "A dark uniform against a warm beige background.",
+    "entity": "People",
+    "label": "Officer / beige — substitute illustration"
+  },
+  {
+    "id": "aerial",
+    "title": "A view from above",
+    "description": "Bright terrain under a gray sky tests the pale dissolve.",
+    "entity": "Landscape",
+    "label": "Aerial / gray sky — substitute illustration"
+  },
+  {
+    "id": "tanks",
+    "title": "Equipment and surroundings",
+    "description": "Gray equipment and dark trees test chromatic continuity.",
+    "entity": "Equipment",
+    "label": "Tanks / trees — substitute illustration"
+  },
+  {
+    "id": "dark",
+    "title": "A new chapter",
+    "description": "Dark navy imagery exercises the longest dissolve.",
+    "entity": "Portrait",
+    "label": "Dark navy — diagnostic illustration"
+  },
+  {
+    "id": "white",
+    "title": "Considered design",
+    "description": "A white-background product tests the light end of the scale.",
+    "entity": "Design",
+    "label": "White product — diagnostic illustration"
+  },
+  {
+    "id": "gray",
+    "title": "Lines and light",
+    "description": "Grayscale imagery receives a consistent neutral hue.",
+    "entity": "Architecture",
+    "label": "Grayscale — diagnostic illustration"
+  },
+  {
+    "id": "yellow",
+    "title": "A brighter perspective",
+    "description": "Saturated yellow tests the warm-gamut chroma cap.",
+    "entity": "Color",
+    "label": "Saturated yellow — diagnostic illustration"
+  }
+]

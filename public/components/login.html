@@ -1,0 +1,10 @@
+    <div x-show="!isLoggedIn" x-cloak class="absolute inset-0 bg-[#121212] z-50 flex items-center justify-center p-4">
+        <div class="bg-[#1e1e1e] p-8 rounded-xl max-w-md w-full border border-[#333]">
+            <h1 class="text-2xl font-bold mb-6 text-center text-white">RSS Login</h1>
+            <input type="password" x-model="password" placeholder="Password"
+                class="w-full bg-[#121212] border border-[#333] text-white p-3 rounded-lg mb-4 focus:border-blue-500 outline-none"
+                @keyup.enter="login()">
+            <button @click="login()"
+                class="w-full bg-blue-600 text-white p-3 rounded-lg font-semibold hover:bg-blue-700 transition">Login</button>
+        </div>
+    </div>

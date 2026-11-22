@@ -1,0 +1,165 @@
+    <!-- LOGS PANEL MODAL -->
+    <div x-show="logsPanelOpen" x-cloak class="system-monitor-backdrop" @click.self="closeLogsPanel()" @keydown.escape.window="if (logsPanelOpen) closeLogsPanel()">
+        <section class="system-monitor-panel" role="dialog" aria-modal="true" aria-labelledby="monitor-title" @keydown="trapFeedbackFocus($event)">
+            <header>
+                <h2 id="monitor-title">System Monitor</h2>
+                <nav class="monitor-tabs" role="tablist" aria-label="Monitor views">
+                    <button role="tab" :aria-selected="logsTab === 'stats'" @click="logsTab = 'stats'; fetchSourceStats()">Source Stats</button>
+                    <button role="tab" :aria-selected="logsTab === 'history'" @click="logsTab = 'history'; fetchFetchHistory()">Fetch History</button>
+                    <button role="tab" :aria-selected="logsTab === 'errors'" @click="logsTab = 'errors'; fetchFetchErrors()">Error Log</button>
+                    <button role="tab" :aria-selected="logsTab === 'filtered'" @click="logsTab = 'filtered'; fetchFilterLog()">Filtered</button>
+                </nav>
+                <div class="monitor-controls">
+                    <button class="monitor-pause" @click="toggleSyncPause()" :aria-label="syncPaused ? 'Resume background auto-sync' : 'Pause background auto-sync'" x-text="syncPaused ? '▶ Resume Sync' : '⏸ Pause Sync'"></button>
+                    <button @click="refreshLogs()" aria-label="Refresh monitor" title="Refresh">↻</button>
+                    <button @click="closeLogsPanel()" aria-label="Close System Monitor" title="Close">×</button>
+                </div>
+            </header>
+            <!-- reader:include modals/filter-log -->
+
+            <!-- SOURCE STATS TAB -->
+            <div x-show="logsTab === 'stats'" class="flex-1 overflow-y-auto">
+                <template x-if="sourceStatsData.length === 0">
+                    <div class="flex items-center justify-center h-full text-gray-500">No stats gathered yet.</div>
+                </template>
+                <table x-show="sourceStatsData.length > 0" class="w-full text-sm">
+                    <thead class="sticky top-0 bg-[#1e1e1e] z-10">
+                        <tr class="text-left text-gray-500 text-xs uppercase border-b border-[#333]">
+                            <th class="px-4 py-3 font-medium">Source</th>
+                            <th class="px-4 py-3 font-medium text-center">Success</th>
+                            <th class="px-4 py-3 font-medium text-center">Error</th>
+                            <th class="px-4 py-3 font-medium text-center">Skipped</th>
+                            <th class="px-4 py-3 font-medium text-center">Total</th>
+                            <th class="px-4 py-3 font-medium">Last Fetch</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="stat in sourceStatsData" :key="stat.feedUrl">
+                            <tr class="border-b border-[#252525] hover:bg-[#222] transition">
+                                <td class="px-4 py-2.5 text-gray-200 max-w-[250px] truncate" :title="stat.feedUrl"
+                                    x-text="stat.feedTitle"></td>
+                                <td class="px-4 py-2.5 text-center text-green-400 font-medium" x-text="stat.success">
+                                </td>
+                                <td class="px-4 py-2.5 text-center text-red-400 font-medium" x-text="stat.error"></td>
+                                <td class="px-4 py-2.5 text-center text-yellow-400 font-medium" x-text="stat.skipped">
+                                </td>
+                                <td class="px-4 py-2.5 text-center text-gray-400" x-text="stat.total"></td>
+                                <td class="px-4 py-2.5 text-xs">
+                                    <div class="text-gray-400" x-text="formatLogTime(stat.lastFetch)"></div>
+                                    <div class="text-[10px] mt-0.5 truncate max-w-[150px]" :class="{
+                                             'text-green-500/80': stat.lastStatus === 'success',
+                                             'text-red-500/80': stat.lastStatus === 'error',
+                                             'text-yellow-500/80': stat.lastStatus === 'skipped'
+                                         }" x-text="stat.lastDetails" :title="stat.lastDetails"></div>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- FETCH HISTORY TAB -->
+            <div x-show="logsTab === 'history'" class="flex-1 overflow-y-auto">
+                <template x-if="fetchHistoryData.length === 0">
+                    <div class="flex items-center justify-center h-full text-gray-500">No fetch history recorded yet.
+                    </div>
+                </template>
+                <table x-show="fetchHistoryData.length > 0" class="w-full text-sm">
+                    <thead class="sticky top-0 bg-[#1e1e1e] z-10">
+                        <tr class="text-left text-gray-500 text-xs uppercase border-b border-[#333]">
+                            <th class="px-4 py-3 font-medium">Time</th>
+                            <th class="px-4 py-3 font-medium">Source</th>
+                            <th class="px-4 py-3 font-medium w-24">Status</th>
+                            <th class="px-4 py-3 font-medium">Details</th>
+                            <th class="px-4 py-3 font-medium w-20 text-right">Duration</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="(entry, i) in fetchHistoryData" :key="i">
+                            <tr class="border-b border-[#252525] hover:bg-[#222] transition">
+                                <td class="px-4 py-2.5 text-gray-400 whitespace-nowrap text-xs"
+                                    x-text="formatLogTime(entry.timestamp)"></td>
+                                <td class="px-4 py-2.5 text-gray-200 max-w-[280px] truncate" :title="entry.feedUrl"
+                                    x-text="entry.feedTitle"></td>
+                                <td class="px-4 py-2.5">
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold"
+                                        :class="{
+                                              'bg-green-900/40 text-green-400': entry.status === 'success',
+                                              'bg-red-900/40 text-red-400': entry.status === 'error',
+                                              'bg-yellow-900/40 text-yellow-400': entry.status === 'skipped'
+                                          }" x-text="entry.status.toUpperCase()"></span>
+                                </td>
+                                <td class="px-4 py-2.5 text-gray-400 text-xs max-w-[300px] truncate"
+                                    :title="entry.details" x-text="entry.details"></td>
+                                <td class="px-4 py-2.5 text-gray-500 text-xs text-right whitespace-nowrap"
+                                    x-text="entry.durationMs < 1000 ? entry.durationMs + 'ms' : (entry.durationMs / 1000).toFixed(1) + 's'">
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- ERROR LOG TAB -->
+            <div x-show="logsTab === 'errors'" class="flex-1 overflow-y-auto">
+                <template x-if="fetchErrorsData.length === 0">
+                    <div class="flex items-center justify-center h-full text-gray-500">No fetch errors recorded! System
+                        is healthy.</div>
+                </template>
+                <table x-show="fetchErrorsData.length > 0" class="w-full text-sm">
+                    <thead class="sticky top-0 bg-[#1e1e1e] z-10">
+                        <tr class="text-left text-gray-500 text-xs uppercase border-b border-[#333]">
+                            <th class="px-4 py-3 font-medium">Time</th>
+                            <th class="px-4 py-3 font-medium">Source</th>
+                            <th class="px-4 py-3 font-medium w-20">Type</th>
+                            <th class="px-4 py-3 font-medium">Error Details & Why</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="(entry, i) in fetchErrorsData" :key="i">
+                            <tr class="border-b border-[#252525] hover:bg-[#222] transition align-top">
+                                <td class="px-4 py-3 text-gray-400 whitespace-nowrap text-xs font-mono"
+                                    x-text="formatLogTime(entry.timestamp)"></td>
+                                <td class="px-4 py-3 text-gray-200 font-semibold max-w-[220px] break-words">
+                                    <div x-text="entry.feedTitle"></div>
+                                    <div class="text-[10px] text-gray-500 font-mono truncate mt-0.5"
+                                        x-text="entry.feedUrl" :title="entry.feedUrl"></div>
+                                </td>
+                                <td class="px-4 py-3">
+                                    <span
+                                        class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-red-950 text-red-300 border border-red-800/50"
+                                        x-text="entry.errorType || 'error'"></span>
+                                </td>
+                                <td class="px-4 py-3 text-red-300 font-mono text-xs break-all select-text">
+                                    <div class="font-bold mb-1" x-text="entry.details"></div>
+                                    <template x-if="entry.httpStatus">
+                                        <div class="text-gray-400 text-[11px]">HTTP Status Code: <span
+                                                class="text-yellow-400 font-bold" x-text="entry.httpStatus"></span>
+                                        </div>
+                                    </template>
+                                    <div class="text-gray-500 text-[10px] mt-1">Check source URL availability or
+                                        Cloudflare block.</div>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+
+            <div
+                class="flex items-center justify-between px-5 py-3 border-t border-[#333] flex-shrink-0 text-xs text-gray-500">
+                <div>
+                    <span x-show="logsTab === 'stats'" x-text="sourceStatsData.length + ' sources tracked'"></span>
+                    <span x-show="logsTab === 'history'" x-text="fetchHistoryData.length + ' fetch records'"></span>
+                    <span x-show="logsTab === 'errors'" class="text-red-400 font-bold"
+                        x-text="fetchErrorsData.length + ' error events recorded'"></span>
+                </div>
+                <div class="flex items-center gap-4">
+                    <span :class="syncPaused ? 'text-yellow-500 font-bold' : 'text-green-500'"
+                        x-text="syncPaused ? 'Sync Paused' : 'Sync Active'"></span>
+                    <span>Manual refresh only</span>
+                </div>
+            </div>
+        </section>
+    </div>
+    

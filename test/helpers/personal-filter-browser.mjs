@@ -1,0 +1,86 @@
+import { readReaderClientSource, readReaderHtml } from './reader-source.js';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import express from 'express';
+import puppeteer from 'puppeteer-core';
+import assert from 'node:assert/strict';
+import { registerPersonalFilterRoutes } from '../../src/smart/feedback/routes.js';
+import { getPersonalStore } from '../../src/smart/feedback/store.js';
+const root=process.cwd(), out=process.env.FEEDBACK_OUTPUT || '/tmp/personal-filter-preview';
+await fs.mkdir(out,{recursive:true});
+const article={title:'VinFast monthly deliveries increase',link:'https://example.test/story',feedTitle:'Example source',feedUrl:'https://example.test/rss',image:'/public/default.jpg',feedIcon:'/public/default.jpg',content:'Monthly vehicle delivery numbers.',pubDate:new Date().toISOString(),smartCategory:'tech_vietnam',isCluster:true,clusterId:'personal-test',relatedArticles:[],sourceCount:1,topStory:{rank:1,isTop:true,feed:'tech_vietnam'},briefing:{status:'source-only',analysisStatus:'not-applicable',sections:[]}};
+const data=new Map([['smartClusters',[article]],['smartRawArticles',[article]]]);
+const db={async get(key){const value=data.get(key);return typeof value==='string'?JSON.parse(value):value;},async put(key,value){data.set(key,value);}};
+const app=express();app.use(express.json());
+// Suggestion exhaustion fixture avoids any live provider call. All Apply/Undo/log requests use real routes and persistence.
+let stallSuggestions = false;
+app.post('/api/smart-feedback/suggestions',(req,res)=>{ if (!stallSuggestions) res.json({reasons:[],exhausted:true}); });
+registerPersonalFilterRoutes({app,db});
+app.get('/api/fetch-summary',(req,res)=>res.json([{feedUrl:'example',feedTitle:'Example source',success:18,error:1,skipped:2,total:21,lastFetch:new Date().toISOString(),lastStatus:'success',lastDetails:'39 articles'}]));
+app.get('/api/sync-status',(req,res)=>res.json({paused:false}));
+app.get('/fixture-app.js',(req,res)=>res.type('js').send(readReaderClientSource()));
+app.use('/public',express.static(path.join(root,'public')));
+let html=readReaderHtml().replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,'');
+const setup=`const originalApp=rssApp;rssApp=()=>{const app=originalApp();Object.assign(app,{theme:'glass-light',isLoggedIn:true,selectedFilterType:'smart',selectedFilterValue:'tech_vietnam',smartTabMode:'top',isLoadingArticles:false,articles:${JSON.stringify([article])}});app.initApp=function(){};app.fetchData=async function(){};return app;};`;
+html=html.replace('</body>',()=>`<script src="/fixture-app.js"></script><script>${setup}</script><script src="https://cdn.jsdelivr.net/npm/@alpinejs/collapse@3.x.x/dist/cdn.min.js"></script><script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script></body>`);
+app.get('/',(req,res)=>res.send(html));
+const server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.once('listening',resolve));
+const browser=await puppeteer.launch({executablePath:'/snap/bin/chromium',headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+const errors=[];
+let page;
+try {
+ page=await browser.newPage();page.on('pageerror',error=>errors.push(error.message));
+ const base=`http://127.0.0.1:${server.address().port}`;await page.setCookie({name:'auth',value:'true',url:base});
+ await page.setViewport({width:1440,height:1000});await page.setRequestInterception(true);page.on('request',request=>{const url=request.url();if(url.startsWith(base)||url.includes('cdn.jsdelivr.net')||url.startsWith('data:'))request.continue();else request.abort();});await page.goto(base,{waitUntil:'domcontentloaded',timeout:60000});await page.waitForFunction(()=>window.Alpine && document.querySelector('.smart-feedback-button')?.getClientRects().length);
+ const store=await getPersonalStore(db);
+ const open=async()=>{await page.click('.smart-feedback-button');await page.waitForFunction(()=>Alpine.$data(document.body).feedbackSession!==null && document.querySelector('#smart-feedback-picker').getBoundingClientRect().width > 0);};
+ const cancel=async()=>{await page.click('.feedback-footer button:first-child');await page.waitForFunction(()=>!Alpine.$data(document.body).feedbackSession && !document.querySelector('#smart-feedback-picker').getClientRects().length);};
+ await open();assert.equal(store.state.events.length,0);assert.equal(await page.$eval('.feedback-apply',b=>b.disabled),true);
+ await page.screenshot({path:path.join(out,'picker-desktop.png')});
+ await cancel();assert.equal(store.state.events.length,0);
+ await open();await page.keyboard.press('Escape');assert.equal(store.state.events.length,0);
+ await open();await page.mouse.click(3,3);await page.waitForFunction(()=>!Alpine.$data(document.body).feedbackSession);assert.equal(store.state.events.length,0);
+ await open();await page.click('.feedback-chip');await cancel();assert.equal(store.state.rules.length,0);
+ await open();for(let i=0;i<5;i++){await page.click('.feedback-secondary button:last-child');await page.waitForFunction(()=>!Alpine.$data(document.body).feedbackBusy);assert.equal(store.state.events.length,0);assert.equal(store.state.decisions.length,0);}
+ await cancel();
+ // A transport that never answers must not trap the user in the screenshot's state.
+ stallSuggestions = true;
+ await open();
+ const waiting = page.waitForRequest(request => request.url().endsWith('/api/smart-feedback/suggestions'));
+ await page.click('.feedback-secondary button:last-child');await waiting;
+ assert.equal(await page.$eval('.feedback-secondary button:first-child',button=>button.disabled),false);
+ assert.equal(await page.$eval('.feedback-footer button:first-child',button=>button.disabled),false);
+ await page.click('.feedback-secondary button:first-child');
+ await page.waitForFunction(()=>!Alpine.$data(document.body).feedbackBusy && Alpine.$data(document.body).feedbackSession.other);
+ await page.type('#feedback-text','Only major developments');
+ assert.equal(store.state.events.length,0);
+ await page.screenshot({path:path.join(out,'regeneration-other-recovery.png')});
+ await cancel();
+ await page.evaluate(()=>{ReaderSmartFeedback.suggestionTimeoutMs=150;});
+ await open();await page.click('.feedback-secondary button:last-child');
+ await page.waitForFunction(()=>!Alpine.$data(document.body).feedbackBusy && Alpine.$data(document.body).feedbackMessage.includes('too long'));
+ assert.equal(store.state.events.length,0);assert.equal(store.state.rules.length,0);
+ await page.screenshot({path:path.join(out,'regeneration-timeout-recovery.png')});
+ await cancel();stallSuggestions=false;await page.evaluate(()=>{ReaderSmartFeedback.suggestionTimeoutMs=12000;});
+ await open();await page.click('.feedback-chip');await page.click('.feedback-apply');
+ await page.waitForFunction(()=>!!Alpine.$data(document.body).feedbackToast);assert.equal(store.state.events.length,1);assert.equal(store.state.rules.length,1);
+ await page.waitForFunction(()=>!document.querySelector('.article-row').getClientRects().length);
+ await page.click('.smart-feedback-toast button:first-child');await page.waitForFunction(()=>!Alpine.$data(document.body).feedbackToast);
+ assert.equal(store.state.rules[0].active,false);assert.ok(await page.$eval('.article-row',el=>!!el.getClientRects().length));
+ await page.evaluate(async()=>{const ui=Alpine.$data(document.body);await ui.openLogsPanel();});
+ await page.waitForFunction(()=>document.querySelector('.system-monitor-panel').getBoundingClientRect().width>0);await page.screenshot({path:path.join(out,'monitor-desktop.png')});
+ await page.evaluate(async()=>{const ui=Alpine.$data(document.body);ui.logsTab='filtered';await ui.fetchFilterLog();});
+ await page.screenshot({path:path.join(out,'filtered-desktop.png')});
+ const measurements=[];
+ for(const width of [320,375,390,430,844,1440]) {
+  console.log('Measuring',width);
+  await page.setViewport({width,height:900});await page.evaluate(()=>{const ui=Alpine.$data(document.body);ui.closeLogsPanel();ui.smartTabMode='classic';});await page.waitForFunction(()=>!document.querySelector('.system-monitor-backdrop').getClientRects().length);await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));await open();
+  measurements.push(await page.$eval('#smart-feedback-picker',(el)=>{const r=el.getBoundingClientRect();return {viewport:innerWidth,left:r.left,right:r.right,bottom:r.bottom,overflow:document.documentElement.scrollWidth>innerWidth};}));
+  if(width===390)await page.screenshot({path:path.join(out,'picker-mobile.png')});
+  await cancel();await page.evaluate(async()=>{const ui=Alpine.$data(document.body);await ui.manageSmartFilters();});
+  if(width===390)await page.screenshot({path:path.join(out,'filtered-mobile.png')});
+ }
+ assert.ok(measurements.every(m=>m.right>m.left&&m.left>=0&&m.right<=m.viewport&&m.bottom<=900),JSON.stringify(measurements));
+ await fs.writeFile(path.join(out,'measurements.json'),JSON.stringify({measurements,errors,events:store.state.events.length,rules:store.state.rules.length},null,2));
+ assert.deepEqual(errors,[]);console.log('PERSONAL_FILTER_BROWSER_OK',JSON.stringify(measurements));
+} catch(error) { await page?.screenshot({path:path.join(out,'failure.png')}).catch(()=>{});console.error('BROWSER_FAILURE',error.stack,errors); process.exitCode=1; } finally {await browser.close();await new Promise(resolve=>server.close(resolve));}

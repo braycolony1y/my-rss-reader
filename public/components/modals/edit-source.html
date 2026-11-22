@@ -1,0 +1,75 @@
+    <div x-show="editModalOpen" x-cloak
+        class="edit-source-backdrop fixed inset-0 z-[70] flex items-center justify-center p-3 md:p-6"
+        @keydown.escape.window="editModalOpen = false">
+        <div class="edit-source-panel p-5 md:p-7 rounded-[28px] max-w-md w-full max-h-[92vh] overflow-y-auto"
+            @click.outside="editModalOpen = false">
+            <div class="mb-6">
+                <h2 class="edit-source-title text-xl font-bold text-white tracking-tight">Edit Source</h2>
+                <p class="edit-source-help text-xs text-gray-400 mt-1">Update how this source is displayed and fetched.</p>
+            </div>
+
+            <label class="edit-source-label block text-xs font-semibold text-gray-300 mb-2">Source URL (Read-only)</label>
+            <input type="text" readonly :value="editingFeed?.url"
+                class="edit-source-field w-full text-gray-500 text-sm px-4 py-3 rounded-2xl mb-5 cursor-not-allowed outline-none">
+            <label class="edit-source-label block text-xs font-semibold text-gray-300 mb-2">Display Title</label>
+            <input type="text" x-model="editFeedTitle"
+                class="edit-source-field w-full text-white text-sm px-4 py-3 rounded-2xl outline-none mb-5 transition">
+            <label class="edit-source-label block text-xs font-semibold text-gray-300 mb-2">Category</label>
+            <select x-model="editFeedCategoryDropdown"
+                class="edit-source-select w-full text-gray-200 text-sm px-4 py-3 rounded-2xl outline-none mb-2 transition">
+                <template x-for="category in categories" :key="category.name">
+                    <option :value="category.name" x-text="category.name"></option>
+                </template>
+                <option value="CREATE_NEW">+ Create New...</option>
+            </select>
+            <div x-show="editFeedCategoryDropdown === 'CREATE_NEW'">
+                <input type="text" x-model="editFeedCategoryNew" placeholder="New Category Name"
+                    class="edit-source-field w-full text-white text-sm px-4 py-3 rounded-2xl outline-none mt-2 transition">
+            </div>
+            
+            <div class="flex items-center justify-between gap-3 mt-6 mb-2">
+                <label class="edit-source-label block text-xs font-semibold text-gray-300">Fetch Methods</label>
+                <span class="edit-source-policy-pill px-2.5 py-1 rounded-full border border-violet-400/20 bg-violet-400/10 text-violet-300 text-[10px] font-bold"
+                    x-text="editFeedFetchMethods.length ? 'Strict allowlist' : 'Default auto-detect'"></span>
+            </div>
+            <div class="edit-source-card space-y-0.5 mb-3 p-2 rounded-2xl">
+                <label class="edit-source-method-row flex items-center gap-3 px-3 py-2.5 text-sm text-gray-200 cursor-pointer">
+                    <input type="checkbox" value="jina" x-model="editFeedFetchMethods" class="edit-source-checkbox"> <span>Jina Reader</span>
+                </label>
+                <label class="edit-source-method-row flex items-center gap-3 px-3 py-2.5 text-sm text-gray-200 cursor-pointer">
+                    <input type="checkbox" value="cloudflare" x-model="editFeedFetchMethods" class="edit-source-checkbox"> <span>Cloudflare Proxy</span>
+                </label>
+                <label class="edit-source-method-row flex items-center gap-3 px-3 py-2.5 text-sm text-gray-200 cursor-pointer">
+                    <input type="checkbox" value="vietserver" x-model="editFeedFetchMethods" class="edit-source-checkbox"> <span>Vietserver Proxy</span>
+                </label>
+                <label class="edit-source-method-row flex items-center gap-3 px-3 py-2.5 text-sm text-gray-200 cursor-pointer">
+                    <input type="checkbox" value="opencli" x-model="editFeedFetchMethods" class="edit-source-checkbox"> <span>OpenCLI (Reddit/X)</span>
+                </label>
+                <label class="edit-source-method-row flex items-center gap-3 px-3 py-2.5 text-sm text-gray-200 cursor-pointer">
+                    <input type="checkbox" value="opencli-fetch" x-model="editFeedFetchMethods" class="edit-source-checkbox"> <span>OpenCLI Browser Fetch</span>
+                </label>
+                <label class="edit-source-method-row flex items-center gap-3 px-3 py-2.5 text-sm text-gray-200 cursor-pointer">
+                    <input type="checkbox" value="direct" x-model="editFeedFetchMethods" class="edit-source-checkbox"> <span>Direct Fetch</span>
+                </label>
+            </div>
+            <div class="edit-source-help text-[11px] leading-relaxed text-gray-400 mb-5">Leave all unchecked for automatic selection. Once you select one or more, only those methods are allowed for this source—including refreshes, pagination, saved-board warmups, and background prefetch.</div>
+            
+            <div class="edit-source-card mb-2 p-2 rounded-2xl">
+                <label class="edit-source-method-row flex items-center gap-3 px-3 py-2.5 text-sm text-gray-200 cursor-pointer">
+                    <input type="checkbox" x-model="editFeedExcludeFromSmart" class="edit-source-checkbox">
+                    <span>Exclude from Smart News clustering</span>
+                </label>
+            </div>
+
+            <div class="edit-source-footer flex justify-end gap-3 mt-6 border-t border-white/10 pt-5">
+                <button @click="editModalOpen = false"
+                    class="edit-source-secondary-button px-4 py-2.5 rounded-xl text-sm text-gray-400 hover:text-white transition">Cancel</button>
+                <button @click="saveEditFeed()"
+                    class="edit-source-primary-button text-white px-6 py-2.5 rounded-xl text-sm font-bold transition disabled:opacity-50 disabled:transform-none"
+                    :disabled="isSavingEdit">
+                    <span x-text="isSavingEdit ? 'Saving...' : 'Save'"></span>
+                </button>
+            </div>
+        </div>
+    </div>
+

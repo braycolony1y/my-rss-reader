@@ -1,0 +1,66 @@
+/* Compact history action for the light Liquid Glass reader. */
+.theme-glass-light .voz-post .cache-history-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    max-width: 100%;
+    min-height: 32px;
+    margin-top: 10px;
+    padding: 6px 12px;
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    border-radius: 999px;
+    background: linear-gradient(155deg, rgba(255, 255, 255, 0.86), rgba(241, 245, 249, 0.64));
+    color: #475569;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.95), 0 2px 6px rgba(15, 23, 42, 0.05);
+    -webkit-backdrop-filter: blur(12px) saturate(150%);
+    backdrop-filter: blur(12px) saturate(150%);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 18px;
+    text-align: center;
+    overflow-wrap: anywhere;
+    vertical-align: middle;
+    cursor: pointer;
+    transition: background 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.theme-glass-light .voz-post .cache-history-button::before {
+    content: "";
+    flex: 0 0 14px;
+    width: 14px;
+    height: 14px;
+    background: currentColor;
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cg fill='none' stroke='black' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 11a9 9 0 1 1 2.7 7.4M3 5v6h6M12 7v5l3 2'/%3E%3C/g%3E%3C/svg%3E") center / contain no-repeat;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cg fill='none' stroke='black' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 11a9 9 0 1 1 2.7 7.4M3 5v6h6M12 7v5l3 2'/%3E%3C/g%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+@media (hover: hover) {
+    .theme-glass-light .voz-post .cache-history-button:hover {
+        background: linear-gradient(155deg, rgba(255, 255, 255, 0.98), rgba(226, 232, 240, 0.72));
+        border-color: rgba(100, 116, 139, 0.38);
+        box-shadow: inset 0 1px 0 #fff, 0 3px 9px rgba(15, 23, 42, 0.08);
+    }
+}
+
+.theme-glass-light .voz-post .cache-history-button:focus-visible {
+    outline: 2px solid #647fc0;
+    outline-offset: 3px;
+}
+
+.theme-glass-light .voz-post .cache-history-button:active {
+    background: rgba(226, 232, 240, 0.8);
+    box-shadow: inset 0 1px 3px rgba(15, 23, 42, 0.08);
+}
+
+@media (pointer: coarse) {
+    .theme-glass-light .voz-post .cache-history-button {
+        min-height: 36px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .theme-glass-light .voz-post .cache-history-button {
+        transition: none;
+    }
+}

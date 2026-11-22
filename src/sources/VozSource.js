@@ -1,4 +1,104 @@
+import { renderVozPost } from '../articles/voz-post-renderer.js';
+import { cleanVozCachedContent } from './voz-cached-content.js';
+import { preserveVozWrapperImageWidths } from '../articles/voz-image-sizing.js';
+import { load } from 'cheerio';
+import { absoluteTimestamp } from '../articles/source-time.js';
+import { hasVozDeletedThreadMarker, getVozThreadPageNumber } from '../voz-thread-state.js';
+
+function findHtmlAttribute(tag, targetName) {
+    let cursor = String(tag || '').search(/\s/);
+    if (cursor < 0) return null;
+
+    while (cursor < tag.length) {
+        while (/\s/.test(tag[cursor] || '')) cursor++;
+        if (!tag[cursor] || tag[cursor] === '>' || tag[cursor] === '/') break;
+
+        const start = cursor;
+        while (cursor < tag.length && !/[\s=/>]/.test(tag[cursor])) cursor++;
+        const name = tag.slice(start, cursor);
+        while (/\s/.test(tag[cursor] || '')) cursor++;
+
+        let value = '';
+        if (tag[cursor] === '=') {
+            cursor++;
+            while (/\s/.test(tag[cursor] || '')) cursor++;
+            const quote = tag[cursor] === '"' || tag[cursor] === "'" ? tag[cursor++] : '';
+            const valueStart = cursor;
+            if (quote) {
+                while (cursor < tag.length && tag[cursor] !== quote) cursor++;
+                value = tag.slice(valueStart, cursor);
+                if (tag[cursor] === quote) cursor++;
+            } else {
+                while (cursor < tag.length && !/[\s>]/.test(tag[cursor])) cursor++;
+                value = tag.slice(valueStart, cursor);
+            }
+        }
+
+        if (name.toLowerCase() === targetName.toLowerCase()) {
+            return { start, end: cursor, value };
+        }
+    }
+    return null;
+}
+
+export function preserveVozImageDisplayWidth(imgTag) {
+    const styleAttribute = findHtmlAttribute(imgTag, 'style');
+    const cssWidthMatch = styleAttribute?.value.match(/(?:^|;)\s*width\s*:\s*(\d+(?:\.\d+)?)px(?:\s*!important)?\s*(?:;|$)/i);
+    if (!cssWidthMatch) return imgTag;
+
+    const displayWidth = Math.round(Number(cssWidthMatch[1]));
+    if (!Number.isFinite(displayWidth) || displayWidth < 1 || displayWidth > 4096) return imgTag;
+
+    const widthAttribute = findHtmlAttribute(imgTag, 'width');
+    if (widthAttribute) {
+        return imgTag.slice(0, widthAttribute.start) + `width="${displayWidth}"` + imgTag.slice(widthAttribute.end);
+    }
+    return imgTag.replace(/\/?>\s*$/, closing => ` width="${displayWidth}"${closing}`);
+}
+
+export function renderVozTwitterEmbed(mediaKey) {
+    const tweetId = String(mediaKey || '').match(/^\d{5,30}$/)?.[0];
+    if (!tweetId) return '';
+
+    return `<div class="voz-twitter-embed" data-tweet-id="${tweetId}"><iframe class="voz-twitter-embed__fallback" src="https://platform.twitter.com/embed/Tweet.html?id=${tweetId}" title="Embedded X post" frameborder="0" scrolling="no" allow="fullscreen" sandbox="allow-scripts allow-popups allow-same-origin"></iframe></div>`;
+}
+
+export function renderVozRedditEmbed(mediaKey) {
+    const match = String(mediaKey || '').trim().match(
+        /^(?:r\/)?([a-zA-Z0-9_]{2,30})\/comments\/([a-zA-Z0-9]{3,16})(?:\/([a-zA-Z0-9_-]{1,160}))?\/?$/
+    );
+    if (!match) return '';
+
+    const subreddit = match[1];
+    const postId = match[2];
+    const slug = match[3] || 'post';
+    const postPath = `r/${subreddit}/comments/${postId}/${slug}/`;
+    const canonicalUrl = `https://www.reddit.com/${postPath}`;
+    const embedUrl = `https://embed.reddit.com/${postPath}?embed=true&amp;ref_source=embed&amp;ref=share`;
+
+    return `<div class="voz-reddit-embed" data-reddit-post-id="${postId}"><iframe class="voz-reddit-embed__frame" src="${embedUrl}" title="Embedded Reddit post" loading="lazy" frameborder="0" scrolling="no" allow="fullscreen; clipboard-write" sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms"></iframe><a class="voz-reddit-embed__fallback" href="${canonicalUrl}" target="_blank" rel="noopener noreferrer external"><span aria-hidden="true">↗</span> Open this post on Reddit</a></div>`;
+}
+
+export function transformVozRedditEmbeds(markup) {
+    const source = String(markup || '');
+    if (!source || !/data-media-site-id\s*=\s*["']reddit["']/i.test(source)) return source;
+
+    return source.replace(
+        /<div\b(?=[^>]*\bclass\s*=\s*["'][^"']*\bbbOembed\b[^"']*["'])(?=[^>]*\bdata-media-site-id\s*=\s*["']reddit["'])[^>]*>[\s\S]*?<\/div>/gi,
+        block => {
+            const openingTag = block.match(/^<div\b[^>]*>/i)?.[0] || '';
+            const mediaKey = findHtmlAttribute(openingTag, 'data-media-key')?.value
+                || findHtmlAttribute(openingTag, 'data-id')?.value;
+            return renderVozRedditEmbed(mediaKey) || block;
+        }
+    );
+}
+
 export default class VozSource {
+
+    cleanCachedArticleContent(content, result = {}) {
+        return cleanVozCachedContent(content, result);
+    }
 
     async getBestImage(targetUrl, fetchFn, rssFallback, utils) {
         if (rssFallback && !utils.isInvalidImage(rssFallback)) {
@@ -29,10 +129,10 @@ export default class VozSource {
         let scopeHtml = html;
 
         if (rssFallback && rssFallback.includes('dantri.com.vn')) rssFallback = null;
-        const postMatch = html.match(/<article[^>]*message--post[^>]*>[\s\S]*?<div class="bbWrapper">([\s\S]*?)<\/div>\s*<div class="js-selectToQuoteEnd">/i) || html.match(/<div class="bbWrapper">([\s\S]*?)<\/div>\s*<div class="js-selectToQuoteEnd">/i);
+        const postMatch = html.match(/<article[^>]*message--post[^>]*>[\s\S]{0,2000}?<div class="bbWrapper">([\s\S]*?)<\/div>\s*<div class="js-selectToQuoteEnd">/i) || html.match(/<div class="bbWrapper">([\s\S]*?)<\/div>\s*<div class="js-selectToQuoteEnd">/i);
         if (postMatch) scopeHtml = postMatch[1];
 
-        const extLinks = scopeHtml.match(/<a[^>]+href=["'](https?:\/\/[^"']+)["'][^>]*>[\s\S]*?<\/a>/ig) || [];
+        const extLinks = scopeHtml.match(/<a[^>]+href=["'](https?:\/\/[^"']+)["'][^>]*>[\s\S]{0,500}?<\/a>/ig) || [];
 
         let extCount = 0;
         for (let linkTag of extLinks) {
@@ -108,6 +208,20 @@ export default class VozSource {
         return null;
     }
 
+    isUsableArticleResult(result) {
+        if (result?.sourceDeleted === true || result?.isDeletedThread === true) return true;
+        const content = String(result?.content || '');
+        const postCount = (content.match(/class=["']voz-post["']/gi) || []).length;
+        if (!postCount) return false;
+
+        // A XenForo page that links to a following page is not the final page,
+        // so a one-post response is a truncated proxy/bot response rather than
+        // a complete twenty-post page. Reject it so the next reader strategy
+        // gets a chance instead of poisoning the cache.
+        if (result?.pagination?.nextUrl && postCount < 2) return false;
+        return true;
+    }
+
     parseJinaReaderText(markdown) {
         const firstPostMarker = markdown.match(/(?:^|\n)\s*\*?\s*\[#1\]\([^\n)]+\)\s*\n+/m);
         if (firstPostMarker) {
@@ -132,6 +246,13 @@ export default class VozSource {
     }
 
     parseArticleHtmlContent(html, url, result, utils) {
+        if (hasVozDeletedThreadMarker(html)) {
+            result.isDeletedThread = true;
+            result.title = 'Deleted Thread';
+            result.content = '';
+            return;
+        }
+
         let articleHtml = '';
         const h1Match = html.match(/<h1[^>]*class=["'][^"']*p-title-value[^"']*["'][^>]*>([\s\S]*?)<\/h1>/i);
         if (h1Match) {
@@ -140,19 +261,37 @@ export default class VozSource {
         
         const baseUrl = new URL(url);
         const absUrl = (href) => href ? (href.startsWith('http') ? href : baseUrl.origin + (href.startsWith('/') ? href : '/' + href)) : null;
-        const pageNumMatch = url.match(/\/page-(\d+)/i);
-        let currentPage = pageNumMatch ? parseInt(pageNumMatch[1], 10) : 1;
+        // VOZ may redirect an out-of-range page back to a single-page thread.
+        // The requested URL is not evidence that that page exists.
+        const canonicalTag = (html.match(/<link\b[^>]*>/gi) || [])
+            .find(tag => findHtmlAttribute(tag, 'rel')?.value.toLowerCase() === 'canonical');
+        const canonicalHref = canonicalTag && findHtmlAttribute(canonicalTag, 'href')?.value;
+        let currentPage = getVozThreadPageNumber(absUrl(canonicalHref)) || 1;
+
+        // Try to accurately determine the current page from HTML (XenForo sets this class)
+        const currentMatch = html.match(/class=["'][^"']*pageNav-page--current[^"']*["'][^>]*>(?:\s*<[^>]+>)*\s*(\d+)/i);
+        if (currentMatch) {
+            currentPage = parseInt(currentMatch[1], 10);
+        }
 
         const pages = [];
-        const pageRegex = /<li\b[^>]*class=["'][^"']*pageNav-page[^"']*["'][^>]*>[\s\S]*?<a\b[^>]*href=["']([^"']+)["'][^>]*>(\d+)<\/a>[\s\S]*?<\/li>/gi;
+        const pageRegex = /class=["'][^"']*pageNav-page(?:--current)?[^"']*["'][^>]*>[\s\S]{0,1000}?<a\b[^>]*href=["']([^"']+)["'][^>]*>(\d+)<\/a>/gi;
         let pm;
         while ((pm = pageRegex.exec(html)) !== null) {
             const href = pm[1];
             const pNum = parseInt(pm[2], 10);
-            const isCurrent = pm[0].includes('pageNav-page--current') || pNum === currentPage;
-            if (isCurrent) currentPage = pNum;
+            const isCurrent = pNum === currentPage;
             pages.push({ page: pNum, url: absUrl(href), isCurrent });
         }
+
+        // If the current page was skipped by regex (because XenForo sometimes omits the <a> tag for the active page)
+        if (!pages.some(p => p.page === currentPage) && currentMatch) {
+            let pUrl = url;
+            if (pUrl.match(/\/page-\d+/i)) pUrl = pUrl.replace(/\/page-\d+/i, '/page-' + currentPage);
+            else if (currentPage > 1) pUrl = pUrl.replace(/\/unread\/?/i, '').replace(/\/$/, '') + '/page-' + currentPage;
+            pages.push({ page: currentPage, url: absUrl(pUrl), isCurrent: true });
+        }
+
         const uniquePagesMap = new Map();
         pages.forEach(p => { if (!uniquePagesMap.has(p.page)) uniquePagesMap.set(p.page, p); });
         const sortedPages = Array.from(uniquePagesMap.values()).sort((a,b) => a.page - b.page);
@@ -215,16 +354,11 @@ export default class VozSource {
                 avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(author)}&background=random&color=fff&size=96`;
             }
 
-            let postTime = '';
             const attrMainMatch = artHtml.match(/<ul\b[^>]*class=["'][^"']*message-attribution-main[^"']*["'][^>]*>([\s\S]*?)<\/ul>/i) || artHtml.match(/<div\b[^>]*class=["'][^"']*message-attribution-main[^"']*["'][^>]*>([\s\S]*?)<\/div>/i) || [null, artHtml];
-            const timeMatch = attrMainMatch[1].match(/<time\b[^>]*>([\s\S]*?)<\/time>/i);
-            if (timeMatch) {
-                postTime = timeMatch[1].replace(/<[^>]+>/g, '').trim();
-            } else {
-                const dateStringMatch = attrMainMatch[1].match(/data-date-string=["']([^"']+)["']/i);
-                if (dateStringMatch) postTime = dateStringMatch[1];
-            }
-
+            const createdTimeTag = attrMainMatch[1].match(/<time\b[^>]*>/i)?.[0] || '';
+            const sourceCreatedAt = absoluteTimestamp(createdTimeTag.match(/datetime=["']([^"']+)["']/i)?.[1]) || absoluteTimestamp(createdTimeTag.match(/data-timestamp=["']([^"']+)["']/i)?.[1]) || absoluteTimestamp(createdTimeTag.match(/data-time=["']([^"']+)["']/i)?.[1]);
+            const editTimeTag = artHtml.match(/message-lastEdit[\s\S]*?<time\b[^>]*>/i)?.[0] || '';
+            const sourceEditedAt = absoluteTimestamp(editTimeTag.match(/datetime=["']([^"']+)["']/i)?.[1]) || absoluteTimestamp(editTimeTag.match(/data-timestamp=["']([^"']+)["']/i)?.[1]) || absoluteTimestamp(editTimeTag.match(/data-time=["']([^"']+)["']/i)?.[1]);
             const postIdMatch = artHtml.match(/(?:data-content|data-lb-id|id)=["'](?:js-)?post-(\d+)["']/i);
             const attrOppositeMatch = artHtml.match(/<ul\b[^>]*class=["'][^"']*message-attribution-opposite[^"']*["'][^>]*>([\s\S]*?)<\/ul>/i) || artHtml.match(/<div\b[^>]*class=["'][^"']*message-attribution-opposite[^"']*["'][^>]*>([\s\S]*?)<\/div>/i) || [null, artHtml];
             let postLink = postIdMatch ? `https://voz.vn/p/${postIdMatch[1]}` : url;
@@ -245,7 +379,7 @@ export default class VozSource {
             const reactionsBarIndex = artHtml.indexOf('reactionsBar js-reactionsList');
             if (reactionsBarIndex !== -1) {
                 const reactionsChunk = artHtml.substring(reactionsBarIndex, reactionsBarIndex + 3000);
-                const reactionImages = [...reactionsChunk.matchAll(/<img\b([^>]*class=["'][^"']*(?:reaction-image|reaction\b)[^"']*["'][^>]*)>|<span\b[^>]*class=["'][^"']*(?:reaction-image|reaction\b)[^"']*["'][^>]*>[\s\S]*?<img\b([^>]+)>[\s\S]*?<\/span>/gi)];
+                const reactionImages = [...reactionsChunk.matchAll(/<img\b([^>]*class=["'][^"']*(?:reaction-image|reaction\b)[^"']*["'][^>]*)>|<span\b[^>]*class=["'][^"']*(?:reaction-image|reaction\b)[^"']*["'][^>]*>[\s\S]{0,1000}?<img\b([^>]+)>[\s\S]{0,1000}?<\/span>/gi)];
                 const linkMatch = reactionsChunk.match(/<a\b[^>]*class=["'][^"']*reactionsBar-link[^"']*["'][^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/i);
                 
                 if (reactionImages.length > 0 && linkMatch) {
@@ -276,6 +410,7 @@ export default class VozSource {
             let bbContent = utils.extractBalancedElementByClass(artHtml, 'bbWrapper') || (artHtml.match(/<div\b[^>]*class=["'][^"']*bbWrapper[^"']*["'][^>]*>([\s\S]*?)<\/div>/i)?.[1]);
             
             if (bbContent) {
+                bbContent = preserveVozWrapperImageWidths(bbContent);
                 // Clean inline styles and dimensions that break responsive design
                 bbContent = bbContent.replace(/<(span|div|table|td|tr|p|b|i|u|tbody|thead|th|img)\b([^>]*)>/gi, (m, tag, rest) => {
                     if (tag.toLowerCase() !== 'img') {
@@ -299,7 +434,7 @@ export default class VozSource {
             const attachmentsMatch = artHtml.match(/<section\b[^>]*class=["'][^"']*message-attachments[^"']*["'][^>]*>([\s\S]*?)<\/section>/i);
             if (attachmentsMatch) {
                 const attachChunk = attachmentsMatch[1];
-                const attachImages = [...attachChunk.matchAll(/<a\b[^>]*class=["'][^"']*file-preview[^"']*["'][^>]*href=["']([^"']+)["'][^>]*>[\s\S]*?<img\b([^>]+)>[\s\S]*?<\/a>/gi)];
+                const attachImages = [...attachChunk.matchAll(/<a\b[^>]*class=["'][^"']*file-preview[^"']*["'][^>]*href=["']([^"']+)["'][^>]*>[\s\S]{0,1000}?<img\b([^>]+)>[\s\S]{0,1000}?<\/a>/gi)];
                 if (attachImages.length > 0) {
                     let attachHtml = '<div class="voz-attachments mt-4 flex flex-wrap gap-2">';
                     attachImages.forEach(m => {
@@ -355,8 +490,13 @@ export default class VozSource {
 
                 // Fix Twitter embed
                 bbContent = bbContent.replace(/<div\b[^>]*data-media-site-id=["']twitter["'][^>]*data-media-key=["']([^"']+)["'][^>]*>[\s\S]*?<\/div>/gi, (match, mediaKey) => {
-                    return `<div class="my-3 flex justify-center"><iframe style="max-width: 550px; min-width: 250px; width: 100%; height: 500px !important;" class="w-full rounded-xl shadow-sm bg-white" src="https://platform.twitter.com/embed/Tweet.html?id=${mediaKey}" frameborder="0" allow="fullscreen" sandbox="allow-scripts allow-popups allow-same-origin"></iframe></div>`;
+                    return renderVozTwitterEmbed(mediaKey) || match;
                 });
+
+                // XenForo leaves Reddit oEmbeds as a link containing an inline
+                // SVG logo. Convert the whole block so the icon cannot expand
+                // to the width of the reader when XenForo's JS is absent.
+                bbContent = transformVozRedditEmbeds(bbContent);
 
                 bbContent = bbContent.replace(/<video\b[^>]*>[\s\S]*?<\/video>/gi, (videoMatch) => {
                     let wMatch = videoMatch.match(/\bwidth=(["'])([^"']*)\1/i);
@@ -379,16 +519,13 @@ export default class VozSource {
                 bbContent = bbContent.replace(/<img\b[^>]*class=["'][^"']*bbCodeBlockUnfurl-icon[^"']*["'][^>]*>/gi, (imgMatch) => {
                     return imgMatch.replace(/class=["']([^"']*)["']/i, 'class="$1 w-4 h-4 object-contain inline-block align-middle mr-1.5"');
                 });
-                // Format quote title cleanly without nested anchors/spans or emojis
-                bbContent = bbContent.replace(/<div\b[^>]*class=["'][^"']*bbCodeBlock-title[^"']*["'][^>]*>([\s\S]*?)<\/div>/gi, (m, c) => {
-                    const text = c.replace(/<[^>]+>/g, '').trim();
-                    return `<div class="voz-quote-title font-semibold text-gray-700 dark:text-gray-300 text-xs mb-1.5">${text}</div>`;
-                });
-                // Simplify blockquote hierarchy by just adding classes
-                bbContent = bbContent.replace(/<blockquote\b[^>]*>/gi, match => {
-                    if (match.includes('voz-quote')) return match;
-                    return `<blockquote class="voz-quote my-2 p-3 rounded-xl border-l-4 border-l-gray-300 dark:border-l-gray-600 bg-gray-100 dark:bg-black/30 text-sm text-gray-800 dark:text-gray-300 leading-relaxed shadow-sm">`;
-                });
+                // Make the entire unfurl block clickable
+                bbContent = bbContent.replace(/<div([^>]*class=["'])([^"']*(?:bbCodeBlock--unfurl|fauxBlockLink)[^"']*)(["'][^>]*)>/gi, '<div$1$2 hover:bg-white/5 transition-colors duration-200 cursor-pointer$3>');
+                bbContent = styleVozQuotes(bbContent);
+
+                // The shared sanitizer removes inline styles from images. Preserve XenForo's
+                // explicit pixel display width as a safe HTML width hint before that happens.
+                bbContent = bbContent.replace(/<img\b[^>]*>/gi, preserveVozImageDisplayWidth);
                 
                 // Fix bbImageWrapper: large images stay as responsive blocks, small emoticons become inline
                 bbContent = bbContent.replace(/<(div|span)\b([^>]*class=["'][^"']*bbImageWrapper[^"']*["'][^>]*)>([\s\S]*?)<\/\1>/gi, (match, tag, attrs, inner) => {
@@ -443,25 +580,24 @@ export default class VozSource {
                 bbContent = artHtml;
             }
 
-            const postNumberMatch = artHtml.match(/#(\d+)\s*<\/a>/i) || artHtml.match(/>#(\d+)</i) || artHtml.match(/post-(\d+)/i);
+            // Permanent post IDs are global identifiers, not thread positions.
+            const postNumberMatch = artHtml.match(/#(\d+)\s*<\/a>/i) || artHtml.match(/>#(\d+)</i);
             let postNumber = extractedPostNumber || (postNumberMatch ? postNumberMatch[1] : (idx + 1 + ((currentPage - 1) * 20)));
 
-            posts.push(`
-<div class="voz-post" id="voz-post-${postNumber}" data-post-index="${postNumber}">
-    <div class="voz-post-header">
-        <div class="voz-post-author-group">
-            <img src="${utils.escapeHtml(avatarUrl)}" alt="${utils.escapeHtml(author)}" loading="lazy" onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(author)}&background=random&color=fff&size=80'">
-            <span class="voz-post-author">@${utils.escapeHtml(author)}</span>
-            <span class="voz-post-rank">${utils.escapeHtml(rank)}</span>
-        </div>
-        <div class="voz-post-info">
-            ${postTime ? `<span class="voz-post-time">${utils.escapeHtml(postTime)}</span>` : ''}
-            <a href="${utils.escapeHtml(postLink)}" target="_blank" class="voz-post-index" title="Mở bài viết gốc">#${postNumber}</a>
-        </div>
-    </div>
-    <div class="voz-post-body">${bbContent}</div>
-    ${reactionBarHtml}
-</div>`.trim());
+            const absolutePostIdMatch = artHtml.match(/data-content=["']post-(\d+)["']/i) || artHtml.match(/id=["']js-post-(\d+)["']/i);
+            const absolutePostId = absolutePostIdMatch ? absolutePostIdMatch[1] : '';
+
+            // XenForo sometimes embeds the "Sticky First Post" or OP on every page.
+            // If we are not on the first page, we should ignore post #1 to prevent it from being appended.
+            if (Number(postNumber) === 1 && currentPage > 1) {
+                idx++;
+                continue;
+            }
+
+            posts.push(renderVozPost({post_id:absolutePostId, current_visible_number:postNumber,
+                author_name:author, author_avatar:avatarUrl, author_rank:rank, permalink:postLink,
+                source_created_at:sourceCreatedAt, source_edited_at:sourceEditedAt, cached_at:new Date().toISOString()
+            }, {body:bbContent, reactions:reactionBarHtml}));
             idx++;
         }
         if (posts.length > 0) {
@@ -477,4 +613,19 @@ export default class VozSource {
     
         return articleHtml;
     }
+}
+
+export function styleVozQuotes(markup) {
+                // Format quote title cleanly without nested anchors/spans or emojis
+    markup = markup.replace(/<div\b[^>]*class=["'][^"']*bbCodeBlock-title[^"']*["'][^>]*>([\s\S]*?)<\/div>/gi, (m, c) => {
+                    const text = c.replace(/<[^>]+>/g, '').trim();
+                    return `<div class="voz-quote-title font-semibold text-gray-700 dark:text-gray-300 text-xs mb-1.5">${text}</div>`;
+                });
+                // Simplify blockquote hierarchy by just adding classes
+    markup = markup.replace(/<blockquote\b[^>]*>/gi, match => {
+                    if (match.includes('voz-quote')) return match;
+                    return `<blockquote class="voz-quote my-2 p-3 rounded-xl border-l-4 border-l-gray-300 dark:border-l-gray-600 bg-gray-100 dark:bg-black/30 text-sm text-gray-800 dark:text-gray-300 leading-relaxed shadow-sm">`;
+                });
+
+    return markup;
 }

@@ -1,0 +1,37 @@
+[
+  {
+    "file": "/home/ubuntu/my-rss-reader/database_state/database-state.json/471020.cacheMembers.json",
+    "count": 2,
+    "bytes": 315183,
+    "maxBytes": 298697,
+    "averageBytes": 157591.5
+  },
+  {
+    "file": "/home/ubuntu/my-rss-reader/article_cache/threads/b21eda2e298aecb4548feb5bc345a469be69c3940d346e0ef312ad1f9d531b88.json",
+    "count": 1,
+    "bytes": 26747,
+    "maxBytes": 26747,
+    "averageBytes": 26747
+  },
+  {
+    "file": "/home/ubuntu/my-rss-reader/database_state/database-state.json/471018.smartAiProviderHealth.json",
+    "count": 1,
+    "bytes": 4219,
+    "maxBytes": 4219,
+    "averageBytes": 4219
+  },
+  {
+    "file": "/home/ubuntu/my-rss-reader/database_state/database-state.json/471019.smartAiProviderHealth.json",
+    "count": 1,
+    "bytes": 4219,
+    "maxBytes": 4219,
+    "averageBytes": 4219
+  },
+  {
+    "file": "/home/ubuntu/my-rss-reader/database-state.json",
+    "count": 3,
+    "bytes": 867,
+    "maxBytes": 289,
+    "averageBytes": 289
+  }
+]

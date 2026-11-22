@@ -1,0 +1,121 @@
+            <!-- Unified Smart and existing feed navigation -->
+            <div class="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-hide hide-scrollbars">
+                <div
+                    class="flex items-center flex-shrink-0 rounded-full bg-[#111827] border border-white/10 p-1 gap-0.5">
+                    <span class="px-2 text-[10px] font-bold uppercase tracking-wider text-emerald-400">Smart</span>
+                    <button @click="setSmartSection('news')"
+                        class="px-3 py-1.5 rounded-full text-xs font-semibold transition"
+                        :class="selectedFilterType === 'smart' && smartSection === 'news' ? 'bg-emerald-500 text-[#08130f]' : 'text-gray-400 hover:text-white hover:bg-white/5'">News</button>
+                    <button @click="setSmartSection('finance')"
+                        class="px-3 py-1.5 rounded-full text-xs font-semibold transition"
+                        :class="selectedFilterType === 'smart' && smartSection === 'finance' ? 'bg-emerald-500 text-[#08130f]' : 'text-gray-400 hover:text-white hover:bg-white/5'">Finance</button>
+                    <button @click="setSmartSection('tech')"
+                        class="px-3 py-1.5 rounded-full text-xs font-semibold transition"
+                        :class="selectedFilterType === 'smart' && smartSection === 'tech' ? 'bg-emerald-500 text-[#08130f]' : 'text-gray-400 hover:text-white hover:bg-white/5'">Tech</button>
+                </div>
+
+                <div x-show="selectedFilterType === 'smart' && smartSection === 'news'"
+                    class="flex items-center flex-shrink-0 rounded-full bg-[#111827] border border-white/10 p-1 gap-0.5">
+                    <button @click="setFilter('smart', 'news_vietnam')"
+                        class="px-3 py-1.5 rounded-full text-xs font-semibold transition"
+                        :class="selectedFilterValue === 'news_vietnam' ? 'bg-emerald-500 text-[#08130f]' : 'text-gray-500 hover:text-white'">Vietnam</button>
+                    <button @click="setFilter('smart', 'news_global')"
+                        class="px-3 py-1.5 rounded-full text-xs font-semibold transition"
+                        :class="selectedFilterValue === 'news_global' ? 'bg-emerald-500 text-[#08130f]' : 'text-gray-500 hover:text-white'">Global</button>
+                </div>
+
+                <div x-show="selectedFilterType === 'smart' && smartSection === 'finance'"
+                    class="flex items-center flex-shrink-0 rounded-full bg-[#111827] border border-white/10 p-1 gap-0.5">
+                    <button @click="setFilter('smart', 'finance_vietnam')"
+                        class="px-3 py-1.5 rounded-full text-xs font-semibold transition"
+                        :class="selectedFilterValue === 'finance_vietnam' ? 'bg-emerald-500 text-[#08130f]' : 'text-gray-500 hover:text-white'">Vietnam</button>
+                    <button @click="setFilter('smart', 'finance_global')"
+                        class="px-3 py-1.5 rounded-full text-xs font-semibold transition"
+                        :class="selectedFilterValue === 'finance_global' ? 'bg-emerald-500 text-[#08130f]' : 'text-gray-500 hover:text-white'">Global</button>
+                </div>
+
+                <div x-show="selectedFilterType === 'smart' && smartSection === 'tech'"
+                    class="flex items-center flex-shrink-0 rounded-full bg-[#111827] border border-white/10 p-1 gap-0.5"
+                    role="group" aria-label="Technology region">
+                    <button
+                        type="button"
+                        @click="setSmartRegion('vietnam')"
+                        class="px-3 py-1.5 rounded-full text-xs font-semibold transition"
+                        :class="smartRegion === 'vietnam' ? 'bg-emerald-500 text-[#08130f]' : 'text-gray-500 hover:text-white'">
+                        Vietnam
+                    </button>
+                    <button
+                        type="button"
+                        @click="setSmartRegion('global')"
+                        class="px-3 py-1.5 rounded-full text-xs font-semibold transition"
+                        :class="smartRegion === 'global' ? 'bg-emerald-500 text-[#08130f]' : 'text-gray-500 hover:text-white'">
+                        Global
+                    </button>
+                </div>
+
+                <button
+                    x-show="selectedFilterType === 'smart'"
+                    type="button"
+                    role="switch"
+                    :aria-checked="smartTabMode === 'classic'"
+                    aria-label="Toggle between Top stories and Classic"
+                    @click="setSmartTabMode(smartTabMode === 'top' ? 'classic' : 'top')"
+                    class="flex items-center flex-shrink-0 gap-2.5 rounded-full bg-[#111827] border border-white/10 px-3 py-1.5 transition hover:border-white/20">
+                    <span
+                        class="text-xs font-semibold transition-colors"
+                        :class="smartTabMode === 'top' ? 'text-emerald-400' : 'text-gray-500'">
+                        Top stories
+                    </span>
+
+                    <span
+                        class="relative inline-flex h-5 w-9 flex-shrink-0 rounded-full transition-colors duration-200"
+                        :class="smartTabMode === 'classic' ? 'bg-emerald-500' : 'bg-emerald-500'">
+                        <span
+                            class="absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform duration-200"
+                            :class="smartTabMode === 'classic' ? 'translate-x-4' : 'translate-x-0'">
+                        </span>
+                    </span>
+
+                    <span
+                        class="text-xs font-semibold transition-colors"
+                        :class="smartTabMode === 'classic' ? 'text-emerald-400' : 'text-gray-500'">
+                        Classic
+                    </span>
+                </button>
+
+                <div class="w-px h-7 bg-white/10 flex-shrink-0 mx-1"></div>
+
+                <button @click="setFilter('today', null)"
+                    class="flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition"
+                    :class="selectedFilterType === 'today' ? 'bg-teal-900/40 text-teal-400 border border-teal-500/30' : 'bg-[#111827] text-gray-400 border border-white/5 hover:text-white'">All</button>
+                <button x-show="selectedFilterType !== 'recent'"
+                    @click="toggleHideRead()"
+                    class="flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition flex items-center gap-2"
+                    :class="hideRead ? 'bg-teal-900/40 text-teal-400 border border-teal-500/30' : 'bg-[#111827] text-gray-400 border border-white/5 hover:text-white'">
+                    Unread <span class="bg-emerald-500/20 text-emerald-400 text-[10px] px-1.5 py-0.5 rounded-full"
+                        x-text="unreadCounts.total > 0 ? (unreadCounts.total > 99 ? '99+' : unreadCounts.total) : ''"
+                        x-show="unreadCounts.total > 0"></span>
+                </button>
+                <template x-for="category in categories" :key="category.name">
+                    <button @click="setFilter('category', category.name)"
+                        class="flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition"
+                        :class="selectedFilterType === 'category' && selectedFilterValue === category.name ? 'bg-teal-900/40 text-teal-400 border border-teal-500/30' : 'bg-[#111827] text-gray-400 border border-white/5 hover:text-white'"
+                        x-text="category.name"></button>
+                </template>
+                <button @click="setFilter('hot_today', null)"
+                    class="flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition flex items-center gap-1.5"
+                    :class="selectedFilterType === 'hot_today' ? 'bg-orange-900/40 text-orange-400 border border-orange-500/30' : 'bg-[#111827] text-gray-400 border border-white/5 hover:text-white'"><span
+                        class="text-orange-500">🔥</span> Hot Today</button>
+                <button @click="setFilter('hot_week', null)"
+                    class="flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition flex items-center gap-1.5"
+                    :class="selectedFilterType === 'hot_week' ? 'bg-orange-900/40 text-orange-400 border border-orange-500/30' : 'bg-[#111827] text-gray-400 border border-white/5 hover:text-white'"><span
+                        class="text-orange-500">🔥</span> Hot Week</button>
+                <button @click="setFilter('views_today', null)"
+                    class="flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition flex items-center gap-1.5"
+                    :class="selectedFilterType === 'views_today' ? 'bg-blue-900/40 text-blue-400 border border-blue-500/30' : 'bg-[#111827] text-gray-400 border border-white/5 hover:text-white'"><span
+                        class="text-blue-500">👁</span> Views Today</button>
+                <button @click="setFilter('views_week', null)"
+                    class="flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition flex items-center gap-1.5"
+                    :class="selectedFilterType === 'views_week' ? 'bg-blue-900/40 text-blue-400 border border-blue-500/30' : 'bg-[#111827] text-gray-400 border border-white/5 hover:text-white'"><span
+                        class="text-blue-500">👁</span> Views Week</button>
+            </div>
