@@ -2,7 +2,7 @@
 import { publisherId, storyMembers, storyText } from '../articles/story-ranking.js';
 import { canonicalSmartCategory } from '../utils/smart-destinations.js';
 import { FEEDS } from './features.js';
-import { HOT_FLOOR } from './config.js';
+import { HOT_FLOOR, LABEL_THRESHOLDS } from './config.js';
 import { scoreStories } from './score.js';
 
 const HOUR = 3600000;
@@ -35,12 +35,13 @@ export function toRankingCluster(article, destination, vectorOf = () => null) {
 export const displayHotness = score => Math.round(Math.max(1, Math.min(10, 10 * score)) * 10) / 10;
 
 /**
- * Label for a ranked story: Breaking (floor story reported by many outlets within the window),
- * Hot (floor story or very high score), Widely reported (many outlets, solid score), else ''.
+ * Label for a ranked story: Breaking (floor story reported by many outlets within the window, or a
+ * fresh story at the top ~2-3% of scores), Hot (floor story or top ~8-10% of scores; see LABEL_THRESHOLDS), Widely reported (many outlets, solid score), else ''.
  */
-export function hotnessLabel({ hot = false, hotOutlets = 0, hotness = 1, sourceCount = 1 } = {}) {
+export function hotnessLabel({ hot = false, hotOutlets = 0, hotness = 1, sourceCount = 1, fresh = 0 } = {}) {
   if (hot && hotOutlets >= HOT_FLOOR.breakingOutlets && hotness >= 5) return 'Breaking';
-  if (hot || hotness >= 8) return 'Hot';
+  if (fresh >= LABEL_THRESHOLDS.breakingMinFresh && hotness >= LABEL_THRESHOLDS.breaking) return 'Breaking';
+  if (hot || hotness >= LABEL_THRESHOLDS.hot) return 'Hot';
   if (sourceCount >= 6 && hotness >= 5) return 'Widely reported';
   return '';
 }
@@ -64,7 +65,7 @@ export function rankClassicStories(articles, { destination = '', now = Date.now(
     const updatedAt = new Date(Math.max(0, ...members.map(a => Date.parse(a.pubDate) || 0))).toISOString();
     const ranking = { score: hotness, model: 'nonai-ranker-v1', independentSources: sourceCount, updatedAt, hot: r.hot, hotOutlets: r.hotOutlets, routine: r.routine,
       signals: { pElig: r.pElig, pTop: r.pTop, qHat: r.qHat, freshness: r.fresh, e5: cluster.members.some(m => m.vec) } };
-    out.push({ ...article, ranking, hotness, sourceCount, hotnessLabel: hotnessLabel({ hot: r.hot, hotOutlets: r.hotOutlets, hotness, sourceCount }) });
+    out.push({ ...article, ranking, hotness, sourceCount, hotnessLabel: hotnessLabel({ hot: r.hot, hotOutlets: r.hotOutlets, hotness, sourceCount, fresh: r.fresh }) });
   }
   return out;
 }

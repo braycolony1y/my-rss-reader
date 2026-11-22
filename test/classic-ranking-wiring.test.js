@@ -114,3 +114,25 @@ test('rankClassicStories keeps the legacy display contract and labels', () => {
     assert.equal(hotnessLabel({ sourceCount: 7, hotness: 6 }), 'Widely reported');
     assert.equal(hotnessLabel({ sourceCount: 2, hotness: 3 }), '');
 });
+
+test('hotness labels use the recalibrated thresholds and legacy mode keeps 5.5/6.5/7.5', async () => {
+    const { getHotnessLabel } = await import('../src/smart/clustering/cluster.js');
+    assert.equal(hotnessLabel({ hotness: 7.7 }), '');
+    assert.equal(hotnessLabel({ hotness: 7.8 }), 'Hot');
+    assert.equal(hotnessLabel({ hotness: 8.7, fresh: 0.9 }), 'Breaking');
+    assert.equal(hotnessLabel({ hotness: 8.7, fresh: 0.3 }), 'Hot', 'a stale high score is Hot, not Breaking');
+    assert.equal(hotnessLabel({ hot: true, hotOutlets: 4, hotness: 3 }), 'Hot', 'the hot floor still lifts to Hot');
+    const cluster = hotness => ({ hotness, sourceCount: 1, ranking: { signals: { freshness: 0.9 } } });
+    assert.equal(getHotnessLabel(cluster(7.0)), '');
+    assert.equal(getHotnessLabel(cluster(8.0)), 'Hot');
+    assert.equal(getHotnessLabel(cluster(8.8)), 'Breaking');
+    const before = process.env.CLASSIC_RANKING;
+    process.env.CLASSIC_RANKING = 'legacy';
+    try {
+        assert.equal(getHotnessLabel({ hotness: 5.4, sourceCount: 1 }), '');
+        assert.equal(getHotnessLabel({ hotness: 5.5, sourceCount: 1 }), 'Hot');
+        assert.equal(getHotnessLabel({ hotness: 6.5, sourceCount: 6 }), 'Widely reported');
+        assert.equal(getHotnessLabel({ hotness: 7.5, sourceCount: 4 }), 'Breaking');
+        assert.equal(getHotnessLabel({ hotness: 7.5, sourceCount: 3 }), 'Hot');
+    } finally { if (before === undefined) delete process.env.CLASSIC_RANKING; else process.env.CLASSIC_RANKING = before; }
+});

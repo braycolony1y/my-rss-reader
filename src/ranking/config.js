@@ -29,6 +29,19 @@ export const HOT_FLOOR = Object.freeze({
 });
 
 /**
+ * Label thresholds on the 1..10 display scale, calibrated on the replay of the non-AI scorer over
+ * 8 snapshots (6 h apart) of the stored clusters, fresh stories (latest report <= 12 h):
+ * p50 4.2, p90 7.8, p92 8.0, p97 8.6, p98 8.8. Hot = roughly the top 8-10% of fresh stories,
+ * Breaking = roughly the top 2-3%. The hot-news floor lifts stories to Hot regardless of score.
+ */
+export const LABEL_THRESHOLDS = Object.freeze({
+  hot: num('RANKING_LABEL_HOT', 7.8, 1, 10),
+  breaking: num('RANKING_LABEL_BREAKING', 8.6, 1, 10),
+  /** Score-based Breaking also needs the story to be fresh (exp(-age/48h) at or above this, about 14 h). */
+  breakingMinFresh: 0.75
+});
+
+/**
  * Routine damper. For routine multi-outlet patterns (match results, festivals,
  * anniversaries, award ceremonies, digests, state-media reposts) the effective
  * number of outlets/articles that feed the corroboration and velocity features is
