@@ -4,8 +4,7 @@
 // FROZEN ASSET. The shipped centroids were computed ONCE from the last AI "Top stories"
 // publication (table topStoriesPublished) and the existing multilingual-e5-small cache. No job
 // refreshes them any more; AI no longer participates in ranking. Run this script only
-// deliberately, and only while those AI labels still exist (they are archived and removed in
-// a later phase). It is read-only on the database and the embedding cache.
+// deliberately, and only while those AI labels still exist (they are archived and later deleted; restore them first, see docs/ai-removal.md). It is read-only on the database and the embedding cache.
 //
 // Method (identical to the offline replay that tuned the ranker):
 //   - assessed clusters of the live snapshot, each with its AI signals and member vectors;
