@@ -17,8 +17,8 @@ const HNSW_CONFIG = Object.freeze({
   space: 'cosine',
 
   maxReviewEdgesPerArticle: 3,
-  maxQwenGroupSize: 12,
-  maxQwenGroupsPerRefresh: 200,
+  maxReviewGroupSize: 12,
+  maxReviewGroupsPerRefresh: 200,
 
   // Safety limits. These prevent another 6,302-article cluster.
   maxImportedClusterSize: 500,
@@ -610,7 +610,7 @@ function logRootStats(
 }
 
 /**
- * Creates deterministic, size-limited Qwen review groups.
+ * Creates deterministic, size-limited review groups.
  *
  * Edges are processed strongest-first. An edge is accepted only
  * when both endpoint articles remain below their per-article limit.
@@ -794,7 +794,7 @@ function buildReviewGroups(
     if (
       combinedSize <=
       HNSW_CONFIG
-        .maxQwenGroupSize
+        .maxReviewGroupSize
     ) {
       union(
         rootA,
@@ -889,7 +889,7 @@ function buildReviewGroups(
     components.slice(
       0,
       HNSW_CONFIG
-        .maxQwenGroupsPerRefresh
+        .maxReviewGroupsPerRefresh
     );
 
   const groups =
@@ -1779,7 +1779,7 @@ export async function runIncrementalHnswClustering(
 
   /*
    * Review pairs already inside the same automatic component are
-   * resolved and must not be sent to Qwen.
+   * resolved and need no resolution.
    */
   const unresolvedReviewEdges = [
     ...reviewEdges.values()

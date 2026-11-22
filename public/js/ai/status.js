@@ -7,7 +7,6 @@ const ReaderAiStatus = (() => {
         if (!state) {
             state = {
                 filterCache: null,
-                lastSmartRunSig: '',
                 lastDebugStatsRaw: '',
                 lastUsageSig: '',
                 fetchingUsage: false
@@ -52,10 +51,8 @@ const ReaderAiStatus = (() => {
                 geminiStatusLoading: false,
                 geminiStatusError: '',
                 geminiKeyStatus: null,
-                clusteringModel: 'gemini-3.5-flash-lite',
                 geminiDebugStats: null,
                 geminiDebugTimer: null,
-                smartAiStatusTimer: null,
                 onlineAiUsage: null,
                 onlineAiUsageLoading: false,
                 onlineAiUsageError: '',
@@ -94,11 +91,7 @@ const ReaderAiStatus = (() => {
                     this.mobileSidebarOpen = false;
                     this.syncGeminiStatusScrollLock(true);
                     this.fetchGeminiKeyStatus();
-                    this.fetchSmartAiProgress();
                     this.fetchOnlineAiUsage();
-                    if (!this.smartAiStatusTimer) {
-                        this.smartAiStatusTimer = setInterval(() => this.fetchSmartAiProgress(), 2000);
-                    }
                     if (!this.geminiDebugTimer) {
                         this.fetchGeminiDebugStats();
                         this.geminiDebugTimer = setInterval(() => this.fetchGeminiDebugStats(), 5000);
@@ -116,10 +109,6 @@ const ReaderAiStatus = (() => {
                     if (this.geminiDebugTimer) {
                         clearInterval(this.geminiDebugTimer);
                         this.geminiDebugTimer = null;
-                    }
-                    if (this.smartAiStatusTimer) {
-                        clearInterval(this.smartAiStatusTimer);
-                        this.smartAiStatusTimer = null;
                     }
                     if (this.onlineAiUsageTimer) {
                         clearInterval(this.onlineAiUsageTimer);
@@ -279,18 +268,6 @@ const ReaderAiStatus = (() => {
                     }
                 },
 
-                async saveClusteringModel() {
-                    try {
-                        await fetch('/api/user-preferences', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ key: 'clusteringModel', value: this.clusteringModel })
-                        });
-                    } catch (e) {
-                        console.error('Failed to save clustering model', e);
-                    }
-                },
-
                 async addGeminiKey() {
                     const apiKey = String(this.newGeminiKey || '').trim();
                     this.addGeminiKeyError = '';
@@ -321,84 +298,6 @@ const ReaderAiStatus = (() => {
                     } finally {
                         this.addingGeminiKey = false;
                     }
-                },
-
-                async fetchSmartAiProgress() {
-                    try {
-                        const response = await fetch('/api/smart-status');
-                        if (!response.ok) return;
-                        const status = await response.json();
-                        const priv = getPrivate(this);
-                        const previous = this.geminiKeyStatus;
-                        const previousRun = previous?.lastSmartRun || {};
-                        const nextProviders = Array.isArray(status.aiProviders)
-                            ? status.aiProviders
-                            : (previousRun.providers || []);
-                        const nextProviderOrder = Array.isArray(status.providerOrder)
-                            ? status.providerOrder.filter(provider => provider !== 'qwen-flash')
-                            : (Array.isArray(previousRun.providerOrder) && previousRun.providerOrder.length
-                                ? previousRun.providerOrder
-                                : ['gemini-flash-lite', 'gemini-flash', 'local-qwen']);
-                        const nextProgress = status.progress || previousRun.progress || null;
-                        const nextRun = {
-                            state: status.state || previousRun.state || '',
-                            startedAt: status.startedAt || previousRun.startedAt || '',
-                            completedAt: status.completedAt || previousRun.completedAt || '',
-                            localConfigured: Boolean(status.localConfigured),
-                            localUsed: Boolean(status.localUsed),
-                            localModel: status.localModel || previousRun.localModel || 'qwen3.5:4b',
-                            geminiUsed: Boolean(status.geminiUsed),
-                            providers: nextProviders,
-                            providerOrder: nextProviderOrder,
-                            reviewedArticleCount: Number(status.geminiReviewedArticleCount) || previousRun.reviewedArticleCount || 0,
-                            eligibleArticleCount: Number(status.geminiEligibleArticleCount) || previousRun.eligibleArticleCount || 0,
-                            reason: status.geminiReason || previousRun.reason || '',
-                            progress: nextProgress
-                        };
-                        const nextSig = JSON.stringify(nextRun);
-                        if (previous?.lastSmartRun && priv.lastSmartRunSig === nextSig) {
-                            return;
-                        }
-                        priv.lastSmartRunSig = nextSig;
-
-                        if (!previous) {
-                            if (this.geminiStatusLoading) return;
-                            this.geminiKeyStatus = { lastSmartRun: nextRun };
-                            return;
-                        }
-
-                        if (!previous.lastSmartRun || typeof previous.lastSmartRun !== 'object') {
-                            previous.lastSmartRun = nextRun;
-                            return;
-                        }
-
-                        const currentRun = previous.lastSmartRun;
-                        const scalarKeys = [
-                            'state', 'startedAt', 'completedAt', 'localConfigured',
-                            'localUsed', 'localModel', 'geminiUsed',
-                            'reviewedArticleCount', 'eligibleArticleCount', 'reason'
-                        ];
-                        for (const key of scalarKeys) {
-                            if (currentRun[key] !== nextRun[key]) {
-                                currentRun[key] = nextRun[key];
-                            }
-                        }
-                        if (JSON.stringify(currentRun.providers) !== JSON.stringify(nextProviders)) {
-                            currentRun.providers = nextProviders;
-                        }
-                        if (JSON.stringify(currentRun.providerOrder) !== JSON.stringify(nextProviderOrder)) {
-                            currentRun.providerOrder = nextProviderOrder;
-                        }
-                        if (!nextProgress || typeof nextProgress !== 'object') {
-                            if (currentRun.progress !== nextProgress) {
-                                currentRun.progress = nextProgress;
-                            }
-                        } else if (!currentRun.progress || typeof currentRun.progress !== 'object') {
-                            currentRun.progress = { ...nextProgress };
-                        } else {
-                            syncScalarObject(currentRun.progress, nextProgress);
-                        }
-                    } catch (error) { }
                 },
 
                 async fetchGeminiDebugStats() {
@@ -474,22 +373,6 @@ const ReaderAiStatus = (() => {
                         const response = await fetch('/api/gemini-key-status');
                         if (!response.ok) throw new Error('Could not check the Gemini key');
                         const next = await response.json();
-                        const priv = getPrivate(this);
-                        priv.lastSmartRunSig = next?.lastSmartRun ? JSON.stringify({
-                            state: next.lastSmartRun.state || '',
-                            startedAt: next.lastSmartRun.startedAt || '',
-                            completedAt: next.lastSmartRun.completedAt || '',
-                            localConfigured: Boolean(next.lastSmartRun.localConfigured),
-                            localUsed: Boolean(next.lastSmartRun.localUsed),
-                            localModel: next.lastSmartRun.localModel || 'qwen3.5:4b',
-                            geminiUsed: Boolean(next.lastSmartRun.geminiUsed),
-                            providers: Array.isArray(next.lastSmartRun.providers) ? next.lastSmartRun.providers : [],
-                            providerOrder: Array.isArray(next.lastSmartRun.providerOrder) ? next.lastSmartRun.providerOrder : ['gemini-flash-lite', 'gemini-flash', 'local-qwen'],
-                            reviewedArticleCount: Number(next.lastSmartRun.reviewedArticleCount) || 0,
-                            eligibleArticleCount: Number(next.lastSmartRun.eligibleArticleCount) || 0,
-                            reason: next.lastSmartRun.reason || '',
-                            progress: next.lastSmartRun.progress || null
-                        }) : '';
                         this.geminiKeyStatus = next;
                     } catch (error) {
                         this.geminiStatusError = error.message;

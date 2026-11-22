@@ -3,10 +3,11 @@ import { sourceWorkView } from '../prefilter/source-work.js';
 import { preparePrefilterCandidates, prefilterConfiguration, hydrateStoredClusters, survivingClusters } from '../prefilter/boundaries.js';
 import { normalizeBlockedKeywordEntries, articleContentFilterMatches } from '../../filters/content-filter.js';
 import { isInvestingComSource } from '../articles/categories.js';
-import { stableId } from '../articles/identity.js';
+import { stableId, getArticleId } from '../articles/identity.js';
+import { detectArticleLanguage } from '../articles/language.js';
 import { normalizeArticle } from '../articles/normalize.js';
 import { isActiveCluster, extractActiveClusterArticles } from '../clustering/publication-snapshot.js';
-import { SMART_CLUSTER_VERSION, SMART_NEWS_CLUSTER_CONFIG, HOUR_MS, SMART_NEWS_AI_CONFIG } from '../config.js';
+import { SMART_CLUSTER_VERSION, SMART_NEWS_CLUSTER_CONFIG, HOUR_MS } from '../config.js';
 import { parsePublishedTimestamp, toVietnamIso } from '../dates/publication-time.js';
 import { EMBEDDING_MODEL, EMBEDDING_CACHE_VERSION } from '../embeddings/config.js';
 import { buildEmbeddingText } from '../embeddings/index.js';
@@ -15,13 +16,20 @@ import {fetchSmartSourceForRefresh} from '../sources/manual-fetch.js';
 import { canonicalSourceUrl, isExcludedFromSmart } from '../sources/identity.js';
 import { countSmartSources } from '../sources/normalize.js';
 import { dedupeGoogleNewsWrappers } from '../sources/wrappers.js';
-import { normalizedVerificationArticles } from '../verification/cache.js';
-import { getEnabledVerificationProviders } from '../verification/provider-config.js';
+import { RESOLVER_CONFIG } from '../clustering/resolver.js';
 import { createHash } from 'node:crypto';
 import { canReuseSmartSnapshot } from './reuse-policy.js';
 import { previousSmartArticles } from './stored-inputs.js';
 
-export async function prepareSmartCandidates({ db, smartSources, getSettings, hasGeminiKey, localModel, setStatus, getProgress, notify, metrics, options, isTargeted, targetCategory, startedAt, helpers, headers, setAttemptedState }) {
+// Part of the stored content hash. Kept byte-for-byte identical to the former verification input
+// so that existing hashes stay valid and nothing is reprocessed because of this refactor.
+const normalizedVerificationArticles = articles => articles.map(article => ({ id: getArticleId(article), title: article.title,
+  description: String(article.content || '').slice(0, 600), source: article.feedTitle,
+  domain: article.domain, language: article.language || detectArticleLanguage(article),
+  category: article.smartCategory, publishedAt: article.pubDate
+})).sort((a, b) => a.id.localeCompare(b.id));
+
+export async function prepareSmartCandidates({ db, smartSources, getSettings, setStatus, getProgress, notify, metrics, options, isTargeted, targetCategory, startedAt, helpers, headers, setAttemptedState }) {
   const sourceCounts =
     countSmartSources(
       smartSources
@@ -44,23 +52,10 @@ export async function prepareSmartCandidates({ db, smartSources, getSettings, ha
       )
     ) || {};
 
-  const providers =
-    getEnabledVerificationProviders(
-      hasGeminiKey()
-    );
-
-  const providerOrder =
-    providers.map(
-      provider =>
-        provider.id
-    );
-
   await setStatus({
     ...previousStatus,
     state: 'refreshing',
     startedAt,
-    providerOrder,
-    localModel,
     progress:
       getProgress()
   });
@@ -374,8 +369,8 @@ export async function prepareSmartCandidates({ db, smartSources, getSettings, ha
   //
   // Content Filter matches remain in the raw article stores so the user
   // can inspect them from Content Filters. They must not enter the costly
-  // Smart pipeline: content hashing, embeddings, clustering, verification,
-  // editorial AI, ranking and later Smart enrichment.
+  // Smart pipeline: content hashing, embeddings, clustering and deterministic
+  // resolution of ambiguous pairs.
   //
   // Use the exact same canonical matcher as the normal Feed/UI filters.
 
@@ -558,9 +553,7 @@ export async function prepareSmartCandidates({ db, smartSources, getSettings, ha
   const aiConfiguration =
     [
       EMBEDDING_MODEL, EMBEDDING_CACHE_VERSION,
-      SMART_NEWS_AI_CONFIG.cache.promptVersion,
-      SMART_NEWS_AI_CONFIG.cache.rulesVersion,
-      SMART_NEWS_AI_CONFIG.cache.schemaVersion,
+      'deterministic-resolver-v1', JSON.stringify(RESOLVER_CONFIG),
       SMART_CLUSTER_VERSION,
       ...prefilterConfiguration(), sourceSignature, JSON.stringify(settings), [...dynamicExcludedUrls].sort().join(',')
     ].join('|');
@@ -572,8 +565,7 @@ export async function prepareSmartCandidates({ db, smartSources, getSettings, ha
       )
     ) || '';
 
-  const attemptedState = { signature: currentSignature, configuration: aiConfiguration,
-    providers: providers.map(p => `${p.id}:${p.model}`).join('|') };
+  const attemptedState = { signature: currentSignature, configuration: aiConfiguration };
   setAttemptedState(attemptedState);
   const failedAttempt = await db.get('smartClusteringFailedAttempt', { type: 'json' });
   if (!options.forceRebuild && failedAttempt && Object.keys(attemptedState).every(key => attemptedState[key] === failedAttempt[key])) {
@@ -584,7 +576,6 @@ export async function prepareSmartCandidates({ db, smartSources, getSettings, ha
 
   if (await canReuseSmartSnapshot({ forceRebuild: options.forceRebuild, currentSignature,
     previousSignature, previousAiConfiguration, aiConfiguration, db })) {
-    metrics.cachedDecisionsReused = existingClusters.filter(cluster => cluster.verification?.method === 'ai_fallback').length;
     metrics.embeddingsReused = candidates.length;
     metrics.existingMembershipsReused = candidates.length;
     notify(
@@ -605,9 +596,6 @@ export async function prepareSmartCandidates({ db, smartSources, getSettings, ha
       clusterCount:
         existingClusters.length,
       newArticleCount: 0,
-      providerOrder,
-      aiProviders: [],
-      verificationStats: metrics,
       metrics,
       progress:
         getProgress()
@@ -710,5 +698,5 @@ export async function prepareSmartCandidates({ db, smartSources, getSettings, ha
   }
 
 
-return { candidates, existingClusters, storyIdRetentionClusters, sourceCounts, sourceErrors, successfulSourceCount, hiddenArticleCount, currentSignature, aiConfiguration, embeddingIdentity, clusterVersionChanged, storedClusterVersion, existingClusterCountBeforeRebuild, storedStoryRelationships, providers, providerOrder };
+return { candidates, existingClusters, storyIdRetentionClusters, sourceCounts, sourceErrors, successfulSourceCount, hiddenArticleCount, currentSignature, aiConfiguration, embeddingIdentity, clusterVersionChanged, storedClusterVersion, existingClusterCountBeforeRebuild, storedStoryRelationships };
 }

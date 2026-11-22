@@ -1,4 +1,3 @@
-import { filterDestinations } from '../smart/prefilter/state.js';
 const canonicalDestination = value => String(value || '').replace(/_world$/, '_global').replace(/_foreign$/, '_global');
 const destinationsForSource = (category, region) => {
     const normalizedCategory =
@@ -84,8 +83,4 @@ export function rawAllowedDestinations(article, sources) {
             )
         )
     ].filter(Boolean);
-}
-
-export function allowedDestinations(article, sources) {
-    return filterDestinations(article, rawAllowedDestinations(article, sources));
 }

@@ -2,8 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { evaluatePolicy, FILTER_VERSION, validReason } from '../src/smart/prefilter/policy.js';
 import { articleIdentity } from '../src/smart/prefilter/identity.js';
-import { getPrefilterStore, evaluateCandidate, terminalExcluded, acceptAiDecisions } from '../src/smart/prefilter/state.js';
-import { SIDE_POLICY } from '../src/smart/prefilter/ai.js';
+import { getPrefilterStore, evaluateCandidate, terminalExcluded } from '../src/smart/prefilter/state.js';
 import { filterLog } from '../src/smart/feedback/log.js';
 import { prefilterConfiguration } from '../src/smart/prefilter/boundaries.js';
 import { FILTER_POLICY_REVISION } from '../src/smart/prefilter/retired-reasons.js';
@@ -26,8 +25,6 @@ test('product updates, opinion/potential and sports survive the early policy in 
     ]) assert.equal(evaluatePolicy(article(title), section).status, 'keep', `${section}: ${title}`);
     for (const code of codes) assert.equal(validReason(section, code), false);
   }
-  assert.match(SIDE_POLICY, /routine sports are allowed/);
-  for (const code of codes) assert.equal(SIDE_POLICY.includes(code), false);
   assert.ok(prefilterConfiguration().includes(FILTER_POLICY_REVISION));
 });
 
@@ -60,15 +57,5 @@ test('saved retired exclusions are removed and persisted, preserving other secti
     assert.equal(log.rows.length, 1);
     assert.equal(log.rows[0].humanReason, 'Routine ceremony');
     assert.equal(db.values.smartPersonalFilters, personal);
-  }
-});
-
-test('AI output from an old cached prompt cannot restore any retired exclusion', async () => {
-  for (const reasonCode of codes) {
-    const section = reasonCode === 'VN_NEWS_ROUTINE_SPORTS' ? 'news_vietnam' : 'tech_vietnam';
-    const row = article('An ambiguous story'), db = fixture(), store = await getPrefilterStore(db);
-    evaluateCandidate(store, row, [section]);
-    await acceptAiDecisions(db, [row], [{ id: row.smartTopPrefilterKey, section, decision: 'exclude', confidence: 'high', reasonCode, reason: 'Old policy reason', materialitySignals: [], signals: [] }], 'event_verification');
-    assert.equal(terminalExcluded(row, section), false);
   }
 });

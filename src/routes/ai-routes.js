@@ -15,35 +15,6 @@ export function registerAiRoutes({
         const keyStats = geminiKeyManager.getDebugStats();
         const apiKey = activeKey?.key || '';
         const model = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
-        const smartStatus = await smartNews.getStatus();
-        const rawProviderHealth = await env.RSS_DATA.get('smartAiProviderHealth', { type: 'json' }).catch(()=>null);
-        const providerHealth = rawProviderHealth || {};
-        const smartError = String(smartStatus.geminiError || '');
-        const smartHttpStatus = Number((smartError.match(/(?:Gemini|Local AI) HTTP\s+(\d{3})/i) || [])[1]) || null;
-        const smartErrorSummary = smartHttpStatus === 429
-            ? 'Gemini returned HTTP 429. The request pacer was used; the last successful snapshot is kept if online AI remains unavailable.'
-            : smartError.split('\n')[0].slice(0, 240);
-        const persistedKeyErrors = Array.isArray(smartStatus.geminiKeyErrors)
-            ? smartStatus.geminiKeyErrors.map(event => ({
-                key: Number(event.key) || 0,
-                httpStatus: Number(event.httpStatus) || null,
-                category: String(event.category || '').slice(0, 100),
-                provider: 'Gemini',
-                error: String(event.error || '').split('\n')[0].slice(0, 240),
-                at: event.at || ''
-            })).filter(event => event.key > 0)
-            : [];
-        const persistedLocalErrors = Array.isArray(smartStatus.localErrors)
-            ? smartStatus.localErrors.map(event => ({
-                key: 0,
-                httpStatus: Number(event.httpStatus) || null,
-                category: String(event.category || '').slice(0, 100),
-                provider: 'Local AI',
-                model: String(event.model || smartStatus.localModel || '').slice(0, 80),
-                error: String(event.error || '').split('\n')[0].slice(0, 240),
-                at: event.at || ''
-            }))
-            : [];
         const runtimeKeyErrors = (keyStats.keys || []).filter(key => key.lastError || key.lastHttpStatus).map(key => ({
             key: Number(key.index) + 1,
             httpStatus: Number(key.lastHttpStatus) || null,
@@ -52,7 +23,6 @@ export function registerAiRoutes({
             error: String(key.lastError || '').split('\n')[0].slice(0, 240),
             at: key.lastErrorAt || ''
         }));
-        const persistedAiKeyErrors = [...persistedLocalErrors, ...persistedKeyErrors];
         const base = {
             configured: keyStats.totalKeys > 0,
             keyCount: keyStats.totalKeys,
@@ -63,27 +33,7 @@ export function registerAiRoutes({
             usageUrl: 'https://aistudio.google.com/usage',
             exactRemainingAvailable: false,
             exactRemainingExplanation: 'Google exposes live RPM, TPM, RPD, tier, and remaining usage in the AI Studio project dashboard, not through a Gemini API key.',
-            providerHealth,
-            lastSmartRun: {
-                state: smartStatus.state || '',
-                startedAt: smartStatus.startedAt || '',
-                completedAt: smartStatus.completedAt || '',
-                localConfigured: Boolean(smartStatus.localConfigured),
-                localUsed: Boolean(smartStatus.localUsed),
-                localModel: smartStatus.localModel || process.env.OLLAMA_SMART_MODEL || 'qwen3.5:4b',
-                geminiUsed: Boolean(smartStatus.geminiUsed),
-                providers: Array.isArray(smartStatus.aiProviders) ? smartStatus.aiProviders : [],
-                providerOrder: Array.isArray(smartStatus.providerOrder) ? smartStatus.providerOrder.filter(provider => provider !== 'qwen-flash') : ['gemini-flash-lite', 'gemini-flash', 'local-qwen'],
-                progress: smartStatus.progress || null,
-                reviewedArticleCount: smartStatus.verificationStats ? Number(smartStatus.verificationStats.reviewedArticleCount) : (Number(smartStatus.geminiReviewedArticleCount) || 0),
-                eligibleArticleCount: Number(smartStatus.candidateCount) || Number(smartStatus.geminiEligibleArticleCount) || 0,
-                reason: smartStatus.reason || smartStatus.geminiReason || '',
-                error: smartErrorSummary,
-                httpStatus: smartHttpStatus,
-                keyErrors: persistedAiKeyErrors.length ? persistedAiKeyErrors : runtimeKeyErrors,
-                byCategory: smartStatus.geminiByCategory || {},
-                keptExistingClusters: Boolean(smartStatus.keptExistingClusters)
-            }
+            keyErrors: runtimeKeyErrors
         };
         if (!keyStats.totalKeys) return res.json({ ...base, valid: false, state: 'not_configured', httpStatus: null });
         if (!apiKey) return res.json({

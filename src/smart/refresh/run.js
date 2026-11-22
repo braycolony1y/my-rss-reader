@@ -4,14 +4,13 @@ import { VALID_SMART_CATEGORIES } from '../config.js';
 import { toVietnamIso } from '../dates/publication-time.js';
 import { pruneEmbeddingCache, disposeEmbeddingModel } from '../embeddings/index.js';
 import { publishSmartSnapshot } from '../persistence/publication.js';
-import { getEnabledVerificationProviders } from '../verification/provider-config.js';
 import { prepareSmartCandidates } from './candidates.js';
 import { beginSmartRefresh, endSmartRefresh } from './coordination.js';
 import { createSmartRefreshMetrics, recordSmartRefreshMetrics } from './metrics.js';
-import { reviewSmartCandidates } from './review-publication.js';
+import { resolveSmartCandidates } from './resolve-publication.js';
 import { coalesceSmartRefresh } from './coalescing.js';
 
-export function createSmartRefresh({ db, helpers, headers, keyManager, hasGeminiKey, localModel, getSources, getSettings, setStatus, clusterWorkerFactory }) {
+export function createSmartRefresh({ db, helpers, headers, getSources, getSettings, setStatus, clusterWorkerFactory }) {
   let running = false;
   let currentProgress = {
     active: false,
@@ -71,9 +70,7 @@ export function createSmartRefresh({ db, helpers, headers, keyManager, hasGemini
         if (currentProgress.stage !== stage) {
           for (const key of [
             'current', 'total', 'remaining', 'percent',
-            'providerId', 'providerIndex', 'providerAttempt',
-            'providerTotal', 'model', 'reviewGroupId',
-            'reviewArticleCount', 'reviewResolution'
+            'reviewGroupId', 'reviewArticleCount', 'reviewResolution'
           ]) {
             if (!(key in progressExtra)) progressExtra[key] = undefined;
           }
@@ -135,7 +132,7 @@ export function createSmartRefresh({ db, helpers, headers, keyManager, hasGemini
         await getSources();
 
       let prepared = await prepareSmartCandidates({
-        db, smartSources, getSettings, hasGeminiKey, localModel, setStatus,
+        db, smartSources, getSettings, setStatus,
         getProgress: () => currentProgress, notify, metrics, options,
         isTargeted, targetCategory, startedAt, helpers, headers,
         setAttemptedState: value => { attemptedState = value; }
@@ -147,23 +144,22 @@ export function createSmartRefresh({ db, helpers, headers, keyManager, hasGemini
         ...configuration, candidates, existingClusters, clusterWorkerFactory,
         metrics, notify, options
       });
-      let publicationPromise = reviewSmartCandidates({
+      let publicationPromise = resolveSmartCandidates({
         ...configuration, ...clustered, candidates, existingClusters,
         storyIdRetentionClusters, isTargeted, targetCategory, startedAt,
-        db, notify, keyManager, metrics
+        db, notify, metrics
       });
-      // The review stage owns the input graphs now. Drop the orchestration
-      // references before its explicit collection ahead of editorial work.
+      // The resolve stage owns the input graphs now. Drop the orchestration
+      // references before its explicit collection.
       candidates = null;
       existingClusters = null;
       storyIdRetentionClusters = null;
       clustered = null;
       let publication = await publicationPromise;
       publicationPromise = null;
-      const aiProvidersUsed = publication.aiProvidersUsed;
       let completionPromise = publishSmartSnapshot({
-        ...configuration, ...publication, smartSources, keyManager, db, notify,
-        metrics, startedAt, hasGeminiKey, localModel,
+        ...configuration, ...publication, smartSources, db, notify,
+        metrics, startedAt,
         getProgress: () => currentProgress
       });
       publication = null;
@@ -184,9 +180,7 @@ export function createSmartRefresh({ db, helpers, headers, keyManager, hasGemini
         completed.clusterCount,
         'clusters from',
         completed.candidateCount,
-        'candidates; providers:',
-        aiProvidersUsed.join(', ') ||
-        'none'
+        'candidates'
       );
 
       return {
@@ -217,14 +211,6 @@ export function createSmartRefresh({ db, helpers, headers, keyManager, hasGemini
           error.message,
         configuredSourceCount:
           smartSources.length,
-        providerOrder:
-          getEnabledVerificationProviders(
-            hasGeminiKey()
-          ).map(
-            provider =>
-              provider.id
-          ),
-        localModel,
         progress:
           currentProgress
       };

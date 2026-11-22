@@ -1,5 +1,5 @@
 import { personalSourceWork } from '../feedback/pipeline.js';
-import { rawAllowedDestinations } from '../../articles/top-story-destinations.js';
+import { rawAllowedDestinations } from '../../ranking/destinations.js';
 import { getPrefilterStore, evaluateCandidate, fullyExcluded } from './state.js';
 import { prefilterEnabled } from './policy.js';
 

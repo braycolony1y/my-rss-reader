@@ -1,9 +1,9 @@
 import { preparePersonalCandidates, personalFullyExcluded } from '../feedback/pipeline.js';
 import { articleIdentity } from './identity.js';
-import { rawAllowedDestinations } from '../../articles/top-story-destinations.js';
+import { rawAllowedDestinations } from '../../ranking/destinations.js';
 import { FILTER_VERSION, prefilterEnabled } from './policy.js';
 import { FILTER_POLICY_REVISION } from './retired-reasons.js';
-import { getPrefilterStore, evaluateCandidate, fullyExcluded, stampDecisions, terminalExcluded, decisionsFor } from './state.js';
+import { getPrefilterStore, evaluateCandidate, fullyExcluded, stampDecisions } from './state.js';
 
 export const prefilterConfiguration = () => prefilterEnabled() ? [FILTER_VERSION, FILTER_POLICY_REVISION] : [];
 export async function preparePrefilterCandidates({ db, articles, sources, metrics }) {
@@ -42,27 +42,6 @@ export function survivingClusters(clusters, rebuild) {
     return rebuilt ? [{ ...rebuilt, clusterId: cluster.clusterId }] : [];
   });
 }
-export function eligibleClusterDestinations(cluster, destinations, sources) {
-  if (!prefilterEnabled()) return destinations;
-  const members = [cluster, ...(cluster.relatedArticles || [])];
-  return destinations.filter(section => members.some(article => rawAllowedDestinations(article, sources || []).includes(section) && !terminalExcluded(article, section)));
-}
-export function aiSideCandidates(articles) {
-  if (!prefilterEnabled()) return [];
-  const seen = new Set();
-  return articles.flatMap(article => {
-    if (!article.smartTopPrefilterKey || fullyExcluded(article)) return [];
-    return (article.smartTopPrefilterSections || []).flatMap(section => {
-      const decision = decisionsFor(article)[section];
-      if (!decision || decision.final || decision.aiChecked) return [];
-      const key = `${article.smartTopPrefilterKey}:${section}`;
-      if (seen.has(key)) return [];
-      seen.add(key);
-      return [{ id: article.smartTopPrefilterKey, section, title: article.title }];
-    });
-  });
-}
-
 export function pruneReviewGroup(group) {
   group.articles = survivingArticles(group.articles || []);
   if (group.reviewUniverse) group.reviewUniverse = survivingArticles(group.reviewUniverse);

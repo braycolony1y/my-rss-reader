@@ -32,35 +32,24 @@ test('production has no Qwen Cloud request path', async () => {
 
 test('online AI calls and the private 24-hour exporter are logged', async () => {
     const summarySource = await read('summary-engine.js');
-    const smartSource = await read('smart-news.js');
     const exporter = await read('ops/maintenance/export-online-ai-usage-24h.sh');
 
     assert.match(summarySource, /\[ONLINE AI\]/);
-    assert.match(smartSource, /\[ONLINE AI\]/);
     assert.match(exporter, /--since='24 hours ago'/);
     assert.match(exporter, /online-ai-usage-last-24h\.log/);
 });
 
-test('Gemini backups retain 3.8 summaries and the Lite-to-3.8 verification chain', async () => {
+test('Gemini summaries use 3.8 and the removed clustering-model plumbing stays removed', async () => {
     const summarySource = await read('summary-engine.js');
     const smartSource = await read('smart-news.js');
     const serverSource = await read('server.js');
     const frontendSource = await read('script.js');
 
     assert.match(summarySource, /GEMINI_PRIMARY_MODEL[^\n]+gemini-3\.8-flash/);
-    assert.match(smartSource, /process\.env\.GEMINI_MODEL\s*\|\|\s*\n\s*'gemini-3\.8-flash'/);
     assert.doesNotMatch(summarySource, /gemini-3\.5-flash-lite/);
-    assert.match(smartSource, /gemini-3\.5-flash-lite/);
-    assert.ok(
-        smartSource.indexOf("id: 'gemini-flash-lite'") < smartSource.indexOf("id: 'gemini-flash'"),
-        'Flash-Lite must precede Gemini 3.8 in the provider chain'
-    );
-    assert.match(smartSource, /thinkingLevel:\s*'minimal'/);
-    assert.match(smartSource, /thinkingLevel:\s*'low'/);
-    assert.match(smartSource, /LITE_ESCALATION_REQUIRED/);
-    assert.match(serverSource, /DEFAULT_CLUSTERING_MODEL/);
-    assert.match(serverSource, /SMART_CLUSTERING_MODEL/);
-    assert.match(frontendSource, /clusteringModel:\s*'gemini-3\.5-flash-lite'/);
+    assert.doesNotMatch(smartSource, /LITE_ESCALATION_REQUIRED|thinkingLevel|id: 'gemini-flash-lite'/);
+    assert.doesNotMatch(serverSource, /DEFAULT_CLUSTERING_MODEL|SMART_CLUSTERING_MODEL|clusteringModel/);
+    assert.doesNotMatch(frontendSource, /clusteringModel/);
 });
 
 test('authenticated frontend usage API exposes the detailed 24-hour report', async () => {

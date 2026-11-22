@@ -9,7 +9,7 @@ import { feedbackSnapshotRows } from './article-lookup.js';
 export async function resolveFeedbackArticle(db, reference) {
     if (!reference?.link) throw new Error('A Smart article is required.');
     // Use only existing snapshots. Never acquire or reprocess content for this action.
-    for (const key of ['topStoriesPublished', 'smartClusters', 'smartRawArticles']) {
+    for (const key of ['smartClusters', 'smartRawArticles']) {
         const rows = await feedbackSnapshotRows(db,key,reference.link);
         const found = rows.find(a => a.link === reference.link && (!reference.clusterId || !a.clusterId || a.clusterId === reference.clusterId));
         if (found) {

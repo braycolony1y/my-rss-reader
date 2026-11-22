@@ -1,18 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { evaluatePolicy, FILTER_VERSION } from '../src/smart/prefilter/policy.js';
-import { getPrefilterStore, evaluateCandidate, terminalExcluded, fullyExcluded, decisionsFor } from '../src/smart/prefilter/state.js';
-import { preparePrefilterCandidates, survivingArticles, survivingGroups, aiSideCandidates } from '../src/smart/prefilter/boundaries.js';
+import { getPrefilterStore, evaluateCandidate, terminalExcluded, fullyExcluded, decisionsFor, filterDestinations } from '../src/smart/prefilter/state.js';
+import { preparePrefilterCandidates, survivingArticles, survivingGroups } from '../src/smart/prefilter/boundaries.js';
 import { sourceWorkView } from '../src/smart/prefilter/source-work.js';
-import { extendAiReview, acceptAiSideTask, primaryDecision, normalizeWithSideTask, requestWithOptionalSideTask } from '../src/smart/prefilter/ai.js';
 import { articleIdentity } from '../src/smart/prefilter/identity.js';
-import { allowedDestinations } from '../src/articles/top-stories.js';
+import { rawAllowedDestinations } from '../src/ranking/destinations.js';
 import { buildPublicationClusterSnapshot } from '../src/smart/clustering/publication-snapshot.js';
-import { PARTITION_RESPONSE_SCHEMA } from '../src/smart/verification/schemas.js';
-import { validatePartitionResult } from '../src/smart/verification/validation.js';
 import { getArticleId } from '../src/smart/articles/identity.js';
-import { requestClusteringDecision } from '../src/ai/clustering-json.js';
 
+const allowedDestinations = (article, sources) => filterDestinations(article, rawAllowedDestinations(article, sources));
 let serial = 0;
 const dbFixture = (values = {}) => ({ values,
   get: async (key, options) => values[key] == null ? null : options?.type === 'json' ? JSON.parse(values[key]) : values[key],
@@ -153,79 +150,6 @@ test('early source gate excludes only Smart-specific work and preserves raw entr
   assert.deepEqual(allowedDestinations(mixed[0].articles[0], [{ url:'https://fixture.test/rss',category:'tech' }]), ['tech_global']);
 });
 
-for (const confidence of ['high', 'medium', 'low']) test(`same required AI call, ${confidence} confidence side decision`, async () => {
-  const db = dbFixture(), store = await getPrefilterStore(db);
-  const a = article('A business technology update'); evaluateCandidate(store, a, [tech]);
-  const group = { articles: [a] };
-  const spec = extendAiReview(group, null, 'PRIMARY PROMPT', PARTITION_RESPONSE_SCHEMA);
-  assert.ok(spec.prompt.startsWith('PRIMARY PROMPT')); assert.ok(spec.schema.properties.smartTopPrefilter);
-  assert.deepEqual(spec.schema.required, PARTITION_RESPONSE_SCHEMA.required);
-  let calls = 0;
-  const side = { id: a.smartTopPrefilterKey, section: tech, decision: 'exclude', confidence, reasonCode: 'TECH_VN_CORPORATE_TECH_PR', reason: 'Only routine internal assistant publicity.', signals: ['pr'], materialitySignals: [] };
-  const response = { clusters: [{ articleIds: [getArticleId(a)], confidence: 1 }], uncertain: false, smartTopPrefilter: [side] };
-  const parsed = await requestClusteringDecision({ request: async () => { calls++; return JSON.stringify(response); }, validate: value => validatePartitionResult(primaryDecision(value), [a]), schema: PARTITION_RESPONSE_SCHEMA });
-  await acceptAiSideTask(db, group, parsed, 'event_verification');
-  assert.equal(calls, 1, 'baseline 1 / after 1');
-  assert.equal(terminalExcluded(a, tech), confidence === 'high');
-  assert.equal(aiSideCandidates([a]).length, 0, 'no later AI vote');
-  const groups = survivingGroups([{ articles: [a] }]);
-  assert.equal(groups.length, confidence === 'high' ? 0 : 1);
-  assert.equal(decisionsFor(a)[tech].aiChecked, true);
-  console.log('PREFILTER_AI_REQUEST_COUNT', JSON.stringify({ before: 1, after: calls, confidence }));
-});
-
-test('malformed/missing side output cannot trigger a repair or a second side decision', async () => {
-  for (const side of [undefined, null, 'wrong', [{ id: 'unknown', decision: 'exclude' }]]) {
-    const db = dbFixture(), store = await getPrefilterStore(db), a = article('Ambiguous technology update');
-    evaluateCandidate(store, a, [tech]); let calls = 0;
-    const response = { clusters: [{ articleIds: [getArticleId(a)] }], uncertain: false, smartTopPrefilter: side };
-    const parsed = await requestClusteringDecision({ request: async () => { calls++; return JSON.stringify(response); }, validate: value => validatePartitionResult(primaryDecision(value), [a]), schema: PARTITION_RESPONSE_SCHEMA });
-    await acceptAiSideTask(db, { articles: [a] }, parsed, 'event_verification');
-    assert.equal(calls, 1); assert.equal(terminalExcluded(a, tech), false); assert.equal(aiSideCandidates([a]).length, 0);
-  }
-});
-
-test('provider normalization preserves side field without weakening primary normalization', () => {
-  const raw = JSON.stringify({ clusters: [{ articleIds: ['a'] }], uncertain: false, smartTopPrefilter: [{ id: 'a' }] });
-  let normalized = 0;
-  const result = normalizeWithSideTask(raw, primary => { normalized++; assert.equal(Object.hasOwn(JSON.parse(primary), 'smartTopPrefilter'), false); return primary; });
-  assert.equal(normalized, 1); assert.deepEqual(JSON.parse(result).smartTopPrefilter, [{id:'a'}]);
-});
-
-test('AI terminal exclusion is removed from final snapshot and old retained clusters', async () => {
-  const db = dbFixture(), store = await getPrefilterStore(db);
-  const a = article('Ambiguous corporate announcement'); evaluateCandidate(store, a, [tech]);
-  await acceptAiSideTask(db, {articles:[a]}, {smartTopPrefilter:[{id:a.smartTopPrefilterKey,section:tech,decision:'exclude',confidence:'high',reasonCode:'TECH_VN_CORPORATE_TECH_PR',reason:'Routine internal assistant publicity',signals:[],materialitySignals:[]}]}, 'event_verification');
-  const snapshot = buildPublicationClusterSnapshot({ candidates:[a], autoMergedClusters:[{articles:[a]}], reviewedClusters:[], reviewGroups:[], clusterVersionChanged:false, existingClusters:[{...a,clusterId:'old'}], isTargeted:false, storyIdRetentionClusters:[] });
-  assert.equal(snapshot.clusters.length,0);
-});
-
-test('kill switch restores untouched inputs, routing, prompt and schema', async () => {
-  const db = dbFixture(), store = await getPrefilterStore(db), a = article('95% doanh nghiệp Việt dùng AI');
-  evaluateCandidate(store,a,[tech]); assert.equal(terminalExcluded(a,tech),true);
-  const old = process.env.SMART_TOP_VN_PREFILTER_ENABLED;
-  process.env.SMART_TOP_VN_PREFILTER_ENABLED='false';
-  try {
-    const input=[a]; assert.equal(await preparePrefilterCandidates({db,articles:input,sources:sourcesFor(tech),metrics:{}}),input);
-    assert.deepEqual(allowedDestinations(a,sourcesFor(tech)),[tech]);
-    const spec = extendAiReview({articles:[a]},null,'primary',PARTITION_RESPONSE_SCHEMA);
-    assert.equal(spec.schema.properties.smartTopPrefilter, undefined);
-    assert.ok(spec.schema.properties.personalSmartFeedback); // independent personal side task
-    assert.ok(spec.prompt.startsWith('primary'));
-    assert.equal(terminalExcluded(a,tech),false);
-  } finally { if(old===undefined) delete process.env.SMART_TOP_VN_PREFILTER_ENABLED; else process.env.SMART_TOP_VN_PREFILTER_ENABLED=old; }
-});
-
-test('truncated optional side tail cannot cause a new primary repair request', async () => {
-  const a = article('Uncertain announcement'); let calls = 0;
-  const primary = JSON.stringify({clusters:[{articleIds:[getArticleId(a)]}],uncertain:false});
-  const parsed = await requestClusteringDecision({
-    request: () => requestWithOptionalSideTask(async () => { calls++; return primary.slice(0,-1) + ',"smartTopPrefilter":[{"id":"truncated'; }),
-    validate: value => validatePartitionResult(value,[a]), schema:PARTITION_RESPONSE_SCHEMA,
-  });
-  assert.equal(calls,1); assert.equal(parsed.clusters.length,1);
-});
-
 test('concurrent readers share one authoritative store and ordered writes preserve new decisions', async () => {
   let reads=0;const values={};
   const db={get:async()=>{reads++;await new Promise(resolve=>setImmediate(resolve));return null;},put:async(key,value)=>{await new Promise(resolve=>setImmediate(resolve));values[key]=value;}};
@@ -240,13 +164,3 @@ test('concurrent readers share one authoritative store and ordered writes preser
   assert.equal(stored.records.length,2);
 });
 
-test('mixed cluster cannot regain excluded Tech eligibility through a News-only member', async () => {
-  const {smartEditorialEligibleDestinations}=await import('../src/ai/smart-editorial.js');
-  const store=await getPrefilterStore(dbFixture());
-  const t=article('95% doanh nghiệp Việt dùng AI',{feedUrl:'https://fixture.test/tech'});
-  const n=article('A public-interest survey',{feedUrl:'https://fixture.test/news'});
-  evaluateCandidate(store,t,[tech,'tech_global']);
-  evaluateCandidate(store,n,[news]);
-  const sources=[{url:t.feedUrl,category:'tech'},{url:n.feedUrl,category:news}];
-  assert.deepEqual(smartEditorialEligibleDestinations({...t,relatedArticles:[n]},sources),[news,'tech_global']);
-});

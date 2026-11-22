@@ -5,7 +5,6 @@ import { readFile } from 'node:fs/promises';
 import { semantics as s } from '../src/smart/feedback/semantics.js';
 import { getPersonalStore, confirmFeedback, undoFeedback, disableRule, filterPersonalArticles, matchPersonal, PERSONAL_STATE_KEY } from '../src/smart/feedback/store.js';
 import { preparePersonalCandidates, bindPersonalState } from '../src/smart/feedback/pipeline.js';
-import { extendAiReview, normalizeWithSideTask, primaryDecision, requestWithOptionalSideTask, acceptAiSideTask } from '../src/smart/prefilter/ai.js';
 import { filterLog } from '../src/smart/feedback/log.js';
 import { preparePrefilterCandidates } from '../src/smart/prefilter/boundaries.js';
 import { filterPublishedSnapshot, prefilterWorkerState, workerPrefilterValues } from '../src/smart/prefilter/publication.js';
@@ -89,20 +88,6 @@ test('system and user logs are distinct and abandoned sessions never appear', as
  assert.ok(result.rows.some(r=>r.origin==='system_editorial')); assert.ok(result.rows.some(r=>r.origin==='user_preference'));
  assert.equal(result.rows.filter(r=>r.origin==='user_preference').length,1);
 });
-test('optional semantic side output shares N requests and malformed tails never repair primary', async () => {
- const db = makeDb(); await bindPersonalState(db);
- const base = {type:'object',properties:{groups:{type:'array'}}};
- const spec = extendAiReview({articles:[article]},null,'Primary task',base);
- assert.ok(spec.schema.properties.personalSmartFeedback);
- let calls=0; const primary='{"groups":[]}';
- const before=await requestWithOptionalSideTask(async()=>{calls++;return primary;});
- const after=await requestWithOptionalSideTask(async()=>{calls++;return '{"groups":[],"personalSmartFeedback":[{"id":';});
- assert.equal(before,after); assert.equal(calls,2); // N=1 on each path
- const output=normalizeWithSideTask('{"groups":[],"personalSmartFeedback":[]}', x=> {assert.deepEqual(JSON.parse(x),{groups:[]});return x;});
- assert.deepEqual(primaryDecision(JSON.parse(output)),{groups:[]});
- await acceptAiSideTask(db,{articles:[article]},'{"groups":[]}', 'test');
- assert.equal((await getPersonalStore(db)).state.events.length,0);
-});
 test('actual picker controller keeps all unconfirmed paths ephemeral, including None x5', async () => {
  const context = vm.createContext({ console, crypto, SmartFeedbackSemantics:s, window:{innerWidth:1440,innerHeight:1000}, document:{querySelector:()=>null}, fetch:()=>{throw Error('unexpected network')} });
  vm.runInContext(await readFile('public/js/smart/feedback-picker.js','utf8')+'\nthis.factory=ReaderSmartFeedback;',context);
@@ -128,16 +113,6 @@ test('new cluster evidence survives an already-seen terminal even when the repre
  assert.equal((await filterPersonalArticles(db,[cluster])).length,0);
  const update = {...cluster, relatedArticles:[other,{...article,link:'https://new.test/new',title:'VinFast commits $2 billion to a new factory'}]};
  assert.equal((await filterPersonalArticles(db,[update])).length,1);
-});
-test('AI matching is conservative: low confidence keeps, high confidence validates every constraint', async () => {
- const { acceptPersonalOutput } = await import('../src/smart/feedback/ai.js');
- const { identity } = await import('../src/smart/feedback/store.js');
- const db=makeDb();await confirm(db,[s.reason('No award stories',{dimension:'story_type',eventType:'award_or_contest',scope:'tech_vietnam',strength:'narrow'})]);
- const candidate={...article,title:'Company announces recognition',link:'https://example.test/recognition',smartPersonalSections:['tech_vietnam']};
- const rule=(await getPersonalStore(db)).state.rules[0];
- const response=confidence=>({personalSmartFeedback:[{id:identity(candidate).key,feedbackTraits:{eventType:'award_or_contest',materialityClass:'routine'},userPreferenceMatch:{matched:true,ruleId:rule.id,confidence,reason:'Award only'}}]});
- await acceptPersonalOutput(db,[candidate],response('low'),'test_ai');assert.equal(matchPersonal((await getPersonalStore(db)).state,candidate),null);
- await acceptPersonalOutput(db,[candidate],response('high'),'test_ai');assert.ok(matchPersonal((await getPersonalStore(db)).state,candidate));
 });
 test('None rejects semantic paraphrases and narrower recycling, while keeping genuinely different dimensions', () => {
  const pr={dimension:'quality',storyAngle:'corporate_pr',scope:'tech_vietnam',strength:'narrow'};

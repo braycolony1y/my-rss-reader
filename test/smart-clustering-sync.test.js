@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { createSmartNewsEngine } from '../smart-news.js';
 
-test('A/B/P/Q/R/S refresh, failure retention, browser read and explicit rebuild', async () => {
+test('A/B/P/Q/R/S refresh, deterministic resolution, failure retention and explicit rebuild', async () => {
   const oldWebEnabled = process.env.GEMINI_WEB_ENABLED;
   process.env.GEMINI_WEB_ENABLED = 'false';
   const oldFetch = global.fetch, oldEnabled = process.env.ANTIGRAVITY_ENABLED, oldKey = process.env.GEMINI_API_KEY;
@@ -38,8 +38,7 @@ test('A/B/P/Q/R/S refresh, failure retention, browser read and explicit rebuild'
     let result=await engine.sync(progress,category);
     assert.equal(result.ok,true,result.error); assert.equal(commits.length,1);
 
-    assert.equal(result.metrics.firstPassAiCalls,0);
-    assert.equal(result.metrics.editorialAiCalls,aiCalls);
+    assert.equal(aiCalls,0,'no model is ever called');
 
     const initialAiCalls=aiCalls;
     const firstSnapshot=values.smartClusters, firstVersion=values.smartClusterVersion;
@@ -53,55 +52,39 @@ test('A/B/P/Q/R/S refresh, failure retention, browser read and explicit rebuild'
 
     assert.equal(result.metrics.embeddingsGenerated,0);
     assert.equal(values.smartClusters,firstSnapshot);
-    assert.ok(!stages.includes('smart-ai'));
+    assert.ok(!stages.includes('smart-resolve'));
     assert.ok(!stages.includes('smart-embeddings'));
 
     await engine.getStatus();
     assert.equal(workerCalls,1);
     assert.equal(aiCalls,initialAiCalls);
 
-    console.log('UNCHANGED_REFRESH_COUNTS',JSON.stringify({
-      aiCalls,
-      initialAiCalls,
-      embeddingsGenerated:result.metrics.embeddingsGenerated,
-      workerCallsDuringRefresh:0
-    }));
     result=await engine.sync(progress,category,{forceRebuild:true});
     assert.equal(result.ok,true,result.error);assert.equal(result.metrics.rebuildReason,'explicit_force_rebuild');assert.equal(workerCalls,2);
     values.smartClusteringAlgorithmVersion='incompatible-old-policy';
     result=await engine.sync(progress,category);
     assert.equal(result.ok,true,result.error);assert.equal(result.metrics.rebuildReason,'clustering_policy_version_changed');assert.equal(workerCalls,3);
     const validSnapshot=values.smartClusters, validVersion=values.smartClusterVersion, validCommits=commits.length;
-    const beforeAmbiguousAiCalls=aiCalls;
-
     articles.push({...articles[0],link:'https://fixture.test/two',title:'NASA plans next Artemis rocket launch'});ambiguity=true;
     result=await engine.sync(progress,category);
 
     assert.equal(result.ok,true,result.error);
-    assert.equal(result.metrics.firstPassAiCalls,1);
-    assert.equal(result.metrics.jsonRepairCalls,1);
-
-    // Transport calls = clustering first pass + repair
-    // + any separately-accounted editorial assessment.
-    assert.equal(
-      aiCalls-beforeAmbiguousAiCalls,
-      2 + result.metrics.editorialAiCalls
-    );
-
-    const afterAmbiguousAiCalls=aiCalls;
+    // The ambiguous group is resolved deterministically: without strong shared evidence the articles stay separate.
+    assert.equal(aiCalls,0);
+    assert.ok(stages.includes('smart-resolve'));
     assert.equal(commits.length,validCommits+1);
     assert.notEqual(values.smartClusters,validSnapshot);assert.notEqual(values.smartClusterVersion,validVersion);
-    assert.ok(stages.includes('smart-ai-repair'));assert.equal(result.metrics.repairAttempts,1);assert.equal(result.metrics.repairFailures,1);
-    assert.equal(result.metrics.deferredAmbiguousGroups,1);assert.equal(result.metrics.unresolvedAmbiguousGroups,0);
-    const deferredState=JSON.parse(values.smartDeferredReviewGroups);
-    assert.equal(deferredState.groups.length,1);assert.equal(deferredState.groups[0].components.length,2);
+    assert.equal(result.metrics.ambiguousGroups,1);assert.equal(result.metrics.ambiguousGroupsResolved,0);
+    assert.equal(result.metrics.mergedComponentPairs,0);assert.equal(result.metrics.unresolvedAmbiguousGroups,1);
+    assert.equal(JSON.parse(values.smartClusters).length,2,'both articles are published, each exactly once');
+    assert.equal(JSON.parse(values.smartDeferredReviewGroups).groups.length,0);
     const deferredSnapshot=values.smartClusters, deferredVersion=values.smartClusterVersion, deferredWorkerCalls=workerCalls;
     result=await engine.sync(progress,category);
     assert.equal(result.ok,true,result.error);assert.equal(result.skipped,true,JSON.stringify(result));
     assert.equal(workerCalls,deferredWorkerCalls);
 
-    // Cached/deferred refresh performs no additional AI work.
-    assert.equal(aiCalls,afterAmbiguousAiCalls);
+    // An unchanged refresh performs no additional work.
+    assert.equal(aiCalls,0);
 
     assert.equal(values.smartClusters,deferredSnapshot);
     assert.equal(values.smartClusterVersion,deferredVersion);
@@ -109,7 +92,7 @@ test('A/B/P/Q/R/S refresh, failure retention, browser read and explicit rebuild'
     result=await engine.sync(progress,category,{forceRebuild:true});
     assert.equal(result.ok,false);assert.equal(values.smartClusters,deferredSnapshot);assert.equal(values.smartClusterVersion,deferredVersion);
     assert.notEqual(firstVersion,undefined);
-    console.log('SNAPSHOT_FAILURE_COUNTS',JSON.stringify({firstPassAiCalls:1,repairCalls:1,invalidJson:1,repeatedRefreshAiCalls:0,invalidPublications:0}));
+    
   } finally {
     global.fetch=oldFetch;
     if(oldWebEnabled===undefined)delete process.env.GEMINI_WEB_ENABLED;else process.env.GEMINI_WEB_ENABLED=oldWebEnabled;

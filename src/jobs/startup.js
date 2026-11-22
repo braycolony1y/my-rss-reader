@@ -1,4 +1,4 @@
-import { setClusteringModel, startSmartSyncLoop, scheduleMonthlySourceEvaluation } from '../../smart-news.js';
+import { startSmartSyncLoop, scheduleMonthlySourceEvaluation } from '../../smart-news.js';
 import { fastParseRSS } from '../../feed-parsers.js';
 import cron from 'node-cron';
 import { normalizeStateUrl } from '../utils/article-utils.js';
@@ -9,7 +9,6 @@ export function createBackgroundStartup({
     reconcileAllConfiguredSourceFetchMethods,
     cleanupArticleCache,
     env,
-    normalizeClusteringModel,
     startSequentialSyncLoop,
     gcAndLogMemory,
     smartNews,
@@ -55,15 +54,6 @@ export function createBackgroundStartup({
         cleanupArticleCache();
         const articleCacheCleanupTimer = setInterval(cleanupArticleCache, 60 * 60 * 1000);
         if (articleCacheCleanupTimer.unref) articleCacheCleanupTimer.unref();
-
-        env.RSS_DATA.get('userPreferences', { type: 'json' }).then(async prefs => {
-            const currentPreferences = prefs || {};
-            const clusteringModel = normalizeClusteringModel(currentPreferences.clusteringModel);
-            setClusteringModel(clusteringModel);
-            if (currentPreferences.clusteringModel !== clusteringModel) {
-                await boardCache.updatePreference('clusteringModel', clusteringModel);
-            }
-        }).catch(err => console.error("Error loading user preferences for clustering model:", err));
 
         // ── Phase 1: RSS feed sync (immediate) ──────────────────────
         // This is the core feed sync loop – must start first so the UI

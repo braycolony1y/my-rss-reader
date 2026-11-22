@@ -2,7 +2,7 @@ import { personalTerminal, personalFullyExcluded } from '../feedback/terminal.js
 import { systemLogMetadata } from '../feedback/log-metadata.js';
 import { articleIdentity } from './identity.js';
 import { retiredReason, retireSavedReasons } from './retired-reasons.js';
-import { FILTER_VERSION, FILTER_STATE_KEY, SECTIONS, prefilterEnabled, evaluatePolicy, validReason, materialitySignals } from './policy.js';
+import { FILTER_VERSION, FILTER_STATE_KEY, SECTIONS, prefilterEnabled, evaluatePolicy } from './policy.js';
 
 const stores = new WeakMap();
 const loadingStores = new WeakMap();
@@ -184,29 +184,4 @@ export function evaluateCandidate(store, article, sections, evaluator = evaluate
     }
   }
   return article;
-}
-export async function acceptAiDecisions(db, articles, rows, stage) {
-  if (!prefilterEnabled() || !Array.isArray(rows)) return;
-  const store = await getPrefilterStore(db);
-  for (const article of articles) {
-    if (!article.smartTopPrefilterKey) continue;
-    const identity = store.records.get(article.smartTopPrefilterKey)?.identity;
-    if (!identity) continue;
-    for (const section of article.smartTopPrefilterSections || []) {
-      if (!SECTIONS.includes(section)) continue;
-      const previous = decisionsFor(article)[section];
-      if (valid(previous) && (previous.final || previous.aiChecked)) continue;
-      const matching = rows.filter(row => row?.id === article.smartTopPrefilterKey && row.section === section);
-      if (matching.length !== 1) continue; // missing/duplicated side output never causes a retry
-      const row = matching[0];
-      const overrides = materialitySignals(article, section);
-      const exclude = row.decision === 'exclude' && row.confidence === 'high' && validReason(section, row.reasonCode) &&
-        typeof row.reason === 'string' && row.reason.trim() && Array.isArray(row.materialitySignals) && !row.materialitySignals.length && !overrides.length;
-      saveDecision(store, article, identity, section, { status: exclude ? 'exclude' : 'keep', final: Boolean(exclude), aiChecked: true, deterministicChecked: true,
-        reasonCode: exclude ? row.reasonCode : null, reason: exclude ? row.reason.slice(0, 600) : 'AI side task did not establish a safe high-confidence exclusion.',
-        signals: Array.isArray(row.signals) ? row.signals.filter(x => typeof x === 'string').slice(0, 12) : [],
-        materialitySignals: overrides }, 'existing_ai', stage);
-    }
-  }
-  await store.persist();
 }

@@ -2,53 +2,21 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { readFile } from 'node:fs/promises';
-import { withinPickerBudget } from '../src/smart/feedback/request-budget.js';
 import { createInteractiveReasons } from '../src/smart/feedback/interactive.js';
 import { semantics as s } from '../src/smart/feedback/semantics.js';
 const article={title:"Phó thủ tướng Hồ Quốc Dũng: Chuyển từ 'có hoạt động' sang 'có kết quả' đổi mới sáng tạo",link:'https://example.test/story',feedTitle:'VnExpress Digital',feedUrl:'https://example.test/rss',smartCategory:'tech_vietnam'};
 const rejected=s.pool(article).map(r=>r.id);
-const provider={id:'fixture',type:'ollama',model:'fixture'};
-const idle=()=>({active:null,pending:[]});
 
-test('the entire scheduled suggestion request is bounded and a late callback cannot start AI', async t=>{
- t.mock.timers.enable({apis:['setTimeout','Date'],now:1000});
- let queued, calls=0, reached;
- const scheduled=new Promise(resolve=>{reached=resolve;});
- const suggest=createInteractiveReasons(null,{timeoutMs:20,providers:()=>[provider],localState:idle,schedule:(_,fn)=>{queued=fn;reached();return new Promise(()=>{});},request:()=>{calls++;return '{}';}});
- const work=suggest({article,rejected});
- await scheduled;t.mock.timers.tick(20);
- const result=await work;
- assert.equal(result.retryable,true);assert.match(result.message,/too long/);assert.equal(calls,0);
- await queued();assert.equal(calls,0);
+test('suggestions come from the local rule pool only; exhausted requests never return rejected reasons and never call a model',async()=>{
+ const suggest=createInteractiveReasons();
+ const initial=await suggest({article});assert.equal(initial.reasons.length,4);
+ const next=await suggest({article,rejected});assert.equal(next.reasons.length,0);assert.equal(next.exhausted,true);assert.equal(next.retryable,false);
+ assert.match(next.message,/Other/);
+ const typed=await suggest({article,input:'zzz qqq unintelligible'});assert.equal(typed.reasons.length,0);assert.equal(typed.retryable,false);
 });
-test('cancelled picker discards queued work without starting an AI call',async()=>{
- let queued,calls=0;const controller=new AbortController();
- const suggest=createInteractiveReasons(null,{timeoutMs:500,providers:()=>[provider],localState:idle,schedule:(_,fn)=>{queued=fn;return new Promise(()=>{});},request:()=>{calls++;}});
- const work=suggest({article,rejected,signal:controller.signal});await new Promise(r=>setImmediate(r));controller.abort();
- assert.equal((await work).retryable,true);await queued();assert.equal(calls,0);
-});
-test('cooling-down API keys and busy local compute do not enqueue a picker',async()=>{
- let enqueued=0;
- const manager={keys:[{status:'Rate Limited'}],getCurrentKeyObj:()=>null};
- const suggest=createInteractiveReasons(manager,{providers:hasKey=>{assert.equal(hasKey,false);return [provider];},localState:()=>({active:{label:'embeddings'},pending:[]}),schedule:()=>{enqueued++;}});
- const result=await suggest({article,rejected});assert.equal(enqueued,0);assert.equal(result.retryable,true);assert.equal(result.reasons.length,0);
-});
-test('provider deferral does not requeue an interactive picker',async()=>{
- let dispatches=0;
- const suggest=createInteractiveReasons(null,{providers:()=>[provider],localState:idle,schedule:(_,fn)=>{dispatches++;return fn();},request:async()=>{throw Object.assign(Error('deferred'),{code:'AI_PROVIDER_DEFERRED',retryAt:Date.now()+60000});}});
- assert.equal((await suggest({article,rejected})).retryable,true);assert.equal(dispatches,1);
-});
-test('valid local candidates avoid AI and unavailable expansion never returns rejected reasons',async()=>{
- let calls=0;const suggest=createInteractiveReasons(null,{providers:()=>[],request:()=>{calls++;}});
- const initial=await suggest({article});assert.equal(initial.reasons.length,4);assert.equal(calls,0);
- const next=await suggest({article,rejected});assert.equal(next.reasons.length,0);assert.equal(next.retryable,true);
-});
-test('provider budget includes queue time and successful expansion can be reused',async()=>{
- const suggestion=s.reason('Do not show generic aspirations',{dimension:'story_type',eventType:'generic_aspiration',scope:'tech_vietnam',strength:'narrow'});
- let calls=0;
- const suggest=createInteractiveReasons(null,{timeoutMs:300,providers:()=>[provider],localState:idle,schedule:async(_,fn)=>{await new Promise(r=>setTimeout(r,15));return fn();},request:async p=>{calls++;assert.ok(p.timeoutMs<300);return JSON.stringify({reasons:[suggestion]});}});
- assert.equal((await suggest({article,rejected})).reasons[0].label,suggestion.label);
- await suggest({article,rejected});assert.equal(calls,1);
+test('the interactive module no longer references any model provider',async()=>{
+ const source=await readFile('src/smart/feedback/interactive.js','utf8');
+ assert.doesNotMatch(source,/verification|ollama|qwen|schedule|runGlobalAiTask|callVerificationProvider/i);
 });
 async function picker(fetch) {
  const context=vm.createContext({console,crypto,SmartFeedbackSemantics:s,AbortController,setTimeout,clearTimeout,fetch,window:{innerWidth:1440,innerHeight:900},document:{querySelector:()=>null}});

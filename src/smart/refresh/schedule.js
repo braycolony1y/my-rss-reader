@@ -1,7 +1,6 @@
 import { SMART_REFRESH_MS } from '../config.js';
-import { getEnabledVerificationProviders } from '../verification/provider-config.js';
 
-export function createSmartSchedule({ helpers, sync, getSources, hasGeminiKey }) {
+export function createSmartSchedule({ helpers, sync, getSources }) {
   let timer = null;
   function scheduleNext() {
     clearTimeout(timer);
@@ -45,16 +44,7 @@ export function createSmartSchedule({ helpers, sync, getSources, hasGeminiKey })
         console.log(
           '[SMART] Engine initialized with',
           sources.length,
-          'sources; providers:',
-          getEnabledVerificationProviders(
-            hasGeminiKey()
-          )
-            .map(
-              provider =>
-                provider.id
-            )
-            .join(', ') ||
-          'none'
+          'sources'
         )
       )
       .catch(error =>

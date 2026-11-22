@@ -2,33 +2,19 @@ import { survivingClusters } from '../prefilter/boundaries.js';
 import { buildCluster } from '../clustering/cluster.js';
 import { SMART_CLUSTER_VERSION, SMART_NEWS_CLUSTER_CONFIG } from '../config.js';
 import { toVietnamIso } from '../dates/publication-time.js';
-import { assessSmartEditorialClusters } from '../editorial/assessment.js';
-import { getProviderHealth } from '../verification/provider-health.js';
 import { putManySafe } from './smart-state.js';
 
 export async function publishSmartSnapshot(context) {
-  let { clusters, currentLinks, storyRelationshipsForSnapshot, candidateCountForCompleted, autoMergedClusterCountForCompleted, smartClusteringInputsJson, aiProvidersUsed, reviewResult, ambiguousGroupCount, progressiveRunId, progressiveRevision, releaseProgressive, smartSources, providers, keyManager, db, notify, metrics, embeddingIdentity, currentSignature, aiConfiguration, startedAt, sourceCounts, successfulSourceCount, sourceErrors, hiddenArticleCount, providerOrder, hasGeminiKey, localModel, getProgress } = context;
+  let { clusters, currentLinks, storyRelationshipsForSnapshot, candidateCountForCompleted, autoMergedClusterCountForCompleted, smartClusteringInputsJson, reviewResult, ambiguousGroupCount, smartSources, db, notify, metrics, embeddingIdentity, currentSignature, aiConfiguration, startedAt, sourceCounts, successfulSourceCount, sourceErrors, hiddenArticleCount, getProgress } = context;
   context = null;
   let autoMergedClusters = null, reviewGroups = null, candidates = null, storyIdRetentionClusters = null, existingClusters = null, finalSnapshot = null;
-  const editorialStats =
-    await assessSmartEditorialClusters({
-      clusters,
-      sources:
-        smartSources,
-      providers,
-      keyManager,
-      db,
-      notify,
-      metrics
-    });
-
   clusters = survivingClusters(clusters, buildCluster);
 
   if (typeof global.gc === 'function') {
     global.gc();
     const memory = process.memoryUsage();
     console.log(
-      '[SMART MEMORY] post-editorial-gc',
+      '[SMART MEMORY] post-prefilter-gc',
       JSON.stringify({
         rssMB: Math.round(memory.rss / 1024 / 1024),
         heapUsedMB: Math.round(memory.heapUsed / 1024 / 1024),
@@ -36,29 +22,6 @@ export async function publishSmartSnapshot(context) {
       })
     );
   }
-
-  metrics.editorialCacheHits =
-    editorialStats.cacheHits;
-
-  metrics.editorialAssessed =
-    editorialStats.assessed;
-
-
-
-  metrics.editorialAiCalls =
-    editorialStats.aiCalls;
-metrics.editorialAssessmentFailures =
-    editorialStats.failed;
-
-  metrics.editorialAssessmentPending =
-    editorialStats.pending;
-
-  console.log(
-    '[SMART EDITORIAL]',
-    JSON.stringify(
-      editorialStats
-    )
-  );
 
   const clusterVersion =
     `${toVietnamIso(Date.now())}_${clusters.length}`;
@@ -82,7 +45,7 @@ metrics.editorialAssessmentFailures =
         JSON.stringify({
           algorithmVersion: SMART_CLUSTER_VERSION,
           updatedAt: toVietnamIso(Date.now()),
-          groups: reviewResult.deferredGroups || [],
+          groups: [],
           relationships: storyRelationshipsForSnapshot
         }),
       smartClusteringInputs:
@@ -116,20 +79,14 @@ metrics.editorialAssessmentFailures =
             clusters.length,
           ambiguousGroupsTotal:
             ambiguousGroupCount,
-          ambiguousGroupsReviewed:
+          ambiguousGroupsResolved:
             reviewResult
               .ambiguousGroupsTotal,
-          ambiguousGroupsDeferred:
+          ambiguousGroupsMerged:
             reviewResult
-              .ambiguousGroupsDeferred || 0,
-          memoryPressureDeferredGroups:
-            reviewResult
-              .memoryPressureDeferredGroups || 0,
+              .ambiguousGroupsMerged || 0,
           relatedDevelopmentCount:
             storyRelationshipsForSnapshot.length,
-          ...(reviewResult.timeBudget?.reached
-            ? { reviewTimeBudget: reviewResult.timeBudget }
-            : {}),
           completedAt:
             toVietnamIso(
               Date.now()
@@ -147,7 +104,7 @@ metrics.editorialAssessmentFailures =
       smartAiConfig:
         aiConfiguration,
 
-      // Final publication atomically retires the progressive view.
+      // Final publication atomically retires any progressive view left by an older run.
       smartProgressivePublication:
         'null',
       smartProgressiveClusterState:
@@ -156,12 +113,7 @@ metrics.editorialAssessmentFailures =
           provisional: false,
           stage: 'ready',
           version: '',
-          runId: progressiveRunId,
-          revision: progressiveRevision,
           algorithmVersion: SMART_CLUSTER_VERSION,
-          completedReviewGroups: reviewResult.ambiguousGroupsTotal,
-          totalReviewGroups: reviewResult.ambiguousGroupsTotal,
-          remainingReviewGroups: 0,
           completedAt: toVietnamIso(Date.now())
         })
     },
@@ -183,9 +135,6 @@ metrics.editorialAssessmentFailures =
       })
     );
   }
-
-  const providerHealth =
-    await getProviderHealth(db);
 
   const completed = {
     metrics,
@@ -212,74 +161,28 @@ metrics.editorialAssessmentFailures =
       autoMergedClusterCountForCompleted,
     ambiguousGroupCount:
       ambiguousGroupCount,
-    providerOrder,
-    aiProviders:
-      aiProvidersUsed,
-    geminiConfigured:
-      hasGeminiKey(),
-    geminiUsed:
-      aiProvidersUsed.some(
-        providerId =>
-          providerId.startsWith(
-            'gemini-'
-          )
-      ),
-    localConfigured:
-      providers.some(
-        provider =>
-          provider.type ===
-          'ollama'
-      ),
-    localUsed:
-      aiProvidersUsed.includes(
-        'local-qwen'
-      ),
-    localModel,
-    // Exposed in Smart status only when the review budget was exhausted.
-    ...(reviewResult.timeBudget?.reached
-      ? { reviewTimeBudget: reviewResult.timeBudget }
-      : {}),
-    verificationStats: {
-      ...(reviewResult.timeBudget?.reached
-        ? { timeBudget: reviewResult.timeBudget }
-        : {}),
+    resolverStats: {
       ambiguousGroupsTotal:
         reviewResult
           .ambiguousGroupsTotal,
-      ambiguousGroupsVerified:
+      ambiguousGroupsMerged:
         reviewResult
-          .ambiguousGroupsVerified,
-      ambiguousGroupsFromCache:
-        reviewResult
-          .ambiguousGroupsFromCache,
+          .ambiguousGroupsMerged,
       ambiguousGroupsKeptSeparate:
         reviewResult
           .ambiguousGroupsKeptSeparate,
-      ambiguousGroupsDeferred:
+      mergedComponentPairs:
         reviewResult
-          .ambiguousGroupsDeferred || 0,
-      memoryPressureDeferredGroups:
-        reviewResult
-          .memoryPressureDeferredGroups || 0,
-      relatedDevelopmentCount:
-        (reviewResult.storyRelationships || []).length,
-      activeRelatedDevelopmentCount:
-        storyRelationshipsForSnapshot.length,
+          .mergedComponentPairs,
       reviewedArticleCount:
         reviewResult
           .reviewedArticleCount,
-      allProvidersFailedCount:
-        reviewResult
-          .allProvidersFailedCount,
-      providerRequests:
-        reviewResult
-          .providerRequests,
+      activeRelatedDevelopmentCount:
+        storyRelationshipsForSnapshot.length,
       groupResults:
         reviewResult
           .groupResults
     },
-    aiProviderHealth:
-      providerHealth,
     comparisonWindowHours:
       SMART_NEWS_CLUSTER_CONFIG
         .comparisonWindowHours,
@@ -289,10 +192,7 @@ metrics.editorialAssessmentFailures =
       getProgress()
   };
 
-  // The Top Stories reconciler may start as soon as status becomes
-  // ready. Release the heavy HNSW/review graph first so ranking does not
-  // overlap with several gigabytes of now-dead clustering state.
-  releaseProgressive();
+  // Release the heavy HNSW/review graph before status becomes ready.
   if (Array.isArray(reviewResult?.clusters)) {
     reviewResult.clusters.length = 0;
   }

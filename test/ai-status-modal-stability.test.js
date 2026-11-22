@@ -4,7 +4,7 @@ import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
 import { readReaderHtml } from './helpers/reader-source.js';
 
-test('AI usage modal keeps a single <=16px backdrop-filter layer, isolated panel, scroll containment, and scaleX progress bar', () => {
+test('AI usage modal keeps a single <=16px backdrop-filter layer, isolated panel and scroll containment', () => {
     const html = readReaderHtml();
 
     // Modal remains a direct child of <body>, outside <main> and any transformed ancestor.
@@ -29,10 +29,8 @@ test('AI usage modal keeps a single <=16px backdrop-filter layer, isolated panel
     assert.match(html, /html\.ai-status-scroll-lock,\s*html\.ai-status-scroll-lock body\s*\{[^}]*overflow:\s*hidden !important;/s);
     assert.match(html, /showAddFeedModal \|\| editModalOpen \|\| debugModalOpen \|\| articleOverlayOpen \|\| geminiStatusOpen/);
 
-    // Progress bar animates transform: scaleX instead of layout width.
-    assert.match(html, /ai-status-progress-fill[^"]*origin-left[^"]*transition-transform/);
-    assert.match(html, /transform:\s*scaleX\('/);
-    assert.doesNotMatch(html, /ai-status-progress-fill[\s\S]{0,240}:style="'width:/);
+    // The modal no longer shows Smart clustering or any local-model state.
+    assert.doesNotMatch(html, /lastSmartRun|clusteringModel|local-qwen|Smart clustering priority/);
 });
 
 test('ReaderAiStatus live updates mutate only changed fields, memoize log filtering, and lock background scroll', async () => {
@@ -50,11 +48,6 @@ test('ReaderAiStatus live updates mutate only changed fields, memoize log filter
         body: { style: { overflow: '' } }
     };
 
-    let smartPayload = {
-        state: 'refreshing',
-        providerOrder: ['antigravity-low', 'gemini-flash', 'local-qwen'],
-        progress: { active: true, current: 5, total: 20, remaining: 15, percent: 25, message: 'Batch 1' }
-    };
     let debugPayload = {
         queue: { processing: true, paused: false, currentUrl: 'https://example.com/1', queueLength: 3, stats: { generated: 10, failed: 1 } },
         gemini: { activeKeyIndex: 0, totalKeys: 2, activeKeyMasked: 'AIza...1', autoSwitchCount: 0, keys: [{ index: 0, label: 'Key 1', status: 'Active', requestsToday: 4 }, { index: 1, label: 'Key 2', status: 'Standby', requestsToday: 0 }] }
@@ -81,9 +74,6 @@ test('ReaderAiStatus live updates mutate only changed fields, memoize log filter
         setTimeout: () => 1,
         clearTimeout: () => {},
         fetch: async (url) => {
-            if (String(url).startsWith('/api/smart-status')) {
-                return { ok: true, json: async () => structuredClone(smartPayload) };
-            }
             if (String(url).startsWith('/api/summary/debug')) {
                 const raw = JSON.stringify(debugPayload);
                 return { ok: true, text: async () => raw, json: async () => JSON.parse(raw) };
@@ -98,8 +88,7 @@ test('ReaderAiStatus live updates mutate only changed fields, memoize log filter
                         valid: true,
                         state: 'ready',
                         keyCount: 2,
-                        providerHealth: { antigravity: { state: 'healthy' } },
-                        lastSmartRun: structuredClone(smartPayload)
+                        keyErrors: []
                     })
                 };
             }
@@ -121,28 +110,11 @@ test('ReaderAiStatus live updates mutate only changed fields, memoize log filter
     instance.syncGeminiStatusScrollLock(false);
     assert.equal(documentStub.body.style.overflow, '');
 
-    // Initial key status + smart progress preserves root object & providerOrder reference on incremental progress ticks.
+    // Key status is fetched without a Smart progress poll; the object is replaced only by an explicit fetch.
     await instance.fetchGeminiKeyStatus();
-    const rootRef = instance.geminiKeyStatus;
-    const runRef = instance.geminiKeyStatus.lastSmartRun;
-    const orderRef = instance.geminiKeyStatus.lastSmartRun.providerOrder;
-    const progressRef = instance.geminiKeyStatus.lastSmartRun.progress;
-
-    await instance.fetchSmartAiProgress();
-    assert.equal(instance.geminiKeyStatus, rootRef);
-    assert.equal(instance.geminiKeyStatus.lastSmartRun, runRef);
-    assert.equal(instance.geminiKeyStatus.lastSmartRun.providerOrder, orderRef);
-
-    smartPayload = {
-        ...smartPayload,
-        progress: { ...smartPayload.progress, current: 10, remaining: 10, percent: 50 }
-    };
-    await instance.fetchSmartAiProgress();
-    assert.equal(instance.geminiKeyStatus, rootRef, 'root geminiKeyStatus must not be replaced on progress tick');
-    assert.equal(instance.geminiKeyStatus.lastSmartRun, runRef, 'lastSmartRun object must stay stable');
-    assert.equal(instance.geminiKeyStatus.lastSmartRun.providerOrder, orderRef, 'unchanged providerOrder array must stay stable');
-    assert.equal(instance.geminiKeyStatus.lastSmartRun.progress, progressRef, 'progress object is updated in place');
-    assert.equal(instance.geminiKeyStatus.lastSmartRun.progress.percent, 50);
+    assert.equal(instance.geminiKeyStatus.state, 'ready');
+    assert.equal('fetchSmartAiProgress' in instance, false);
+    assert.equal('saveClusteringModel' in instance, false);
 
     // Debug stats polling preserves object & key row references when unchanged or incrementally updated.
     await instance.fetchGeminiDebugStats();

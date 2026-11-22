@@ -18,21 +18,6 @@ export function loadConfiguration() {
 
     const PORT = process.env.PORT || 3000;
 
-    const VALID_CLUSTERING_MODELS = new Set([
-        'gemini-3.5-flash-lite',
-        'gemini-3.8-flash'
-    ]);
-
-    const configuredClusteringModel = process.env.SMART_CLUSTERING_MODEL || 'gemini-3.5-flash-lite';
-
-    const DEFAULT_CLUSTERING_MODEL = VALID_CLUSTERING_MODELS.has(configuredClusteringModel)
-        ? configuredClusteringModel
-        : 'gemini-3.5-flash-lite';
-
-    const normalizeClusteringModel = model => VALID_CLUSTERING_MODELS.has(model)
-        ? model
-        : DEFAULT_CLUSTERING_MODEL;
-
     const CF_PROXY_BASE = 'https://rss-proxy.k1d.workers.dev/?url=';
 
     // --- BROWSER DISGUISE HEADERS ---
@@ -58,8 +43,6 @@ export function loadConfiguration() {
         JINA_READER_BASE,
         BROWSER_HEADERS,
         CF_PROXY_BASE,
-        normalizeClusteringModel,
-        VALID_CLUSTERING_MODELS,
         PORT
     };
 }

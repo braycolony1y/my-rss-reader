@@ -6,7 +6,7 @@
 // digest or state-media wire repost says little about how much a story matters. Hard-news
 // stakes (deaths, disasters, attacks) exempt a story from the sport/festival/anniversary/
 // award patterns, so a stadium stampede or a festival fire is still treated as news.
-import { eventMatch, isRoundupTitle } from '../articles/story-roundups.js';
+import { eventMatch, isRoundupTitle } from './roundups.js';
 import { NEWS_RULES, TECH_RULES } from '../smart/prefilter/policy.js';
 import { ROUTINE_DAMPER } from './config.js';
 import { norm, publisherOf, stripHtml } from './features.js';

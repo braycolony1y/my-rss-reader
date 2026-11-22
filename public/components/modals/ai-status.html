@@ -30,18 +30,6 @@
                     class="ai-status-error-card mb-4 rounded-xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-300"
                     x-text="geminiStatusError"></div>
                 <div x-show="geminiKeyStatus" class="space-y-4">
-                    <!-- Clustering Model Selection -->
-                    <div class="ai-status-card rounded-2xl border border-white/[0.07] bg-[#0B101E]/60 p-4">
-                        <div class="ai-status-card-title text-[11px] uppercase tracking-wider font-bold text-gray-500 mb-3">Clustering Model</div>
-                        <div class="space-y-2">
-                            <template x-for="m in ['gemini-3.5-flash-lite', 'gemini-3.8-flash']" :key="m">
-                                <label class="flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-2.5 cursor-pointer hover:bg-white/[0.05] transition">
-                                    <input type="radio" name="clusteringModel" :value="m" x-model="clusteringModel" @change="saveClusteringModel()" class="text-violet-500 bg-[#0B101E] border-white/20 focus:ring-violet-500/50 h-4 w-4">
-                                    <span class="text-sm font-semibold text-white" x-text="m"></span>
-                                </label>
-                            </template>
-                        </div>
-                    </div>
 
                     <div id="gemini-add-key" class="ai-status-card ai-key-add-card rounded-2xl border border-white/[0.07] bg-[#0B101E]/60 p-4">
                         <div class="flex flex-wrap items-start justify-between gap-3">
@@ -79,102 +67,7 @@
                         <div x-show="addGeminiKeyMessage" class="ai-key-success mt-3 rounded-xl border border-emerald-400/20 bg-emerald-500/[0.07] px-3 py-2 text-xs text-emerald-200" x-text="addGeminiKeyMessage"></div>
                     </div>
 
-                    <div class="ai-status-card rounded-2xl border border-white/[0.07] bg-[#0B101E]/60 p-4">
-                        <div class="flex items-center justify-between gap-3 mb-3">
-                            <div>
-                                <div class="ai-status-card-title text-[11px] uppercase tracking-wider font-bold text-gray-500">Smart clustering priority</div>
-                                <div class="ai-status-muted text-xs text-gray-500 mt-1">Antigravity CLI runs first. Gemini Web uses your signed-in 3.8 Flash subscription in Temporary Chat with 2 browser slots, followed by Gemini API and local fallback.</div>
-                            </div>
-                            <span class="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-emerald-300"
-                                x-text="geminiKeyStatus?.lastSmartRun?.providerOrder?.[0]?.startsWith('antigravity') ? 'Antigravity first' : 'Gemini backup'"></span>
-                        </div>
-                        <div class="space-y-2">
-                            <template x-for="(providerId, idx) in (geminiKeyStatus?.lastSmartRun?.providerOrder || ['antigravity-low', 'antigravity-medium', 'antigravity-high', 'gemini-web', 'gemini-flash', 'local-qwen'])" :key="providerId">
-                                <div class="ai-status-provider-row flex items-start gap-3 rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-2.5">
-                                    <span class="ai-status-provider-rank flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-violet-400/10 text-xs font-black text-violet-300" x-text="idx + 1"></span>
-                                    <div class="min-w-0 flex-1 space-y-1">
-                                        <div class="flex justify-between items-center">
-                                            <div class="ai-status-value text-sm font-semibold text-white" x-text="providerId.startsWith('antigravity') ? 'Antigravity CLI' : (providerId === 'gemini-web' ? 'Gemini Web' : (providerId === 'local-qwen' ? 'Local Qwen' : 'Gemini API'))"></div>
-                                            <span class="text-[10px] font-bold uppercase tracking-wide" 
-                                                  :class="idx === 0 ? 'text-emerald-300' : 'text-gray-500'" 
-                                                  x-text="idx === 0 ? 'Primary' : 'Backup'"></span>
-                                        </div>
-                                        <div class="ai-status-muted truncate text-xs text-gray-500" 
-                                             x-text="providerId.startsWith('antigravity') ? ('gemini-3.8-flash-' + providerId.replace('antigravity-', '') + ' · CLI') : providerId === 'gemini-web' ? '3.8 Flash · Temporary Chat · 2 slots' : providerId === 'local-qwen' ? (geminiKeyStatus?.lastSmartRun?.localModel || 'qwen3.5:2b') : (providerId === 'gemini-flash-lite' ? 'gemini-3.5-flash-lite · minimal thinking' : 'gemini-3.8-flash')"></div>
-                                        
-                                        <!-- Health stats -->
-                                        <div class="mt-2 text-[11px] text-gray-400 space-y-0.5"
-                                            x-data="{ healthKey: geminiKeyStatus?.providerHealth?.[providerId] ? providerId : (providerId.startsWith('antigravity') ? 'antigravity' : (providerId.startsWith('local') ? 'ollama' : 'gemini')) }">
-                                            <div class="flex gap-2">
-                                                <span class="font-medium text-gray-300">Status:</span>
-                                                <span :class="{
-                                                    'text-emerald-400': (geminiKeyStatus?.providerHealth?.[healthKey]?.state || geminiKeyStatus?.providerHealth?.[healthKey]?.status || 'healthy') === 'healthy',
-                                                    'text-amber-300': (geminiKeyStatus?.providerHealth?.[healthKey]?.state || geminiKeyStatus?.providerHealth?.[healthKey]?.status) === 'cooldown',
-                                                    'text-amber-400': (geminiKeyStatus?.providerHealth?.[healthKey]?.state || geminiKeyStatus?.providerHealth?.[healthKey]?.status) === 'degraded',
-                                                    'text-orange-400': (geminiKeyStatus?.providerHealth?.[healthKey]?.state || geminiKeyStatus?.providerHealth?.[healthKey]?.status) === 'failing',
-                                                    'text-red-400': (geminiKeyStatus?.providerHealth?.[healthKey]?.state || geminiKeyStatus?.providerHealth?.[healthKey]?.status) === 'dead'
-                                                }" x-text="(geminiKeyStatus?.providerHealth?.[healthKey]?.state || geminiKeyStatus?.providerHealth?.[healthKey]?.status || 'healthy').toUpperCase()"></span>
-                                            </div>
-                                            <div x-show="geminiKeyStatus?.providerHealth?.[healthKey]?.lastSuccess">
-                                                <span class="font-medium text-gray-300">Last Success:</span> 
-                                                <span x-text="geminiKeyStatus?.providerHealth?.[healthKey]?.lastSuccess ? new Date(geminiKeyStatus.providerHealth[healthKey].lastSuccess).toLocaleString() : ''"></span>
-                                            </div>
-                                            <div
-                                                x-show="geminiKeyStatus?.providerHealth?.[healthKey]?.cooldownUntil && Date.parse(geminiKeyStatus?.providerHealth?.[healthKey]?.cooldownUntil) > Date.now()">
-                                                <span class="font-medium text-gray-300">Available again:</span>
-                                                <span class="text-amber-300"
-                                                    x-text="geminiKeyStatus?.providerHealth?.[healthKey]?.cooldownUntil ? new Date(geminiKeyStatus.providerHealth[healthKey].cooldownUntil).toLocaleString() : ''"></span>
-                                                <div class="mt-0.5 text-amber-400/80"
-                                                    x-text="geminiKeyStatus?.providerHealth?.[healthKey]?.cooldownReason || geminiKeyStatus?.providerHealth?.[healthKey]?.cooldownCode || ''"></div>
-                                            </div>
-                                            <div x-show="geminiKeyStatus?.providerHealth?.[healthKey]?.lastErrorAt">
-                                                <span class="font-medium text-gray-300">Last Error:</span> 
-                                                <span class="text-red-300" x-text="geminiKeyStatus?.providerHealth?.[healthKey]?.lastErrorAt ? new Date(geminiKeyStatus.providerHealth[healthKey].lastErrorAt).toLocaleString() : ''"></span>
-                                                <div class="text-red-400/80 mt-0.5 truncate" x-text="geminiKeyStatus?.providerHealth?.[healthKey]?.lastError || ''"></div>
-                                            </div>
-                                            <div x-show="geminiKeyStatus?.providerHealth?.[healthKey]?.consecutiveErrors > 0">
-                                                <span class="font-medium text-gray-300">Consecutive Errors:</span> 
-                                                <span class="text-red-300" x-text="geminiKeyStatus?.providerHealth?.[healthKey]?.consecutiveErrors || 0"></span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </template>
-                        </div>
-                    </div>
 
-                    <div x-show="geminiKeyStatus?.lastSmartRun?.state === 'refreshing' || geminiKeyStatus?.lastSmartRun?.progress?.active"
-                        class="ai-status-card rounded-2xl border border-violet-400/20 bg-violet-500/[0.06] p-4">
-                        <div class="flex items-start gap-3">
-                            <svg class="mt-0.5 h-5 w-5 shrink-0 animate-spin text-violet-300" fill="none" viewBox="0 0 24 24">
-                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
-                            </svg>
-                            <div class="min-w-0 flex-1">
-                                <div class="flex flex-wrap items-center justify-between gap-2">
-                                    <div class="ai-status-value text-sm font-bold text-white">Smart refresh in progress</div>
-                                    <div x-show="geminiKeyStatus?.lastSmartRun?.progress?.total" class="ai-status-muted text-xs text-gray-500">
-                                        <span x-text="geminiKeyStatus?.lastSmartRun?.progress?.current || 0"></span>/<span x-text="geminiKeyStatus?.lastSmartRun?.progress?.total || 0"></span>
-                                        <span x-show="Number.isFinite(Number(geminiKeyStatus?.lastSmartRun?.progress?.remaining))">
-                                            · <span x-text="geminiKeyStatus?.lastSmartRun?.progress?.remaining || 0"></span> remaining
-                                        </span>
-                                    </div>
-                                </div>
-                                <p class="ai-status-muted mt-1 text-xs leading-relaxed text-gray-400" x-text="geminiKeyStatus?.lastSmartRun?.progress?.message || 'Preparing Smart refresh…'"></p>
-                                <div class="ai-status-muted mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-gray-500">
-                                    <span x-show="geminiKeyStatus?.lastSmartRun?.progress?.model || geminiKeyStatus?.lastSmartRun?.progress?.providerId">Provider: <strong class="ai-status-value" x-text="geminiKeyStatus?.lastSmartRun?.progress?.model || geminiKeyStatus?.lastSmartRun?.progress?.providerId"></strong></span>
-                                    <span x-show="geminiKeyStatus?.lastSmartRun?.progress?.providerTotal">Provider step: <strong class="ai-status-value" x-text="(geminiKeyStatus?.lastSmartRun?.progress?.providerIndex || geminiKeyStatus?.lastSmartRun?.progress?.providerAttempt || 0) + '/' + geminiKeyStatus?.lastSmartRun?.progress?.providerTotal"></strong></span>
-                                    <span x-show="geminiKeyStatus?.lastSmartRun?.progress?.category">Section: <strong class="ai-status-value" x-text="geminiKeyStatus?.lastSmartRun?.progress?.category?.replace('_', ' ')"></strong></span>
-                                    <span x-show="geminiKeyStatus?.lastSmartRun?.progress?.batch">Batch: <strong class="ai-status-value" x-text="geminiKeyStatus?.lastSmartRun?.progress?.batch + '/' + geminiKeyStatus?.lastSmartRun?.progress?.categoryBatches"></strong></span>
-                                    <span x-show="geminiKeyStatus?.lastSmartRun?.progress?.articleCount">Articles: <strong class="ai-status-value" x-text="geminiKeyStatus?.lastSmartRun?.progress?.articleCount"></strong></span>
-                                </div>
-                                <div class="ai-status-progress-track mt-3 h-2 overflow-hidden rounded-full bg-white/[0.07]">
-                                    <div class="ai-status-progress-fill h-full w-full origin-left rounded-full bg-gradient-to-r from-violet-400 to-emerald-400 transition-transform duration-500"
-                                        :style="'transform: scaleX(' + (Math.max(3, Math.min(100, Number(geminiKeyStatus?.lastSmartRun?.progress?.percent) || 0)) / 100) + ')'"></div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
 
                     <div class="ai-status-state rounded-2xl border p-4"
                         :data-tone="geminiKeyStatus?.state === 'ready' ? 'ready' : ((geminiKeyStatus?.httpStatus === 429 || geminiKeyStatus?.state === 'all_keys_cooling_down') ? 'error' : 'warning')"
@@ -235,42 +128,15 @@
                                 </svg>
                             </a>
                         </div>
-                        <div class="ai-status-card rounded-xl border border-white/[0.07] bg-[#0B101E]/60 p-4">
-                            <div class="ai-status-card-title text-[11px] uppercase tracking-wider font-bold text-gray-500" x-text="geminiKeyStatus?.lastSmartRun?.state === 'refreshing' ? 'Current Smart refresh' : 'Last Smart refresh'">
-                            </div>
-                            <div class="ai-status-value text-sm font-semibold text-white mt-2"
-                                x-text="geminiKeyStatus?.lastSmartRun?.state === 'refreshing' ? 'AI review is running' : (geminiKeyStatus?.lastSmartRun?.localUsed ? ('Local ' + (geminiKeyStatus?.lastSmartRun?.localModel || 'Qwen') + ' was used') : (geminiKeyStatus?.lastSmartRun?.geminiUsed ? 'Gemini was used' : 'No AI provider was used'))">
-                            </div>
-                            <div x-show="geminiKeyStatus?.lastSmartRun?.httpStatus" class="mt-2">
-                                <span class="ai-status-http-badge inline-flex rounded-md border border-red-400/20 bg-red-500/10 px-2 py-1 text-[10px] font-black tracking-wide text-red-300"
-                                    x-text="'HTTP ' + geminiKeyStatus?.lastSmartRun?.httpStatus"></span>
-                            </div>
-                            <div x-show="geminiKeyStatus?.lastSmartRun?.state !== 'refreshing'" class="ai-status-muted text-xs text-gray-500 mt-1"><span
-                                    x-text="geminiKeyStatus?.lastSmartRun?.reviewedArticleCount || 0"></span> articles
-                                reviewed by AI</div>
-                            <div x-show="geminiKeyStatus?.lastSmartRun?.state !== 'refreshing'" class="ai-status-muted text-xs text-gray-500 mt-1"><span
-                                    x-text="geminiKeyStatus?.lastSmartRun?.eligibleArticleCount || 0"></span> articles
-                                eligible</div>
-                            <div x-show="geminiKeyStatus?.lastSmartRun?.state !== 'refreshing' && geminiKeyStatus?.lastSmartRun?.completedAt" class="ai-status-muted text-xs text-gray-600 mt-2"
-                                x-text="formatVietnamDateTime(geminiKeyStatus?.lastSmartRun?.completedAt)"></div>
-                        </div>
                     </div>
-                    <div x-show="geminiKeyStatus?.lastSmartRun?.state !== 'refreshing' && geminiKeyStatus?.lastSmartRun?.reason"
-                        class="ai-status-reason rounded-xl border border-white/[0.06] px-4 py-3 text-xs text-gray-400"
-                        x-text="geminiKeyStatus?.lastSmartRun?.reason"></div>
-                    <div x-show="geminiKeyStatus?.lastSmartRun?.state !== 'refreshing' && geminiKeyStatus?.lastSmartRun?.error"
-                        class="ai-status-error-card rounded-xl border border-red-400/20 bg-red-500/[0.07] px-4 py-3 text-xs text-red-200/90">
-                        <div class="font-bold mb-1">Last AI error</div>
-                        <div x-text="geminiKeyStatus?.lastSmartRun?.error"></div>
-                    </div>
-                    <div x-show="geminiKeyStatus?.lastSmartRun?.state !== 'refreshing' && geminiKeyStatus?.lastSmartRun?.keyErrors?.length"
+                    <div x-show="geminiKeyStatus?.keyErrors?.length"
                         class="ai-status-errors-card rounded-xl border border-red-400/20 bg-red-500/[0.05] px-4 py-3 text-xs text-red-100/90">
                         <div class="font-bold mb-2">Errors by AI provider and key</div>
                         <div class="space-y-2">
-                            <template x-for="(event, index) in geminiKeyStatus?.lastSmartRun?.keyErrors || []" :key="index">
+                            <template x-for="(event, index) in geminiKeyStatus?.keyErrors || []" :key="index">
                                 <div class="ai-status-error-row rounded-lg border border-white/[0.06] bg-black/10 px-3 py-2">
                                     <div class="flex flex-wrap items-center gap-2 font-bold">
-                                        <span x-text="event.provider === 'Local AI' ? ('Local AI · ' + (event.model || geminiKeyStatus?.lastSmartRun?.localModel || 'model')) : ((event.provider || 'Gemini') + ' key ' + event.key)"></span>
+                                        <span x-text="((event.provider || 'Gemini') + ' key ' + event.key)"></span>
                                         <span x-show="event.httpStatus" class="ai-status-http-badge rounded border border-red-300/20 px-1.5 py-0.5 text-[10px]"
                                             x-text="'HTTP ' + event.httpStatus"></span>
                                         <span x-show="event.category" class="ai-status-error-category font-normal text-gray-400" x-text="event.category"></span>

@@ -28,8 +28,7 @@ export function workerPrefilterValues(serialized) {
   try { const data = JSON.parse(serialized); return { [FILTER_STATE_KEY]: data, [PERSONAL_STATE_KEY]: data.personal }; } catch { return {}; }
 }
 // A cached mixed card may contain a now-excluded source. Withhold that stale
-// card until the normal ranker rebuilds it from surviving members. Never run
-// an old briefing against the excluded evidence in the meantime.
+// card until the normal ranker rebuilds it from surviving members.
 export async function excludedPublishedStory(db, article, section = article?.topStory?.feed) {
   if (await personalPublishedExcluded(db, article, section)) return true;
   if (!prefilterEnabled() || !SECTIONS.includes(section)) return false;
@@ -39,4 +38,3 @@ export async function excludedPublishedStory(db, article, section = article?.top
 export async function filterPublishedSnapshot(db, snapshot) {
   return filterPublishedView(db, snapshot);
 }
-export const excludedBriefingState = () => ({status:'source-only',generationState:'not-applicable',analysisStatus:'not-applicable',sections:[],keyFacts:[],sources:[],reason:'terminal_smart_top_exclusion'});

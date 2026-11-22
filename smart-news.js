@@ -15,13 +15,8 @@ export { isGenuinelyRelated, attachBroaderStoryMetadata } from './src/smart/clus
 export { dedupeGoogleNewsWrappers } from './src/smart/sources/wrappers.js';
 export { calculateHotness, getHotnessLabel, buildCluster, buildEarlySmartClusters, cleanStoredCluster } from './src/smart/clustering/cluster.js';
 export { buildPublicationClusterSnapshot } from './src/smart/clustering/publication-snapshot.js';
-export { buildComponentReviewUnits } from './src/smart/verification/prompts.js';
-export { validateComponentReviewResult, expandComponentReviewDecision, validatePartitionResult } from './src/smart/verification/validation.js';
-export { setClusteringModel } from './src/smart/verification/provider-config.js';
-export { normalizeAntigravityClusteringOutput } from './src/smart/verification/providers.js';
-export { verificationCacheKey, getCachedVerificationDecision, setCachedVerificationDecision } from './src/smart/verification/cache.js';
-export { verifyWithProviderChain } from './src/smart/verification/review.js';
 export { prepareIncrementalReviewGroups, integrateIncrementalReviews } from './src/smart/clustering/review-groups.js';
+export { resolveAmbiguousGroups, resolveReviewGroup, scorePair as scoreResolverPair, RESOLVER_CONFIG } from './src/smart/clustering/resolver.js';
 export { startSmartSyncLoop } from './src/smart/background/source-sync.js';
 export { scheduleMonthlySourceEvaluation } from './src/smart/background/source-evaluation.js';
 export { createSmartNewsEngine } from './src/smart/refresh/engine.js';

@@ -86,8 +86,7 @@ test('startup retains the immediate RSS phase, exact stagger delays, intervals, 
     const startup = createBackgroundStartup({
         reconcileAllConfiguredSourceFetchMethods: async () => calls.push('policy'),
         cleanupArticleCache: () => calls.push('cache'),
-        env: { RSS_DATA: { get: async () => ({ clusteringModel: 'gemini-3.5-flash-lite' }) } },
-        normalizeClusteringModel: value => value,
+        env: { RSS_DATA: { get: async () => ({}) } },
         startSequentialSyncLoop: () => calls.push('rss'),
         gcAndLogMemory: () => {},
         smartNews: { start: () => calls.push('smart'), getSources: async () => [] },
@@ -107,7 +106,8 @@ test('startup retains the immediate RSS phase, exact stagger delays, intervals, 
     assert.deepEqual(timeouts.map(timer => timer.delay), [0]);
     startup.startBackgroundServices();
     assert.deepEqual(calls, ['cache', 'rss']);
-    assert.deepEqual(timeouts.map(timer => timer.delay), [0, 30000, 45000, 60000]);
+    // 45000 twice: the Smart source sync loop and the monthly source evaluation scheduler.
+    assert.deepEqual(timeouts.map(timer => timer.delay), [0, 30000, 45000, 45000, 60000]);
     assert.deepEqual(intervals.map(timer => timer.delay), [3600000, 1800000]);
     assert.deepEqual(cronJobs.map(job => job.expression), ['* * * * *']);
     timeouts.find(timer => timer.delay === 30000).callback();

@@ -3,7 +3,6 @@ import { withLocalCompute } from '../../ai/local-compute.js';
 import { getArticleId } from '../articles/identity.js';
 import { SMART_CLUSTER_VERSION } from '../config.js';
 import { EMBEDDING_CACHE_FILE } from '../embeddings/config.js';
-import { attachSmartReviewProgress } from '../refresh/review-progress.js';
 import { isActiveCluster } from './publication-snapshot.js';
 import { prepareIncrementalReviewGroups } from './review-groups.js';
 
@@ -140,7 +139,6 @@ export async function clusterSmartCandidates({ candidates, existingClusters, clu
   ambiguousGroups = null;
   metrics.ambiguousGroups = reviewGroups.length;
   metrics.fullGroupRepartitions = reviewGroups.filter(group => group.fullRepartition).length;
-  attachSmartReviewProgress(reviewGroups, options, metrics, notify);
 
 return { autoMergedClusters, reviewGroups, ambiguousGroupCount };
 }

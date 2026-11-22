@@ -1,6 +1,5 @@
 import { readMany } from '../database/read-many.js';
 import { authMiddleware } from '../middleware/auth.js';
-import { setClusteringModel } from '../../smart-news.js';
 import { normalizeStateUrl } from '../utils/article-utils.js';
 import { publishAppEvent } from '../events.js';
 
@@ -36,8 +35,6 @@ export function registerSettingsRoutes({
     app,
     boardCache,
     env,
-    normalizeClusteringModel,
-    VALID_CLUSTERING_MODELS,
 } = {}) {
     let stateWrites = Promise.resolve();
     const serializeStateWrite = handler => (req, res) => {
@@ -55,7 +52,7 @@ export function registerSettingsRoutes({
             res.json({
                 readStates:values.readStates||[],savedStates:values.savedStates||[],boardStates:values.boardStates||[],
                 hiddenStates:values.hiddenStates||[],recentReadAt:values.recentReadAt||{},categoryOrder:values.categoryOrder||[],
-                userPreferences:prefs,clusteringModel:normalizeClusteringModel(prefs.clusteringModel)
+                userPreferences:prefs
             });
         } catch (e) {
             res.status(500).json({ error: e.message });
@@ -66,24 +63,6 @@ export function registerSettingsRoutes({
         try {
             const { key, value } = req.body;
             if (!key) return res.status(400).json({ error: 'Missing key' });
-            if (key === 'smartTabModes') {
-                const tabs = new Set(['news', 'finance', 'news_vietnam', 'news_global', 'finance_vietnam', 'finance_global', 'tech']);
-                if (!value || typeof value !== 'object' || Array.isArray(value) || Object.entries(value).some(([tab, mode]) => !tabs.has(tab) || !['top', 'classic'].includes(mode))) {
-                    return res.status(400).json({ error: 'Choose Top stories or Classic for an existing Smart tab.' });
-                }
-            }
-            if (key === 'topStoryCounts') {
-                const tabs = new Set(['news', 'finance', 'news_vietnam', 'news_global', 'finance_vietnam', 'finance_global', 'tech']);
-                if (!value || typeof value !== 'object' || Array.isArray(value) || Object.entries(value).some(([tab, count]) => !tabs.has(tab) || !Number.isInteger(count) || count < 0 || count > 20)) {
-                    return res.status(400).json({ error: 'Top story counts must be integers from 0 to 20 for an existing Smart tab.' });
-                }
-            }
-            if (key === 'clusteringModel') {
-                if (!VALID_CLUSTERING_MODELS.has(value)) {
-                    return res.status(400).json({ error: 'Unsupported clustering model' });
-                }
-            }
-
             let requestedValue = value;
             if (key.startsWith('voz_last_read_post_')) {
                 const currentPrefs = await env.RSS_DATA.get('userPreferences', { type: 'json' }) || {};
@@ -92,7 +71,6 @@ export function registerSettingsRoutes({
 
             const updatedPreferences = await boardCache.updatePreference(key, requestedValue);
             const storedValue = updatedPreferences?.[key];
-            if (key === 'clusteringModel') setClusteringModel(storedValue);
             if (key === 'boardFolderMappings') {
                 await boardCache?.reconcileMembership();
                 void boardCache?.tick().catch(error => console.warn('[CACHE MEMBERSHIP]', error.message));

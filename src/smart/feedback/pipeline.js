@@ -1,5 +1,5 @@
 import { decisionsFor } from '../prefilter/state.js';
-import { rawAllowedDestinations } from '../../articles/top-story-destinations.js';
+import { rawAllowedDestinations } from '../../ranking/destinations.js';
 import { getPersonalStore, filterPersonalArticles, matchPersonal, activeRules, identity } from './store.js';
 import { semantics as s } from './semantics.js';
 
