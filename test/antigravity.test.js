@@ -5,9 +5,7 @@ import { readFile } from 'node:fs/promises';
 import {
  createAntigravityProvider as providerFactory,
  parseAntigravityOutput,
- withAntigravityRequestContext,
- touchAntigravityBriefingFocus,
- clearAntigravityBriefingFocus
+ withAntigravityRequestContext
 } from '../src/ai/antigravity.js';
 const createAntigravityProvider = options => providerFactory({ ...options, quotaRuntime: {retryAt:0,lastCheckAt:Infinity,stateLoaded:true,startupCheckStarted:true,checkPromise:null} });
 const success=JSON.stringify({status:'SUCCESS',response:'{"ok":true}',usage:{input_tokens:12,output_tokens:4,total_tokens:16}});
@@ -53,7 +51,6 @@ test('provider slots respect the limit without assuming callback arrival order',
  };
  const first = generate('old-a'), second = generate('old-b');
  await Promise.all([waitFor('old-a'), waitFor('old-b')]);
- touchAntigravityBriefingFocus('test-viewer');
  const briefing = withAntigravityRequestContext({type: 'story-briefing', isInteractive: () => true}, () => generate('visible-briefing'));
  const other = generate('other-ai');
  try {
@@ -67,7 +64,7 @@ test('provider slots respect the limit without assuming callback arrival order',
   callbacks.get('other-ai')(null, success);
   callbacks.get('visible-briefing')(null, success);
   await Promise.all([briefing, other]);
- } finally { clearAntigravityBriefingFocus('test-viewer'); }
+ } finally { /* nothing to release */ }
 });
 test('Antigravity cooldown is scoped to the failing model',async()=>{
  let time=100;const calls=[];
@@ -83,40 +80,12 @@ test('Antigravity cooldown is scoped to the failing model',async()=>{
  await assert.rejects(generate('high again',{model:'gemini-3.8-flash-high'}),/cooling down/);
  assert.deepEqual(calls,['gemini-3.8-flash-high','gemini-3.8-flash-low']);
 });
-test('both production AI paths prioritize Antigravity before Gemini',async()=>{
+test('the summary path prioritizes Antigravity before Gemini',async()=>{
  const summary=await readFile(new URL('../summary-engine.js',import.meta.url),'utf8');
- const smart=readSmartSource();
  const chain=summary.slice(summary.indexOf('async function generateWithFallback'));
  assert.ok(chain.indexOf('await generateWithAntigravity')<chain.indexOf('await geminiGenerate'));
- const low=smart.indexOf("id: 'antigravity-low'");
- const medium=smart.indexOf("id: 'antigravity-medium'");
- const high=smart.indexOf("id: 'antigravity-high'");
- const api=smart.indexOf("id: 'gemini-flash'");
- const local=smart.indexOf("id: 'local-qwen'");
- assert.ok(low >= 0 && low < medium && medium < high && high < api && api < local);
- assert.match(smart,/id: 'antigravity-medium'[\s\S]*?'gemini-3\.8-flash-medium'/);
- assert.match(smart,/id: 'antigravity-high'[\s\S]*?'gemini-3\.8-flash-high'/);
- assert.match(smart,/id: 'gemini-flash-lite'[\s\S]*?enabled: false/);
- assert.match(smart,/const firstApiIndex = providers\.findIndex\(p => p\.type !== 'antigravity'\)/);
+ assert.doesNotMatch(summary,/local-?qwen|LocalQwen|noLocalQwen/i);
 });
-
-test('clustering retains raw formatting through the CLI boundary for safe recovery and one repair', async () => {
- const { requestClusteringDecision } = await import('../src/ai/clustering-json.js');
- for (const raw of ['```json\n{"ok":true}\n```', 'Here is the result: {"ok":true}', '{"ok":']) {
-  let calls=0;const events={};
-  const generate=createAntigravityProvider({available:()=>true,run:(_binary,args,_options,callback)=>{
-   calls++;assert.ok(args.includes('--json-schema'));
-   queueMicrotask(()=>callback(null,JSON.stringify({status:'SUCCESS',response:calls===1?raw:'{"ok":true}'})));return{pid:0};
-  }});
-  const result=await requestClusteringDecision({
-   request:async prompt=>(await generate(prompt||'fixture decision',{json:false,schema:{type:'object'},operation:'cluster-verification'})).text,
-   schema:{type:'object'},validate:value=>({valid:value?.ok===true}),onEvent:event=>{events[event]=(events[event]||0)+1;}
-  });
-  assert.deepEqual(result,{ok:true});assert.equal(calls,raw==='{"ok":'?2:1);
-  if(raw.startsWith('```'))assert.equal(events.markdownFenceRecoveries,1);
- }
-});
-
 
 test('Antigravity permits the configured 180 second ceiling for high-effort review', async () => {
   let seen;

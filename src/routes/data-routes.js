@@ -8,6 +8,8 @@ import { normalizeBlockedKeywordEntries, articleContentFilterMatches } from '../
 import { NormalizedSet, NormalizedMap, mapWithConcurrency } from '../utils/article-utils.js';
 import { cleanStoredCluster, calculateHotness } from '../../smart-news.js';
 
+const STORIES_FILTER_TYPES = new Set(['smart', 'stories', 'top', 'classic']);
+
 export function registerDataRoutes({
     app,
     serveSmartData,
@@ -21,109 +23,14 @@ export function registerDataRoutes({
     let visibleSnapshotArticles;
     let unreadSnapshot;
 
-    // SMART_VIEWPORT_ROUTE_V1
-    app.post(
-        '/api/ai/briefing-viewport',
-        authMiddleware,
-        async (req, res) => {
-            try {
-                const smartViewToken =
-                    String(
-                        req.body?.smartViewToken ||
-                        ''
-                    ).trim();
-
-                const filterValue =
-                    String(
-                        req.body?.filterValue ||
-                        ''
-                    ).trim();
-
-                const smartRegion =
-                    req.body?.smartRegion ===
-                        'vietnam'
-                        ? 'vietnam'
-                        : (
-                            req.body?.smartRegion ===
-                                'global'
-                                ? 'global'
-                                : ''
-                        );
-
-                const page =
-                    Math.max(
-                        1,
-                        Number(
-                            req.body?.page
-                        ) || 1
-                    );
-
-                const generation =
-                    Math.max(
-                        0,
-                        Number(
-                            req.body?.generation
-                        ) || 0
-                    );
-
-                const visibleClusterIds =
-                    Array.isArray(
-                        req.body?.visibleClusterIds
-                    )
-                        ? req.body.visibleClusterIds
-                            .map(value =>
-                                String(value || '')
-                                    .trim()
-                            )
-                            .filter(Boolean)
-                            .slice(0, 12)
-                        : [];
-
-                if (
-                    !smartViewToken ||
-                    smartViewToken.length > 160 ||
-                    filterValue.length > 80 ||
-                    visibleClusterIds.some(
-                        id =>
-                            id.length > 600
-                    )
-                ) {
-                    return res
-                        .status(400)
-                        .json({
-                            error:
-                                'Invalid Smart viewport payload'
-                        });
-                }
-
-                const result =
-                    await presentation
-                        .prioritizeVisibleBriefings({
-                            smartViewToken,
-                            filterValue,
-                            smartRegion,
-                            page,
-                            visibleClusterIds,
-                            generation
-                        });
-
-                res.json(result);
-            }
-            catch (error) {
-                res.status(500).json({
-                    error:
-                        error.message
-                });
-            }
-        }
-    );
-
     app.get('/api/data', authMiddleware, registerFeedPagePost(app, authMiddleware, async (req, res) => {
         progress.activeForegroundRequests++;
         try {
         const startedAt = performance.now();
         const filterType = req.query.filterType || 'today';
-        if (filterType === 'smart') return await serveSmartData(req, res);
+        // Stories is the only view. Old links used filterType smart (with smartMode top or classic),
+        // or the view names below; they all open Stories.
+        if (STORIES_FILTER_TYPES.has(String(filterType).toLowerCase())) return await serveSmartData(req, res);
 
         // BACKEND_STREAMING_SIMPLE_VIEW_V1
         //

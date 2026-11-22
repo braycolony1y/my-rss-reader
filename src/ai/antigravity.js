@@ -210,57 +210,11 @@ const antigravityRequestContext =
 const activeBriefingScopes =
     new Set();
 
-const briefingFocusLeases =
-    new Map();
-
-const BRIEFING_FOCUS_TTL_MS =
-    90 * 1000;
-
-function normalizeBriefingViewerId(value) {
-    const id =
-        String(value || 'default').trim();
-
-    return id
-        ? id.slice(0, 120)
-        : 'default';
-}
-
-export function touchAntigravityBriefingFocus(
-    viewerId = 'default'
-) {
-    briefingFocusLeases.set(
-        normalizeBriefingViewerId(viewerId),
-        Date.now() + BRIEFING_FOCUS_TTL_MS
-    );
-}
-
-export function clearAntigravityBriefingFocus(
-    viewerId = 'default'
-) {
-    briefingFocusLeases.delete(
-        normalizeBriefingViewerId(viewerId)
-    );
-}
-
 function hasAntigravityBriefingFocus() {
     // GLOBAL_SCHEDULER_OWNS_PRIORITY
-    // P0/P1/P3/P4 reservation is provider-independent now.
+    // P0/P1/P3/P4 reservation is provider-independent now. The browser focus
+    // lease that used to feed this was removed with the AI story briefings.
     return false;
-
-    const current = Date.now();
-
-    for (
-        const [viewerId, expiresAt]
-        of briefingFocusLeases
-    ) {
-        if (expiresAt <= current) {
-            briefingFocusLeases.delete(
-                viewerId
-            );
-        }
-    }
-
-    return briefingFocusLeases.size > 0;
 }
 
 function contextIsInteractiveBriefing(

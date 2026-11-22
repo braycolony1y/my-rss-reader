@@ -5,7 +5,6 @@ import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { createSqliteDatabaseStore } from '../src/database/sqlite/store.js';
 import { fileHash } from '../src/database/sqlite/files.js';
-import { rankingInputs, readRankingInputs } from '../src/articles/ranking-input.js';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { fileURLToPath } from 'node:url';
@@ -62,8 +61,8 @@ test('atomic updates serialize across connections and roll back all keys on erro
 test('rank fingerprints are cheap, revision pinned and detect changes before materialization',async t=>{
     const {open}=await fixture(t,{feeds:'[]',articles:'[]',smartClusters:'[{"link":"a"}]',smartRawArticles:'[]'}),db=open();
     const clusters=await db.get('smartClusters',{fingerprint:true}),raw=await db.get('smartRawArticles',{fingerprint:true});
-    const inputs=rankingInputs(clusters,raw);
-    assert.deepEqual(await readRankingInputs(inputs),{publicationJson:'[{"link":"a"}]',rawJson:'[]'});
+    assert.equal(await clusters.readAsync(),'[{"link":"a"}]');
+    assert.equal(await raw.readAsync(),'[]');
     await db.put('smartClusters','[{"link":"b"}]');
     await assert.rejects(clusters.readAsync(),{code:'SQLITE_SNAPSHOT_CHANGED'});
     assert.notEqual((await db.get('smartClusters',{fingerprint:true})).digest,clusters.digest);

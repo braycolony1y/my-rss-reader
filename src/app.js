@@ -1,6 +1,5 @@
 import { registerPersonalFilterRoutes } from './smart/feedback/routes.js';
 import { sourceCooldown } from './articles/source-cooldown.js';
-import { touchAntigravityBriefingFocus, clearAntigravityBriefingFocus } from './ai/antigravity.js';
 import { acquireOpenCliBrowserOriginLease, releaseOpenCliBrowserOriginLease, startVozWarmTab } from './opencli-reader.js';
 import { authMiddleware } from './middleware/auth.js';
 import { createPdfService } from './exports/pdf-service.js';
@@ -103,8 +102,7 @@ export async function createApplication({ isMainModule = false, databaseStore } 
             resolveSmartArticleDestinations: googleNews.resolveSmartArticleDestinations,
             observeCacheArticles: (...args) => boardCache.observe(...args)
         },
-        headers: config.BROWSER_HEADERS,
-        geminiKeyManager
+        headers: config.BROWSER_HEADERS
     });
 
     const policy = createArticleFetchPolicy({
@@ -184,11 +182,6 @@ export async function createApplication({ isMainModule = false, databaseStore } 
     });
     registerBoardCacheRoutes({ app: http.app, boardCache });
 
-    /*
-     * Browser visibility lease for the active Smart briefing.
-     * A lease expires automatically if the browser disappears without
-     * sending a close/navigation event.
-     */
     registerEventRoutes({
         app: http.app
     });
@@ -260,56 +253,6 @@ export async function createApplication({ isMainModule = false, databaseStore } 
                         error:
                             error.message
                     });
-            }
-        }
-    );
-
-
-    http.app.post(
-        '/api/ai/briefing-focus',
-        (req, res) => {
-            try {
-                const viewerId =
-                    String(
-                        req.body?.viewerId ||
-                        ''
-                    ).trim();
-
-                if (
-                    !viewerId ||
-                    viewerId.length > 120
-                ) {
-                    return res
-                        .status(400)
-                        .json({
-                            error:
-                                'Invalid viewerId'
-                        });
-                }
-
-                if (
-                    req.body?.active === false
-                ) {
-                    clearAntigravityBriefingFocus(
-                        viewerId
-                    );
-                } else {
-                    touchAntigravityBriefingFocus(
-                        viewerId
-                    );
-                }
-
-                res.json({
-                    success: true,
-                    active:
-                        req.body?.active !==
-                        false
-                });
-            } catch (error) {
-                res.status(500).json({
-                    error:
-                        error.message
-                });
             }
         }
     );
@@ -421,7 +364,6 @@ export async function createApplication({ isMainModule = false, databaseStore } 
             await cache.cleanupArticleCache();
         },
         env: database.env,
-        normalizeClusteringModel: config.normalizeClusteringModel,
         startSequentialSyncLoop: sync.startSequentialSyncLoop,
         gcAndLogMemory: http.gcAndLogMemory,
         smartNews,
@@ -497,7 +439,6 @@ export async function createApplication({ isMainModule = false, databaseStore } 
 
     registerAiRoutes({
         app: http.app,
-        smartNews,
         env: database.env,
         readOnlineAiUsageWindow: ai.readOnlineAiUsageWindow,
         validateGeminiKey: ai.validateGeminiKey,
@@ -545,9 +486,7 @@ export async function createApplication({ isMainModule = false, databaseStore } 
     registerSettingsRoutes({
         boardCache,
         app: http.app,
-        env: database.env,
-        normalizeClusteringModel: config.normalizeClusteringModel,
-        VALID_CLUSTERING_MODELS: config.VALID_CLUSTERING_MODELS
+        env: database.env
     });
 
     registerSummaryRoutes({

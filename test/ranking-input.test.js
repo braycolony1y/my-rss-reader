@@ -1,31 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { encodeStoredValue } from '../src/database/stored-value.js';
-import { rankingInputs, serializedRankingInput } from '../src/articles/ranking-input.js';
+import { serializedRankingInput } from '../src/articles/ranking-input.js';
 import { createDatabaseAccess } from '../src/database/access.js';
 import { createParsedCache } from '../src/database/parsed-cache.js';
 
-test('full fingerprint distinguishes equal lengths and suffixes, ordering and input boundaries', () => {
+test('full fingerprint distinguishes equal lengths and suffixes without decoding the input', () => {
     const suffix = 'x'.repeat(300000);
     const a = JSON.stringify([{ title: 'one', content: suffix }]);
     const b = JSON.stringify([{ title: 'two', content: suffix }]);
     assert.equal(a.length, b.length);
     assert.equal(a.slice(-1000), b.slice(-1000));
-    const first = rankingInputs(encodeStoredValue(a), '[]');
-    assert.notEqual(first.digest, rankingInputs(encodeStoredValue(b), '[]').digest);
-    assert.equal(first.digest, rankingInputs(a, '[]').digest);
-    assert.notEqual(rankingInputs('[1,2]', '[]').digest, rankingInputs('[2,1]', '[]').digest);
-    assert.notEqual(rankingInputs('[]', '[1]').digest, rankingInputs('[1]', '[]').digest);
-    assert.equal(first.read().publicationJson, a);
-});
-
-test('digest comparison never decodes inputs; materialization reads each captured generation once', () => {
-    let reads = 0;
-    const make = value => ({ digest: serializedRankingInput(value).digest, read: () => { reads++; return value; } });
-    const inputs = rankingInputs(make('[1]'), make('[2]'));
-    assert.equal(reads, 0);
-    assert.deepEqual(inputs.read(), {publicationJson: '[1]', rawJson: '[2]'});
-    assert.equal(reads, 2);
+    const first = serializedRankingInput(encodeStoredValue(a));
+    assert.notEqual(first.digest, serializedRankingInput(encodeStoredValue(b)).digest);
+    assert.equal(first.digest, serializedRankingInput(a).digest);
+    assert.notEqual(serializedRankingInput('[1,2]').digest, serializedRankingInput('[2,1]').digest);
+    assert.equal(first.read(), a);
 });
 
 test('pending readers survive replacement, parsed-cache release, and failed persistence', async () => {
