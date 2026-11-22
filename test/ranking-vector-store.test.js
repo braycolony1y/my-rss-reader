@@ -56,3 +56,8 @@ test('a loader that throws leaves the store usable', async () => {
     assert.ok(store.get(article('a')));
   } finally { console.warn = originalWarn; }
 });
+
+test('ranker and resolver defaults share one vector store', async () => {
+  const { getSharedVectorStore } = await import('../src/ranking/vector-store.js');
+  assert.equal(getSharedVectorStore(), getSharedVectorStore());
+});

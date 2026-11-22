@@ -53,3 +53,18 @@ test('SIGKILL during part write, before manifest rename and after durable commit
     const manifest=JSON.parse(await fs.readFile(path.join(directory,'manifest.json'),'utf8'));
     assert.deepEqual((await fs.readdir(directory)).sort(),['manifest.json',...Object.values(manifest.parts).map(part=>part.file)].sort());
 });
+test('parsed manifest is reused until its mtime or size changes',async t=>{
+    const {manifestCacheStats,clearManifestCache}=await import('../src/smart/embeddings/incremental-cache.js');
+    clearManifestCache();
+    const file=await fixture(t);await fs.writeFile(file,'{"old":"AA=="}');await merge(file,{a:'AQ=='});
+    clearManifestCache();const base={...manifestCacheStats};
+    await read(file,['a']);await read(file,['a']);await read(file,['old']);
+    assert.equal(manifestCacheStats.parses-base.parses,1,'parsed once');
+    assert.equal(manifestCacheStats.hits-base.hits,2,'later reads hit the cache');
+    const manifestPath=path.join(path.dirname(file),'database_state/embeddings/vectors.json/manifest.json');
+    const future=new Date(Date.now()+60000);await fs.utimes(manifestPath,future,future);
+    const before=manifestCacheStats.parses;await read(file,['a']);
+    assert.equal(manifestCacheStats.parses-before,1,'mtime change invalidates');
+    await merge(file,{b:'Ag=='});
+    assert.equal((await read(file,['a','b'])).data.b,'Ag==','a rewritten manifest is picked up');
+});

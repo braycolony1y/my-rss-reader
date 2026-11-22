@@ -89,3 +89,8 @@ export function createVectorStore({ file = EMBEDDING_CACHE_FILE, load, keyOf = e
     stats() { return { vectors: vectors.size, misses: misses.size, loading: Boolean(inflight), revision }; }
   };
 }
+
+let shared = null;
+/** Process-wide store shared by the ranker and the cluster resolver, so vectors loaded once serve both. */
+export function getSharedVectorStore() { return shared ||= createVectorStore(); }
+export function resetSharedVectorStore() { shared = null; }

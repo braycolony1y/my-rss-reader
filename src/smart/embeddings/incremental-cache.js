@@ -10,9 +10,27 @@ const locations=filename=>{
 };
 async function sync(filename){const handle=await fs.open(filename,'r');try{await handle.sync();}finally{await handle.close();}}
 async function baseIdentity(filename){try{const s=await fs.stat(filename);return {size:s.size,mtimeMs:s.mtimeMs};}catch(error){if(error.code==='ENOENT')return null;throw error;}}
+// The manifest is ~25 MB; parsing it costs ~300 ms of blocked event loop and ~49 MB. Keep the
+// last parsed manifest per file, keyed by the manifest's mtime and size (it is only ever replaced
+// by an atomic rename, which changes both). Callers treat the value as read-only.
+const manifestCache=new Map();
+export const manifestCacheStats={parses:0,hits:0};
+export function clearManifestCache(){manifestCache.clear();}
+async function readManifest(manifest){
+    let stat;
+    try{stat=await fs.stat(manifest);}catch(error){if(error.code==='ENOENT'){manifestCache.delete(manifest);return null;}throw error;}
+    const cached=manifestCache.get(manifest);
+    if(cached&&cached.mtimeMs===stat.mtimeMs&&cached.size===stat.size&&cached.ino===stat.ino){manifestCacheStats.hits++;return cached.value;}
+    let value;
+    try{value=JSON.parse(await fs.readFile(manifest,'utf8'));}catch(error){if(error.code==='ENOENT'){manifestCache.delete(manifest);return null;}throw error;}
+    manifestCacheStats.parses++;
+    manifestCache.set(manifest,{mtimeMs:stat.mtimeMs,size:stat.size,ino:stat.ino,value});
+    return value;
+}
 async function loadManifest(filename){
-    const {manifest}=locations(filename);let value;
-    try{value=JSON.parse(await fs.readFile(manifest,'utf8'));}catch(error){if(error.code==='ENOENT')return null;throw error;}
+    const {manifest}=locations(filename);
+    const value=await readManifest(manifest);
+    if(!value)return null;
     if(value.format!==FORMAT||!value.owners||!value.parts||Array.isArray(value.owners)||Array.isArray(value.parts))throw Error('Invalid embedding manifest');
     for(const [id,part] of Object.entries(value.parts))if(!/^[a-f0-9-]{36}$/.test(id)||part.file!==id+'.json'||!Number.isSafeInteger(part.count)||part.count<0)throw Error('Invalid embedding part');
     if(Object.values(value.owners).some(id=>id!==''&&!Object.hasOwn(value.parts,id)))throw Error('Unknown embedding part');

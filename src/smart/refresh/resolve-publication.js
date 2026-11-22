@@ -2,12 +2,12 @@ import { buildPublicationClusterSnapshot } from '../clustering/publication-snaps
 import { mergeRelatedDevelopmentRelationships } from '../clustering/relationships.js';
 import { resolveAmbiguousGroups } from '../clustering/resolver.js';
 import { pruneReviewGroup } from '../prefilter/boundaries.js';
-import { createVectorStore } from '../../ranking/vector-store.js';
+import { getSharedVectorStore } from '../../ranking/vector-store.js';
 
 // Resolves the ambiguous review groups deterministically (no LLM) and builds the final cluster
 // snapshot. Pairs without strong shared evidence stay separate; see clustering/resolver.js.
 export async function resolveSmartCandidates(context) {
-  let { candidates, autoMergedClusters, reviewGroups, clusterVersionChanged, existingClusters, isTargeted, targetCategory, storyIdRetentionClusters, storedStoryRelationships, metrics, ambiguousGroupCount, notify, vectors = createVectorStore() } = context;
+  let { candidates, autoMergedClusters, reviewGroups, clusterVersionChanged, existingClusters, isTargeted, targetCategory, storyIdRetentionClusters, storedStoryRelationships, metrics, ambiguousGroupCount, notify, vectors = getSharedVectorStore() } = context;
   context = null;
 
   // Candidates carry no vectors in this thread; the clustering worker persisted them in the embedding cache.

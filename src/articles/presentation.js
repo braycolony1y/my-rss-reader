@@ -3,7 +3,7 @@ import { smartDestination } from '../utils/smart-destinations.js';
 import { rankStory, storyMembers } from './story-ranking.js';
 import { rankClassicStories } from '../ranking/classic.js';
 import { classicRankingMode, vectorWaitMs } from '../ranking/config.js';
-import { createVectorStore } from '../ranking/vector-store.js';
+import { getSharedVectorStore } from '../ranking/vector-store.js';
 import { normalizeStateUrl, mapWithConcurrency, NormalizedSet } from '../utils/article-utils.js';
 import { cleanStoredCluster, calculateHotness, buildCluster } from '../../smart-news.js';
 import { normalizeBlockedKeywordEntries, articleContentFilterMatches } from '../filters/content-filter.js';
@@ -14,7 +14,7 @@ export function createArticlePresentation({
     getLastKnownCachedArticleImage = async url => (await getLastKnownCachedArticle(url))?.image,
     getCachedThreadCreationTime,
     env,
-    rankingVectors = createVectorStore(),
+    rankingVectors = getSharedVectorStore(),
 } = {}) {
     // Cache for parsed JSON strings (e.g. smartClusters) to avoid CPU-heavy parsing on tab clicks
     let _smartClustersHistory = {};
