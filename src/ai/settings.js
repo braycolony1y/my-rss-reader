@@ -18,7 +18,7 @@ export function createAiSettings({
                 '--since=24 hours ago',
                 '--no-pager',
                 '--output=short-iso',
-                '--grep=\\[ONLINE AI\\]|\\[SMART VERIFY\\].*(gemini|qwen)|\\[SUMMARY\\].*(Gemini|Qwen)'
+                '--grep=\\[ONLINE AI\\]|\\[SUMMARY\\].*(Gemini)'
             ], {
                 timeout: 15_000,
                 maxBuffer: 32 * 1024 * 1024,

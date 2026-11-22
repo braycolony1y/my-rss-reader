@@ -4,13 +4,11 @@ import { generateWithGeminiWeb, getGeminiWebCooldownState } from './src/ai/gemin
 import {
     classifyGeminiError, createGeminiModelDiscovery, generateWithModelDiscovery, parseGeminiApiError
 } from './src/ai/gemini-model-discovery.js';
-import { generateWithLocalQwen } from './src/ai/local-qwen.js';
 /**
  * summary-engine.js — AI Summary Engine
  * 
  * Background queue that generates article summaries using Gemini APIs.
- * Uses Antigravity CLI first, with direct Gemini API keys as backup. Local Qwen remains available only to the
- * Smart clustering engine; no Qwen cloud endpoint is used here.
+ * Uses Antigravity CLI first, with direct Gemini API keys as backup.
  */
 
 import fs from 'fs/promises';
@@ -1253,7 +1251,7 @@ async function generateWithFallback(geminiModel, prompt, options = {}) {
                         new Date(
                             retryAt
                         ).toISOString()
-                    } before local Qwen`
+                    }`
                 );
 
             error.code =
@@ -1405,7 +1403,7 @@ async function generateWithFallback(geminiModel, prompt, options = {}) {
     }
 
     // Gemini API remains after Web.  A short Web cooldown only blocks the
-    // transition to LOCAL Qwen, not another usable online provider.
+    // transition to the deferral path, not another usable online provider.
     for (const step of sequence) {
         try {
             const res =
@@ -1466,27 +1464,9 @@ async function generateWithFallback(geminiModel, prompt, options = {}) {
         }
     }
 
-    // Callers that must never use local Qwen (source reputation evaluation)
-    // fail here instead of deferring to or running the local model.
-    if (options.noLocalQwen) {
-        const error =
-            new Error(
-                `All online providers failed. Trace: ${
-                    JSON.stringify(
-                        fallbackTrace
-                    )
-                }`
-            );
-
-        error.cause =
-            lastError;
-
-        throw error;
-    }
-
     // If Web was the last viable online path and its KNOWN cooldown is at
     // most one minute, release the global scheduler position instead of
-    // immediately spending ~65-75s on Qwen.
+    // failing the job outright.
     if (
         shortWebRetryAt >
         Date.now()
@@ -1497,7 +1477,7 @@ async function generateWithFallback(geminiModel, prompt, options = {}) {
     }
 
     // If the short cooldown expired while the API was being tried, give Web
-    // one immediate retry before local inference.
+    // one immediate retry before giving up.
     if (shortWebRetryAt) {
         try {
             const result =
@@ -1557,7 +1537,7 @@ async function generateWithFallback(geminiModel, prompt, options = {}) {
 
             /*
              * Timeout/cooldown/busy is NOT an online-provider
-             * failure. Requeue the job instead of starting Qwen.
+             * failure. Requeue the job instead of failing it.
              */
             if (
                 webTransient &&
@@ -1569,58 +1549,6 @@ async function generateWithFallback(geminiModel, prompt, options = {}) {
                 );
             }
         }
-    }
-
-    // Qwen is the mandatory final fallback ONLY after the
-    // whole online chain is exhausted. Gemini Web transient
-    // states never count as a failure.
-    // Give local inference its own timeout rather
-    // than inheriting an exhausted online-provider wall clock.
-    try {
-        const result =
-            await generateWithLocalQwen(
-                prompt,
-                {
-                    operation,
-                    json:
-                        options.json ||
-                        operation ===
-                            'story-briefing',
-                    schema:
-                        options.schema,
-                    maxTokens,
-                    timeoutMs:
-                        Math.max(
-                            180_000,
-                            Math.min(
-                                300_000,
-                                Number(
-                                    process.env
-                                        .SMART_LOCAL_AI_TIMEOUT_MS
-                                ) ||
-                                180_000
-                            )
-                        )
-                }
-            );
-
-        result.fallbackTrace =
-            fallbackTrace;
-
-        return result;
-    }
-    catch (error) {
-        fallbackTrace.push({
-            provider:
-                'local-qwen',
-            status:
-                'failed',
-            reason:
-                error.message
-        });
-
-        lastError =
-            error;
     }
 
     const error =
@@ -2318,14 +2246,13 @@ ${domains.join(', ')}
 `;
 
     try {
-        // Gemini Web first, then the Gemini API; never Antigravity or local Qwen.
+        // Gemini Web first, then the Gemini API; never Antigravity.
         const result = await generateWithFallback(GEMINI_PRIMARY_MODEL, prompt, {
             maxTokens: 4000,
             timeoutMs: 90000,
             operation: 'source-reputation',
             json: true,
-            skipAntigravity: true,
-            noLocalQwen: true
+            skipAntigravity: true
         });
         // Providers return `text`; older code read `content`, which is never set.
         let jsonStr = String(result?.text ?? result?.content ?? '').trim();
@@ -2366,9 +2293,3 @@ export {
     stripHtml as stripHtmlForSummary,
     generateDeepAnalysis
 };
-
-export async function generateStoryBriefing(prompt, options = {}) {
-    const result = await generateWithFallback(GEMINI_PRIMARY_MODEL, prompt,
-        { maxTokens: options.maxTokens || 6000, timeoutMs: 120000, operation: options.operation || 'story-briefing', json: true });
-    return result.text;
-}

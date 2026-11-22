@@ -327,8 +327,7 @@ export function parseOnlineAiUsageLog(rawLog, options = {}) {
         },
         summary: summarize(events),
         filters: {
-            // ONLINE_AI_LOCAL_PROVIDER_V1
-              providers: [...new Set(['local-qwen', ...events.map(event => event.provider).filter(Boolean)])].sort(),
+              providers: [...new Set(events.map(event => event.provider).filter(Boolean))].sort(),
             models: [...new Set(events.map(event => event.model).filter(Boolean))].sort(),
             operations: [...new Set(events.map(event => event.operation).filter(Boolean))].sort(),
             statuses: [...new Set(events.map(event => event.status).filter(Boolean))].sort()
