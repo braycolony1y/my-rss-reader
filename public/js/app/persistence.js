@@ -80,6 +80,7 @@ const ReaderAppPersistence = {
                         savedStates: app.savedStates,
                         boardStates: app.boardStates,
                         hiddenStates: app.hiddenStates,
+                        hiddenStateAliases: app.hiddenStateAliases,
                         userPreferences: app.userPreferences,
                         pendingPreferences: app.pendingPreferences,
                         categoryOrder: app.categoryOrder,

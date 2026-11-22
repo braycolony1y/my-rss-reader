@@ -527,3 +527,19 @@ test('confirmed removed snapshots stay protected while pinned', async t => {
     assert.ok(await service.articlePage(url));
     assert.equal(values.cacheMembers[id].in_cache, true);
 });
+
+test('moving and removing a decoded Google News Board entry honor both membership aliases', async t => {
+    const originalLink = 'https://news.google.com/read/example';
+    const link = 'https://example.test/publisher';
+    const { service, values } = await fixture(t, { values: {
+        boardStates: [originalLink, link],
+        userPreferences: { boardFolders: ['Reading'], boardFolderMappings: { [originalLink]: 'Reading' } }
+    } });
+    const article = { link, originalLink };
+    await service.setFolder(article, 'Research');
+    assert.deepEqual(values.boardStates, [originalLink, link]);
+    assert.deepEqual(values.userPreferences.boardFolderMappings, { [link]: 'Research' });
+    await service.setFolder(article, null);
+    assert.deepEqual(values.boardStates, []);
+    assert.deepEqual(values.userPreferences.boardFolderMappings, {});
+});

@@ -3,7 +3,7 @@
                         <div class="article-card mb-4 md:mb-5 relative overflow-hidden bg-[#111827] rounded-2xl cursor-pointer group border border-white/5 hover:border-white/20 transition-all duration-300 shadow-lg"
                             :class="[
                                 (isMobile && mobileActiveCard === article.link) ? 'ring-2 ring-emerald-500' : '',
-                                readStates.has(article.link) ? 'is-read' : '',
+                                hasArticleState('readStates', article) ? 'is-read' : '',
                                 'has-story-briefing',
                             selectedFilterType === 'smart' ? 'is-smart-classic-card' : '',
                             selectedFilterType !== 'smart' ? 'is-standard-card' : ''
@@ -172,24 +172,24 @@
                         <div class="article-actions-overlay absolute right-4 items-center gap-1.5 p-1.5 rounded-xl border shadow-xl flex-wrap justify-end z-20"
                             :class="[(isMobile && mobileActiveCard === article.link) ? 'flex bottom-4 max-w-[85%]' : 'top-1/2 -translate-y-1/2 hidden md:group-hover:flex', theme === 'glass-light' ? 'bg-white/95 border-gray-200 shadow-[0_4px_24px_rgba(0,0,0,0.15)] backdrop-blur-xl' : 'bg-[#111827] border-white/10']">
 
-                            <button @click.stop="toggleState('hiddenStates', article.link)"
+                            <button @click.stop="toggleState('hiddenStates', article)"
                                 class="transition p-1.5 rounded-lg"
                                 :class="theme === 'glass-light' ? 'hover:bg-black/5 text-gray-500 hover:text-gray-800' : 'hover:bg-white/10 text-gray-400'"
-                                :title="isMobile ? '' : (hiddenStates.includes(article.link) ? 'Unhide Article' : 'Hide Article')">
+                                :title="isMobile ? '' : (hasArticleState('hiddenStates', article) ? 'Unhide Article' : 'Hide Article')">
                                 <svg class="w-4 h-4 md:w-5 md:h-5"
-                                    :class="hiddenStates.includes(article.link) ? 'text-red-500' : 'text-gray-400'"
+                                    :class="hasArticleState('hiddenStates', article) ? 'text-red-500' : 'text-gray-400'"
                                     fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                         d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21">
                                     </path>
                                 </svg>
                             </button>
-                            <button @click.stop="toggleState('savedStates', article.link)"
+                            <button @click.stop="toggleState('savedStates', article)"
                                 class="transition p-1.5 rounded-lg"
                                 :class="theme === 'glass-light' ? 'hover:bg-black/5 text-gray-500 hover:text-gray-800' : 'hover:bg-white/10 text-gray-400'"
-                                :title="isMobile ? '' : (savedStates.includes(article.link) ? 'Remove from Read Later' : 'Read Later')">
+                                :title="isMobile ? '' : (hasArticleState('savedStates', article) ? 'Remove from Read Later' : 'Read Later')">
                                 <svg class="w-4 h-4 md:w-5 md:h-5 transition-colors"
-                                    :class="savedStates.includes(article.link) ? (theme === 'glass-light' ? 'fill-blue-100 text-blue-600' : 'fill-blue-900/50 text-blue-500') : 'currentColor'"
+                                    :class="hasArticleState('savedStates', article) ? (theme === 'glass-light' ? 'fill-blue-100 text-blue-600' : 'fill-blue-900/50 text-blue-500') : 'currentColor'"
                                     fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                         d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"></path>
@@ -207,12 +207,12 @@
                                     </path>
                                 </svg>
                             </button>
-                            <button @click.stop="toggleState('readStates', article.link)"
+                            <button @click.stop="toggleState('readStates', article)"
                                 class="transition p-1.5 rounded-lg"
                                 :class="theme === 'glass-light' ? 'hover:bg-black/5 text-gray-500 hover:text-gray-800' : 'hover:bg-white/10 text-gray-400'"
-                                :title="isMobile ? '' : (readStates.has(article.link) ? 'Keep unread' : 'Mark as read')">
+                                :title="isMobile ? '' : (hasArticleState('readStates', article) ? 'Keep unread' : 'Mark as read')">
                                 <svg class="w-4 h-4 md:w-5 md:h-5 text-gray-400"
-                                    :class="readStates.has(article.link) ? 'text-emerald-500' : ''" fill="none"
+                                    :class="hasArticleState('readStates', article) ? 'text-emerald-500' : ''" fill="none"
                                     stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                         d="M5 13l4 4L19 7"></path>

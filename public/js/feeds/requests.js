@@ -147,7 +147,7 @@ async fetchData(isLoadMore = false, skipPageReset = false, keepVisible = false) 
                                 const existingLinks = new Set(this.articles.map(a => a.link));
                                 let newUniqueArticles = (data.articles || []).filter(a => !existingLinks.has(a.link));
                                 if (this.hideRead && !['recent', 'saved', 'board'].includes(this.selectedFilterType)) {
-                                    newUniqueArticles = newUniqueArticles.filter(a => !this.readStates.has(a.link));
+                                    newUniqueArticles = newUniqueArticles.filter(a => !this.hasArticleState('readStates', a));
                                 }
                                 this.articles = [...this.articles, ...newUniqueArticles];
                             } else {
@@ -165,7 +165,7 @@ async fetchData(isLoadMore = false, skipPageReset = false, keepVisible = false) 
                                 
                                 let newArticles = data.articles || [];
                                 if (this.hideRead && !['recent', 'saved', 'board'].includes(this.selectedFilterType)) {
-                                    newArticles = newArticles.filter(a => !this.readStates.has(a.link));
+                                    newArticles = newArticles.filter(a => !this.hasArticleState('readStates', a));
                                 }
                                 if (keepVisible && this.articles.length > 0) {
                                     // A cache revalidation must not reorder, remove, or insert cards

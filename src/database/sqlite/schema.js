@@ -1,6 +1,9 @@
 // Stable relational columns support indexed reads; per-record JSON retains the
 // publisher/editorial extension fields without reducing the public data model.
 export const SCHEMA_VERSION = 1;
+const originalLink = "trim(json_extract(payload,'$.originalLink'))";
+export const ORIGINAL_LINK_LOOKUP = `rtrim(substr(${originalLink},1,instr(${originalLink}||'#','#')-1), '/')`;
+
 export const SCHEMA = `
 CREATE TABLE IF NOT EXISTS storage_meta (name TEXT PRIMARY KEY, value TEXT NOT NULL) STRICT;
 CREATE TABLE IF NOT EXISTS collections (
@@ -26,6 +29,8 @@ CREATE TABLE IF NOT EXISTS articles (
 CREATE INDEX IF NOT EXISTS articles_order ON articles(collection,position);
 CREATE INDEX IF NOT EXISTS articles_link ON articles(collection,link);
 CREATE INDEX IF NOT EXISTS articles_normalized_link ON articles(collection,normalized_link);
+CREATE INDEX IF NOT EXISTS articles_original_link ON articles(collection,${ORIGINAL_LINK_LOOKUP})
+ WHERE ${ORIGINAL_LINK_LOOKUP} IS NOT NULL;
 CREATE INDEX IF NOT EXISTS articles_category_date ON articles(collection,category,published_at DESC);
 CREATE INDEX IF NOT EXISTS articles_source_date ON articles(collection,source_id,published_at DESC);
 CREATE INDEX IF NOT EXISTS articles_cluster ON articles(cluster_id);
@@ -36,6 +41,8 @@ CREATE TABLE IF NOT EXISTS cluster_members (
  FOREIGN KEY(collection,cluster_key) REFERENCES articles(collection,row_key) ON DELETE CASCADE
 ) STRICT;
 CREATE INDEX IF NOT EXISTS cluster_members_link ON cluster_members(link);
+CREATE INDEX IF NOT EXISTS cluster_members_original_link ON cluster_members(collection,${ORIGINAL_LINK_LOOKUP})
+ WHERE ${ORIGINAL_LINK_LOOKUP} IS NOT NULL;
 CREATE TABLE IF NOT EXISTS rankings (
  collection TEXT NOT NULL, article_key TEXT NOT NULL, destination TEXT NOT NULL,
  rank INTEGER, score REAL, is_top INTEGER,

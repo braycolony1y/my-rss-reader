@@ -2,9 +2,8 @@ import { readServerSource } from './helpers/server-source.js';
 import { readSmartSource } from './helpers/smart-source.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 
-import { parseOpenCliSearchDestination } from '../server.js';
+import { parseOpenCliSearchDestination } from '../src/articles/search-destination.js';
 
 const server = readServerSource();
 const smartNews = readSmartSource();

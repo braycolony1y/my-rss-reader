@@ -88,6 +88,7 @@ function normalizeArticle(
     title: cleanedTitle,
     link,
     ...(item.originalLink ? { originalLink: normalizeArticleSourceUrl(item.originalLink) } : {}),
+    ...(item.googleNewsDecodeSource ? { googleNewsDecodeSource: item.googleNewsDecodeSource } : {}),
     pubDate: toVietnamIso(sortablePublicationTime),
     rawPubDate: publicationTimeReliable ? undefined : String(item.pubDate || ''),
     publicationTimeReliable,

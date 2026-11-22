@@ -1,4 +1,6 @@
-import { normalizeStateUrl } from '../utils/article-utils.js';
+import { applyGoogleNewsDestinations } from '../articles/google-news-repair.js';
+import { googleNewsArticleId } from '../articles/google-news-decode.js';
+import { NormalizedSet, hasArticleState, normalizeStateUrl } from '../utils/article-utils.js';
 
 // Called inside the database updater, after fetches finish. Current user state
 // and feed membership, rather than the opening snapshot, own the publication.
@@ -8,8 +10,32 @@ export function reconcileFeedPublication(current, newArticles, feeds) {
     const inferred = new Map(feeds.map(feed => [feed.url, feed]));
     const feedTitle = (feed, fresh) => !feed.title || feed.title === new URL(feed.url).hostname || feed.title.startsWith('http')
         ? fresh?.title || feed.title : feed.title;
-    const existingByLink = new Map((current.articles || []).map(article => [article.link, article]));
-    const admitted = newArticles.filter(article => feedsByUrl.has(article.feedUrl)).map(article => {
+    const existing = current.articles || [];
+    const incoming = newArticles.filter(article => feedsByUrl.has(article.feedUrl));
+    const existingByLink = new Map(existing.map(article => [article.link, article]));
+    const decodedByWrapper = new Map();
+    const decodedByGuid = new Map();
+    const guidKeyFor = article => article.guid ? `${article.feedUrl}|${article.guid}` : null;
+    for (const article of [...incoming, ...existing]) {
+        if (!article.originalLink || !article.originalLink.includes('news.google.com/') ||
+            !googleNewsArticleId(article.originalLink) || googleNewsArticleId(article.link)) continue;
+        decodedByWrapper.set(normalizeStateUrl(article.originalLink), article);
+        const guid = guidKeyFor(article);
+        if (guid) decodedByGuid.set(guid, article);
+    }
+    const keepDecodedLink = article => {
+        if (!article.link.includes('news.google.com/') || !googleNewsArticleId(article.link)) return article;
+        const guidMatch = decodedByGuid.get(guidKeyFor(article));
+        const previous = guidMatch || decodedByWrapper.get(normalizeStateUrl(article.link));
+        if (!previous) return article;
+        const repaired = { ...article };
+        if (!applyGoogleNewsDestinations(repaired, {
+            [article.link]: { resolvedUrl: previous.link, source: previous.googleNewsDecodeSource }
+        }, { recursive: false })) return guidMatch || article;
+        repaired.originalLink = previous.originalLink;
+        return repaired;
+    };
+    const admitted = incoming.map(keepDecodedLink).map(article => {
         const feed = feedsByUrl.get(article.feedUrl);
         const fresh = inferred.get(article.feedUrl);
         return { ...existingByLink.get(article.link), ...article,
@@ -17,7 +43,7 @@ export function reconcileFeedPublication(current, newArticles, feeds) {
                 ? feedTitle(feed, fresh) || article.feedTitle : article.feedTitle,
                 feedCategory: feed.category || 'Others'} : {}) };
     });
-    let allArticles = [...admitted, ...(current.articles || [])];
+    const allArticles = [...admitted, ...existing.map(keepDecodedLink)];
 
     for (let article of allArticles) {
         if (!article.image) {
@@ -37,7 +63,7 @@ export function reconcileFeedPublication(current, newArticles, feeds) {
     const guidMap = new Map();
     for (const article of allArticles) {
         const titleKey = `${article.feedUrl}|${article.guid || article.title.toLowerCase()}`;
-        const guidKey = article.guid ? `${article.feedUrl}|${article.guid}` : null;
+        const guidKey = guidKeyFor(article);
         if (!linkMap.has(article.link) && !titleMap.has(titleKey) && !(guidKey && guidMap.has(guidKey))) {
             if (guidKey) guidMap.set(guidKey, article);
             linkMap.set(article.link, article);
@@ -60,15 +86,12 @@ export function reconcileFeedPublication(current, newArticles, feeds) {
     const savedStatesForPruning = current.savedStates || [];
     const boardStatesForPruning = current.boardStates || [];
     const readStatesForPruning = current.readStates || [];
-    const archivedUrlsForPruning = new Set(
-        [...savedStatesForPruning, ...boardStatesForPruning].map(normalizeStateUrl).filter(Boolean)
-    );
-    const readUrlsForPruning = new Set(readStatesForPruning.map(normalizeStateUrl).filter(Boolean));
+    const archivedUrlsForPruning = new NormalizedSet([...savedStatesForPruning, ...boardStatesForPruning]);
+    const readUrlsForPruning = new NormalizedSet(readStatesForPruning);
 
     const latestArticles = uniqueArticles.filter(article => {
-        const normalizedLink = normalizeStateUrl(article.link);
-        if (archivedUrlsForPruning.has(normalizedLink)) return true;
-        if (readUrlsForPruning.has(normalizedLink)) {
+        if (hasArticleState(archivedUrlsForPruning, article)) return true;
+        if (hasArticleState(readUrlsForPruning, article)) {
             const ageMs = Date.now() - (new Date(article.pubDate || 0).getTime() || 0);
             if (ageMs < 7 * 24 * 60 * 60 * 1000) return true;
         }
@@ -90,17 +113,14 @@ export function reconcileFeedPublication(current, newArticles, feeds) {
     try {
         const smartClusters = current.smartClusters || [];
         const smartRawArticles = current.smartRawArticles || [];
-        const retainedLinks = new Set(latestArticles.map(article => normalizeStateUrl(article.link)));
-
-        for (const article of smartRawArticles) {
+        const retainedLinks = new Set();
+        const retainArticle = article => {
             if (article.link) retainedLinks.add(normalizeStateUrl(article.link));
-        }
-
-        for (const cluster of smartClusters) {
-            if (cluster.link) retainedLinks.add(normalizeStateUrl(cluster.link));
-            for (const related of cluster.relatedArticles || []) {
-                if (related.link) retainedLinks.add(normalizeStateUrl(related.link));
-            }
+            if (article.originalLink && article.originalLink !== article.link) retainedLinks.add(normalizeStateUrl(article.originalLink));
+            for (const member of article.relatedArticles || []) retainArticle(member);
+        };
+        for (const articles of [latestArticles, smartRawArticles, smartClusters]) {
+            for (const article of articles) retainArticle(article);
         }
         for (const listName of ['readStates', 'hiddenStates']) {
             const state = current[listName] || [];

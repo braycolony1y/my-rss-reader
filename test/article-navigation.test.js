@@ -89,20 +89,31 @@ test('Reddit opens directly in a new tab on desktop, mobile and related-article 
     for (const mobile of [false, true]) {
         const { app, context, historyCalls } = createReaderApp();
         const opened = [];
+        const requests = [];
         const article = { link: 'https://old.reddit.com/r/test/comments/abc/story/' };
         context.window.open = (...args) => opened.push(args);
-        context.fetch = () => assert.fail('Reddit must not fetch reader content');
+        context.fetch = async (url, { body } = {}) => {
+            requests.push({ url, body });
+            return { ok: true };
+        };
         app.isMobile = mobile;
-        app.markAsReadExplicit = link => assert.equal(link, article.link);
         app.handleCardClick(article, { preventDefault() {} });
+        assert.equal(app.readStates.has(article.link), true);
+        app.readStates.clear();
         await app.openRelatedArticle(article);
+        assert.equal(app.readStates.has(article.link), true);
         assert.equal(opened.length, 2);
         assert.deepEqual(opened[0], [article.link, '_blank', 'noopener,noreferrer']);
+        assert.deepEqual(opened[1], opened[0]);
         assert.equal(historyCalls.length, 0);
         assert.equal(app.articleOverlayOpen, false);
         app.handleCardHover(article);
         app.prefetchArticlesList([article]);
         assert.equal(app.prefetchQueue.length, 0);
+        assert.deepEqual(requests.map(({ url }) => url), ['/api/toggle', '/api/toggle']);
+        for (const { body } of requests) {
+            assert.deepEqual(JSON.parse(body), { link: article.link, list: 'readStates', forceAdd: true });
+        }
     }
 });
 

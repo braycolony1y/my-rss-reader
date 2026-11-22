@@ -1,8 +1,10 @@
-import { applyGoogleNewsDestinations } from '../../articles/google-news-repair.js';
+import { applyGoogleNewsDestinations, googleNewsRepairDestination } from '../../articles/google-news-repair.js';
+import { isExactGoogleNewsDecode } from '../../google-news-destination.js';
 import { boundCacheObject, CACHE_RETENTION } from './cache-retention.js';
 import { createHash } from 'node:crypto';
 import { hash, describe, tableFor, rowIdentity, CRITICAL_ARRAYS, CHILD_FIELDS } from './codec.js';
 import { normalizeStateUrl } from '../../utils/state-url.js';
+import { ORIGINAL_LINK_LOOKUP } from './schema.js';
 
 export function createRepository(db) {
     const prepared = new Map();
@@ -121,7 +123,9 @@ export function createRepository(db) {
     function write(key, value, options = {}) {
         if (value === undefined) throw Error(`Undefined database value: ${key}`);
         const described = describe(key,value), {encoding,shape}=described;
-        const decoded=boundCacheObject(key,described.decoded), prior = info(key);
+        const prior = info(key);
+        const decoded = prior && Array.isArray(described.decoded) && ['smartRawArticles', 'smartClusters', 'smartClusteringInputs'].includes(key)
+            ? retainSmartDestinations(key, described.decoded) : boundCacheObject(key, described.decoded);
         const count = shape === 'array' ? decoded.length : shape === 'object' ? Object.keys(decoded).length : 0;
         if (prior && CRITICAL_ARRAYS.has(key)) {
             if (prior.item_count > 0 && !count && !(key === 'blockedArticleKeywords' && options.allowLargeReduction)) throw Error(`[DB SAFETY] Refusing to wipe ${prior.item_count} ${key}`);
@@ -158,30 +162,57 @@ export function createRepository(db) {
         for (const id of ids || []) if (!members.has(id)) members.set(id,[]);
         return members;
     }
-    function findArticles(key, { links, normalizedLinks, category, limit, offset = 0 } = {}) {
+    function findArticles(key, { links, normalizedLinks, includeOriginalLink, category, limit, offset = 0 } = {}) {
         if (tableFor(key) !== 'articles') throw Error('Not an article collection');
         if (links && !links.length) return [];
         if (normalizedLinks && !normalizedLinks.length) return [];
         // JSON_each binds a single parameter, avoiding SQLite's variable limit.
         const clauses = ['collection=?'], params = [key];
+        let articlesTable = 'articles';
         if (links) { clauses.push('link IN (SELECT value FROM json_each(?))'); params.push(JSON.stringify(links)); }
-        if (normalizedLinks) { clauses.push('normalized_link IN (SELECT value FROM json_each(?))'); params.push(JSON.stringify(normalizedLinks.map(normalizeStateUrl))); }
+        if (normalizedLinks) {
+            const requested = JSON.stringify(normalizedLinks.map(normalizeStateUrl));
+            const matchLink = 'normalized_link IN (SELECT value FROM json_each(?))';
+            if (includeOriginalLink) {
+                // Drive the outer read by rowid even for small ordered pages.
+                // Otherwise the planner can walk the whole collection in order.
+                articlesTable = 'articles NOT INDEXED';
+                clauses.push(`rowid IN (
+                    SELECT rowid FROM articles INDEXED BY articles_normalized_link WHERE collection=? AND ${matchLink}
+                    UNION
+                    SELECT rowid FROM articles INDEXED BY articles_original_link WHERE collection=? AND ${ORIGINAL_LINK_LOOKUP} IS NOT NULL
+                        AND ${ORIGINAL_LINK_LOOKUP} IN (SELECT value FROM json_each(?))
+                )`);
+                params.push(key, requested, key, requested);
+            } else {
+                clauses.push(matchLink);
+                params.push(requested);
+            }
+        }
         if (category) { clauses.push('category=?'); params.push(category); }
-        let query = 'SELECT * FROM articles WHERE ' + clauses.join(' AND ') + ' ORDER BY position';
+        let query = `SELECT * FROM ${articlesTable} WHERE ` + clauses.join(' AND ') + ' ORDER BY position';
         if (limit != null) { query += ' LIMIT ? OFFSET ?'; params.push(Math.max(0,limit),Math.max(0,offset)); }
         const rows=sql(query).all(...params),members=membersFor(key,rows);
         return rows.map(row => materialize(row,key,members));
     }
     function linkProjection(key) {
-        if(tableFor(key)!=='articles')throw Error('Link projection requires article collection');
-        if(!info(key))return null;
-        const related=new Map();
-        for(const row of sql('SELECT cluster_key,link FROM cluster_members WHERE collection=? ORDER BY cluster_key,position').iterate(key)){
-            if(!related.has(row.cluster_key))related.set(row.cluster_key,[]);
-            related.get(row.cluster_key).push({link:row.link});
+        if (tableFor(key) !== 'articles') throw Error('Link projection requires article collection');
+        if (!info(key)) return null;
+        const projected = row => ({
+            link: row.link,
+            ...(row.originalLink && row.originalLink !== row.link ? { originalLink: row.originalLink } : {})
+        });
+        const related = new Map();
+        for (const row of sql(`SELECT cluster_key,link,json_extract(payload,'$.originalLink') AS originalLink,
+            json_extract(payload,'$.relatedArticles') AS nested FROM cluster_members WHERE collection=? ORDER BY cluster_key,position`).iterate(key)) {
+            if (!related.has(row.cluster_key)) related.set(row.cluster_key, []);
+            const member = projected(row);
+            if (row.nested) member.relatedArticles = JSON.parse(row.nested);
+            related.get(row.cluster_key).push(member);
         }
-        return sql('SELECT row_key,link,related FROM articles WHERE collection=? ORDER BY position').all(key)
-            .map(row=>({link:row.link,...(row.related?{relatedArticles:related.get(row.row_key)||[]}:{})}));
+        return sql(`SELECT row_key,link,related,json_extract(payload,'$.originalLink') AS originalLink
+            FROM articles WHERE collection=? ORDER BY position`).all(key)
+            .map(row => ({...projected(row), ...(row.related ? { relatedArticles: related.get(row.row_key) || [] } : {})}));
     }
     function mapEntries(key,ids){
         if(!info(key))return {};
@@ -218,7 +249,51 @@ export function createRepository(db) {
         }
         digest.update(']');return finishCollection(key,prior,encoding,prior?.shape || 'object',digest.digest('hex'),count);
     }
+    function retainSmartDestinations(key, articles) {
+        const wrappers = new Map();
+        const collect = article => {
+            if (typeof article?.link === 'string' && article.link.includes('news.google.com/')) {
+                const normalized = normalizeStateUrl(article.link);
+                if (!wrappers.has(normalized)) wrappers.set(normalized, new Set());
+                wrappers.get(normalized).add(article.link);
+            }
+            for (const member of article?.relatedArticles || []) collect(member);
+        };
+        for (const article of articles) collect(article);
+        if (!wrappers.size) return articles;
+
+        const links = JSON.stringify([...wrappers.keys()]);
+        const originalMatch = `collection=? AND ${ORIGINAL_LINK_LOOKUP} IS NOT NULL
+            AND ${ORIGINAL_LINK_LOOKUP} IN (SELECT value FROM json_each(?))`;
+        const originals = sql(`SELECT link,payload FROM articles INDEXED BY articles_original_link WHERE ${originalMatch}
+            UNION ALL SELECT link,payload FROM cluster_members INDEXED BY cluster_members_original_link WHERE ${originalMatch}`)
+            .all(key, links, key, links);
+        const destinations = Object.create(null);
+        for (const row of originals) {
+            const article = JSON.parse(row.payload);
+            const mapping = { resolvedUrl: row.link, source: article.googleNewsDecodeSource };
+            const matches = wrappers.get(normalizeStateUrl(article.originalLink));
+            if (matches && googleNewsRepairDestination(article.originalLink, mapping, article)) {
+                for (const wrapper of matches) destinations[wrapper] = mapping;
+            }
+        }
+        if (!Object.keys(destinations).length) return articles;
+        for (const article of articles) applyGoogleNewsDestinations(article, destinations);
+        return articles;
+    }
+
     function repairGoogleNewsUrls(destinations) {
+        const acceptedAliases = new Map();
+        for (const [wrapper, mapping] of Object.entries(destinations)) {
+            if (!isExactGoogleNewsDecode(mapping?.source)) continue;
+            const destination = googleNewsRepairDestination(wrapper, mapping);
+            if (destination) acceptedAliases.set(normalizeStateUrl(wrapper), normalizeStateUrl(destination));
+        }
+        function repairRecord(value) {
+            return applyGoogleNewsDestinations(value, destinations, { onRepair(wrapper, destination) {
+                acceptedAliases.set(normalizeStateUrl(wrapper), normalizeStateUrl(destination));
+            } });
+        }
         const links = JSON.stringify(Object.keys(destinations));
         if (links === '[]') return { changed: [] };
         const changed = new Set();
@@ -230,25 +305,43 @@ export function createRepository(db) {
                 OR row_key IN (SELECT cluster_key FROM cluster_members WHERE collection=? AND link IN (SELECT value FROM json_each(?))))`).all(key, links, key, links);
             for (const row of rows) {
                 const article = materialize(row, key);
-                if (applyGoogleNewsDestinations(article, destinations)) {
+                if (repairRecord(article)) {
                     record(key, row.row_key, row.position, article);
                     changed.add(key);
                 }
             }
         }
-        // Snapshot metadata is partitioned into rows; touch only the derived
-        // article snapshots, never personal state or identity ledgers.
+        // Snapshot metadata is partitioned into rows. Update only derived article snapshots.
         for (const key of ['universalPrefetchTargets', 'topStoriesState', 'storyBriefings']) {
             if (!info(key)) continue;
             for (const row of sql("SELECT * FROM metadata_entries WHERE collection=? AND instr(value,'news.google.com')>0").all(key)) {
                 const value = materialize(row, key);
-                if (applyGoogleNewsDestinations(value, destinations)) { record(key, row.row_key, row.position, value); changed.add(key); }
+                if (repairRecord(value)) { record(key, row.row_key, row.position, value); changed.add(key); }
             }
         }
         for (const key of [...changed]) {
             refreshDigest(key);
             for (const [parent, fields] of Object.entries(CHILD_FIELDS)) {
                 if ([...fields].some(field => key === `$${parent}.${field}`) && info(parent)) { refreshDigest(parent); changed.add(parent); }
+            }
+        }
+        for (const key of ['readStates', 'hiddenStates', 'savedStates', 'boardStates']) {
+            if (info(key)?.shape !== 'array') continue;
+            const raw = read(key);
+            const state = typeof raw === 'string' ? JSON.parse(raw) : raw;
+            const present = new Set(state.map(normalizeStateUrl));
+            const updated = [];
+            for (const link of state) {
+                updated.push(link);
+                const destination = acceptedAliases.get(normalizeStateUrl(link));
+                if (destination && !present.has(destination)) {
+                    updated.push(destination);
+                    present.add(destination);
+                }
+            }
+            if (updated.length !== state.length) {
+                write(key, info(key).encoding === 'json' ? JSON.stringify(updated) : updated);
+                changed.add(key);
             }
         }
         return { changed: [...changed] };

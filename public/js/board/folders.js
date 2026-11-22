@@ -20,14 +20,20 @@ const ReaderBoardFolders = {
                     } catch {}
                     return this.normalizeStateLink(raw);
                 },
+                boardArticleIdentities(article) {
+                    const ids = [this.boardIdentity(article)];
+                    if (/^https?:\/\/news\.google\.com\//i.test(article?.originalLink || '')) {
+                        ids.push(this.boardIdentity(article.link), this.boardIdentity(article.originalLink));
+                    }
+                    return ids.filter(Boolean);
+                },
                 isOnBoard(article) {
-                    const id = this.boardIdentity(article);
-                    return !!id && ReaderBoardLookup.members(this.boardStates, url => this.boardIdentity(url)).has(id);
+                    const members = ReaderBoardLookup.members(this.boardStates, url => this.boardIdentity(url));
+                    return this.boardArticleIdentities(article).some(id => members.has(id));
                 },
                 boardFolderFor(article) {
-                    const id = this.boardIdentity(article);
-                    if (!id) return null;
-                    return ReaderBoardLookup.folders(this.userPreferences.boardFolderMappings || {}, url => this.boardIdentity(url)).get(id) || null;
+                    const folders = ReaderBoardLookup.folders(this.userPreferences.boardFolderMappings || {}, url => this.boardIdentity(url));
+                    return this.boardArticleIdentities(article).map(id => folders.get(id)).find(Boolean) || null;
                 },
                 openBoardModal(article) {
                     if (this.boardSavePending) return;
@@ -38,14 +44,15 @@ const ReaderBoardFolders = {
                 },
 
                 applyBoardFolderResult(data, article, folder) {
-                    const id = this.boardIdentity(article);
+                    const ids = new Set(this.boardArticleIdentities(article));
+                    const matches = value => this.boardArticleIdentities(value).some(id => ids.has(id));
                     if (data.thread_id) {
                         if (Object.hasOwn(data, 'folder')) folder = data.folder;
-                        const existing = this.boardStates.find(url => this.boardIdentity(url) === id);
-                        if (folder === null) this.boardStates = this.boardStates.filter(url => this.boardIdentity(url) !== id);
+                        const existing = this.boardStates.find(matches);
+                        if (folder === null) this.boardStates = this.boardStates.filter(url => !matches(url));
                         else if (!existing) this.boardStates = [...this.boardStates, data.url];
                         const mappings = { ...(this.userPreferences.boardFolderMappings || {}) };
-                        for (const url of Object.keys(mappings)) if (this.boardIdentity(url) === id) delete mappings[url];
+                        for (const url of Object.keys(mappings)) if (matches(url)) delete mappings[url];
                         if (folder !== null) mappings[data.url] = folder;
                         this.userPreferences.boardFolderMappings = mappings;
                         if (folder !== null) this.userPreferences.boardFolders = [...new Set([...(this.userPreferences.boardFolders || []), folder])];
@@ -58,7 +65,7 @@ const ReaderBoardFolders = {
                     if (this.selectedFilterType === 'board' && (folder === null || (this.selectedFilterValue && this.selectedFilterValue !== folder))) {
                         const container = document.getElementById('scroll-container');
                         const scrollTop = container?.scrollTop;
-                        this.articles = this.articles.filter(item => this.boardIdentity(item) !== id);
+                        this.articles = this.articles.filter(item => !matches(item));
                         if (container && this.$nextTick) this.$nextTick(() => { container.scrollTop = scrollTop; });
                     }
                 },
@@ -72,7 +79,8 @@ const ReaderBoardFolders = {
 
                     const source = this.boardModalArticle;
                     const id = this.boardIdentity(source);
-                    const optimisticUrl = source.originalLink || source.link;
+                    const fromGoogleNews = /^https?:\/\/news\.google\.com\//i.test(source.originalLink || '');
+                    const optimisticUrl = fromGoogleNews ? source.link : source.originalLink || source.link;
 
                     /*
                      * Optimistic Board mutation:
@@ -120,7 +128,7 @@ const ReaderBoardFolders = {
                     try {
                         // Board membership needs metadata only, never rendered
                         // HTML or embedded image payloads.
-                        const article = {};
+                        const article = fromGoogleNews ? { originalLink: source.originalLink.slice(0, 4096) } : {};
 
                         for (const key of [
                             'link',

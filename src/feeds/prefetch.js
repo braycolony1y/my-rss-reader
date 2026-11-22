@@ -1,6 +1,7 @@
 import {prefetchArticleStrategies} from './prefetch-strategies.js';
 import { selectUniversalPrefetchTargets } from './prefetch-targets.js';
 import { createNextArticlesPrefetch } from './next-articles-prefetch.js';
+import { isGoogleNewsArticleUrl } from '../articles/search-destination.js';
 import { normalizeArticleSourceUrl } from '../article-source-state.js';
 import { safeHttpUrl, normalizeStateUrl, isInvalidImage, isRedditUrl } from '../utils/article-utils.js';
 import sourceRegistry from '../sources/index.js';
@@ -145,8 +146,9 @@ export function createArticlePrefetch({
                 const url = art.link || art.originalLink;
                 if (!url || isRedditUrl(url)) continue;
                 let cached = await getCachedArticle(url);
-                if (!cached && googleNews.googleNewsUrlCache && googleNews.googleNewsUrlCache.has(url) && googleNews.googleNewsUrlCache.get(url).resolvedUrl) {
-                    cached = await getCachedArticle(googleNews.googleNewsUrlCache.get(url).resolvedUrl);
+                if (!cached && isGoogleNewsArticleUrl(url)) {
+                    const destination = await googleNews?.resolveGoogleNewsUrl?.(url, art, { cacheOnly: true });
+                    if (destination && destination !== url) cached = await getCachedArticle(destination);
                 }
                 if (cached && cached.content) {
                     enqueuePrefetchedSummary(url, art, 2);

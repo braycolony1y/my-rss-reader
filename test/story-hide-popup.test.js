@@ -27,15 +27,21 @@ async function setup({ keywords = ['giá vàng'], suggestions = [{ keyword: 'vin
     };
     const context = vm.createContext({ console, crypto, AbortController, setTimeout, clearTimeout, fetch, URLSearchParams,
         window: { innerWidth: 1440, innerHeight: 900 }, document: { querySelector: () => null, activeElement: null } });
+    vm.runInContext(await readFile('public/js/feeds/reading-state.js', 'utf8'), context);
     vm.runInContext(await readFile('public/js/smart/feedback-picker.js', 'utf8') + '\nthis.factory = ReaderSmartFeedback;', context);
     const ui = context.factory.create();
     const toggles = [];
     Object.assign(ui, {
+        ...vm.runInContext('ReaderFeedsReadingState.create()', context),
         selectedFilterType: 'smart', articles: [story, other], hiddenStates: [], blockedKeywords: [], blockedKeywordsDraft: [], contentFilterSettingsOpen: false,
         $nextTick: () => {}, stripHtml: value => value,
         normalizeKeywordPhrase: value => String(value || '').normalize('NFKC').toLowerCase().trim(),
         normalizeKeywordList(values) { return [...new Set(values.map(value => this.normalizeKeywordPhrase(value)).filter(Boolean))]; },
-        async toggleState(list, link) { toggles.push([list, link]); const i = this[list].indexOf(link); if (i < 0) this[list].push(link); else this[list].splice(i, 1); },
+        async toggleState(list, article) {
+            toggles.push([list, article]);
+            if (this.hasArticleState(list, article)) this[list] = this[list].filter(link => link !== article.link && link !== article.originalLink);
+            else this[list].push(article.link);
+        },
         fetchData: async () => ({}), openContentFilterSettings() { this.opened = true; },
     });
     return { ui, calls, toggles, stored: () => stored, context };
@@ -117,12 +123,26 @@ test('with no keyword chosen the default action hides just this story, and Undo 
     ui.openSmartFeedback(story, {});
     await settle();
     await ui.confirmSmartFeedback();
-    assert.deepEqual(toggles, [['hiddenStates', story.link]]);
+    assert.deepEqual(toggles.map(([list, article]) => [list, article.link]), [['hiddenStates', story.link]]);
     assert.ok(!calls.some(call => call.path === '/api/content-filter-settings'));
     assert.equal(ui.isSmartFeedbackHidden(story), true);
     await ui.undoSmartFeedback();
-    assert.deepEqual(toggles, [['hiddenStates', story.link], ['hiddenStates', story.link]]);
+    assert.deepEqual(toggles.map(([list, article]) => [list, article.link]), [['hiddenStates', story.link], ['hiddenStates', story.link]]);
     assert.equal(ui.isSmartFeedbackHidden(story), false);
+});
+
+test('hiding and undoing a repaired story honor its wrapper alias', async () => {
+    const { ui, toggles } = await setup();
+    const article = { ...story, originalLink: 'https://news.google.com/read/stable' };
+    ui.hiddenStates = [article.originalLink];
+    ui.openSmartFeedback(article, {});
+    await settle();
+    await ui.confirmSmartFeedback();
+    assert.equal(toggles.length, 0, 'the wrapper already hides this story');
+    await ui.undoSmartFeedback();
+    assert.equal(toggles.length, 1);
+    assert.equal(toggles[0][1].originalLink, article.originalLink);
+    assert.deepEqual(ui.hiddenStates, []);
 });
 
 test('suggestion failure still allows typing; cancel and context changes close without writing', async () => {

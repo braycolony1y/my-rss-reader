@@ -1,3 +1,7 @@
+export function isExactGoogleNewsDecode(source) {
+    return source === 'offline' || source === 'batchexecute' || source === 'browser';
+}
+
 // A site-restricted Google News feed must resolve back to that publisher.
 export function matchesGoogleNewsPublisher(destination, hints = {}) {
     try {
@@ -31,8 +35,9 @@ export async function decodeGoogleNewsIndividually(decoder, urls) {
 
 export function repairGoogleNewsRecord(article) {
     if (!article || typeof article !== 'object') return article;
-    const related = (article.relatedArticles || []).filter(item => matchesGoogleNewsPublisher(item.link, item));
-    const validPrimary = matchesGoogleNewsPublisher(article.link, article);
+    const valid = item => isExactGoogleNewsDecode(item.googleNewsDecodeSource) || matchesGoogleNewsPublisher(item.link, item);
+    const related = (article.relatedArticles || []).filter(valid);
+    const validPrimary = valid(article);
     if (validPrimary && related.length === (article.relatedArticles || []).length) return article;
     const primary = validPrimary ? article : related.shift();
     if (!primary) return null;

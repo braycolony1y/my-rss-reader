@@ -2,9 +2,10 @@ import { readMany } from '../database/read-many.js';
 import { feedPageKey, selectFeedPage, registerFeedPagePost } from '../feeds/page-selection.js';
 import { hydratePersonalArticles } from '../feeds/personal-articles.js';
 import { canonicalIdentity } from '../board/thread-model.js';
+import { isGoogleNewsArticleUrl } from '../articles/search-destination.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { normalizeBlockedKeywordEntries, articleContentFilterMatches } from '../filters/content-filter.js';
-import { NormalizedSet, NormalizedMap, mapWithConcurrency } from '../utils/article-utils.js';
+import { NormalizedSet, NormalizedMap, mapWithConcurrency, hasArticleState, getArticleState } from '../utils/article-utils.js';
 import { cleanStoredCluster, calculateHotness } from '../../smart-news.js';
 
 const STORIES_FILTER_TYPES = new Set(['smart', 'stories', 'top', 'classic']);
@@ -100,7 +101,7 @@ export function registerDataRoutes({
             unreadSnapshot.read !== readStates || unreadSnapshot.hidden !== hiddenStates) {
             const counts = { feeds: {}, categories: {}, total: 0 };
             for (const article of visibleArticles) {
-                if (readSet.has(article.link) || hiddenSet.has(article.link)) continue;
+                if (hasArticleState(readSet, article) || hasArticleState(hiddenSet, article)) continue;
                 counts.total++;
                 counts.feeds[article.feedUrl] = (counts.feeds[article.feedUrl] || 0) + 1;
                 const category = article.feedCategory || 'Others';
@@ -166,7 +167,7 @@ export function registerDataRoutes({
                     cleaned.hotness = calculateHotness(allArticles);
                     return cleaned;
                 })
-                .filter(article => !hiddenSet.has(article.link) && !articleIsBlocked(article));
+                .filter(article => !hasArticleState(hiddenSet, article) && !articleIsBlocked(article));
             if (filterValue === 'news') {
                 filteredArticles = filteredArticles.filter(article => ['news_vietnam', 'news_global'].includes(article.smartCategory));
             } else if (filterValue === 'finance') {
@@ -199,9 +200,9 @@ export function registerDataRoutes({
                 filteredArticles = filteredArticles.filter(article => article.smartCategory === filterValue);
             }
             if (hideRead) {
-                filteredArticles = filteredArticles.filter(article => !readSet.has(article.link)).map(article => {
+                filteredArticles = filteredArticles.filter(article => !hasArticleState(readSet, article)).map(article => {
                     if (!article.relatedArticles || !article.relatedArticles.length) return article;
-                    const unreadRelated = article.relatedArticles.filter(r => !readSet.has(r.link));
+                    const unreadRelated = article.relatedArticles.filter(r => !hasArticleState(readSet, r));
                     if (unreadRelated.length === article.relatedArticles.length) return article;
                     const sources = [...new Set([article.feedTitle, ...unreadRelated.map(r => r.feedTitle)].filter(Boolean))];
                     return {
@@ -219,8 +220,8 @@ export function registerDataRoutes({
                 (new Date(b.pubDate || 0).getTime()) - (new Date(a.pubDate || 0).getTime())
             );
         } else if (filterType === 'hidden') {
-            filteredArticles = filteredArticles.filter(a => hiddenSet.has(a.link))
-                .sort((a, b) => hiddenIndex.get(b.link) - hiddenIndex.get(a.link));
+            filteredArticles = filteredArticles.filter(a => hasArticleState(hiddenSet, a))
+                .sort((a, b) => getArticleState(hiddenIndex, b) - getArticleState(hiddenIndex, a));
         } else {
             if (['recent', 'saved', 'board'].includes(filterType)) {
                 const wanted = filterType === 'board'
@@ -231,14 +232,14 @@ export function registerDataRoutes({
                 filteredArticles = await hydratePersonalArticles({db:env.RSS_DATA,articles:filteredArticles,wanted,filterType,articleIsBlocked});
             }
 
-            if (!simpleStreamingView) filteredArticles = filteredArticles.filter(a => !hiddenSet.has(a.link));
+            if (!simpleStreamingView) filteredArticles = filteredArticles.filter(a => !hasArticleState(hiddenSet, a));
             if (filterType === 'recent') {
                 const oneWeekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
                 const hasRecentTimeline = Object.keys(recentReadAt).length > 0;
                 filteredArticles = filteredArticles
                     .filter(a => {
-                        if (!readSet.has(a.link)) return false;
-                        const explicitReadAt = Number(recentReadIndex?.get(a.link) || 0);
+                        if (!hasArticleState(readSet, a)) return false;
+                        const explicitReadAt = Number(getArticleState(recentReadIndex, a) || 0);
                         if (explicitReadAt) return explicitReadAt > oneWeekAgo;
                         // Migration fallback: keep the old seven-day Recently Read
                         // population until each article naturally receives an explicit
@@ -247,25 +248,29 @@ export function registerDataRoutes({
                     })
                     .sort((a, b) => {
                         if (hasRecentTimeline) {
-                            const aAt = Number(recentReadIndex.get(a.link) || 0);
-                            const bAt = Number(recentReadIndex.get(b.link) || 0);
+                            const aAt = Number(getArticleState(recentReadIndex, a) || 0);
+                            const bAt = Number(getArticleState(recentReadIndex, b) || 0);
                             if (aAt || bAt) return (bAt > 0) - (aAt > 0) || bAt - aAt;
                         }
-                        return Number(readIndex.get(b.link) || 0) - Number(readIndex.get(a.link) || 0);
+                        return Number(getArticleState(readIndex, b) || 0) - Number(getArticleState(readIndex, a) || 0);
                     });
             } else if (filterType === 'saved') {
-                filteredArticles = filteredArticles.filter(a => savedSet.has(a.link));
-                if (hideRead) filteredArticles = filteredArticles.filter(a => !readSet.has(a.link));
-                filteredArticles.sort((a, b) => savedIndex.get(b.link) - savedIndex.get(a.link));
+                filteredArticles = filteredArticles.filter(a => hasArticleState(savedSet, a));
+                if (hideRead) filteredArticles = filteredArticles.filter(a => !hasArticleState(readSet, a));
+                filteredArticles.sort((a, b) => getArticleState(savedIndex, b) - getArticleState(savedIndex, a));
             } else if (filterType === 'board') {
-                filteredArticles = deduplicateBoardArticles(filteredArticles.filter(a => boardSet.has(a.link)));
+                filteredArticles = deduplicateBoardArticles(filteredArticles.filter(a => hasArticleState(boardSet, a)));
                 if (filterValue) {
                     const mappings = userPreferences.boardFolderMappings || {};
                     const folders = new Map(Object.entries(mappings).map(([url, folder]) => [canonicalIdentity(url), folder]));
-                    filteredArticles = filteredArticles.filter(a => folders.get(canonicalIdentity(a)) === filterValue);
+                    filteredArticles = filteredArticles.filter(article => {
+                        const folder = folders.get(canonicalIdentity(article));
+                        if (folder) return folder === filterValue;
+                        return isGoogleNewsArticleUrl(article.originalLink) && folders.get(canonicalIdentity(article.originalLink)) === filterValue;
+                    });
                 }
-                if (hideRead) filteredArticles = filteredArticles.filter(a => !readSet.has(a.link));
-                filteredArticles.sort((a, b) => boardIndex.get(b.link) - boardIndex.get(a.link));
+                if (hideRead) filteredArticles = filteredArticles.filter(a => !hasArticleState(readSet, a));
+                filteredArticles.sort((a, b) => getArticleState(boardIndex, b) - getArticleState(boardIndex, a));
             } else if (filterType === 'category') {
                 // Fast path below performs this predicate while streaming
                 // directly into the requested page.
@@ -325,8 +330,8 @@ export function registerDataRoutes({
                     }
                     forumSnapshot = { articles: allArticles, diemBao, chuyenTro };
                 }
-                const diemBaoPool = forumSnapshot.diemBao.filter(a => !hiddenSet.has(a.link));
-                const chuyenTroPool = forumSnapshot.chuyenTro.filter(a => !hiddenSet.has(a.link));
+                const diemBaoPool = forumSnapshot.diemBao.filter(a => !hasArticleState(hiddenSet, a));
+                const chuyenTroPool = forumSnapshot.chuyenTro.filter(a => !hasArticleState(hiddenSet, a));
 
                 // Helper to guarantee exactly 5 articles from a pre-filtered pool
                 const getTop5 = (pool) => {
@@ -361,7 +366,7 @@ export function registerDataRoutes({
                 && !filterType.startsWith('views_')
             ) {
                 filteredArticles = filteredArticles.filter(
-                    a => !readSet.has(a.link)
+                    a => !hasArticleState(readSet, a)
                 );
             }
         }

@@ -1,5 +1,12 @@
 import { createConcurrencyLimiter } from '../runtime/concurrency-limiter.js';
 import { decodeHTMLEntities } from '../../feed-parsers.js';
+import { cleanUrl } from '../utils/article-utils.js';
+
+const googleHost = /(^|\.)google\.(?:com|[a-z]{2}|com\.[a-z]{2}|co\.[a-z]{2})$/;
+const nonArticleDomains = ['googleusercontent.com', 'gstatic.com', 'googleapis.com', 'googleweblight.com',
+    'youtube.com', 'youtu.be', 'doubleclick.net', 'googlesyndication.com', 'googleadservices.com'];
+const hostname = url => url.hostname.toLowerCase().replace(/\.$/, '');
+const nonArticleHost = host => nonArticleDomains.some(domain => host === domain || host.endsWith('.' + domain));
 
 export function googleNewsArticleId(value) {
     try {
@@ -13,20 +20,17 @@ export function cleanGoogleNewsDestination(value) {
     try {
         const url = new URL(value);
         if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return '';
-        const host = url.hostname.toLowerCase().replace(/\.$/, '');
-        if (/(^|\.)google\.(?:com|[a-z]{2}|com\.[a-z]{2}|co\.[a-z]{2})$/.test(host)
-            || ['googleusercontent.com', 'gstatic.com', 'googleapis.com', 'googleweblight.com',
-                'youtube.com', 'youtu.be', 'doubleclick.net', 'googlesyndication.com', 'googleadservices.com']
-                .some(domain => host === domain || host.endsWith('.' + domain))) return '';
+        const host = hostname(url);
+        if (googleHost.test(host) || nonArticleHost(host)) return '';
         // Preserve signed/encoded publisher values byte for byte. URLSearchParams
         // would rewrite spaces, escapes and punctuation in unrelated parameters.
-        const source = String(value).trim().replace(/#.*$/, '');
+        const source = cleanUrl(value, { preserveQuery: true });
         const queryAt = source.indexOf('?');
         if (queryAt < 0) return source;
         const kept = source.slice(queryAt + 1).split('&').filter(part => {
             let key = part.split('=', 1)[0];
             try { key = decodeURIComponent(key.replace(/\+/g, ' ')); } catch { }
-            return !/^(?:utm_.+|gclid|dclid|gclsrc|_ga|_gl|gbraid|wbraid)$/i.test(key);
+            return !/^(?:gclid|dclid|gclsrc|_ga|_gl|gbraid|wbraid)$/i.test(key);
         });
         return source.slice(0, queryAt) + (kept.length ? '?' + kept.join('&') : '');
     } catch { return ''; }
@@ -37,9 +41,24 @@ export function cleanGoogleNewsDestination(value) {
 export function isRejectedGoogleNewsDestination(value) {
     try {
         const url = new URL(value);
-        return ['http:', 'https:'].includes(url.protocol) && !googleNewsArticleId(value)
-            && !cleanGoogleNewsDestination(value);
+        return ['http:', 'https:'].includes(url.protocol) && nonArticleHost(hostname(url));
     } catch { return false; }
+}
+
+export function googleNewsWallError(value, status) {
+    if (status === 429) return 'Google News HTTP 429';
+    try {
+        const url = new URL(value);
+        const host = hostname(url);
+        if (!googleHost.test(host)) return '';
+        if (/^\/sorry(?:\/|$)/i.test(url.pathname)) return 'Google News HTTP 429 rate-limit wall';
+        if (/^(?:consent|accounts)\./.test(host)) return 'Google News consent or sign-in wall';
+    } catch { }
+    return '';
+}
+
+export function googleNewsTransientError(message) {
+    return Object.assign(Error(message), { code: 'GOOGLE_NEWS_WALL' });
 }
 
 // Old IDs are protobuf envelopes, with the publisher URL in a length-delimited
@@ -91,20 +110,31 @@ export function createGoogleNewsDecoder({ fetchImpl = (...args) => fetch(...args
     const metadata = new Map();
     let blockedUntil = 0, lastStart = -Infinity, sequence = 0;
     let queue = [], flushing = false;
-    async function request(url, options = {}) {
+    function blockRequests(retryAfter) {
+        const duration = /^\d+$/.test(retryAfter || '') ? Number(retryAfter) * 1000 : Date.parse(retryAfter || '') - now();
+        blockedUntil = Math.max(blockedUntil, now() + Math.max(120000, Number.isFinite(duration) ? duration : 0));
+    }
+    async function request(url, options = {}, checkRedirect = false) {
         return limiter.run(async () => {
-            if (now() < blockedUntil) throw Error('Google News HTTP 429 backoff active');
+            if (now() < blockedUntil) throw googleNewsTransientError('Google News HTTP 429 backoff active');
             const delay = intervalMs - (now() - lastStart);
             if (delay > 0) await sleep(delay);
-            if (now() < blockedUntil) throw Error('Google News HTTP 429 backoff active');
+            if (now() < blockedUntil) throw googleNewsTransientError('Google News HTTP 429 backoff active');
             lastStart = now();
             const response = await fetchImpl(url, { ...options, headers: { ...headers, ...options.headers }, signal: AbortSignal.timeout(timeoutMs) });
+            const redirect = checkRedirect && response.status >= 300 && response.status < 400 && response.headers?.get('location');
+            const redirectUrl = redirect ? new URL(redirect, response.url || url).href : '';
+            const wall = googleNewsWallError(response.url, response.status) || googleNewsWallError(redirectUrl);
+            if (wall) {
+                blockRequests(response.headers?.get('retry-after'));
+                await response.body?.cancel();
+                throw googleNewsTransientError(wall);
+            }
+            if (checkRedirect && isRejectedGoogleNewsDestination(response.url)) {
+                await response.body?.cancel();
+                throw Error('Google News metadata request redirected to a non-article URL');
+            }
             if (!response.ok) {
-                if (response.status === 429) {
-                    const retry = response.headers?.get('retry-after');
-                    const duration = /^\d+$/.test(retry || '') ? Number(retry) * 1000 : Date.parse(retry || '') - now();
-                    blockedUntil = now() + Math.max(120000, Number.isFinite(duration) ? duration : 0);
-                }
                 await response.body?.cancel();
                 throw Error('Google News HTTP ' + response.status);
             }
@@ -117,10 +147,9 @@ export function createGoogleNewsDecoder({ fetchImpl = (...args) => fetch(...args
         const cached = metadata.get(id);
         if (cached && now() - cached.at < 300000) return cached.promise;
         const promise = (async () => {
-            const page = await request('https://news.google.com/articles/' + id);
+            const page = await request('https://news.google.com/articles/' + id, {}, true);
             const destination = cleanGoogleNewsDestination(page.url);
             if (destination) return { destination };
-            if (isRejectedGoogleNewsDestination(page.url)) return { permanentFailure: true };
             const attr = name => decodeHTMLEntities(page.text.match(new RegExp('\\s' + name + '=["\']([^"\']+)["\']', 'i'))?.[1] || '');
             const timestamp = attr('data-n-a-ts'), signature = attr('data-n-a-sg');
             if (!/^\d+$/.test(timestamp) || !signature) throw Error('Google News destination metadata unavailable');
@@ -143,10 +172,15 @@ export function createGoogleNewsDecoder({ fetchImpl = (...args) => fetch(...args
             if (['wrb.fr', 'w779db'].includes(node[0]) && node[1] === 'Fbv4je') {
                 try {
                     const data = JSON.parse(node[2]);
-                    const destination = data[0] === 'garturlres' ? cleanGoogleNewsDestination(data[1]) : '';
                     const tag = items.length === 1 ? items[0].tag : node[6];
-                    if (destination && items.some(item => item.tag === tag)) found.set(tag, destination);
-                    else if (data[0] === 'garturlres' && isRejectedGoogleNewsDestination(data[1]) && items.some(item => item.tag === tag)) found.set(tag, { permanentFailure: true });
+                    if (data[0] !== 'garturlres' || !items.some(item => item.tag === tag)) return;
+                    const wall = googleNewsWallError(data[1]);
+                    const destination = cleanGoogleNewsDestination(data[1]);
+                    if (wall) {
+                        blockRequests();
+                        found.set(tag, { status: false, message: wall });
+                    } else if (destination) found.set(tag, { status: true, decoded_url: destination });
+                    else if (isRejectedGoogleNewsDestination(data[1])) found.set(tag, { status: false, permanentFailure: true });
                 } catch { }
             } else for (const child of node) visit(child);
         };
@@ -163,21 +197,27 @@ export function createGoogleNewsDecoder({ fetchImpl = (...args) => fetch(...args
                 for (const item of batch) {
                     try {
                         item.params = await parameters(item.url);
-                        if (item.params.permanentFailure) item.resolve({ status: false, permanentFailure: true });
-                        else if (item.params.destination) item.resolve({ status: true, decoded_url: item.params.destination });
+                        if (item.params.destination) item.resolve({ status: true, decoded_url: item.params.destination });
                         else ready.push(item);
                     } catch (error) { item.resolve({ status: false, message: error.message }); }
                 }
                 if (!ready.length) continue;
                 try {
                     const results = await rpc(ready);
-                    let singleRetries = 0;
+                    let singleRetries = 2;
                     for (const item of ready) {
                         // Never associate a batch by response order. If a server
                         // omits correlation IDs, reuse metadata in a single RPC.
-                        const destination = results.get(item.tag) || (ready.length > 1 && singleRetries++ < 2 ? (await rpc([item])).get(item.tag) : '');
-                        item.resolve(destination?.permanentFailure ? { status: false, permanentFailure: true }
-                            : destination ? { status: true, decoded_url: destination } : { status: false, message: 'Google News did not return a publisher destination' });
+                        let destination = results.get(item.tag);
+                        if (!destination && ready.length > 1 && singleRetries > 0) {
+                            singleRetries--;
+                            try { destination = (await rpc([item])).get(item.tag); }
+                            catch (error) {
+                                item.resolve({ status: false, message: error.message });
+                                continue;
+                            }
+                        }
+                        item.resolve(destination || { status: false, message: 'Google News did not return a publisher destination' });
                     }
                 } catch (error) { for (const item of ready) item.resolve({ status: false, message: error.message }); }
             }
@@ -194,5 +234,5 @@ export function createGoogleNewsDecoder({ fetchImpl = (...args) => fetch(...args
         });
     }
     return { decode, decodeBatch: urls => Promise.all(urls.map(async source_url => ({ ...await decode(source_url), source_url }))),
-        get blockedUntil() { return blockedUntil; } };
+        blockRequests, get blockedUntil() { return blockedUntil; } };
 }

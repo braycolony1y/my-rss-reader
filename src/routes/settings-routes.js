@@ -2,6 +2,41 @@ import { readMany } from '../database/read-many.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { normalizeStateUrl } from '../utils/article-utils.js';
 import { publishAppEvent } from '../events.js';
+import { cleanGoogleNewsDestination, googleNewsArticleId } from '../articles/google-news-decode.js';
+
+async function articleStateAliases(db, links) {
+    const stateLinks = new Set(links.map(normalizeStateUrl));
+    const wrappers = [...stateLinks].filter(link => googleNewsArticleId(link));
+    const aliases = new Map();
+    if (wrappers.length) {
+        const mappings = db.getEntries
+            ? await db.getEntries('googleNewsUrlCache', wrappers)
+            : await db.get('googleNewsUrlCache', { type: 'json' });
+        for (const wrapper of wrappers) {
+            const mapping = mappings?.[wrapper];
+            if (mapping?.permanentFailure) continue;
+            const stored = mapping?.resolvedUrl;
+            const canonical = cleanGoogleNewsDestination(stored);
+            if (!canonical) continue;
+            const destination = [stored, canonical].map(normalizeStateUrl).find(link => stateLinks.has(link));
+            if (destination) aliases.set(wrapper, destination);
+        }
+    }
+    return aliases;
+}
+
+async function capArticleStates(db, links) {
+    const limit = 2000;
+    if (links.length <= limit) return links;
+    const aliases = await articleStateAliases(db, links);
+    const identity = value => {
+        const link = normalizeStateUrl(value);
+        return aliases.get(link) || link;
+    };
+    const keep = new Set();
+    for (let i = links.length - 1; i >= 0 && keep.size < limit; i--) keep.add(identity(links[i]));
+    return links.filter(link => keep.has(identity(link)));
+}
 
 function parseVozReadCursor(value) {
     if (value == null) return null;
@@ -48,10 +83,13 @@ export function registerSettingsRoutes({
             const values=await readMany(env.RSS_DATA,['userPreferences','readStates','savedStates','boardStates',
                 'hiddenStates','recentReadAt','categoryOrder'],{shared:true});
             const prefs=values.userPreferences||{};
+            const hiddenStates = values.hiddenStates || [];
+            const hiddenStateAliases = await articleStateAliases(env.RSS_DATA, hiddenStates);
             res.setHeader('Cache-Control', 'no-store');
             res.json({
                 readStates:values.readStates||[],savedStates:values.savedStates||[],boardStates:values.boardStates||[],
-                hiddenStates:values.hiddenStates||[],recentReadAt:values.recentReadAt||{},categoryOrder:values.categoryOrder||[],
+                hiddenStates, hiddenStateAliases: Object.fromEntries(hiddenStateAliases),
+                recentReadAt:values.recentReadAt||{},categoryOrder:values.categoryOrder||[],
                 userPreferences:prefs
             });
         } catch (e) {
@@ -137,7 +175,7 @@ export function registerSettingsRoutes({
                 stateArray.push(normLink);
             }
         }
-        if (stateArray.length > 2000) stateArray.shift();
+        stateArray = await capArticleStates(env.RSS_DATA, stateArray);
         await env.RSS_DATA.put(list, JSON.stringify(stateArray));
 
         if (list === 'readStates' && forceAdd) {
@@ -187,8 +225,8 @@ export function registerSettingsRoutes({
             links.forEach(link => stateSet.add(normalizeStateUrl(link)));
         }
 
-        stateArray = Array.from(stateSet);
-        while (stateArray.length > 2000) stateArray.shift();
+        stateArray = await capArticleStates(env.RSS_DATA, Array.from(stateSet));
+        stateSet = new Set(stateArray);
 
         await env.RSS_DATA.put(list, JSON.stringify(stateArray));
 

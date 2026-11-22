@@ -30,7 +30,7 @@ function safeHttpUrl(value) {
     }
 }
 
-function cleanUrl(url) {
+function cleanUrl(url, { preserveQuery = false } = {}) {
     if (!url) return '';
     const normalizedUrl = normalizeArticleSourceUrl(url);
     try {
@@ -40,6 +40,16 @@ function cleanUrl(url) {
         if (sourceHandler && sourceHandler.cleanUrl) {
             let handledUrl = sourceHandler.cleanUrl(u);
             if (handledUrl) return normalizeArticleSourceUrl(handledUrl);
+        }
+
+        if (preserveQuery) {
+            const queryAt = normalizedUrl.indexOf('?');
+            if (queryAt < 0) return normalizedUrl;
+            const parts = normalizedUrl.slice(queryAt + 1).split('&').filter(part => {
+                const key = new URLSearchParams(part).keys().next().value || '';
+                return !/^(?:utm_.*|ref)$/i.test(key);
+            });
+            return normalizedUrl.slice(0, queryAt) + (parts.length ? '?' + parts.join('&') : '');
         }
 
         let params = new URLSearchParams(u.search);
@@ -177,6 +187,14 @@ class NormalizedMap extends Map {
         super(iterable ? iterable.map(([key, value]) => [normalizeStateUrl(key), value]) : []);
     }
     get(key) { return super.get(normalizeStateUrl(key)); }
+}
+
+export function hasArticleState(state, article) {
+    return state.has(article.link) || Boolean(article.originalLink && article.originalLink !== article.link && state.has(article.originalLink));
+}
+
+export function getArticleState(index, article) {
+    return index?.get(article.link) ?? (article.originalLink ? index?.get(article.originalLink) : undefined);
 }
 
 function normalizedHostname(value) {

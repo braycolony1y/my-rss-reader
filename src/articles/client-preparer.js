@@ -1,4 +1,5 @@
-import { applyGoogleNewsDestinations } from './google-news-repair.js';
+import { cleanGoogleNewsDestination } from './google-news-decode.js';
+import { setGoogleNewsArticleDestination } from './google-news-repair.js';
 import { normalizeArticleTitle } from '../../feed-parsers.js';
 import { normalizeArticleSourceUrl } from '../article-source-state.js';
 import { isGoogleNewsArticleUrl, isGoogleNewsHostedThumbnail } from './search-destination.js';
@@ -20,9 +21,10 @@ export function createClientArticlePreparer({ resolveGoogleNewsUrl, getLastKnown
         if (isGoogleNewsArticleUrl(prepared.link)) {
             prepared.originalLink = prepared.link;
             const wrapper = prepared.link;
-            const destination = await resolveGoogleNewsUrl(wrapper, prepared, { backgroundResolve: true, isSubItem });
-            applyGoogleNewsDestinations(prepared, { [wrapper]: destination }, { recursive: false });
-            if (!isGoogleNewsArticleUrl(prepared.link)) prepared.feedIcon = publisherIcon(prepared.link);
+            const destination = cleanGoogleNewsDestination(
+                await resolveGoogleNewsUrl(wrapper, prepared, { backgroundResolve: true, isSubItem })
+            );
+            if (destination) setGoogleNewsArticleDestination(prepared, destination);
         }
         if (safeHttpUrl(prepared.link) && (!prepared.feedIcon || /icons\.duckduckgo\.com\/ip3\//i.test(prepared.feedIcon))) {
             prepared.feedIcon = publisherIcon(prepared.link);

@@ -7,8 +7,8 @@ function fixture(fetch) {
         setTimeout:()=>0, clearTimeout(){}, setInterval:()=>0, clearInterval(){},
         window:{history:{replaceState(){}}}, document:{getElementById:()=>({scrollTo(){}})},fetch });
     vm.runInContext(fs.readFileSync(new URL('../public/js/article/prefetch-lifecycle.js',import.meta.url),'utf8'),context);
-    for(const file of ['list-publication','page-session','requests','pagination','list'])vm.runInContext(fs.readFileSync(new URL(`../public/js/feeds/${file}.js`,import.meta.url),'utf8'),context);
-    const app=vm.runInContext('ReaderFeedsList.create()',context);
+    for(const file of ['list-publication','page-session','requests','pagination','list','reading-state'])vm.runInContext(fs.readFileSync(new URL(`../public/js/feeds/${file}.js`,import.meta.url),'utf8'),context);
+    const app=vm.runInContext('Object.assign(ReaderFeedsList.create(), ReaderFeedsReadingState.create())',context);
     app.publication = vm.runInContext('ReaderListPublication', context);
     Object.assign(app,{selectedFilterType:'category',selectedFilterValue:'Forums',isMobile:true,
         hideRead:false,searchQuery:'',articles:[{link:'old'}],pendingReadLinks:[],pendingUnreadLinks:new Set(),pendingRecentReadLinks:new Set(),
@@ -111,4 +111,17 @@ test('lean Stories requests preserve held metadata and reconcile authoritative s
     assert.equal(app.userPreferences.held, true);
     assert.deepEqual([...app.readStates], ['server-read']);
     assert.equal(app.hiddenStates.length, 0);
+});
+
+test('hide-read filters wrapper-keyed decoded cards on initial load and append', async () => {
+    const originalLink = 'https://news.google.com/read/token';
+    const decoded = { link: 'https://example.com/publisher', originalLink };
+    const app = fixture(async () => response({ articles: [decoded, { link: 'unread' }], readStates: [originalLink], hasMore: true }));
+    app.hideRead = true;
+    await app.fetchData();
+    assert.deepEqual(Array.from(app.articles, article => article.link), ['unread']);
+    app.isMobile = false;
+    app.currentPage = 2;
+    await app.fetchData(true);
+    assert.deepEqual(Array.from(app.articles, article => article.link), ['unread']);
 });

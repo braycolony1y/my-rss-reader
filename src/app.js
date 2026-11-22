@@ -1,3 +1,4 @@
+import * as summaryEngine from '../summary-engine.js';
 import { registerFilterLogRoutes } from './smart/prefilter/log-routes.js';
 import { sourceCooldown } from './articles/source-cooldown.js';
 import { acquireOpenCliBrowserOriginLease, releaseOpenCliBrowserOriginLease, startVozWarmTab } from './opencli-reader.js';
@@ -482,8 +483,7 @@ export async function createApplication({ isMainModule = false, databaseStore } 
         fetchViaOpenCli: readers.fetchViaOpenCli,
         parseArticleHtmlContent: parser.parseArticleHtmlContent,
         cache,
-        progress,
-        googleNews
+        progress
     });
 
     registerSettingsRoutes({
@@ -494,6 +494,7 @@ export async function createApplication({ isMainModule = false, databaseStore } 
 
     registerSummaryRoutes({
         app: http.app,
+        summaryEngine,
         decodeGoogleNews: googleNews.decodeGoogleNews,
         BROWSER_HEADERS: config.BROWSER_HEADERS,
         fetchViaVietserver: readers.fetchViaVietserver,

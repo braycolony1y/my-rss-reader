@@ -1,3 +1,4 @@
+import { googleNewsArticleId } from '../articles/google-news-decode.js';
 import { createMembershipReconciler } from './membership.js';
 import { createPreferenceUpdater } from './preference-update.js';
 import { createCacheFilesystem } from '../database/cache-filesystem.js';
@@ -705,31 +706,38 @@ export function createBoardCache({ env, fetchPage, writeJson, directory = './art
     }
 
     async function setFolder(article, folder, { compact = false } = {}) {
-        const id = canonicalIdentity(article);
+        const primaryId = canonicalIdentity(article);
+        const originalId = googleNewsArticleId(article?.originalLink) ? identity(article.originalLink) : null;
+        const matches = link => {
+            const candidate = identity(link);
+            return candidate === primaryId || Boolean(originalId && candidate === originalId);
+        };
         if (folder !== null && (typeof folder !== 'string' || !folder.trim() || folder.length > 120)) throw new Error('Use a folder name of 1–120 characters');
         if (folder !== null) folder = isCache(folder.trim()) ? 'cache' : folder.trim();
         let startSync = false;
+        let id = primaryId;
         const result = await foregroundLocked(
             async () => {
             const prefs = await get('userPreferences', {});
             const board = await get('boardStates', []);
             const members = await get('cacheMembers', {});
 
+            if (!members[id] && originalId && members[originalId]) id = originalId;
             const url = board.find(link => identity(link) === id) || canonicalUrl(article);
             const member = members[id];
-            const currentFolder = Object.entries(prefs.boardFolderMappings || {}).find(([link]) => identity(link) === id)?.[1];
+            const currentFolder = Object.entries(prefs.boardFolderMappings || {}).find(([link]) => matches(link))?.[1];
             const response = () => compact ? { thread_id: id, url, folder, cacheMember: members[id] ? { ...members[id], article: undefined } : null }
                 : { boardStates: board, userPreferences: prefs, cacheMember: members[id] || null };
-            if (currentFolder === folder && board.some(link => identity(link) === id) && (folder !== 'cache' || member?.in_cache)) return response();
-            if (folder === null && !board.some(link => identity(link) === id) && !currentFolder && !member?.in_cache) return response();
+            if (currentFolder === folder && board.some(matches) && (folder !== 'cache' || member?.in_cache)) return response();
+            if (folder === null && !board.some(matches) && !currentFolder && !member?.in_cache) return response();
             const writes = {};
-            const wasPinned = board.some(link => identity(link) === id);
+            const wasPinned = board.some(matches);
             if (folder === null) {
-                for (let i = board.length - 1; i >= 0; i--) if (identity(board[i]) === id) board.splice(i, 1);
+                for (let i = board.length - 1; i >= 0; i--) if (matches(board[i])) board.splice(i, 1);
             } else if (!wasPinned) board.push(url);
             if (folder === null || !wasPinned) writes.boardStates = JSON.stringify(board);
             prefs.boardFolderMappings ||= {};
-            for (const key of Object.keys(prefs.boardFolderMappings)) if (identity(key) === id) delete prefs.boardFolderMappings[key];
+            for (const key of Object.keys(prefs.boardFolderMappings)) if (matches(key)) delete prefs.boardFolderMappings[key];
             if (folder !== null) {
                 prefs.boardFolderMappings[url] = folder;
                 prefs.boardFolders = [...new Set([...(prefs.boardFolders || []), folder])];

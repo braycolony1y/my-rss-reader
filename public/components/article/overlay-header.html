@@ -93,11 +93,11 @@
                         </svg>
                     </button>
                     <!-- Read Later Button -->
-                    <button @click="overlayArticle && toggleState('savedStates', overlayArticle.link)" 
+                    <button @click="overlayArticle && toggleState('savedStates', overlayArticle)"
                         class="transition p-2 rounded-lg" 
                         :class="theme === 'glass-light' ? 'hover:bg-black/5 text-gray-500' : 'hover:bg-white/10 text-gray-400'"
-                        :title="overlayArticle && savedStates.includes(overlayArticle.link) ? 'Remove from Read Later' : 'Read Later'">
-                        <svg class="w-5 h-5 transition-colors" :class="overlayArticle && savedStates.includes(overlayArticle.link) ? (theme === 'glass-light' ? 'fill-blue-100 text-blue-600' : 'fill-blue-900/50 text-blue-500') : 'currentColor'" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"></path></svg>
+                        :title="overlayArticle && hasArticleState('savedStates', overlayArticle) ? 'Remove from Read Later' : 'Read Later'">
+                        <svg class="w-5 h-5 transition-colors" :class="overlayArticle && hasArticleState('savedStates', overlayArticle) ? (theme === 'glass-light' ? 'fill-blue-100 text-blue-600' : 'fill-blue-900/50 text-blue-500') : 'currentColor'" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"></path></svg>
                     </button>
                     <!-- Save to Board Button -->
                     <button @click.stop="if(overlayArticle) openBoardModal(overlayArticle)" 

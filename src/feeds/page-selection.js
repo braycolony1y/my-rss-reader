@@ -1,3 +1,5 @@
+import { hasArticleState } from '../utils/article-utils.js';
+
 // Live mobile pages exclude committed identities before taking a page. Numeric
 // offsets remain available to existing clients and desktop infinite scrolling.
 export function feedPageKey(article) {
@@ -30,7 +32,7 @@ export function selectFeedPage({ articles, query, body, hiddenSet, readSet, page
     const start = (page - 1) * limit;
     let qualifying = 0, hasMore = false;
     for (const article of articles) {
-        if (hiddenSet.has(article.link) || (query.hideRead === 'true' && readSet.has(article.link))) continue;
+        if (hasArticleState(hiddenSet, article) || (query.hideRead === 'true' && hasArticleState(readSet, article))) continue;
         if (filterType === 'feed' ? article.feedUrl !== filterValue
             : !(article.feedCategory === filterValue || (filterValue === 'Others' && !article.feedCategory))) continue;
         if (search && ![article.title, article.feedTitle, article.content]

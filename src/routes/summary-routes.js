@@ -1,6 +1,5 @@
 import { readResponseText } from '../fetch-response.js';
 import { authMiddleware } from '../middleware/auth.js';
-import { getSummaryFromCache, summaryQueue, generateVozThreadSummary, writeSummaryToCache, generateDeepAnalysis, geminiKeyManager } from '../../summary-engine.js';
 
 export function registerSummaryRoutes({
     app,
@@ -8,7 +7,10 @@ export function registerSummaryRoutes({
     BROWSER_HEADERS,
     fetchViaVietserver,
     env,
+    summaryEngine,
 } = {}) {
+    const { getSummaryFromCache, summaryQueue, generateVozThreadSummary,
+        writeSummaryToCache, generateDeepAnalysis, geminiKeyManager } = summaryEngine;
     // AI Summary Routes
     app.get('/api/summary', authMiddleware, async (req, res) => {
         let url = req.query.url;

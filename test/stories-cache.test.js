@@ -182,3 +182,15 @@ test('lean Stories omits held metadata but returns authoritative read and hidden
     assert.deepEqual(lean.readStates, []);
     assert.deepEqual(lean.hiddenStates, []);
 });
+
+test('Stories member filtering honors originalLink for read and hidden state', async () => {
+    const f = fixture();
+    const originalLink = 'https://news.google.com/read/example';
+    f.state.smartClusters = [article('Headline with enough detail', { originalLink })];
+    f.state.readStates = [originalLink];
+    assert.equal((await f.request({ hideRead: 'true' })).articles.length, 0);
+    assert.equal((await f.request()).articles.length, 1);
+    f.state.readStates = [];
+    f.state.hiddenStates = [originalLink];
+    assert.equal((await f.request()).articles.length, 0);
+});

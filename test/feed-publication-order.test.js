@@ -71,3 +71,24 @@ test('queued database publication cannot run before the newer committed watermar
     assert.equal(articles.find(value => value.feedUrl === forum.url).title, 'new');
     assert.equal(articles.find(value => value.feedUrl === news.url).title, 'other');
 });
+
+test('feed publication prefers the repaired destination when a newer wrapper wins GUID ordering', async () => {
+    const { reconcileFeedPublication } = await import('../src/feeds/publication.js');
+    const feedUrl = 'https://example.com/rss';
+    const wrapper = 'https://news.google.com/read/example';
+    const link = 'https://example.com/story';
+    const current = {
+        feeds: [{ url: feedUrl, title: 'Example' }],
+        articles: [{ feedUrl, title: 'Old headline', guid: 'story-id', link, originalLink: wrapper, pubDate: '2026-11-01' }],
+        readStates: [wrapper, link],
+        hiddenStates: [wrapper]
+    };
+    const fresh = { feedUrl, title: 'New headline', guid: 'story-id', link: wrapper + '?oc=5', pubDate: '2026-11-22' };
+    const { articles, changes } = reconcileFeedPublication(current, [fresh], []);
+    assert.equal(articles.length, 1);
+    assert.equal(articles[0].link, link);
+    assert.equal(articles[0].originalLink, wrapper);
+    assert.equal(articles[0].title, fresh.title);
+    assert.equal(changes.readStates, undefined);
+    assert.equal(changes.hiddenStates, undefined);
+});

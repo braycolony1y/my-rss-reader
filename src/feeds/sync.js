@@ -1,3 +1,4 @@
+import { normalizeArticleSourceUrl } from '../article-source-state.js';
 import { createOriginPacer } from './origin-pacer.js';
 import { readResponseText } from '../fetch-response.js';
 import { shouldSkipFeedFetch } from './fetch-scope.js';
@@ -15,7 +16,8 @@ import sourceRegistry from '../sources/index.js';
 import { discardResponseBody } from '../fetch-response.js';
 import { decodeHTMLEntities } from '../../feed-parsers.js';
 import { isGoogleNewsArticleUrl } from '../articles/search-destination.js';
-import { decodeGoogleNewsIndividually, matchesGoogleNewsPublisher } from '../google-news-destination.js';
+import { decodeGoogleNewsIndividually, isExactGoogleNewsDecode, matchesGoogleNewsPublisher } from '../google-news-destination.js';
+import { cleanGoogleNewsDestination } from '../articles/google-news-decode.js';
 
 export function createFeedSync({
     observeCacheArticles = async () => {},
@@ -487,9 +489,11 @@ export function createFeedSync({
                         if (googleNewsUrlsToDecode.length > 0) {
                             try {
                                 const results = await (googleDecoder.decodeBatch ? googleDecoder.decodeBatch(googleNewsUrlsToDecode) : decodeGoogleNewsIndividually(googleDecoder, googleNewsUrlsToDecode));
-                                results.forEach((res, idx) => {
-                                    if (res.status && googleNewsUrlsToDecode.includes(res.source_url) && matchesGoogleNewsPublisher(res.decoded_url, { feedUrl: feed.url })) {
-                                        decodedGoogleNewsLinks.set(res.source_url, res.decoded_url);
+                                results.forEach(res => {
+                                    const destination = res.status && cleanGoogleNewsDestination(res.decoded_url);
+                                    if (destination && googleNewsUrlsToDecode.includes(res.source_url) &&
+                                        (isExactGoogleNewsDecode(res.source) || matchesGoogleNewsPublisher(destination, { feedUrl: feed.url }))) {
+                                        decodedGoogleNewsLinks.set(res.source_url, { ...res, decoded_url: destination });
                                     }
                                 });
                             } catch (e) {
@@ -503,11 +507,9 @@ export function createFeedSync({
                     const openCliOnlyArticlesToPrefetch = [];
                     for (const item of feedData.items) {
                         const googleNewsWrapper = isGoogleNewsArticleUrl(item.link) ? item.link : null;
-                        let safeLink = cleanUrl(item.link);
-                        if (decodedGoogleNewsLinks.has(item.link)) {
-                            safeLink = cleanUrl(decodedGoogleNewsLinks.get(item.link));
-                            item.link = safeLink;
-                        }
+                        const decoded = decodedGoogleNewsLinks.get(item.link);
+                        const safeLink = decoded?.decoded_url || (googleNewsWrapper ? normalizeArticleSourceUrl(googleNewsWrapper) : cleanUrl(item.link));
+                        if (decoded) item.link = safeLink;
                         let threadIdMatch = safeLink.match(/\.(\d+)\//);
                         let threadId = threadIdMatch ? threadIdMatch[1] : null;
 
@@ -616,6 +618,7 @@ export function createFeedSync({
                             title: item.title,
                             link: safeLink,
                             ...(googleNewsWrapper ? { originalLink: googleNewsWrapper } : {}),
+                            ...(decoded?.source ? { googleNewsDecodeSource: decoded.source } : {}),
                             image: finalImage,
                             rssFallbackMap: rssImageUrl,
                             pubDate: normalizedPubDate,

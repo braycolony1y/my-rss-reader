@@ -1,9 +1,10 @@
 import { verifyArticleCardStyleOwnership } from './helpers/article-card-style-contract.js';
+import { inspectClientContract } from './helpers/frontend-refactor/contract.js';
 import { readReaderClientSource, readReaderHtml } from './helpers/reader-source.js';
 import { readServerSource } from './helpers/server-source.js';
+import { registerArticleRoutes } from '../src/routes/article-routes.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
 
 const server = readServerSource();
 const script = readReaderClientSource();
@@ -99,25 +100,74 @@ test('deleted articles stay in lists and keep the reader open with an unavailabl
     assert.match(body, /fallbackArticle\?\.title \|\| this\.overlayArticle\.title \|\| data\.title/);
 });
 
-test('canonical publisher URLs cannot be overwritten by their malformed request form', () => {
+test('canonical publisher URLs cannot be overwritten by their malformed request form', async () => {
     const endpointStart = server.indexOf("app.get('/api/article-content'");
     const endpointEnd = server.indexOf('\nasync function parseArticleHtmlContent', endpointStart);
     const endpoint = server.slice(endpointStart, endpointEnd);
     assert.match(endpoint, /let url = normalizeArticleSourceUrl\(requestedUrl\)/);
-    assert.match(endpoint, /if \(!isGoogleNewsArticleUrl\(requestedUrl\)\) \{[\s\S]*url = normalizeArticleSourceUrl\(requestedUrl\)/);
-    assert.doesNotMatch(endpoint, /if \(!isGoogleNewsArticleUrl\(requestedUrl\)\) \{[\s\S]{0,300}resolveGoogleNewsUrl\(requestedUrl/);
     assert.match(server, /async function fetchArticleHtmlByStrategy\(strategy, url\) \{\s*url = normalizeArticleSourceUrl\(url\)/);
     assert.match(server, /async function fetchParsedArticleByStrategy\(strategy, url,[\s\S]{0,120}\{\s*(?:if \(isRedditUrl\(url\)\) return null;\s*)?url = normalizeArticleSourceUrl\(url\)/);
+
+    const publisher = 'https://example.com/story.tpo?edition=1';
+    const malformed = 'https://example.com/story.tpo)?edition=1#section';
+    const wrapper = 'https://news.google.com/read/test-article';
+    const resolved = [], cacheReads = [], fetched = [], cacheWrites = [];
+    let handleArticleContent;
+    registerArticleRoutes({
+        app: {
+            get(route, ...handlers) {
+                if (route === '/api/article-content') handleArticleContent = handlers.at(-1);
+            },
+            post() {}
+        },
+        progress: { activeForegroundRequests: 0 },
+        articleReaderSessions: new Map(),
+        updateArticleFetchProgress() {},
+        finishArticleFetchProgress() {},
+        isProtectedDeletedSourceSnapshot: async () => false,
+        resolveGoogleNewsUrl: async url => { resolved.push(url); return publisher; },
+        getCachedArticle: async url => { cacheReads.push(url); return null; },
+        getArticleFetchPolicy: async () => ({
+            availableStrategies: ['jina'], allAvailableStrategies: ['jina'], strategyOrder: ['jina']
+        }),
+        getArticleFetchPreferences: async () => ({}),
+        fetchViaJina: async url => {
+            fetched.push(url);
+            return { title: 'Publisher story', content: '<p>Publisher story body.</p>' };
+        },
+        expandArticleResultForSource: async (_url, result) => result,
+        recordArticleFetchOutcome: async () => {},
+        cacheArticleResult: async url => { cacheWrites.push(url); }
+    });
+
+    for (const url of [malformed, wrapper]) {
+        const firstCacheRead = cacheReads.length;
+        const response = {
+            statusCode: 200,
+            status(code) { this.statusCode = code; return this; },
+            json(body) { this.body = body; }
+        };
+        await handleArticleContent({ query: { url, threadPage: '1' } }, response);
+        assert.equal(response.statusCode, 200, response.body?.error);
+        assert.equal(response.body.error, undefined);
+        assert.equal(response.body.url, publisher);
+        assert.equal(cacheReads[firstCacheRead], publisher);
+    }
+    assert.deepEqual(resolved, [wrapper]);
+    assert.deepEqual(fetched, [publisher, publisher]);
+    assert.deepEqual(cacheWrites, [publisher, publisher]);
 });
 
 test('Google News cards fetch and route to the resolved publisher while keeping their stable original identity', () => {
     assert.match(script, /articleReaderUrl\(articleOrUrl\)[\s\S]*articleOrUrl\?\.resolvedLink \|\| articleOrUrl\?\.link \|\| articleOrUrl\?\.originalLink/);
     assert.match(script, /articleRouteUrl\(articleOrUrl\) \{[\s\S]*this\.articleReaderUrl\(articleOrUrl\)/);
     assert.match(script, /let targetUrl = this\.articleReaderUrl\(article\)/);
+    assert.match(script, /this\.overlayArticle\.originalLink \|\|= this\.overlayArticle\.link/);
     assert.match(script, /this\.isGoogleNewsArticleUrl\(this\.overlayArticle\.link\)[\s\S]*this\.overlayArticle\.link = data\.url/);
     assert.match(script, /this\.updateArticleRoute\(this\.overlayArticle, true\)/);
-    assert.match(script, /this\.markAsReadExplicit\(article\.originalLink \|\| article\.link\)/);
-    assert.match(server, /resolveGoogleNewsViaOpenCliSearch\(hints[,)]/);
+    assert.match(script, /this\.markAsReadExplicit\(article\);\s*this\.recordRecentlyRead\(article\.link\)/);
+    assert.match(server, /const search = async task => \{\s*try \{ return cleanGoogleNewsDestination\(await task\(hints\)\);/);
+    assert.match(server, /await search\(resolveGoogleNewsViaOpenCliSearch\)/);
     assert.match(server, /'duckduckgo', 'search', query/);
 });
 
@@ -158,13 +208,20 @@ test('light article sections share one neutral parent surface between cards', ()
 });
 
 test('all Alpine-bound reader settings exist before the first render', () => {
-    assert.match(script, /smartSourceSort: 'score'/);
-    assert.match(script, /editFeedFetchMethods: \[\]/);
-    assert.match(script, /editFeedExcludeFromSmart: false/);
-    assert.match(script, /overlayRemainingAvailable: false/);
+    const { descriptors } = inspectClientContract(script);
+    assert.equal(descriptors.smartSourceSort.value, 'score');
+    assert.deepEqual(descriptors.editFeedFetchMethods.value, []);
+    assert.equal(descriptors.editFeedExcludeFromSmart.value, false);
+    assert.equal(descriptors.overlayRemainingAvailable.value, false);
+    assert.equal(descriptors.debugData.value, null);
+    assert.equal(descriptors.overlayArticle.value, null);
+    assert.deepEqual(descriptors.savedStates.value, []);
+    assert.deepEqual(descriptors.boardStates.value, []);
+    assert.equal(typeof descriptors.hasArticleState.value.function, 'string');
+    assert.equal(typeof descriptors.isOnBoard.value.function, 'string');
     assert.match(html, /<script src="\/script\.js\?v=[^"]+"><\/script>/);
     assert.match(html, /x-for="\(item, idx\) in \(debugData\?\.prefetchQueue \|\| \[\]\)"/);
-    assert.match(html, /:title="overlayArticle && savedStates\.includes\(overlayArticle\.link\) \? 'Remove from Read Later' : 'Read Later'"/);
+    assert.match(html, /:title="overlayArticle && hasArticleState\('savedStates', overlayArticle\) \? 'Remove from Read Later' : 'Read Later'"/);
     assert.match(html, /:title="isOnBoard\(overlayArticle\) \? 'Remove from Board' : 'Save to Board'"/);
 });
 

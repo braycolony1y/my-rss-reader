@@ -441,7 +441,7 @@ const ReaderArticleOverlay = {
                     ReaderPrefetchLifecycle.cancel(this);
                     if (this.isRedditArticle(article)) {
                         window.open(this.articleReaderUrl(article), '_blank', 'noopener,noreferrer');
-                        this.markAsReadExplicit(article.originalLink || article.link);
+                        this.markAsReadExplicit(article);
                         return;
                     }
                     ReaderOverlayLifecycle.cancel(this);
@@ -554,8 +554,8 @@ const ReaderArticleOverlay = {
                     this.lastTrackedVozPost = '';
                     const articleScroll = document.getElementById('overlay-scroll-container');
                     if (articleScroll) articleScroll.scrollTop = 0;
-                    this.markAsReadExplicit(article.originalLink || article.link);
-                    this.recordRecentlyRead(article.originalLink || article.link);
+                    this.markAsReadExplicit(article);
+                    this.recordRecentlyRead(article.link);
                     document.body.style.overflow = 'hidden';
 
                     // AI Summary: reset and fetch

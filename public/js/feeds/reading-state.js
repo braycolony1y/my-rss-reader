@@ -13,11 +13,12 @@ const ReaderFeedsReadingState = {
                 boardStates: [],
 
                 hiddenStates: [],
+                hiddenStateAliases: {},
                 markAllUndo: null,
                 markAllUndoTimer: null,
 
                 normalizeStateLink(link) {
-                    let value = String(link || '');
+                    let value = String(link || '').trim().replace(/#.*$/, '');
                     if (value.includes('voz.vn/t/')) {
                         value = value
                             .replace(/[?#].*$/, '')
@@ -25,6 +26,13 @@ const ReaderFeedsReadingState = {
                             .replace(/\/+$/, '');
                     }
                     return value.replace(/\/+$/, '');
+                },
+
+                hasArticleState(list, article) {
+                    const state = this[list];
+                    const has = link => typeof state.has === 'function' ? state.has(link) : state.includes(link);
+                    const matches = link => link && (has(link) || has(this.normalizeStateLink(link)));
+                    return Boolean(matches(article?.link) || matches(article?.originalLink));
                 },
 
                 dedupeStateLinks(links) {
@@ -37,7 +45,36 @@ const ReaderFeedsReadingState = {
                 },
 
                 hiddenArticleCount() {
-                    return this.dedupeStateLinks(this.hiddenStates).length;
+                    const links = this.dedupeStateLinks(this.hiddenStates);
+                    if (!links.length) return 0;
+                    const hidden = new Set(links);
+                    const aliases = new Map(Object.entries(this.hiddenStateAliases || {}));
+                    const collect = article => {
+                        if (article?.originalLink && article.link) {
+                            const wrapper = this.normalizeStateLink(article.originalLink);
+                            const destination = this.normalizeStateLink(article.link);
+                            if (wrapper !== destination && hidden.has(wrapper) && hidden.has(destination)) {
+                                aliases.set(wrapper, destination);
+                            }
+                        }
+                        for (const member of article?.relatedArticles || []) collect(member);
+                    };
+                    for (const article of this.articles || []) collect(article);
+                    collect(this.overlayArticle);
+                    return new Set(links.map(link => aliases.get(link) || link)).size;
+                },
+
+                adjustArticleUnreadCounts(article, delta) {
+                    const { feedUrl, feedCategory = 'Others' } = article;
+                    const counts = this.unreadCounts;
+                    const category = feedCategory || 'Others';
+                    counts.total = Math.max(0, counts.total + delta);
+                    if (delta > 0 || counts.feeds[feedUrl] > 0) {
+                        counts.feeds[feedUrl] = (counts.feeds[feedUrl] || 0) + delta;
+                    }
+                    if (delta > 0 || counts.categories[category] > 0) {
+                        counts.categories[category] = (counts.categories[category] || 0) + delta;
+                    }
                 },
 
                 stateMutationKey(list, link) {
@@ -94,25 +131,50 @@ const ReaderFeedsReadingState = {
                     if (typeof this.saveState === 'function') this.saveState();
                 },
 
-                async toggleState(list, link) {
+                async toggleState(list, value) {
+                    const link = typeof value === 'string' ? value : value?.link;
                     if (!link) return;
-                    if (list === 'boardStates' && this.isOnBoard(link)) {
+                    const listedArticle = this.articles.find(item => item.link === link);
+                    const article = typeof value === 'string' ? listedArticle || { link } : value;
+                    const removalLinks = this.dedupeStateLinks([article.originalLink, link]);
+                    if (list === 'readStates') {
+                        if (!this.hasArticleState(list, article)) return this.markAsReadExplicit(article);
+                        const removed = new Set(removalLinks);
+                        for (const alias of removed) {
+                            this.pendingReadLinks.delete(alias);
+                            this.pendingUnreadLinks.add(alias);
+                        }
+                        this.readStates = new Set([...this.readStates].filter(url => !removed.has(this.normalizeStateLink(url))));
+                        if (listedArticle && !this.hasArticleState('hiddenStates', listedArticle)) {
+                            this.adjustArticleUnreadCounts(listedArticle, 1);
+                        }
+                        this.saveState?.();
+                        try {
+                            const response = await fetch('/api/toggle-batch', {
+                                method: 'POST', keepalive: true,
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ links: removalLinks, list, forceRemove: true })
+                            });
+                            if (response.ok) removalLinks.forEach(alias => this.pendingUnreadLinks.delete(alias));
+                        } catch (_) { /* pendingUnreadLinks retries later */ }
+                        return;
+                    }
+                    if (list === 'boardStates' && this.isOnBoard(article)) {
                         if (this.boardSavePending) return;
                         this.boardSavePending = true;
                         this.boardMutationVersion++;
                         try {
                             const data = await this.cacheRequest('/api/board-cache/folder', {
                                 method: 'POST', headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ article: link, folder: null, compact: true })
+                                body: JSON.stringify({ article: { link, originalLink: article.originalLink, resolvedLink: article.resolvedLink }, folder: null, compact: true })
                             });
-                            this.applyBoardFolderResult(data, link, null);
+                            this.applyBoardFolderResult(data, article, null);
                         } catch (e) { this.cacheNotice = e.message; }
                         finally { this.boardSavePending = false; }
                         return;
                     }
                     const array = this[list];
-                    const index = array.indexOf(link);
-                    const isAdding = index === -1;
+                    const isAdding = !this.hasArticleState(list, article);
                     if (isAdding) {
                         array.push(link);
                         if (list === 'savedStates' || list === 'boardStates') {
@@ -128,46 +190,33 @@ const ReaderFeedsReadingState = {
                         this.queueStateMutation(list, link, true);
                         void this.flushPendingStateMutations();
                     } else {
-                        array.splice(index, 1);
-                        this.queueStateMutation(list, link, false);
+                        this[list] = array.filter(url => !removalLinks.includes(this.normalizeStateLink(url)));
+                        for (const alias of removalLinks) this.queueStateMutation(list, alias, false);
                         void this.flushPendingStateMutations();
                         
 
                     }
                     
-                    if (list === 'hiddenStates') {
-                         const article = this.articles.find(a => a.link === link);
-                         if (article && !this.readStates.has(link)) {
-                             if (isAdding) {
-                                 if (this.unreadCounts.total > 0) this.unreadCounts.total--;
-                                 if (this.unreadCounts.feeds[article.feedUrl] > 0) this.unreadCounts.feeds[article.feedUrl]--;
-                                 let cat = article.feedCategory || 'Others';
-                                 if (this.unreadCounts.categories[cat] > 0) this.unreadCounts.categories[cat]--;
-                             } else {
-                                 this.unreadCounts.total++;
-                                 this.unreadCounts.feeds[article.feedUrl] = (this.unreadCounts.feeds[article.feedUrl] || 0) + 1;
-                                 let cat = article.feedCategory || 'Others';
-                                 this.unreadCounts.categories[cat] = (this.unreadCounts.categories[cat] || 0) + 1;
-                             }
-                         }
+                    if (list === 'hiddenStates' && listedArticle && !this.hasArticleState('readStates', listedArticle)) {
+                        this.adjustArticleUnreadCounts(listedArticle, isAdding ? -1 : 1);
                     }
                     
                     if (typeof this.saveState === 'function') this.saveState();
                 },
 
-                async markAsReadExplicit(link) {
+                async markAsReadExplicit(value) {
+                    const link = typeof value === 'string' ? value : value.link;
+                    const listedArticle = this.articles.find(a => a.link === link);
+                    const article = typeof value === 'string' ? listedArticle : value;
                     this.prefetchNextAfter(link);
                     if (!this.readStates.has(link)) {
+                        const wasRead = this.hasArticleState('readStates', listedArticle || article);
                         this.pendingUnreadLinks.delete(link);
                         this.pendingReadLinks.add(link);
                         this.readStates = new Set([...this.readStates, link]);
                         
-                        const article = this.articles.find(a => a.link === link);
-                        if (article && !this.hiddenStates.includes(link)) {
-                            if (this.unreadCounts.total > 0) this.unreadCounts.total--;
-                            if (this.unreadCounts.feeds[article.feedUrl] > 0) this.unreadCounts.feeds[article.feedUrl]--;
-                            let cat = article.feedCategory || 'Others';
-                            if (this.unreadCounts.categories[cat] > 0) this.unreadCounts.categories[cat]--;
+                        if (listedArticle && !wasRead && !this.hasArticleState('hiddenStates', listedArticle)) {
+                            this.adjustArticleUnreadCounts(listedArticle, -1);
                         }
 
                         if (typeof ReaderPaintPersistence === 'undefined') this.saveState?.();
@@ -185,14 +234,14 @@ const ReaderFeedsReadingState = {
                 },
 
                 async markAllAsRead() {
-                    const unreadInView = this.articles.filter(a => !this.readStates.has(a.link) && !this.hiddenStates.includes(a.link));
+                    const unreadInView = this.articles.filter(a => !this.hasArticleState('readStates', a) && !this.hasArticleState('hiddenStates', a));
                     let linksToMark = unreadInView.map(a => a.link);
                     
                     // Also mark all related articles as read
                     unreadInView.forEach(a => {
                         if (a.relatedArticles && Array.isArray(a.relatedArticles)) {
                             a.relatedArticles.forEach(r => {
-                                if (!this.readStates.has(r.link)) {
+                                if (!this.hasArticleState('readStates', r)) {
                                     linksToMark.push(r.link);
                                 }
                             });
@@ -337,6 +386,7 @@ const ReaderFeedsReadingState = {
                             if (data.savedStates) this.savedStates = this.applyPendingStateMutations('savedStates', data.savedStates);
                             if (data.boardStates) this.boardStates = this.applyPendingStateMutations('boardStates', data.boardStates);
                             if (data.hiddenStates) this.hiddenStates = this.applyPendingStateMutations('hiddenStates', data.hiddenStates);
+                            if (data.hiddenStateAliases) this.hiddenStateAliases = data.hiddenStateAliases;
                             if (data.userPreferences) this.userPreferences = { ...data.userPreferences, ...this.pendingPreferences };
                             
                             // State sync updates badges and actions only. Removing cards here made

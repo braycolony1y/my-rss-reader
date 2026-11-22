@@ -53,7 +53,6 @@ export function registerArticleRoutes({
     parseArticleHtmlContent,
     cache,
     progress,
-    googleNews,
 } = {}) {
     app.get('/api/debug-article', authMiddleware, async (req, res) => {
         const url = req.query.url;
@@ -302,16 +301,25 @@ export function registerArticleRoutes({
             // Bypass means skip the cache read, not destroy the last-known-good
             // value before the replacement has been fetched and validated.
 
-            if (isGoogleNewsArticleUrl(requestedUrl)) {
-                url = await resolveGoogleNewsUrl(requestedUrl, {
+            const readArticleCache = async key => {
+                const cached = await getCachedArticle(key);
+                return isGoogleNewsArticleUrl(cached?.url) ? null : cached;
+            };
+            let cachedWrapper;
+            let googleHints;
+            const googleWrapper = isGoogleNewsArticleUrl(requestedUrl) ? url : null;
+            if (googleWrapper) {
+                googleHints = {
                     title: req.query.title,
                     feedTitle: req.query.feedTitle,
                     feedUrl: req.query.feedUrl,
                     feedIcon: req.query.feedIcon,
                     domain: req.query.domain
-                }, { force: bypassCache, backgroundResolve: false });
+                };
+                url = await resolveGoogleNewsUrl(requestedUrl, googleHints, { cacheOnly: true });
                 if (isGoogleNewsArticleUrl(url)) {
-                    return res.status(503).json({ error: 'Google News destination is resolving in the background; please retry shortly', code: 'GOOGLE_NEWS_PENDING' });
+                    if (!bypassCache) cachedWrapper = await readArticleCache(url);
+                    if (!cachedWrapper) url = await resolveGoogleNewsUrl(requestedUrl, googleHints, { force: bypassCache });
                 }
             }
 
@@ -319,21 +327,14 @@ export function registerArticleRoutes({
             const verificationRecovery = await createReaderVerificationRecovery(url);
 
             if (!bypassCache) {
-                const resume = await getCachedVozResumePage(requestedUrl, req.query.resumePage, getCachedArticle);
+                const resume = await getCachedVozResumePage(requestedUrl, req.query.resumePage, readArticleCache);
                 if (resume) url = resume.url;
-                let directCached = resume?.cached || await getCachedArticle(url);
-                if (!directCached && googleNews.googleNewsUrlCache && googleNews.googleNewsUrlCache.has(requestedUrl) && googleNews.googleNewsUrlCache.get(requestedUrl).resolvedUrl) {
-                    url = googleNews.googleNewsUrlCache.get(requestedUrl).resolvedUrl;
-                    directCached = await getCachedArticle(url);
-                } else if (directCached && isGoogleNewsArticleUrl(directCached.url || requestedUrl)) {
-                    if (googleNews.googleNewsUrlCache && googleNews.googleNewsUrlCache.has(requestedUrl) && googleNews.googleNewsUrlCache.get(requestedUrl).resolvedUrl) {
-                        url = googleNews.googleNewsUrlCache.get(requestedUrl).resolvedUrl;
-                        directCached = await getCachedArticle(url);
-                    } else {
-                        directCached = null;
-                    }
+                let directCached = resume?.cached || cachedWrapper || await readArticleCache(url);
+                if (!directCached && googleWrapper && url !== googleWrapper) {
+                    cachedWrapper = await readArticleCache(googleWrapper);
+                    directCached = cachedWrapper;
                 }
-                if (directCached && !isGoogleNewsArticleUrl(directCached.url || '')) {
+                if (directCached) {
                     let hostname = '';
                     try { hostname = new URL(url).hostname.toLowerCase(); } catch (e) { }
                     if ((hostname === 'voz.vn' || hostname.endsWith('.voz.vn'))
@@ -354,6 +355,11 @@ export function registerArticleRoutes({
                     if (!directCached) {
                         // Continue below and fetch only through the selected policy.
                     } else {
+                    if (cachedWrapper || googleWrapper === url) {
+                        void resolveGoogleNewsUrl(requestedUrl, googleHints, { backgroundResolve: true }).catch(error => {
+                            console.warn('[GOOGLE NEWS] Could not schedule cached article resolution:', error.message);
+                        });
+                    }
                     const cachedBeforeEnhancement = directCached;
                     directCached = enhanceArticleResultForSource(url, directCached, {
                         description: requestedDescription
@@ -401,12 +407,7 @@ export function registerArticleRoutes({
                 }
             }
 
-            // Non-Google URLs must retain their canonicalized form. Previously
-            // this block passed the raw request through the Google resolver and
-            // accidentally restored copied trailing punctuation such as `.tpo)`.
-            if (!isGoogleNewsArticleUrl(requestedUrl)) {
-                url = normalizeArticleSourceUrl(requestedUrl);
-            }
+            if (!googleWrapper) url = normalizeArticleSourceUrl(requestedUrl);
             let hostname = '';
             try { hostname = new URL(url).hostname.toLowerCase(); } catch (e) { }
             if (rejectedStrategy && rejectedStrategy in ARTICLE_FETCH_BASE_POINTS) {

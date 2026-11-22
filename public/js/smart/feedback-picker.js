@@ -191,11 +191,11 @@ const ReaderSmartFeedback = {
                 try {
                     if (!keywords.length) {
                         // Default action: hide only this story.
-                        if (!this.hiddenStates.includes(article.link)) await this.toggleState('hiddenStates', article.link);
+                        if (!this.hasArticleState('hiddenStates', article)) await this.toggleState('hiddenStates', article);
                         this.feedbackHiddenLinks = [...this.feedbackHiddenLinks, article.link];
                         this.feedbackBusy = false;
                         this.cancelSmartFeedback();
-                        this.showFeedbackToast({ kind: 'story', link: article.link, message: 'Story hidden.' });
+                        this.showFeedbackToast({ kind: 'story', article: { link: article.link, originalLink: article.originalLink }, message: 'Story hidden.' });
                         return;
                     }
                     const current = await this.feedbackKeywordList();
@@ -219,8 +219,8 @@ const ReaderSmartFeedback = {
                 this.feedbackBusy = 'undo';
                 try {
                     if (toast.kind === 'story') {
-                        if (this.hiddenStates.includes(toast.link)) await this.toggleState('hiddenStates', toast.link);
-                        this.feedbackHiddenLinks = this.feedbackHiddenLinks.filter(link => link !== toast.link);
+                        if (this.hasArticleState('hiddenStates', toast.article)) await this.toggleState('hiddenStates', toast.article);
+                        this.feedbackHiddenLinks = this.feedbackHiddenLinks.filter(link => link !== toast.article.link);
                     } else {
                         // Remove only the entries this action added; other edits made meanwhile stay.
                         const remove = new Set((toast.added || []).map(keyword => this.normalizeKeywordPhrase(keyword)));

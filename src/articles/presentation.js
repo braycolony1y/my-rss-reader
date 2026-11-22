@@ -6,7 +6,7 @@ import { rankStory, storyMembers } from './story-ranking.js';
 import { rankClassicStories } from '../ranking/classic.js';
 import { classicRankingMode } from '../ranking/config.js';
 import { getSharedVectorStore } from '../ranking/vector-store.js';
-import { normalizeStateUrl, mapWithConcurrency, NormalizedSet } from '../utils/article-utils.js';
+import { normalizeStateUrl, mapWithConcurrency, NormalizedSet, hasArticleState } from '../utils/article-utils.js';
 import { cleanStoredCluster, calculateHotness, buildCluster } from '../../smart-news.js';
 import { normalizeBlockedKeywordEntries, articleContentFilterMatches } from '../filters/content-filter.js';
 
@@ -382,7 +382,7 @@ export function createArticlePresentation({
             filteredArticles = filteredArticles
                 .map(article => {
                     if (!needsMemberFiltering) return article;
-                    const members = storyMembers(article).filter(a => !hiddenSet.has(a.link) && !articleContentFilterMatches(a, blockedKeywordEntries));
+                    const members = storyMembers(article).filter(a => !hasArticleState(hiddenSet, a) && !articleContentFilterMatches(a, blockedKeywordEntries));
                     if (!members.length) return null;
                     const representative = members[0];
                     return markUnavailableSmartSources({ ...article, ...representative, isCluster: true, clusterId: article.clusterId,
@@ -390,8 +390,8 @@ export function createArticlePresentation({
                 })
                 .filter(Boolean)
                 .filter(article => {
-                if (hiddenSet.has(article.link) || articleContentFilterMatches(article, blockedKeywordEntries)) return false;
-                if (hideRead && storyMembers(article).every(member => readSet.has(member.link))) return false;
+                if (hasArticleState(hiddenSet, article) || articleContentFilterMatches(article, blockedKeywordEntries)) return false;
+                if (hideRead && storyMembers(article).every(member => hasArticleState(readSet, member))) return false;
                 if (!searchQuery) return true;
                 return matchesSearch(article.title) ||
                     matchesSearch(article.feedTitle) ||
@@ -409,7 +409,7 @@ export function createArticlePresentation({
                     ...article,
                     relatedArticles: (article.relatedArticles || []).filter(
                         a =>
-                            !hiddenSet.has(a.link) &&
+                            !hasArticleState(hiddenSet, a) &&
                             !articleContentFilterMatches(a, blockedKeywordEntries)
                     )
                 }));
