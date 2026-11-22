@@ -22,7 +22,7 @@ import { parsePublishedTimestamp } from '../dates/publication-time.js';
 import { detectEventConflicts } from './event-evidence.js';
 import { postValidatePartition } from './partition-validation.js';
 import { deferredReviewPartitions } from './review-groups.js';
-import { extractEvidence } from './resolver-evidence.js';
+import { extractEvidence, BROAD_PLACES } from './resolver-evidence.js';
 import { cosineSimilarity } from './similarity.js';
 
 export const RESOLVER_CONFIG = Object.freeze({
@@ -73,7 +73,7 @@ export function scorePair(left, right, { vectorOf = article => article._vec, con
 
   const sharedNumbers = intersection(new Set(a.numbers.keys()), new Set(b.numbers.keys()));
   const numberPoints = sharedNumbers.length ? (sharedNumbers.some(key => a.numbers.get(key) !== 'plain') ? 2 : 1) : 0;
-  const placePoints = intersection(a.places, b.places).length ? 1 : 0;
+  const placePoints = intersection(a.places, b.places).some(place => !BROAD_PLACES.has(place)) ? 1 : 0;
   const timePoints = hours <= config.closeHours ? 1 : 0;
 
   const points = entityPoints + numberPoints + placePoints + timePoints;

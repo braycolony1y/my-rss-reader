@@ -69,6 +69,23 @@ test('a place alone is not enough without an entity point', () => {
   assert.equal(score.merge, false);
 });
 
+test('a country-level place is not the place point, a city or province still is', () => {
+  const mk = place => [
+    article('a', `Samsung Electronics and Galaxy Fold sales surge in ${place}`),
+    article('b', `Samsung Electronics hires staff and Galaxy Fold supply grows in ${place}`, { hours: 1 })
+  ];
+  const [ca, cb] = mk('China');
+  const country = scorePair(ca, cb, { vectorOf: pairVectors(ca, cb, 0.93) });
+  assert.equal(country.placePoints, 0);
+  assert.equal(country.merge, false, 'a shared country must not produce a false merge');
+  const [va, vb] = mk('Vietnam');
+  assert.equal(scorePair(va, vb, { vectorOf: pairVectors(va, vb, 0.93) }).placePoints, 0);
+  const [ha, hb] = mk('Da Nang');
+  const city = scorePair(ha, hb, { vectorOf: pairVectors(ha, hb, 0.93) });
+  assert.equal(city.placePoints, 1);
+  assert.equal(city.merge, true);
+});
+
 test('resolveReviewGroup merges components on strong evidence and keeps the rest separate', () => {
   const unrelated = article('other', 'Local council approves new bus lanes downtown', { hours: 1 });
   const group = { id: 'g1', fullRepartition: false, articles: [boeingA, boeingB, unrelated],
