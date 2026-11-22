@@ -14,6 +14,8 @@ const explicitTitle = /\b(?:(?:news|headlines?)\s+(?:round[- ]?up|digest)|(?:dai
 const intro = /(?:these|today'?s|this (?:morning|evening)'?s)\s+(?:are\s+)?(?:the\s+)?(?:top\s+)?headlines|(?:roundup|digest)\s+of\s+(?:today'?s|the latest)\s+(?:news|stories)|(?:có|gồm|bao gồm)\s+(?:những\s+)?(?:nội dung|tin chính|tin tức|thông tin)\s+(?:chính\s+)?sau/iu;
 const formatTitle = /\b(?:newsletter|podcast|digest|roundup|briefing|live blog|live updates)\b|bản tin|điểm tin|điểm báo/iu;
 const eventVerb = /\b(?:announces?|approves?|rejects?|confirms?|launches?|strikes?|signs?|blocks?|discovers?|cuts?|raises?|agrees?|kills?|warns?|reports?)\b|công bố|thông qua|bác|xác nhận|tấn công|thỏa thuận|phát hiện|chặn|ban hành|cảnh báo|thiệt mạng/iu;
+// Title-only digest test shared with the deterministic ranker (no HTML parsing).
+export const isRoundupTitle = title => { const text = storyText(title); return explicitTitle.test(text) || formatTitle.test(text); };
 
 // Boundaries come from source formatting. Never split one digest bullet into
 // invented standalone articles; uncertain boundaries simply yield no support.

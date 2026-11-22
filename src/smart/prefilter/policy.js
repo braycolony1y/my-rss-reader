@@ -6,7 +6,7 @@ export const SECTIONS = ['news_vietnam', 'tech_vietnam'];
 export const prefilterEnabled = () => !/^(0|false|off)$/i.test(process.env.SMART_TOP_VN_PREFILTER_ENABLED || 'true');
 
 // Deliberately broad KEEP guards: a false negative costs work; a false positive hides news.
-const guards = {
+export const MATERIALITY_GUARDS = {
   public_consequence: /\b(court|judgment|ruling|law|regulation|policy change|health|disease|flood|typhoon|disaster|casualt|collapse|investigation|corruption|diplomatic|security|emergency|mortality|hospital|pollution|education reform|unemployment|poverty|mortality|economic deterioration|income collapse)\b|\b(toa an|phap luat|nghi quyet|nghi dinh|ban hanh|quyet dinh|chi thi|phe duyet|ngan sach|chinh sach|benh|dich benh|tu vong|thiet mang|lu lut|bao lu|thien tai|sap san|dieu tra|tham nhung|ngoai giao|an ninh|an toan|o nhiem|moi truong|giao duc|y te|khan cap|khoa sim|khoa tai khoan|siet quan ly|that nghiep|thu nhap|khung hoang|thiet hai)\b/,
   structural_capacity: /\b(factory|fab|data cent(?:er|re)|cloud region|telecom infrastructure|national laboratory|r&d cent(?:er|re)|critical infrastructure|supply.chain|technology transfer|semiconductor facility)\b|\b(nha may|trung tam du lieu|ha tang vien thong|phong thi nghiem|day chuyen|chuoi cung ung|chuyen giao cong nghe|ha tang so|trong yeu|cap quoc gia|tren toan quoc|dao lo|khong gian tam thap)\b|500\s*kv/,
   binding_or_funded_action: /\b(committed|funded|(?<!non )binding|acquisition|construction|procurement|entered service|production started|deployment|investment)\b|\b(khoi cong|van hanh|san xuat hang loat|mua lai|sat nhap|cap phep|dau tu|rot von|tai tro|giai ngan|lien doanh|hop dong|trien khai dien rong)\b/,
@@ -34,7 +34,7 @@ export const NEWS_RULES = [
 
 export function materialitySignals(article, section) {
   const text = normalizeText([article.title, article.content, article.description, article.summary].filter(Boolean).join(' '));
-  return Object.entries(guards).filter(([key, rule]) =>
+  return Object.entries(MATERIALITY_GUARDS).filter(([key, rule]) =>
     (section === 'tech_vietnam' || key === 'public_consequence' || key === 'major_failure' || key === 'binding_or_funded_action' || key === 'structural_capacity') && rule.test(text)
   ).map(([key]) => key);
 }
