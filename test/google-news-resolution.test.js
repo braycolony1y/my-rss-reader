@@ -1,11 +1,10 @@
-import { readServerSource } from './helpers/server-source.js';
 import { readSmartSource } from './helpers/smart-source.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { parseOpenCliSearchDestination } from '../src/articles/search-destination.js';
+import { createGoogleNewsResolver } from '../src/articles/google-news.js';
 
-const server = readServerSource();
 const smartNews = readSmartSource();
 
 test('OpenCLI publisher search accepts only results from the expected publisher domain', () => {
@@ -26,11 +25,30 @@ test('OpenCLI publisher search rejects malformed output and Google News wrappers
     ]), 'apnews.com'), '');
 });
 
-test('Smart ingestion batch-resolves publisher destinations and replaces Google-hosted thumbnails', () => {
-    assert.match(server, /async function resolveSmartArticleDestinations/);
-    assert.match(server, /await googleDecoder\.decodeBatch\(wrappers\)/);
-    assert.match(server, /isGoogleNewsHostedThumbnail\(article\.image\)/);
-    assert.match(server, /`\/api\/og-image\?url=\$\{encodeURIComponent\(article\.link\)\}`/);
+test('Smart ingestion batch-resolves publisher destinations with one cache read and replaces Google-hosted thumbnails', async () => {
+    const primary = 'https://news.google.com/articles/primary';
+    const member = 'https://news.google.com/read/member';
+    const publisher = 'https://example.com/primary';
+    const memberPublisher = 'https://example.net/member';
+    const requests = [], decodes = [];
+    const resolver = createGoogleNewsResolver({ env: { RSS_DATA: {
+        getEntries: async (key, urls) => {
+            assert.equal(key, 'googleNewsUrlCache');
+            requests.push(urls);
+            return { [primary]: { resolvedUrl: publisher, cachedAt: Date.now(), source: 'offline' } };
+        },
+        patchEntries: async () => {}
+    } }, decoder: { decode: async url => { decodes.push(url); return { decoded_url: memberPublisher }; } } });
+    const article = { link: primary, image: 'https://lh3.googleusercontent.com/primary',
+        relatedArticles: [{ link: member, image: 'https://lh3.googleusercontent.com/member' }] };
+    assert.deepEqual(await resolver.resolveSmartArticleDestinations([{ articles: [article] }]), { attempted: 2, resolved: 2 });
+    assert.deepEqual(requests, [[primary, member]]);
+    assert.deepEqual(decodes, [member]);
+    assert.equal(article.link, publisher);
+    assert.equal(article.relatedArticles[0].link, memberPublisher);
+    for (const item of [article, ...article.relatedArticles]) {
+        assert.equal(item.image, `/api/og-image?url=${encodeURIComponent(item.link)}`);
+    }
     assert.match(smartNews, /helpers\s*\.resolveSmartArticleDestinations/);
 });
 

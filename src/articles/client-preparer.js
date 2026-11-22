@@ -10,9 +10,9 @@ import { absoluteTimestamp } from './source-time.js';
 import { isVozThreadUrl } from '../voz-thread-state.js';
 import { versionVozThumbnailUrl } from './voz-thumbnail.js';
 
-export function createClientArticlePreparer({ resolveGoogleNewsUrl, getLastKnownCachedArticle,
+export function createClientArticlePreparer({ resolveGoogleNewsUrl, prefetchGoogleNewsCache, getLastKnownCachedArticle,
     getLastKnownCachedArticleImage, getCachedThreadCreationTime = async () => null }) {
-    async function prepareArticleForClient(article, isSubItem = false) {
+    async function prepareArticleForClient(article, isSubItem = false, prefetchedCache) {
         const prepared = { ...article, title: normalizeArticleTitle(article.title) };
         prepared.link = normalizeArticleSourceUrl(prepared.link);
         if (prepared.originalLink) prepared.originalLink = normalizeArticleSourceUrl(prepared.originalLink);
@@ -22,7 +22,7 @@ export function createClientArticlePreparer({ resolveGoogleNewsUrl, getLastKnown
             prepared.originalLink = prepared.link;
             const wrapper = prepared.link;
             const destination = cleanGoogleNewsDestination(
-                await resolveGoogleNewsUrl(wrapper, prepared, { backgroundResolve: true, isSubItem })
+                await resolveGoogleNewsUrl(wrapper, prepared, { backgroundResolve: true, isSubItem, prefetchedCache })
             );
             if (destination) setGoogleNewsArticleDestination(prepared, destination);
         }
@@ -90,10 +90,21 @@ export function createClientArticlePreparer({ resolveGoogleNewsUrl, getLastKnown
         prepared.link = normalizeStateUrl(prepared.link);
 
         if (Array.isArray(prepared.relatedArticles)) {
-            prepared.relatedArticles = await mapWithConcurrency(prepared.relatedArticles, 4, a => prepareArticleForClient(a, true));
+            prepared.relatedArticles = await mapWithConcurrency(prepared.relatedArticles, 4,
+                member => prepareArticleForClient(member, true, prefetchedCache));
         }
         return prepared;
     }
 
+    prepareArticleForClient.prepareList = async articles => {
+        const links = [];
+        const collect = article => {
+            links.push(article.link);
+            if (Array.isArray(article.relatedArticles)) article.relatedArticles.forEach(collect);
+        };
+        if (prefetchGoogleNewsCache) articles.forEach(collect);
+        const prefetchedCache = await prefetchGoogleNewsCache?.(links);
+        return mapWithConcurrency(articles, 6, article => prepareArticleForClient(article, false, prefetchedCache));
+    };
     return prepareArticleForClient;
 }

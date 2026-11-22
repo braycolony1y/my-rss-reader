@@ -31,6 +31,7 @@ export function createFeedSync({
     runParserWorker,
     googleDecoder,
     resolveGoogleNewsUrl,
+    prefetchGoogleNewsCache,
     fetchPdfCreationDate,
     hasOnlyOpenCliFetchMethod,
     scheduleEagerArticleImage,
@@ -483,12 +484,13 @@ export function createFeedSync({
                     global.lastFetchTimeByUrl[feed.url] = Date.now();
 
                     let decodedGoogleNewsLinks = new Map();
-                    let googleNewsUrlsToDecode = [];
-                    if (feed.url.includes('news.google.com')) {
-                        googleNewsUrlsToDecode = feedData.items.map(i => i.link).filter(isGoogleNewsArticleUrl);
-                        if (googleNewsUrlsToDecode.length > 0) {
-                            try {
-                                const results = await (googleDecoder.decodeBatch ? googleDecoder.decodeBatch(googleNewsUrlsToDecode) : decodeGoogleNewsIndividually(googleDecoder, googleNewsUrlsToDecode));
+                    let prefetchedCache;
+                    const googleNewsUrlsToDecode = feedData.items.map(i => i.link).filter(isGoogleNewsArticleUrl);
+                    if (googleNewsUrlsToDecode.length > 0) {
+                        try {
+                            prefetchedCache = await prefetchGoogleNewsCache?.(googleNewsUrlsToDecode);
+                            if (feed.url.includes('news.google.com')) {
+                                const results = await (googleDecoder.decodeBatch ? googleDecoder.decodeBatch(googleNewsUrlsToDecode, prefetchedCache) : decodeGoogleNewsIndividually(googleDecoder, googleNewsUrlsToDecode));
                                 results.forEach(res => {
                                     const destination = res.status && cleanGoogleNewsDestination(res.decoded_url);
                                     if (destination && googleNewsUrlsToDecode.includes(res.source_url) &&
@@ -496,9 +498,9 @@ export function createFeedSync({
                                         decodedGoogleNewsLinks.set(res.source_url, { ...res, decoded_url: destination });
                                     }
                                 });
-                            } catch (e) {
-                                console.error('[GOOGLE NEWS DECODE ERROR]', e.message);
                             }
+                        } catch (e) {
+                            console.error('[GOOGLE NEWS DECODE ERROR]', e.message);
                         }
                     }
 
@@ -631,7 +633,7 @@ export function createFeedSync({
                         };
                         if (googleNewsWrapper && isGoogleNewsArticleUrl(safeLink)) {
                             // No browser work on the sync's critical path.
-                            resolveGoogleNewsUrl?.(googleNewsWrapper, articleRecord, { backgroundResolve: true }).catch(() => {});
+                            resolveGoogleNewsUrl?.(googleNewsWrapper, articleRecord, { backgroundResolve: true, prefetchedCache }).catch(() => {});
                         }
                         newArticles.push(articleRecord);
                         if (!isRedditUrl(safeLink)) cacheArticles.push(articleRecord);

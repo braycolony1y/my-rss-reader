@@ -33,15 +33,20 @@ export function createGoogleNewsResolver({
     const networkDecoder = decoder || createGoogleNewsDecoder({ headers: BROWSER_HEADERS, now, fetchImpl });
     // Feed sync uses this same cached, paced decoder rather than a second npm instance.
     const googleDecoder = {
-        async decode(url) {
-            const decoded_url = await resolveGoogleNewsUrl(url, {}, { decodersOnly: true });
-            return { status: Boolean(cleanGoogleNewsDestination(decoded_url)), decoded_url,
-                source: googleNewsUrlCache.get(normalizeArticleSourceUrl(url))?.source };
+        async decode(url, prefetchedCache) {
+            const decoded_url = await resolveGoogleNewsUrl(url, {}, { decodersOnly: true, prefetchedCache });
+            const original = normalizeArticleSourceUrl(url);
+            const entry = dirtyEntries.get(original) || googleNewsUrlCache.get(original);
+            if (entry && prefetchedCache?.has(original)) prefetchedCache.set(original, entry);
+            return { status: Boolean(cleanGoogleNewsDestination(decoded_url)), decoded_url, source: entry?.source };
         },
-        async decodeBatch(urls) {
+        async decodeBatch(urls, prefetchedCache) {
+            prefetchedCache ??= await prefetchGoogleNewsCache(urls);
             const results = [];
             for (let i = 0; i < urls.length; i += 8) {
-                results.push(...await Promise.all(urls.slice(i, i + 8).map(async source_url => ({ ...await googleDecoder.decode(source_url), source_url }))));
+                results.push(...await Promise.all(urls.slice(i, i + 8).map(async source_url => ({
+                    ...await googleDecoder.decode(source_url, prefetchedCache), source_url
+                }))));
             }
             return results;
         }
@@ -71,7 +76,31 @@ export function createGoogleNewsResolver({
         return boundCacheObject(CACHE_KEY, stored, now());
     }
 
-    async function lookupCacheEntry(original) {
+    async function prefetchGoogleNewsCache(urls) {
+        const db = env.RSS_DATA;
+        if (!db.getEntries) return;
+        // Keep the batch available even if a large list churns the shared LRU.
+        const entries = new Map();
+        const unseen = [];
+        for (const url of urls) {
+            if (!isGoogleNewsArticleUrl(url) || !safeHttpUrl(url)) continue;
+            const original = normalizeArticleSourceUrl(url);
+            if (entries.has(original)) continue;
+            if (!dirtyEntries.has(original) && !googleNewsUrlCache.has(original)) unseen.push(original);
+            entries.set(original, dirtyEntries.get(original) || googleNewsUrlCache.get(original));
+        }
+        if (unseen.length) {
+            const stored = await db.getEntries(CACHE_KEY, unseen);
+            for (const original of unseen) {
+                const entry = dirtyEntries.get(original) || googleNewsUrlCache.get(original) || stored[original];
+                entries.set(original, entry);
+                if (!googleNewsUrlCache.has(original)) remember(googleNewsUrlCache, original, entry);
+            }
+        }
+        return entries;
+    }
+
+    async function lookupCacheEntry(original, prefetchedCache) {
         const db = env.RSS_DATA;
         if (!db.getEntries) {
             cacheLoading ||= loadLegacyCache().then(stored => {
@@ -83,7 +112,8 @@ export function createGoogleNewsResolver({
         }
         let entry = dirtyEntries.get(original) || googleNewsUrlCache.get(original);
         if (!entry && !googleNewsUrlCache.has(original)) {
-            if (db.getEntries) entry = (await db.getEntries(CACHE_KEY, [original]))[original];
+            if (prefetchedCache?.has(original)) entry = prefetchedCache.get(original);
+            else if (db.getEntries) entry = (await db.getEntries(CACHE_KEY, [original]))[original];
             else if (legacyCacheHasEvictions) entry = (await loadLegacyCache())[original];
             // A concurrent request may have already installed a newer result.
             entry = dirtyEntries.get(original) || googleNewsUrlCache.get(original) || entry;
@@ -353,7 +383,7 @@ export function createGoogleNewsResolver({
     async function resolveGoogleNewsUrl(sourceUrl, hints = {}, options = {}) {
         if (!isGoogleNewsArticleUrl(sourceUrl) || !safeHttpUrl(sourceUrl)) return sourceUrl;
         const original = normalizeArticleSourceUrl(sourceUrl);
-        const entry = await lookupCacheEntry(original);
+        const entry = await lookupCacheEntry(original, options.prefetchedCache);
         const destination = cachedDestination(entry, hints);
         if (destination) {
             scheduleRepair(original, { ...entry, resolvedUrl: destination });
@@ -390,14 +420,15 @@ export function createGoogleNewsResolver({
 
         // Concurrent submissions coalesce into RPC batches; actual Google IO
         // remains serial. Failure-cache entries are respected here as on cards.
-        await googleDecoder.decodeBatch(wrappers);
+        const prefetchedCache = await prefetchGoogleNewsCache(wrappers);
+        await googleDecoder.decodeBatch(wrappers, prefetchedCache);
 
         let resolvedCount = 0;
         for (const article of articles) {
             const wrapper = article?.link;
             if (!isGoogleNewsArticleUrl(wrapper)) continue;
             const original = normalizeArticleSourceUrl(wrapper);
-            const resolution = await lookupCacheEntry(original);
+            const resolution = await lookupCacheEntry(original, prefetchedCache);
             const destination = cachedDestination(resolution, article);
             if (!destination) {
                 scheduleBackground(original, article);
@@ -422,6 +453,7 @@ export function createGoogleNewsResolver({
     return {
         googleDecoder,
         resolveGoogleNewsUrl,
+        prefetchGoogleNewsCache,
         resolveArticleSourceUrl,
         get googleNewsUrlCache() { return googleNewsUrlCache; },
         decodeGoogleNews,

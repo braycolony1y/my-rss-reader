@@ -109,6 +109,21 @@ test('HTTP 429 opens backoff including Retry-After and retries after expiry', as
     await decoder.decode(wrapper()); assert.equal(calls, 2);
 });
 
+test('a followed publisher HTTP 429 leaves the Google decoder available', async () => {
+    const calls = [];
+    const decoder = createGoogleNewsDecoder({ intervalMs: 0, fetchImpl: async (url, options) => {
+        calls.push(url);
+        assert.notEqual(options.redirect, 'manual');
+        return calls.length === 1
+            ? { ok: false, status: 429, url: 'https://example.com/article', headers: new Headers({ 'Retry-After': '300' }) }
+            : { ok: true, status: 200, url: 'https://example.net/next', text: async () => '' };
+    } });
+    assert.equal((await decoder.decode(wrapper())).status, false);
+    assert.equal(decoder.blockedUntil, 0);
+    assert.equal((await decoder.decode(wrapper('AU_yqL-next'))).decoded_url, 'https://example.net/next');
+    assert.equal(calls.length, 2);
+});
+
 test('decoder aborts hung network IO using its timeout signal', async () => {
     const decoder = createGoogleNewsDecoder({ intervalMs: 0, timeoutMs: 10, fetchImpl: async (_, { signal }) => {
         return new Promise((_, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }));
@@ -255,14 +270,13 @@ test('permanently rejected offline, RPC and browser results never retry in the b
     assert.equal(browser, 1);
 });
 
-test('sorry, consent, sign-in and 429 redirects remain retryable after backoff', async () => {
-    for (const [wall, status] of [['https://www.google.com/sorry/index', 302], ['https://www.google.com/sorry/index', 200],
-        ['https://consent.google.com/', 200], ['https://accounts.google.com/', 200], ['https://youtube.com/', 429]]) {
+test('followed Google sorry, consent, sign-in and 429 responses remain retryable after backoff', async () => {
+    for (const [wall, status] of [['https://www.google.com/sorry/index', 200],
+        ['https://consent.google.com/', 200], ['https://accounts.google.com/', 200], ['https://www.google.co.uk/', 429]]) {
         let time = Date.now(), calls = 0;
-        const decoder = createGoogleNewsDecoder({ intervalMs: 0, now: () => time, fetchImpl: async url => {
+        const decoder = createGoogleNewsDecoder({ intervalMs: 0, now: () => time, fetchImpl: async () => {
             calls++;
-            return calls === 1 ? { ok: status === 200, status, url: status === 302 ? url : wall,
-                headers: new Headers({ 'Retry-After': '180', Location: wall }) }
+            return calls === 1 ? { ok: status === 200, status, url: wall, headers: new Headers({ 'Retry-After': '180' }) }
                 : { ok: true, status: 200, url: 'https://example.com/article', text: async () => '' };
         } });
         const service = resolver({ decoder, now: () => time });
@@ -489,6 +503,33 @@ test('client preparation returns before network work and reuses cached destinati
     assert.equal(cached.domain, 'example.com'); assert.equal(input.link, url); assert.equal(input.relatedArticles[0].link, url);
 });
 
+test('client list preparation reads unseen wrappers and nested members in one cache batch and remembers misses', async () => {
+    const urls = Array.from({ length: 12 }, (_, i) => wrapper('AU_yqL-page-' + i));
+    const requests = [];
+    const service = resolver({ env: { RSS_DATA: { getEntries: async (key, keys) => {
+        assert.equal(key, 'googleNewsUrlCache');
+        requests.push(keys);
+        return Object.fromEntries(keys.filter(url => url !== urls.at(-1))
+            .map(url => [url, { resolvedUrl: 'https://example.com/story', source: 'offline', cachedAt: Date.now() }]));
+    } } } });
+    const prepare = createClientArticlePreparer({ resolveGoogleNewsUrl: service.resolveGoogleNewsUrl,
+        prefetchGoogleNewsCache: service.prefetchGoogleNewsCache, getLastKnownCachedArticleImage: async () => '' });
+    const cards = urls.slice(0, -2).map(link => ({ link, title: 'Card' }));
+    cards[0].relatedArticles = [{ link: urls.at(-2), title: 'Related', relatedArticles: [
+        { link: urls.at(-1), title: 'Uncached' }, { link: cards[0].link + '#duplicate', title: 'Duplicate' }
+    ] }];
+    const result = await prepare.prepareList(cards);
+    assert.equal(requests.length, 1);
+    assert.deepEqual(new Set(requests[0]), new Set(urls));
+    assert.equal(requests[0].length, urls.length);
+    assert.ok(result.every(article => article.link === 'https://example.com/story'));
+    assert.equal(result[0].relatedArticles[0].link, 'https://example.com/story');
+    assert.equal(result[0].relatedArticles[0].relatedArticles[0].link, urls.at(-1));
+    assert.equal(await service.resolveGoogleNewsUrl(urls.at(-1), {}, { cacheOnly: true }), urls.at(-1));
+    assert.equal(requests.length, 1);
+    await finishBackground(service, urls.at(-1));
+});
+
 test('executable lookup uses module root independent of cwd and falls back to PATH', () => {
     let checked;
     assert.equal(resolveOpenCliExecutable({ moduleUrl: 'file:///repo/src/browser/opencli-executable.js', access: path => { checked = path; } }), '/repo/node_modules/.bin/opencli');
@@ -504,6 +545,15 @@ test('browser polls through intermediate Google hops and closes only its automat
         closeTab: async id => calls.push(['close', id])
     }), sleep: async () => {} });
     assert.equal(url, 'https://example.com/a'); assert.deepEqual(calls.at(-1), ['close', 'target-1']);
+});
+
+test('browser accepts a publisher HTTP 429 as a destination and rejects a Google HTTP 429 as a wall', async () => {
+    const navigate = url => resolveGoogleNewsBrowserRedirect(wrapper(), { createPage: () => ({
+        newTab: async () => 'owned', setActivePage() {}, closeTab: async () => {},
+        evaluate: async () => ({ url, status: 429 })
+    }) });
+    assert.equal(await navigate('https://example.com/article'), 'https://example.com/article');
+    await assert.rejects(navigate('https://news.google.com/articles/rate-limited'), { code: 'GOOGLE_NEWS_WALL' });
 });
 
 test('browser marks only a final non-article location permanent', async () => {
@@ -572,11 +622,14 @@ test('Smart ingestion resolves before clustering, preserves wrapper provenance a
     assert.equal(normalizeArticle(article).originalLink, url);
 });
 
-test('more than sixteen sync URLs use bounded batches without dropping entries', async () => {
+test('more than sixteen sync URLs read their cache in one batch and decode in bounded batches', async () => {
     let calls = 0;
-    const service = resolver({ decoder: { decode: async url => { calls++; return { decoded_url: 'https://example.com/' + new URL(url).pathname.split('/').pop() }; } } });
+    const reads = [];
+    const service = resolver({ env: { RSS_DATA: { getEntries: async (_key, keys) => { reads.push(keys); return {}; } } },
+        decoder: { decode: async url => { calls++; return { decoded_url: 'https://example.com/' + new URL(url).pathname.split('/').pop() }; } } });
     const urls = Array.from({ length: 25 }, (_, i) => wrapper('AU_yqL-' + i));
     const results = await service.googleDecoder.decodeBatch(urls);
+    assert.deepEqual(reads, [urls]);
     assert.equal(calls, 25); assert.equal(results.filter(r => r.status).length, 25);
 });
 

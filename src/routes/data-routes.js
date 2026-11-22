@@ -15,6 +15,7 @@ export function registerDataRoutes({
     serveSmartData,
     env,
     prepareArticleForClient,
+    prepareArticlesForClient = articles => mapWithConcurrency(articles, 6, article => prepareArticleForClient(article)),
     presentation,
     progress = { activeForegroundRequests: 0 },
 } = {}) {
@@ -408,14 +409,10 @@ export function registerDataRoutes({
 
         const filteredAt = performance.now();
 
-        const paginatedArticles =
-            await mapWithConcurrency(
-                pageSourceArticles,
-                6,
-                simpleStreamingView && req.query.feedPageMode === 'unseen'
-                    ? async article => ({ ...await prepareArticleForClient(article), feedPageKey: feedPageKey(article) })
-                    : prepareArticleForClient
-            );
+        const preparedArticles = await prepareArticlesForClient(pageSourceArticles);
+        const paginatedArticles = simpleStreamingView && req.query.feedPageMode === 'unseen'
+            ? preparedArticles.map((article, index) => ({ ...article, feedPageKey: feedPageKey(pageSourceArticles[index]) }))
+            : preparedArticles;
 
         res.setHeader?.(
             'Server-Timing',

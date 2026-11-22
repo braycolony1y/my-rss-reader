@@ -5,9 +5,10 @@ import { readFileSync } from 'node:fs';
 import { registerSettingsRoutes } from '../src/routes/settings-routes.js';
 
 function readingState(fetch = async () => ({ ok: true })) {
-    const context = vm.createContext({ fetch });
+    const context = vm.createContext({ fetch, URL });
     vm.runInContext(readFileSync(new URL('../public/js/feeds/reading-state.js', import.meta.url), 'utf8'), context);
-    return vm.runInContext('ReaderFeedsReadingState.create()', context);
+    vm.runInContext(readFileSync(new URL('../public/js/article/navigation.js', import.meta.url), 'utf8'), context);
+    return vm.runInContext('Object.assign(ReaderArticleNavigation.create(), ReaderFeedsReadingState.create())', context);
 }
 
 test('two devices retain concurrent read writes and receive VOZ positions and removals', async () => {
@@ -104,6 +105,20 @@ test('hidden badge counts loaded article aliases once and keeps unmatched entrie
     const link = 'https://example.com/decoded';
     app.articles = [{ link: 'https://example.com/parent', relatedArticles: [{ link, originalLink }] }, { link, originalLink }];
     app.hiddenStates = [originalLink + '/', link, link + '/', 'https://example.com/elsewhere', 'https://example.com/elsewhere/'];
+    assert.equal(app.hiddenArticleCount(), 2);
+});
+
+test('hidden badge skips reading articles for plain hidden links and known Google News aliases', () => {
+    const app = readingState();
+    const originalLink = 'https://news.google.com/rss/articles/example';
+    const destination = 'https://example.com/hidden';
+    for (const key of ['articles', 'overlayArticle']) {
+        Object.defineProperty(app, key, { get() { assert.fail(`Badge accessed ${key}`); } });
+    }
+    app.hiddenStates = [destination, destination + '/#fragment', 'https://example.com/other'];
+    assert.equal(app.hiddenArticleCount(), 2);
+    app.hiddenStates.push(originalLink);
+    app.hiddenStateAliases = { [originalLink]: destination };
     assert.equal(app.hiddenArticleCount(), 2);
 });
 

@@ -99,6 +99,7 @@ export function createArticlePrefetch({
 
     async function prefetchOpenCliOnlyArticles(articles = [], feedUrl = '') {
         if (!Array.isArray(articles) || !articles.length) return [];
+        await googleNews?.prefetchGoogleNewsCache?.(articles.map(article => article?.link || article?.url)).catch(() => {});
         return Promise.all(articles.map(article => scheduleOpenCliIngestPrefetch(article, feedUrl)));
     }
 
@@ -107,7 +108,8 @@ export function createArticlePrefetch({
         return;
     }
 
-    const triggerNextFiveArticlesPrefetch = createNextArticlesPrefetch({ env, getCachedArticleMetadata, getCachedArticle, enqueuePrefetchedSummary, progress, getArticleFetchPolicy, fetchParsedArticleByStrategy, requiresIndependentDeletionConfirmation, buildDeletedSourceResponse, cacheArticleResult });
+    const triggerNextFiveArticlesPrefetch = createNextArticlesPrefetch({ env, getCachedArticleMetadata, getCachedArticle, enqueuePrefetchedSummary, progress, getArticleFetchPolicy, fetchParsedArticleByStrategy, requiresIndependentDeletionConfirmation, buildDeletedSourceResponse, cacheArticleResult,
+        prefetchGoogleNewsCache: googleNews?.prefetchGoogleNewsCache });
 
     // ============================================================================
     // CONTINUOUS SEQUENTIAL SYNC QUEUE & UNIVERSAL TAB PREFETCH
@@ -138,6 +140,7 @@ export function createArticlePrefetch({
         try {
             await waitForHttpIdle();
             const toProcess = await env.RSS_DATA.get('universalPrefetchTargets', { type: 'json' }) || [];
+            const prefetchedCache = await googleNews?.prefetchGoogleNewsCache?.(toProcess.map(art => art.link || art.originalLink)).catch(() => undefined);
             console.log(`[PREFETCH ENGINE] Loaded ${toProcess.length} unique top-5 articles from cache. Checking cache and prefetching...`);
 
 
@@ -147,7 +150,7 @@ export function createArticlePrefetch({
                 if (!url || isRedditUrl(url)) continue;
                 let cached = await getCachedArticle(url);
                 if (!cached && isGoogleNewsArticleUrl(url)) {
-                    const destination = await googleNews?.resolveGoogleNewsUrl?.(url, art, { cacheOnly: true });
+                    const destination = await googleNews?.resolveGoogleNewsUrl?.(url, art, { cacheOnly: true, prefetchedCache });
                     if (destination && destination !== url) cached = await getCachedArticle(destination);
                 }
                 if (cached && cached.content) {

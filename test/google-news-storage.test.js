@@ -9,6 +9,7 @@ import { publishFeedResults } from '../src/feeds/publish-results.js';
 import { registerDataRoutes } from '../src/routes/data-routes.js';
 import { createRepository } from '../src/database/sqlite/repository.js';
 import { retainedCacheEntries } from '../src/database/sqlite/cache-retention.js';
+import { ARTICLE_ORIGINAL_LINK_INDEX, MEMBER_NESTED_INDEX, MEMBER_ORIGINAL_LINK_INDEX } from '../src/database/sqlite/schema.js';
 
 const wrapper = 'https://news.google.com/read/' + Buffer.from('AU_yqL-storage').toString('base64url');
 const memberWrapper = 'https://news.google.com/articles/' + Buffer.from('AU_yqL-member').toString('base64url');
@@ -119,20 +120,78 @@ test('source-less repairs add aliases only after validating stored publisher hin
     } finally { db.close(); }
 });
 
-test('existing SQLite databases index personal aliases and both Smart rewrite lookups', async t => {
+test('Smart link projection preserves ordered aliases and nested members without extracting article payloads', () => {
+    const db = openSqlite(':memory:');
+    try {
+        const queries = [];
+        const repo = createRepository({ prepare(query) {
+            const statement = db.prepare(query);
+            if (!/^SELECT .*FROM (?:articles|cluster_members)\b/s.test(query)) return statement;
+            return {
+                get: (...params) => statement.get(...params),
+                all(...params) { queries.push(query); return statement.all(...params); },
+                iterate(...params) { queries.push(query); return statement.iterate(...params); }
+            };
+        } });
+        const link = 'https://example.com/primary';
+        const memberLink = 'https://example.com/member';
+        const nested = [{ link: 'https://example.net/nested', originalLink: wrapper, title: 'Nested' }];
+        const items = [
+            { link, originalLink: wrapper + '/#fragment', title: 'Primary', relatedArticles: [
+                { link: memberLink, originalLink: memberWrapper, title: 'Member' },
+                { link: wrapper, originalLink: wrapper, relatedArticles: nested },
+                { link: 'https://example.net/plain' }
+            ] },
+            { link: memberLink, relatedArticles: [] },
+            { link: 'https://example.net/other', title: 'Other' }
+        ];
+        for (const key of ['smartClusters', 'smartRawArticles']) {
+            repo.write(key, items);
+            queries.length = 0;
+            assert.deepEqual(repo.linkProjection(key), [
+                { link, originalLink: items[0].originalLink, relatedArticles: [
+                    { link: memberLink, originalLink: memberWrapper }, { link: wrapper, relatedArticles: nested },
+                    { link: 'https://example.net/plain' }
+                ] },
+                { link: memberLink, relatedArticles: [] },
+                { link: 'https://example.net/other' }
+            ]);
+            assert.equal(queries.length, 5);
+            for (const query of queries) {
+                const plan = db.prepare('EXPLAIN QUERY PLAN ' + query).all(key).map(row => row.detail).join('\n');
+                assert.match(plan, /SEARCH (?:articles|cluster_members) USING (?:COVERING )?INDEX/);
+                assert.doesNotMatch(plan, /SCAN (?:articles|cluster_members)\b/);
+                const operations = db.prepare('EXPLAIN ' + query).all(key);
+                assert.equal(operations.some(op => op.p4?.includes('json_extract')), false, query);
+            }
+        }
+    } finally { db.close(); }
+});
+
+test('old-expression SQLite indexes upgrade idempotently and keep both Smart rewrite lookups working', async t => {
     const root = await fs.mkdtemp('/tmp/rss-google-news-index-');
     t.after(() => fs.rm(root, { recursive: true, force: true }));
     const filename = path.join(root, 'reader.sqlite');
     const before = openSqlite(filename);
     const publisher = 'https://example.com/story';
+    const nested = [{ link: 'https://example.com/nested' }];
     const item = { link: publisher, originalLink: wrapper + '/#fragment', googleNewsDecodeSource: 'offline',
-        relatedArticles: [{ link: 'https://example.com/member', originalLink: memberWrapper, googleNewsDecodeSource: 'offline' }] };
+        relatedArticles: [{ link: 'https://example.com/member', originalLink: memberWrapper, googleNewsDecodeSource: 'offline',
+            relatedArticles: nested }] };
     createRepository(before).write('smartClusters', [item, ...Array.from({ length: 100 }, (_, i) => ({ link: 'https://example.com/' + i }))]);
-    before.exec('DROP INDEX articles_original_link; DROP INDEX cluster_members_original_link;');
+    before.exec(`DROP INDEX ${ARTICLE_ORIGINAL_LINK_INDEX}; DROP INDEX ${MEMBER_ORIGINAL_LINK_INDEX}; DROP INDEX ${MEMBER_NESTED_INDEX};
+        CREATE INDEX articles_original_link ON articles(collection,json_extract(payload,'$.originalLink'));
+        CREATE INDEX cluster_members_original_link ON cluster_members(collection,json_extract(payload,'$.originalLink'));`);
     before.close();
 
+    openSqlite(filename).close();
     const db = openSqlite(filename);
     try {
+        assert.deepEqual(db.prepare(`SELECT name FROM sqlite_schema WHERE type='index' AND name LIKE '%original_link%' ORDER BY name`)
+            .all().map(row => row.name), [ARTICLE_ORIGINAL_LINK_INDEX, MEMBER_ORIGINAL_LINK_INDEX]);
+        assert.deepEqual(createRepository(db).linkProjection('smartClusters')[0].relatedArticles, [
+            { link: 'https://example.com/member', originalLink: memberWrapper, relatedArticles: nested }
+        ]);
         const lookupPlans = [];
         const repo = createRepository({ prepare(query) {
             const statement = db.prepare(query);
@@ -149,14 +208,14 @@ test('existing SQLite databases index personal aliases and both Smart rewrite lo
             .map(article => article.link), [publisher]);
         assert.equal((repo.findArticles('smartClusters', { normalizedLinks: [wrapper], includeOriginalLink: true }))[0].link, publisher);
         assert.match(lookupPlans[0], /SEARCH articles USING (?:COVERING )?INDEX articles_normalized_link/);
-        assert.match(lookupPlans[0], /SEARCH articles USING (?:COVERING )?INDEX articles_original_link/);
+        assert.match(lookupPlans[0], new RegExp(`SEARCH articles USING (?:COVERING )?INDEX ${ARTICLE_ORIGINAL_LINK_INDEX}\\b`));
         assert.match(lookupPlans[0], /SEARCH articles USING INTEGER PRIMARY KEY/);
         assert.doesNotMatch(lookupPlans[0], /SCAN articles\b/);
         repo.write('smartClusters', [{ link: wrapper, relatedArticles: [{ link: memberWrapper + '/' }] }],
             { allowLargeReduction: true });
         const plan = lookupPlans.at(-1);
-        assert.match(plan, /SEARCH articles USING INDEX articles_original_link/);
-        assert.match(plan, /SEARCH cluster_members USING INDEX cluster_members_original_link/);
+        assert.match(plan, new RegExp(`SEARCH articles USING INDEX ${ARTICLE_ORIGINAL_LINK_INDEX}\\b`));
+        assert.match(plan, new RegExp(`SEARCH cluster_members USING INDEX ${MEMBER_ORIGINAL_LINK_INDEX}\\b`));
         assert.doesNotMatch(plan, /SCAN (articles|cluster_members)\b/);
         const rewritten = repo.read('smartClusters')[0];
         assert.equal(rewritten.link, publisher);

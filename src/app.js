@@ -263,6 +263,7 @@ export async function createApplication({ isMainModule = false, databaseStore } 
 
     const presentation = createArticlePresentation({
         resolveGoogleNewsUrl: googleNews.resolveGoogleNewsUrl,
+        prefetchGoogleNewsCache: googleNews.prefetchGoogleNewsCache,
         getLastKnownCachedArticle: cache.getLastKnownCachedArticle,
         getLastKnownCachedArticleImage: cache.getLastKnownCachedArticleImage,
         getCachedThreadCreationTime: cache.getCachedThreadCreationTime,
@@ -345,6 +346,7 @@ export async function createApplication({ isMainModule = false, databaseStore } 
         runParserWorker: worker.runParserWorker,
         googleDecoder: googleNews.googleDecoder,
         resolveGoogleNewsUrl: googleNews.resolveGoogleNewsUrl,
+        prefetchGoogleNewsCache: googleNews.prefetchGoogleNewsCache,
         fetchPdfCreationDate: (...args) => sourceCooldown.run(args[0], () => images.fetchPdfCreationDate(...args)),
         hasOnlyOpenCliFetchMethod: pipeline.hasOnlyOpenCliFetchMethod,
         scheduleEagerArticleImage: images.scheduleEagerArticleImage,
@@ -424,6 +426,7 @@ export async function createApplication({ isMainModule = false, databaseStore } 
         serveSmartData: presentation.serveSmartData,
         env: database.env,
         prepareArticleForClient: presentation.prepareArticleForClient,
+        prepareArticlesForClient: presentation.prepareArticlesForClient,
         presentation,
         progress
     });

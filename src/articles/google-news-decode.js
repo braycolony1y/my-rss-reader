@@ -46,11 +46,11 @@ export function isRejectedGoogleNewsDestination(value) {
 }
 
 export function googleNewsWallError(value, status) {
-    if (status === 429) return 'Google News HTTP 429';
     try {
         const url = new URL(value);
         const host = hostname(url);
         if (!googleHost.test(host)) return '';
+        if (status === 429) return 'Google News HTTP 429';
         if (/^\/sorry(?:\/|$)/i.test(url.pathname)) return 'Google News HTTP 429 rate-limit wall';
         if (/^(?:consent|accounts)\./.test(host)) return 'Google News consent or sign-in wall';
     } catch { }
@@ -122,9 +122,7 @@ export function createGoogleNewsDecoder({ fetchImpl = (...args) => fetch(...args
             if (now() < blockedUntil) throw googleNewsTransientError('Google News HTTP 429 backoff active');
             lastStart = now();
             const response = await fetchImpl(url, { ...options, headers: { ...headers, ...options.headers }, signal: AbortSignal.timeout(timeoutMs) });
-            const redirect = checkRedirect && response.status >= 300 && response.status < 400 && response.headers?.get('location');
-            const redirectUrl = redirect ? new URL(redirect, response.url || url).href : '';
-            const wall = googleNewsWallError(response.url, response.status) || googleNewsWallError(redirectUrl);
+            const wall = googleNewsWallError(response.url || url, response.status);
             if (wall) {
                 blockRequests(response.headers?.get('retry-after'));
                 await response.body?.cancel();

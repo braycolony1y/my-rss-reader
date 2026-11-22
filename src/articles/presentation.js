@@ -6,12 +6,13 @@ import { rankStory, storyMembers } from './story-ranking.js';
 import { rankClassicStories } from '../ranking/classic.js';
 import { classicRankingMode } from '../ranking/config.js';
 import { getSharedVectorStore } from '../ranking/vector-store.js';
-import { normalizeStateUrl, mapWithConcurrency, NormalizedSet, hasArticleState } from '../utils/article-utils.js';
+import { normalizeStateUrl, NormalizedSet, hasArticleState } from '../utils/article-utils.js';
 import { cleanStoredCluster, calculateHotness, buildCluster } from '../../smart-news.js';
 import { normalizeBlockedKeywordEntries, articleContentFilterMatches } from '../filters/content-filter.js';
 
 export function createArticlePresentation({
     resolveGoogleNewsUrl,
+    prefetchGoogleNewsCache,
     getLastKnownCachedArticle,
     getLastKnownCachedArticleImage = async url => (await getLastKnownCachedArticle(url))?.image,
     getCachedThreadCreationTime,
@@ -21,8 +22,9 @@ export function createArticlePresentation({
     // Cache for parsed JSON strings (e.g. smartClusters) to avoid CPU-heavy parsing on tab clicks
     let _smartClustersHistory = {};
 
-    const prepareArticleForClient = createClientArticlePreparer({ resolveGoogleNewsUrl,
+    const prepareArticleForClient = createClientArticlePreparer({ resolveGoogleNewsUrl, prefetchGoogleNewsCache,
         getLastKnownCachedArticle, getLastKnownCachedArticleImage, getCachedThreadCreationTime });
+    const prepareArticlesForClient = prepareArticleForClient.prepareList;
 
     const smartApiViewCache = new Map();
     const storyViews = new Map();
@@ -495,7 +497,7 @@ export function createArticlePresentation({
         const endIndex = page * limit;
         const pageArticles = filteredArticles.slice(startIndex, endIndex);
         mark("snapshot-construction");
-        const paginatedArticles = await mapWithConcurrency(pageArticles, 6, article => prepareArticleForClient(article));
+        const paginatedArticles = await prepareArticlesForClient(pageArticles);
         mark('card-preparation');
         res.setHeader('X-Smart-View-Cache', cacheHit ? 'hit' : 'miss');
         const payload = {
@@ -545,6 +547,7 @@ export function createArticlePresentation({
         serveSmartData,
         get _smartClustersHistory() { return _smartClustersHistory; },
         prepareArticleForClient,
+        prepareArticlesForClient,
         clearUnavailableSourceUrl
     };
 }

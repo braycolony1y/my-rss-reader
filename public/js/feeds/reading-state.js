@@ -47,8 +47,12 @@ const ReaderFeedsReadingState = {
                 hiddenArticleCount() {
                     const links = this.dedupeStateLinks(this.hiddenStates);
                     if (!links.length) return 0;
-                    const hidden = new Set(links);
                     const aliases = new Map(Object.entries(this.hiddenStateAliases || {}));
+                    const count = () => new Set(links.map(link => aliases.get(link) || link)).size;
+                    if (!links.some(link => !aliases.has(link) && this.isGoogleNewsArticleUrl(link))) {
+                        return aliases.size ? count() : links.length;
+                    }
+                    const hidden = new Set(links);
                     const collect = article => {
                         if (article?.originalLink && article.link) {
                             const wrapper = this.normalizeStateLink(article.originalLink);
@@ -61,7 +65,7 @@ const ReaderFeedsReadingState = {
                     };
                     for (const article of this.articles || []) collect(article);
                     collect(this.overlayArticle);
-                    return new Set(links.map(link => aliases.get(link) || link)).size;
+                    return count();
                 },
 
                 adjustArticleUnreadCounts(article, delta) {

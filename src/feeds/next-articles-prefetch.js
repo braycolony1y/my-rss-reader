@@ -2,7 +2,7 @@ import {prefetchArticleStrategies} from './prefetch-strategies.js';
 import { isRedditUrl } from '../utils/article-utils.js';
 import { getCurrentArticleFetchLaneContext } from '../articles/fetch-lanes.js';
 
-export function createNextArticlesPrefetch({ env, getCachedArticleMetadata, getCachedArticle, enqueuePrefetchedSummary, progress, getArticleFetchPolicy, fetchParsedArticleByStrategy, requiresIndependentDeletionConfirmation, buildDeletedSourceResponse, cacheArticleResult }) {
+export function createNextArticlesPrefetch({ env, getCachedArticleMetadata, getCachedArticle, enqueuePrefetchedSummary, progress, getArticleFetchPolicy, fetchParsedArticleByStrategy, requiresIndependentDeletionConfirmation, buildDeletedSourceResponse, cacheArticleResult, prefetchGoogleNewsCache }) {
     let currentPrefetchRunId = 0;
 
     async function triggerNextFiveArticlesPrefetch(currentUrl, dryRun = false, prefetchTargets = null, waitPromise = null) {
@@ -58,6 +58,7 @@ export function createNextArticlesPrefetch({ env, getCachedArticleMetadata, getC
             try {
                 console.log(`[NEXT-5 PREFETCH] Triggered background prefetch for ${urlsToPrefetch.size} articles after reading ${currentUrl}`);
 
+                await prefetchGoogleNewsCache?.(urlsToPrefetch.keys()).catch(() => {});
                 for (const [targetUrl, art] of urlsToPrefetch.entries()) {
                     if (currentPrefetchRunId !== runId) {
                         console.log(`[NEXT-5 PREFETCH] Aborting old prefetch queue for ${currentUrl} because a newer article was opened.`);

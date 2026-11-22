@@ -4,7 +4,8 @@ import { boundCacheObject, CACHE_RETENTION } from './cache-retention.js';
 import { createHash } from 'node:crypto';
 import { hash, describe, tableFor, rowIdentity, CRITICAL_ARRAYS, CHILD_FIELDS } from './codec.js';
 import { normalizeStateUrl } from '../../utils/state-url.js';
-import { ORIGINAL_LINK_LOOKUP } from './schema.js';
+import { ARTICLE_ORIGINAL_LINK_INDEX, MEMBER_ORIGINAL_LINK_INDEX, ORIGINAL_LINK_LOOKUP,
+    ORIGINAL_LINK_VALUE, MEMBER_NESTED_INDEX, MEMBER_NESTED_VALUE } from './schema.js';
 
 export function createRepository(db) {
     const prepared = new Map();
@@ -180,7 +181,7 @@ export function createRepository(db) {
                 clauses.push(`rowid IN (
                     SELECT rowid FROM articles INDEXED BY articles_normalized_link WHERE collection=? AND ${matchLink}
                     UNION
-                    SELECT rowid FROM articles INDEXED BY articles_original_link WHERE collection=? AND ${ORIGINAL_LINK_LOOKUP} IS NOT NULL
+                    SELECT rowid FROM articles INDEXED BY ${ARTICLE_ORIGINAL_LINK_INDEX} WHERE collection=? AND ${ORIGINAL_LINK_LOOKUP} IS NOT NULL
                         AND ${ORIGINAL_LINK_LOOKUP} IN (SELECT value FROM json_each(?))
                 )`);
                 params.push(key, requested, key, requested);
@@ -198,21 +199,27 @@ export function createRepository(db) {
     function linkProjection(key) {
         if (tableFor(key) !== 'articles') throw Error('Link projection requires article collection');
         if (!info(key)) return null;
-        const projected = row => ({
-            link: row.link,
-            ...(row.originalLink && row.originalLink !== row.link ? { originalLink: row.originalLink } : {})
-        });
+        // Read sparse expression values directly from their indexes. The ordered
+        // collection reads below only need relational columns.
+        const indexedValues = (table, index, value, lookup = value) => new Map(sql(`SELECT rowid,${value} AS value
+            FROM ${table} INDEXED BY ${index} WHERE collection=? AND ${lookup} IS NOT NULL`)
+            .all(key).map(row => [row.rowid, row.value]));
+        const articleOriginals = indexedValues('articles', ARTICLE_ORIGINAL_LINK_INDEX, ORIGINAL_LINK_VALUE, ORIGINAL_LINK_LOOKUP);
+        const memberOriginals = indexedValues('cluster_members', MEMBER_ORIGINAL_LINK_INDEX, ORIGINAL_LINK_VALUE, ORIGINAL_LINK_LOOKUP);
+        const nestedMembers = indexedValues('cluster_members', MEMBER_NESTED_INDEX, MEMBER_NESTED_VALUE);
+        const projected = (link, originalLink) => ({ link, ...(originalLink && originalLink !== link ? { originalLink } : {}) });
         const related = new Map();
-        for (const row of sql(`SELECT cluster_key,link,json_extract(payload,'$.originalLink') AS originalLink,
-            json_extract(payload,'$.relatedArticles') AS nested FROM cluster_members WHERE collection=? ORDER BY cluster_key,position`).iterate(key)) {
+        for (const row of sql(`SELECT rowid,cluster_key,link FROM cluster_members
+            WHERE collection=? ORDER BY cluster_key,position`).iterate(key)) {
             if (!related.has(row.cluster_key)) related.set(row.cluster_key, []);
-            const member = projected(row);
-            if (row.nested) member.relatedArticles = JSON.parse(row.nested);
+            const member = projected(row.link, memberOriginals.get(row.rowid));
+            const nested = nestedMembers.get(row.rowid);
+            if (nested) member.relatedArticles = JSON.parse(nested);
             related.get(row.cluster_key).push(member);
         }
-        return sql(`SELECT row_key,link,related,json_extract(payload,'$.originalLink') AS originalLink
-            FROM articles WHERE collection=? ORDER BY position`).all(key)
-            .map(row => ({...projected(row), ...(row.related ? { relatedArticles: related.get(row.row_key) || [] } : {})}));
+        return sql('SELECT rowid,row_key,link,related FROM articles WHERE collection=? ORDER BY position').all(key)
+            .map(row => ({...projected(row.link, articleOriginals.get(row.rowid)),
+                ...(row.related ? { relatedArticles: related.get(row.row_key) || [] } : {})}));
     }
     function mapEntries(key,ids){
         if(!info(key))return {};
@@ -265,8 +272,8 @@ export function createRepository(db) {
         const links = JSON.stringify([...wrappers.keys()]);
         const originalMatch = `collection=? AND ${ORIGINAL_LINK_LOOKUP} IS NOT NULL
             AND ${ORIGINAL_LINK_LOOKUP} IN (SELECT value FROM json_each(?))`;
-        const originals = sql(`SELECT link,payload FROM articles INDEXED BY articles_original_link WHERE ${originalMatch}
-            UNION ALL SELECT link,payload FROM cluster_members INDEXED BY cluster_members_original_link WHERE ${originalMatch}`)
+        const originals = sql(`SELECT link,payload FROM articles INDEXED BY ${ARTICLE_ORIGINAL_LINK_INDEX} WHERE ${originalMatch}
+            UNION ALL SELECT link,payload FROM cluster_members INDEXED BY ${MEMBER_ORIGINAL_LINK_INDEX} WHERE ${originalMatch}`)
             .all(key, links, key, links);
         const destinations = Object.create(null);
         for (const row of originals) {
