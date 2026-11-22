@@ -72,3 +72,20 @@ test('head prefetch preserves authentication, saved-state guards and Smart route
     assert.equal(global.get('limit'), '40');
     for (const options of [{ auth: false }, { saved: true }, { hash: '#category/Forum' }, { disabledStorage: true }]) assert.deepEqual(run(options), []);
 });
+
+test('Not interested popup is composed from keyword modules only; the old rule picker is gone', async () => {
+    const modules = READER_ASSET_PATHS.clientModules.map(filename => String(filename));
+    assert.ok(modules.some(filename => filename.endsWith('smart/feedback-picker.js')));
+    assert.ok(!modules.some(filename => /feedback-semantics/.test(filename)));
+    const html = await createReaderAssetRenderer().html();
+    assert.ok(html.includes('Hide stories like this'));
+    assert.ok(html.includes('Hide matching stories') || html.includes('feedbackConfirmLabel'));
+    assert.ok(html.includes('/api/content-filters/suggest') === false, 'the route is requested by the client module, not inlined in markup');
+    assert.ok(!html.includes('Smart Articles'));
+    assert.ok(!html.includes('None of these'));
+    assert.ok(!html.includes('Review meaning'));
+    const script = await createReaderAssetRenderer().script();
+    assert.ok(script.includes('/api/content-filters/suggest'));
+    assert.ok(!script.includes('/api/smart-feedback/suggestions') && !script.includes('/api/smart-feedback/apply'));
+    assert.ok(!script.includes('smartPersonalFilters') && !script.includes('SmartFeedbackSemantics'));
+});

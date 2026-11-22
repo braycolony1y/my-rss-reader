@@ -269,6 +269,7 @@ const ReaderFeedsContentFilter = {
                         this.blockedKeywords = this.normalizeKeywordList(data.keywords);
                         this.blockedKeywordsDraft = [...this.blockedKeywords];
                         this.contentFilterSettingsOpen = false;
+                        this.feedbackHiddenKeywords = [];
                         void this.fetchData(false, false, true);
                     } catch (error) {
                         this.contentFilterError = error.message;

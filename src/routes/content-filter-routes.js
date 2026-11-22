@@ -4,11 +4,63 @@ import { cleanStoredCluster } from '../../smart-news.js';
 import { normalizeArticleTitle } from '../../feed-parsers.js';
 import { safeHttpUrl } from '../utils/article-utils.js';
 import { publishAppEvent } from '../events.js';
+import { articlesByLinks } from '../database/article-lookups.js';
+import { createIdfProvider, suggestKeywords, suggestionInputFor, SUGGESTION_LIMIT } from '../filters/keyword-suggestions.js';
 
 export function registerContentFilterRoutes({
     app,
     env,
 } = {}) {
+    // Document frequencies over the last 14 days of titles and snippets, built lazily on the first
+    // request and rebuilt at most every 30 minutes. It never touches the embedding cache.
+    const getIdfIndex = createIdfProvider({
+        loadArticles: async () => {
+            const [articles, raw] = await Promise.all([
+                env.RSS_DATA.get('articles', { type: 'json', shared: true }),
+                env.RSS_DATA.get('smartRawArticles', { type: 'json', shared: true }),
+            ]);
+            const seen = new Set();
+            return [...(articles || []), ...(raw || [])].filter(article => {
+                const link = article?.link;
+                if (!link || seen.has(link)) return false;
+                seen.add(link);
+                return true;
+            });
+        },
+    });
+
+    async function findSuggestionSubject(link, clusterId) {
+        for (const key of ['smartClusters', 'articles', 'smartRawArticles']) {
+            const rows = await articlesByLinks(env.RSS_DATA, key, [link]);
+            const found = rows.find(row => row.link === link && (!clusterId || !row.clusterId || row.clusterId === clusterId)) || null;
+            if (found) return found;
+        }
+        return null;
+    }
+
+    app.get('/api/content-filters/suggest', authMiddleware, async (req, res) => {
+        try {
+            const link = String(req.query.link || '').slice(0, 2000);
+            if (!safeHttpUrl(link)) return res.status(400).json({ error: 'A story link is required.' });
+            const clusterId = String(req.query.clusterId || '').slice(0, 200);
+            const article = await findSuggestionSubject(link, clusterId);
+            if (!article) return res.status(404).json({ error: 'This story is no longer available. Refresh and try again.' });
+            const requested = Math.floor(Number(req.query.limit));
+            const limit = Number.isFinite(requested) && requested > 0 ? Math.min(SUGGESTION_LIMIT, requested) : SUGGESTION_LIMIT;
+            const [index, blocked] = await Promise.all([
+                getIdfIndex(),
+                env.RSS_DATA.get('blockedArticleKeywords', { type: 'json' }),
+            ]);
+            const input = suggestionInputFor(article);
+            res.json({
+                title: input.title,
+                suggestions: suggestKeywords({ ...input, blockedKeywords: blocked || [], index, limit }),
+            });
+        } catch (error) {
+            res.status(500).json({ error: 'Could not suggest keywords.' });
+        }
+    });
+
     app.get('/api/content-filter-settings', authMiddleware, async (req, res) => {
         const stored = await env.RSS_DATA.get('blockedArticleKeywords', { type: 'json' }) || [];
         const keywords = normalizeBlockedKeywordEntries(stored).map(entry => entry.keyword);

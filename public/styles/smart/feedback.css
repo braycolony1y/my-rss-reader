@@ -8,20 +8,24 @@
 .smart-feedback-picker { position:fixed;width:440px;max-height:calc(100dvh - 24px);overflow:auto;padding:24px;animation:feedback-open .14s ease-out; }
 .smart-feedback-picker h2 { font-size:20px;line-height:1.3;font-weight:650;margin:0 0 8px;color:var(--smart-glass-ink); }
 .smart-feedback-picker p { color:var(--smart-glass-muted);font-size:13px;line-height:1.5; }
-.smart-feedback-picker .feedback-scope { font-size:11px;margin:8px 0 16px; }
-.feedback-reasons { display:flex;flex-wrap:wrap;gap:9px; }
+.smart-feedback-picker .feedback-article { margin:0 0 10px;font-size:14px;font-weight:600;color:var(--smart-glass-ink);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden; }
+.smart-feedback-picker .feedback-help { margin:0 0 14px; }
+.feedback-reasons { display:flex;flex-wrap:wrap;gap:9px;min-height:36px;align-items:center; }
+.smart-feedback-picker .feedback-loading { margin:0;font-size:13px; }
+.feedback-chip-wrap { display:inline-flex;align-items:stretch; }
+.smart-feedback-picker .feedback-chip-wrap .feedback-chip { max-width:100%;overflow-wrap:anywhere; }
+.smart-feedback-picker .feedback-chip-remove { min-height:36px;min-width:30px;margin-left:-6px;padding:0 8px;border-radius:0 18px 18px 0;border-left-color:transparent; }
+.feedback-add { margin-top:16px;padding:12px;background:rgba(232,238,245,.55);border-radius:14px; }
+.feedback-add-label { color:#334155;font-size:13px;display:block; }
+.feedback-add-row { display:flex;gap:8px;margin-top:8px; }
+.feedback-add-row input { flex:1;min-width:0;background:rgba(255,255,255,.8);border:1px solid #bac7d3;border-radius:10px;color:#1e293b;padding:8px 10px;font:inherit;font-size:14px; }
+.smart-feedback-picker .feedback-preview { margin:12px 0 0;font-size:13px;color:#315f4b; }
 .smart-feedback-picker button,.smart-feedback-toast button,.system-monitor-panel button { min-height:36px;border-radius:12px;padding:7px 12px;color:#34465c;background:rgba(255,255,255,.6);border:1px solid rgba(122,142,164,.2);cursor:pointer;font-size:13px;transition:background .15s; }
 .smart-feedback-picker button:hover,.smart-feedback-toast button:hover,.system-monitor-panel button:hover { background:rgba(224,236,232,.85); }
 .smart-feedback-picker .feedback-chip { text-align:left;border-radius:18px;line-height:1.4; }
 .feedback-chip[aria-pressed=true] { background:#deece5!important;border-color:#799e8b!important;color:#1c4c38!important;box-shadow:inset 0 1px 0 white; }
 .smart-feedback-picker button:disabled,.smart-feedback-toast button:disabled { opacity:.45;cursor:default; }
-.smart-feedback-picker :focus-visible,.smart-feedback-button:focus-visible,.smart-feedback-toast :focus-visible,.system-monitor-panel :focus-visible { outline:3px solid #3c806a;outline-offset:3px; }
-.feedback-secondary { display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 12px; }
-.feedback-other { padding:12px;background:rgba(232,238,245,.55);border-radius:14px; }
-.feedback-other label { color:#334155;font-size:13px;display:block; }
-.feedback-other textarea { width:100%;margin:8px 0;background:rgba(255,255,255,.8);border:1px solid #bac7d3;border-radius:10px;color:#1e293b;padding:10px;font:inherit; }
-.feedback-interpretation { margin-top:12px; }
-.feedback-interpretation input { accent-color:#376b54;margin-right:5px; }
+.smart-feedback-picker :focus-visible,.feedback-add-row input:focus-visible,.smart-feedback-button:focus-visible,.smart-feedback-toast :focus-visible,.system-monitor-panel :focus-visible { outline:3px solid #3c806a;outline-offset:3px; }
 .feedback-status { margin:12px 0;min-height:20px; }
 .feedback-footer { display:flex;justify-content:flex-end;gap:8px;padding-top:10px;border-top:1px solid rgba(148,163,184,.18); }
 .smart-feedback-picker .feedback-apply { background:#315f4b;color:white;border-color:#315f4b; }
@@ -55,11 +59,7 @@
 .monitor-filter-toolbar { display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:16px; }
 .monitor-filter-toolbar input { flex:1;min-width:180px;border:1px solid rgba(148,163,184,.4);border-radius:12px;padding:9px 12px;background:rgba(255,255,255,.8);color:#334155; }
 .monitor-filter-toolbar>span { font-size:12px;color:#526174; }
-.monitor-preferences { margin:0 0 20px;padding:12px 15px;border:1px solid rgba(148,163,184,.2);border-radius:14px;background:rgba(255,255,255,.35); }
-.monitor-preferences summary,.monitor-filter-row summary { cursor:pointer;font-size:13px; }
-.monitor-preference { display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:12px 0;border-bottom:1px solid rgba(148,163,184,.14); }
-.monitor-preference>div { flex:1;min-width:160px; }
-.monitor-filter-head,.monitor-filter-row { display:grid;grid-template-columns:105px minmax(180px,1.3fr) 105px 65px minmax(200px,1.4fr) 110px;gap:14px; }
+.monitor-filter-head,.monitor-filter-row { display:grid;grid-template-columns:105px minmax(180px,1.3fr) 105px 65px minmax(200px,1.4fr);gap:14px; }
 .monitor-filter-head { padding:12px 0;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#64748b; }
 .monitor-filter-row { padding:15px 0;border-top:1px solid rgba(148,163,184,.2);font-size:12px;align-items:start; }
 .monitor-filter-row a { font-size:14px;font-weight:600;color:#263e55; }
@@ -69,13 +69,14 @@
 .monitor-filter-row pre { white-space:pre-wrap;overflow-wrap:anywhere;font-size:10px;margin-top:8px; }
 .monitor-filter-row.is-reverted { opacity:.65; }
 .monitor-origin { border-radius:9px;background:#e7edf5;padding:3px 7px;text-align:center;font-size:11px;color:#405a77; }
-.monitor-origin[data-origin=user_preference] { background:#deece5;color:#315f4b; }
 .monitor-row-actions { display:flex;flex-direction:column;gap:7px; }
 @keyframes feedback-open { from {opacity:0;transform:translateY(4px)} to {opacity:1;transform:translateY(0)} }
 @media(max-width:700px) {
  .smart-feedback-button { width:44px;height:44px;right:8px;top:8px; }
  .smart-feedback-picker { left:8px!important;right:8px!important;bottom:8px;top:auto!important;width:auto;max-height:88dvh;padding:20px;border-radius:24px; }
  .smart-feedback-picker button { min-height:42px; }
+ .smart-feedback-picker .feedback-chip-remove { min-height:42px;min-width:36px; }
+ .feedback-add-row input { font-size:16px;min-height:42px; }
  .smart-feedback-toast { left:12px;right:12px;bottom:12px;max-width:none; }
  .system-monitor-backdrop { padding:6px; }
  .system-monitor-panel { height:97dvh;border-radius:20px; }

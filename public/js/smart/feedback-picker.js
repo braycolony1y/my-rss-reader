@@ -1,30 +1,92 @@
-// Ephemeral UI session. Only applySmartFeedback calls the mutation endpoint.
+// "Not interested" popup for Stories. It suggests keywords typical of the story (computed on the
+// server, no AI), lets the reader type their own, and adds the chosen ones to Content filters
+// (blockedArticleKeywords). With nothing chosen it hides just this story, as the Hide button does.
 const ReaderSmartFeedback = {
     suggestionTimeoutMs: 12000,
+    toastMs: 12000,
+    maxKeywords: 12,
+    maxKeywordLength: 80,
+    fields: ['title', 'subtitle', 'subheadline', 'description', 'excerpt', 'summary', 'contentSnippet', 'content'],
+    entities: { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'", '&apos;': "'", '&nbsp;': ' ' },
+
+    // Same normalization the server uses for matching: plain text, NFC, lower case. Diacritics are kept.
+    plain(value) {
+        return String(value || '').replace(/<[^>]+>/g, ' ').replace(/&(?:amp|lt|gt|quot|apos|nbsp|#39);/g, entity => ReaderSmartFeedback.entities[entity])
+            .normalize('NFC').replace(/\s+/g, ' ').trim().toLowerCase();
+    },
+    keyword(value) {
+        return String(value || '').normalize('NFC').replace(/\s+/g, ' ').trim().toLocaleLowerCase('vi-VN').slice(0, ReaderSmartFeedback.maxKeywordLength);
+    },
+    members(article) { return [article, ...(Array.isArray(article?.relatedArticles) ? article.relatedArticles : [])]; },
+    texts: new WeakMap(),
+    textsOf(article) {
+        let cached = ReaderSmartFeedback.texts.get(article);
+        if (!cached) {
+            cached = ReaderSmartFeedback.fields.map(field => ReaderSmartFeedback.plain(article?.[field])).filter(Boolean);
+            ReaderSmartFeedback.texts.set(article, cached);
+        }
+        return cached;
+    },
+    matches(article, keywords) {
+        return !!keywords.length && ReaderSmartFeedback.textsOf(article).some(text => keywords.some(keyword => text.includes(keyword)));
+    },
+    // A story is hidden when every member matches, like the server's per-member filtering.
+    storyHidden(article, keywords) {
+        const members = ReaderSmartFeedback.members(article).filter(Boolean);
+        return !!keywords.length && members.length > 0 && members.every(member => ReaderSmartFeedback.matches(member, keywords));
+    },
+
     create() {
-        let suggestionRequest = null;
+        let suggestionRequest = null, toastTimer = null;
         return {
             feedbackSession: null, feedbackBusy: false, feedbackMessage: '', feedbackToast: null,
-            feedbackHidden: [], feedbackApplied: [], feedbackPosition: '', feedbackReturnFocus: null,
+            feedbackHiddenLinks: [], feedbackHiddenKeywords: [], feedbackPosition: '', feedbackReturnFocus: null,
+
             openSmartFeedback(article, event) {
                 if (this.selectedFilterType !== 'smart') return;
                 this.cancelSmartFeedback();
-                const section = (this.selectedFilterValue && this.selectedFilterValue !== '__all' ? this.selectedFilterValue : SmartFeedbackSemantics.section(article));
-                const subject = { ...article, feedbackSection: section };
                 this.feedbackReturnFocus = event?.currentTarget;
                 const bounds = event?.currentTarget?.getBoundingClientRect();
                 const left = Math.max(12, Math.min(window.innerWidth - 452, (bounds?.right || window.innerWidth / 2) - 430));
-                const top = Math.max(12, Math.min(window.innerHeight - 530, (bounds?.bottom || 90) + 8));
+                const top = Math.max(12, Math.min(window.innerHeight - 560, (bounds?.bottom || 90) + 8));
                 this.feedbackPosition = `left:${left}px;top:${top}px`;
-                const pool = SmartFeedbackSemantics.pool(subject);
-                this.feedbackSession = { token: crypto.randomUUID(), article: subject, surface: 'classic',
-                    pool, displayed: pool.slice(0, 6), rejected: [], selected: [], round: 0, workVersion: 0, other: false, input: '', interpretation: null, reviewed: false };
+                const session = { token: crypto.randomUUID(), article, chips: [], input: '', loading: true, failed: false };
+                this.feedbackSession = session;
                 this.feedbackMessage = '';
-                this.$nextTick(() => document.querySelector('#smart-feedback-picker button')?.focus());
+                this.$nextTick(() => document.querySelector('#smart-feedback-picker .feedback-input')?.focus());
+                this.loadFeedbackSuggestions(session);
+            },
+            async loadFeedbackSuggestions(session) {
+                const controller = new AbortController();
+                suggestionRequest?.abort();
+                suggestionRequest = controller;
+                const timer = setTimeout(() => controller.abort(), ReaderSmartFeedback.suggestionTimeoutMs);
+                try {
+                    const query = new URLSearchParams({ link: session.article.link || '' });
+                    if (session.article.clusterId) query.set('clusterId', session.article.clusterId);
+                    const response = await fetch('/api/content-filters/suggest?' + query, { signal: controller.signal, cache: 'no-store' });
+                    const data = await response.json();
+                    if (!response.ok) throw new Error(data.error || 'Could not load suggestions.');
+                    if (this.feedbackSession?.token !== session.token) return;
+                    const known = new Set(session.chips.map(chip => chip.keyword));
+                    const suggested = (data.suggestions || []).map(item => ReaderSmartFeedback.keyword(item.keyword)).filter(keyword => keyword && !known.has(keyword));
+                    session.chips = [...suggested.map(keyword => ({ keyword, typed: false, selected: false })), ...session.chips];
+                    if (!suggested.length && !session.chips.length) this.feedbackMessage = 'No suggestions for this story. Type your own words below.';
+                } catch (error) {
+                    if (this.feedbackSession?.token === session.token) {
+                        session.failed = true;
+                        this.feedbackMessage = 'Could not load suggestions. You can still type your own words below.';
+                    }
+                } finally {
+                    clearTimeout(timer);
+                    if (suggestionRequest === controller) suggestionRequest = null;
+                    if (this.feedbackSession?.token === session.token) session.loading = false;
+                }
             },
             cancelSmartFeedback() {
                 if (this.feedbackBusy === 'apply') return;
-                this.stopFeedbackSuggestion();
+                suggestionRequest?.abort();
+                suggestionRequest = null;
                 this.feedbackSession = null;
                 this.feedbackBusy = false;
                 this.feedbackMessage = '';
@@ -34,140 +96,153 @@ const ReaderSmartFeedback = {
             feedbackContextChanged() {
                 if (this.feedbackSession) this.cancelSmartFeedback();
             },
-            toggleFeedbackReason(reason) {
+            toggleFeedbackChip(chip) {
+                if (this.feedbackBusy) return;
+                chip.selected = !chip.selected;
+                this.feedbackMessage = '';
+            },
+            // Turns typed text (comma separated) into selected chips. Returns how many were added or re-selected.
+            addFeedbackInput() {
+                const session = this.feedbackSession;
+                if (!session || this.feedbackBusy) return 0;
+                let count = 0;
+                for (const part of String(session.input || '').split(',')) {
+                    const keyword = ReaderSmartFeedback.keyword(part);
+                    if (!keyword) continue;
+                    const existing = session.chips.find(chip => chip.keyword === keyword);
+                    if (existing) { existing.selected = true; count++; continue; }
+                    if (session.chips.filter(chip => chip.typed).length >= ReaderSmartFeedback.maxKeywords) {
+                        this.feedbackMessage = `You can add up to ${ReaderSmartFeedback.maxKeywords} words at a time.`;
+                        break;
+                    }
+                    session.chips.push({ keyword, typed: true, selected: true });
+                    count++;
+                }
+                session.input = '';
+                if (count) this.feedbackMessage = '';
+                return count;
+            },
+            onFeedbackInputKeydown(event) {
+                if (event.key === 'Enter' || event.key === ',') {
+                    event.preventDefault();
+                    this.addFeedbackInput();
+                }
+            },
+            removeFeedbackChip(chip) {
+                const session = this.feedbackSession;
+                if (session && !this.feedbackBusy) session.chips = session.chips.filter(item => item !== chip);
+            },
+            get feedbackKeywords() {
+                const session = this.feedbackSession;
+                if (!session) return [];
+                const chosen = session.chips.filter(chip => chip.selected).map(chip => chip.keyword);
+                // Text typed but not yet added still counts when the reader confirms.
+                for (const part of String(session.input || '').split(',')) {
+                    const keyword = ReaderSmartFeedback.keyword(part);
+                    if (keyword && !chosen.includes(keyword)) chosen.push(keyword);
+                }
+                return chosen;
+            },
+            get feedbackPreviewText() {
+                const keywords = this.feedbackKeywords;
+                if (!keywords.length) return '';
+                const hidden = new Set(this.feedbackHiddenLinks);
+                const count = (this.articles || []).filter(article => !hidden.has(article.link) && ReaderSmartFeedback.storyHidden(article, keywords)).length;
+                return count === 1 ? '1 story in view would be hidden' : `${count} stories in view would be hidden`;
+            },
+            get feedbackConfirmLabel() {
+                return this.feedbackKeywords.length ? 'Hide matching stories' : 'Hide this story';
+            },
+
+            async feedbackKeywordList(method = 'GET', keywords) {
+                const response = await fetch('/api/content-filter-settings', method === 'GET'
+                    ? { cache: 'no-store' }
+                    : { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ keywords }) });
+                if (!response.ok) throw new Error('Could not update Content filters. Please try again.');
+                return (await response.json()).keywords || [];
+            },
+            applyFeedbackKeywordList(keywords) {
+                this.blockedKeywords = this.normalizeKeywordList(keywords);
+                if (!this.contentFilterSettingsOpen) this.blockedKeywordsDraft = [...this.blockedKeywords];
+            },
+            // True once a fresh, already filtered list has replaced the one on screen.
+            async refreshAfterFeedbackChange() {
+                try {
+                    const result = await this.fetchData(false, false, true);
+                    return !result?.skipped;
+                } catch { return false; }
+            },
+            showFeedbackToast(toast) {
+                clearTimeout(toastTimer);
+                this.feedbackToast = toast;
+                toastTimer = setTimeout(() => { if (this.feedbackToast === toast) this.feedbackToast = null; }, ReaderSmartFeedback.toastMs);
+            },
+            dismissFeedbackToast() {
+                clearTimeout(toastTimer);
+                this.feedbackToast = null;
+            },
+            async confirmSmartFeedback() {
                 const session = this.feedbackSession;
                 if (!session || this.feedbackBusy) return;
-                session.selected = session.selected.includes(reason.id) ? session.selected.filter(id => id !== reason.id) : [...session.selected, reason.id];
-            },
-            get feedbackCanApply() {
-                const session = this.feedbackSession;
-                return !!session && !this.feedbackBusy && (session.selected.length > 0 || !!(session.other && session.interpretation && session.reviewed));
-            },
-            feedbackReference(article) { return { link: article.link, clusterId: article.clusterId, feedbackSection: article.feedbackSection }; },
-            stopFeedbackSuggestion() {
-                if (this.feedbackSession) this.feedbackSession.workVersion++;
-                suggestionRequest?.abort();
-                suggestionRequest = null;
-                if (['suggestions', 'interpretation'].includes(this.feedbackBusy)) {
-                    this.feedbackBusy = false;
-                    this.feedbackMessage = '';
-                }
-            },
-            openOtherFeedback() {
-                if (this.feedbackBusy === 'apply') return;
-                this.stopFeedbackSuggestion();
-                if (this.feedbackSession) this.feedbackSession.other = !this.feedbackSession.other;
-                this.$nextTick(() => document.querySelector('#feedback-text')?.focus());
-            },
-            updateFeedbackText(value) {
-                if (!this.feedbackSession) return;
-                if (this.feedbackBusy === 'interpretation') this.stopFeedbackSuggestion();
-                this.feedbackSession.input = value;
-                this.feedbackSession.interpretation = null;
-                this.feedbackSession.reviewed = false;
-            },
-            async feedbackRequest(path, body, method = 'POST') {
-                const controller = path === 'suggestions' ? new AbortController() : null;
-                let timer, rejectAbort;
-                if (controller) {
-                    suggestionRequest?.abort();
-                    suggestionRequest = controller;
-                }
-                const read = async () => {
-                    const response = await fetch('/api/smart-feedback/' + path, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), ...(controller ? { signal: controller.signal } : {}) });
-                    const result = await response.json();
-                    if (!response.ok) throw new Error(result.error || 'Could not save. Please try again.');
-                    return result;
-                };
-                if (!controller) return read(); // Apply retains its idempotent confirmation semantics.
-                const stopped = new Promise((_, reject) => {
-                    rejectAbort = () => reject(new Error('Finding more reasons took too long. Try again or use Other.'));
-                    controller.signal.addEventListener('abort', rejectAbort, { once: true });
-                    timer = setTimeout(() => controller.abort(), ReaderSmartFeedback.suggestionTimeoutMs);
-                });
-                try { return await Promise.race([read(), stopped]); }
-                finally {
-                    clearTimeout(timer);
-                    controller.signal.removeEventListener('abort', rejectAbort);
-                    if (suggestionRequest === controller) suggestionRequest = null;
-                }
-            },
-            async differentFeedbackReasons() {
-                const session = this.feedbackSession;
-                if (!session || this.feedbackBusy) return;
-                session.rejected = [...new Set([...session.rejected, ...session.displayed.map(reason => reason.id)])];
-                session.selected = []; session.interpretation = null; session.reviewed = false; session.input = ''; session.other = false;
-                session.round++;
-                const workVersion = ++session.workVersion;
-                const remaining = session.pool.filter(reason => !SmartFeedbackSemantics.isRejected(reason.rule, session.rejected));
-                session.displayed = remaining.slice(0, 6);
-                this.feedbackBusy = 'suggestions';
-                this.feedbackMessage = 'Finding different reasons…';
+                this.addFeedbackInput();
+                const keywords = this.feedbackKeywords;
+                const article = session.article;
+                this.feedbackBusy = 'apply';
                 try {
-                    // Consume unused local candidates before any optional request.
-                    let result = { reasons: remaining.slice(0, 6) };
-                    if (remaining.length < 4) result = await this.feedbackRequest('suggestions', { article: this.feedbackReference(session.article), rejected: session.rejected });
-                    if (this.feedbackSession?.token !== session.token || session.workVersion !== workVersion) return;
-                    session.displayed = result.reasons.filter(r => !SmartFeedbackSemantics.isRejected(r.rule, session.rejected));
-                    session.pool = [...new Map([...session.pool, ...session.displayed].map(r => [r.id, r])).values()];
-                    this.feedbackMessage = result.message || (session.displayed.length ? `Different reasons ready. Set ${session.round + 1}.` : 'No more supported reasons found. Try Other, ask again, or cancel.');
-                } catch (error) {
-                    if (this.feedbackSession?.token === session.token && session.workVersion === workVersion) this.feedbackMessage = error.message + ' You can still use Other or cancel.';
-                } finally { if (this.feedbackSession?.token === session.token && session.workVersion === workVersion) this.feedbackBusy = false; }
-            },
-            async interpretFeedbackText() {
-                const session = this.feedbackSession;
-                if (!session?.input.trim() || this.feedbackBusy) return;
-                const workVersion = ++session.workVersion;
-                this.feedbackBusy = 'interpretation';
-                session.interpretation = null; session.reviewed = false;
-                this.feedbackMessage = 'Interpreting your reason…';
-                try {
-                    const result = await this.feedbackRequest('suggestions', { article: this.feedbackReference(session.article), input: session.input });
-                    if (this.feedbackSession?.token !== session.token || session.workVersion !== workVersion) return;
-                    session.interpretation = result.reasons[0] || null;
-                    this.feedbackMessage = session.interpretation ? 'Review the meaning below before applying.' : (result.message || 'Please make the reason more specific, for example a person or company and the type of story.');
-                } catch (error) { if (this.feedbackSession?.token === session.token && session.workVersion === workVersion) this.feedbackMessage = error.message; }
-                finally { if (this.feedbackSession?.token === session.token && session.workVersion === workVersion) this.feedbackBusy = false; }
-            },
-            async applySmartFeedback() {
-                if (!this.feedbackCanApply) return;
-                const session = this.feedbackSession;
-                const selectedReasons = session.displayed.filter(reason => session.selected.includes(reason.id));
-                if (session.other && session.interpretation && session.reviewed) selectedReasons.push(session.interpretation);
-                if (!selectedReasons.length) return;
-                this.feedbackBusy = 'apply'; this.feedbackMessage = 'Saving preferences…';
-                try {
-                    const result = await this.feedbackRequest('apply', { confirmed: true, article: this.feedbackReference(session.article), surface: session.surface, selectedReasons, requestId: session.token });
-                    const article = session.article;
-                    this.feedbackHidden = [...this.feedbackHidden, article.link];
-                    this.feedbackToast = { eventId: result.event.id, article, index: this.articles.findIndex(a => a.link === article.link), message: 'Story hidden. Future matching Smart stories will be filtered.' };
-                    this.feedbackApplied = [...this.feedbackApplied, this.feedbackToast];
+                    if (!keywords.length) {
+                        // Default action: hide only this story.
+                        if (!this.hiddenStates.includes(article.link)) await this.toggleState('hiddenStates', article.link);
+                        this.feedbackHiddenLinks = [...this.feedbackHiddenLinks, article.link];
+                        this.feedbackBusy = false;
+                        this.cancelSmartFeedback();
+                        this.showFeedbackToast({ kind: 'story', link: article.link, message: 'Story hidden.' });
+                        return;
+                    }
+                    const current = await this.feedbackKeywordList();
+                    const existing = new Set(this.normalizeKeywordList(current));
+                    const added = [...new Set(keywords)].filter(keyword => !existing.has(this.normalizeKeywordPhrase(keyword)));
+                    if (added.length) this.applyFeedbackKeywordList(await this.feedbackKeywordList('POST', [...current, ...added]));
+                    this.feedbackHiddenKeywords = [...this.feedbackHiddenKeywords, ...keywords];
                     this.feedbackBusy = false;
                     this.cancelSmartFeedback();
-                } catch (error) { this.feedbackBusy = false; this.feedbackMessage = error.message; }
+                    const quoted = keywords.map(keyword => `“${keyword}”`).join(', ');
+                    this.showFeedbackToast({ kind: 'keywords', added, message: added.length ? `Hiding stories containing ${quoted}.` : `Already in Content filters: ${quoted}.` });
+                    if (!added.length || await this.refreshAfterFeedbackChange()) this.feedbackHiddenKeywords = [];
+                } catch (error) {
+                    this.feedbackBusy = false;
+                    this.feedbackMessage = error.message || 'Could not save. Please try again.';
+                }
             },
-            isSmartFeedbackHidden(article) { return this.selectedFilterType === 'smart' && this.feedbackHidden.includes(article.link); },
-            async undoSmartFeedback(eventId = this.feedbackToast?.eventId) {
-                if (!eventId || this.feedbackBusy) return;
+            async undoSmartFeedback() {
+                const toast = this.feedbackToast;
+                if (!toast || this.feedbackBusy) return;
                 this.feedbackBusy = 'undo';
                 try {
-                    await this.feedbackRequest('undo', { eventId });
-                    const toast = this.feedbackApplied.find(item => item.eventId === eventId) || (this.feedbackToast?.eventId === eventId ? this.feedbackToast : null);
-                    if (toast) {
-                        this.feedbackHidden = this.feedbackHidden.filter(link => link !== toast.article.link);
-                        if (this.selectedFilterType === 'smart' && !this.articles.some(a => a.link === toast.article.link)) this.articles.splice(Math.max(0, toast.index), 0, toast.article);
-                        if (this.feedbackToast?.eventId === eventId) this.feedbackToast = null;
-                        this.feedbackApplied = this.feedbackApplied.filter(item => item.eventId !== eventId);
+                    if (toast.kind === 'story') {
+                        if (this.hiddenStates.includes(toast.link)) await this.toggleState('hiddenStates', toast.link);
+                        this.feedbackHiddenLinks = this.feedbackHiddenLinks.filter(link => link !== toast.link);
+                    } else {
+                        // Remove only the entries this action added; other edits made meanwhile stay.
+                        const remove = new Set((toast.added || []).map(keyword => this.normalizeKeywordPhrase(keyword)));
+                        const current = await this.feedbackKeywordList();
+                        if (remove.size) this.applyFeedbackKeywordList(await this.feedbackKeywordList('POST', current.filter(keyword => !remove.has(this.normalizeKeywordPhrase(keyword)))));
+                        this.feedbackHiddenKeywords = [];
+                        await this.refreshAfterFeedbackChange();
                     }
-                    if (this.logsPanelOpen) await this.fetchFilterLog();
-                } catch (error) { this.feedbackMessage = error.message; }
-                finally { this.feedbackBusy = false; }
+                    this.dismissFeedbackToast();
+                } catch (error) {
+                    this.feedbackMessage = error.message || 'Could not undo. Please try again.';
+                } finally { this.feedbackBusy = false; }
             },
-            async manageSmartFilters() {
-                this.logsPanelOpen = true; this.logsTab = 'filtered';
-                this.$nextTick?.(() => document.querySelector('.monitor-tabs button:last-child')?.focus());
-                await this.fetchFilterLog();
+            manageContentFilters() {
+                this.dismissFeedbackToast();
+                this.openContentFilterSettings();
+            },
+            // Cards hidden right away, before the server's filtered list arrives.
+            isSmartFeedbackHidden(article) {
+                if (this.selectedFilterType !== 'smart') return false;
+                if (this.feedbackHiddenLinks.includes(article.link)) return true;
+                return this.feedbackHiddenKeywords.length > 0 && ReaderSmartFeedback.storyHidden(article, this.feedbackHiddenKeywords.map(keyword => ReaderSmartFeedback.keyword(keyword)));
             },
             trapFeedbackFocus(event) {
                 const panel = event.currentTarget;
