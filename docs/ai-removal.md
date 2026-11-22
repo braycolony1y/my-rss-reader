@@ -28,8 +28,10 @@ Deliberately NOT archived or deleted, because the Stories path still uses them:
 `database_state/embeddings/` (clustering and ranker vectors), and `smart-data.json*` (mixed with the
 Classic corpus). The manifest's `legacyFilesListed` shows their sizes.
 
-The archive is a snapshot of the moment it was taken. The old service kept writing some of these
-caches until it was restarted on the new code; that tail is not archived and is not needed.
+The first archive (`ai-removed-2026-11-22T08-16-35-654Z`) was taken before the service restarted on the
+new code, so the old service kept writing some of these caches afterwards. A second archive was taken
+right after that restart and is the one to delete from:
+`database_state/archive/ai-removed-2026-11-22T08-42-05-325Z/` (delete allowed after 2026-11-29T08:42:05Z).
 
 `scripts/build-ranking-centroids.mjs` reads `topStoriesPublished`; it needs the archive restored
 (see below) if the shipped centroids ever have to be rebuilt.
@@ -43,7 +45,7 @@ The delete is refused unless the archive manifest is 7 or more days old (the man
 cd /home/ubuntu/my-rss-reader
 sudo systemctl stop rss-reader
 nice -n 19 node scripts/delete-ai-data.mjs --dry-run     # review the plan and the gate results
-nice -n 19 node scripts/delete-ai-data.mjs               # newest archive; or --archive <dir>
+nice -n 19 node scripts/delete-ai-data.mjs               # newest archive (the 08-42-05 one); or --archive <dir>
 sudo systemctl start rss-reader
 ```
 
