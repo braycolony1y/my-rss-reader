@@ -72,9 +72,6 @@ const ReaderAppBootstrap = {
                                     if (['classic', 'glass', 'glass-light'].includes(this.userPreferences.theme)) this.theme = this.userPreferences.theme;
                                     this.smartClusterVersion = state.smartClusterVersion || '';
                                     this.smartRegion = state.smartRegion === 'vietnam' ? 'vietnam' : 'global';
-                                    if (this.userPreferences.clusteringModel) {
-                                        this.clusteringModel = this.userPreferences.clusteringModel;
-                                    }
                                     this.categoryOrder = universalState?.categoryOrder || state.categoryOrder || [];
                                     if (typeof this.userPreferences.hideRead === 'boolean') this.hideRead = this.userPreferences.hideRead;
                                     this.unreadCounts = state.unreadCounts || { feeds: {}, categories: {}, total: 0 };

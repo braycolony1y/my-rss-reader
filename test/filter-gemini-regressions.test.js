@@ -5,7 +5,6 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { JSDOM } from 'jsdom';
 import { waitForResponse } from '../src/ai/gemini-web.js';
-import { createStoryBriefings, REQUIRED_ANALYSIS_REVIEW } from '../src/articles/story-briefing.js';
 import { runGlobalAiTask, setGlobalAiReadingMode } from '../src/ai/global-ai-scheduler.js';
 import { registerContentFilterRoutes } from '../src/routes/content-filter-routes.js';
 
@@ -21,19 +20,6 @@ function reader(t) {
     app.fetchData = async () => {};
     return { app, window: dom.window };
 }
-
-test('collapsing one story panel preserves other panels and selecting a tab reopens it', t => {
-    const { app } = reader(t);
-    const first = { clusterId: 'first', link: 'https://reader.test/first' };
-    const second = { link: 'https://reader.test/second' };
-    assert.equal(app.storyPanelIsExpanded(first), true);
-    app.toggleStoryPanel(first);
-    assert.equal(app.storyPanelIsExpanded(first), false);
-    assert.equal(app.storyPanelIsExpanded(second), true);
-    app.toggleStoryAnalysis(first, 'What changed');
-    assert.equal(app.storyPanelIsExpanded(first), true);
-    assert.equal(app.storyAnalysisOpen.first, 'What changed');
-});
 
 test('first filter modal opening hydrates from the startup request without reopening', async t => {
     const { app, window } = reader(t);
@@ -106,24 +92,6 @@ test('filter route acknowledges only after durable storage and permits explicit 
     assert.equal(acknowledged, true);
 });
 
-test('completion pushes update multiple pages immediately and stale heartbeats cannot revert them', t => {
-    const { app, window } = reader(t);
-    const listeners = new Map();
-    window.EventSource = class { addEventListener(name, listener) { listeners.set(name, listener); } };
-    app.isLoggedIn = true;
-    app.selectedFilterType = 'smart';
-    app.smartTabMode = 'top';
-    app.articles = Array.from({ length: 50 }, (_, i) => ({ clusterId: `story-${i}`, topStory: { material_version: 1 }, briefing: { analysisStatus: 'pending' } }));
-    app.startServerEvents();
-    const completed = { status: 'ready', analysisStatus: 'evaluated', sections: [{ text: 'Completed analysis' }] };
-    for (const i of [0, 49]) listeners.get('smart-briefing-changed')({ data: JSON.stringify({ clusterId: `story-${i}`, materialVersion: 1, briefing: completed }) });
-    for (const i of [0, 49]) assert.equal(app.articles[i].briefing.status, 'ready');
-    app.applyBriefingUpdates([{ clusterId: 'story-0', materialVersion: 1, briefing: { analysisStatus: 'pending' } }]);
-    assert.equal(app.articles[0].briefing.status, 'ready');
-    app.applyBriefingUpdates([{ clusterId: 'story-1', materialVersion: 2, briefing: completed }]);
-    assert.equal(app.articles[1].briefing.analysisStatus, 'pending');
-});
-
 test('Gemini accepts complete JSON with completion controls on the first poll', async () => {
     let calls = 0;
     const page = { evaluate: async () => { calls++; return { text: '{"sections":[]}', responseFinished: true, generating: false }; } };
@@ -163,32 +131,3 @@ test('a slow Web attempt cannot consume the API fallback timeout', async () => {
     assert.equal(apiTimeout, 40000);
 });
 
-test('viewport promotion survives page reconciliation and dispatches before background work', async () => {
-    setGlobalAiReadingMode(true);
-    const gate = deferred();
-    const blockers = [
-        ...Array.from({ length: 3 }, () => runGlobalAiTask({ lane: 'p0', viewportBurst: true }, () => gate.promise)),
-        ...Array.from({ length: 2 }, () => runGlobalAiTask({ lane: 'p1' }, () => gate.promise)),
-        runGlobalAiTask({ lane: 'p4' }, () => gate.promise)
-    ];
-    const state = {}; const order = [];
-    const quote = 'The vendor published updated firmware.';
-    const service = createStoryBriefings({ db: { get: async key => state[key], put: async (key, value) => { state[key] = JSON.parse(value); } }, generate: async prompt => {
-        order.push(JSON.parse(prompt.split('SOURCES:\n')[1])[0].link);
-        return JSON.stringify({ analysisReview: REQUIRED_ANALYSIS_REVIEW.map(label => ({ label, useful: false, reason: 'No further evidence.' })), sections: [{ label: 'What happened', text: quote, evidence: [{ sourceId: 1, quote }] }] });
-    } });
-    const cards = Array.from({ length: 8 }, (_, i) => ({ clusterId: `viewport-${i}`, link: `https://source.test/${i}`, title: 'Firmware update', content: quote, topStory: { material_version: 1, timeline: [] } }));
-    try {
-        for (const card of cards) await service.get(card, 'tech_world', { priority: 0, viewKey: 'view:tech:global:page:2' });
-        service.setViewport('view:tech:global:page:1', [cards[7].clusterId], 10);
-        service.setActiveView('view:tech:global:page:2');
-        const visible = await service.get(cards[7], 'tech_world', { generate: false });
-        assert.equal(visible.queueAhead, 0);
-        assert.equal(visible.analysisStatus, 'pending');
-        assert.equal(service.setViewport('view:tech:global:page:2', [cards[0].clusterId], 9), false);
-        gate.resolve(); await Promise.all(blockers);
-        for (let i = 0; i < 100 && order.length < cards.length; i++) await new Promise(r => setTimeout(r, 5));
-        assert.equal(order[0], cards[7].link);
-        assert.equal(order.length, cards.length);
-    } finally { gate.resolve(); setGlobalAiReadingMode(false); }
-});

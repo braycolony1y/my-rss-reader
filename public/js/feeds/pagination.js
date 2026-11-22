@@ -41,7 +41,7 @@ const ReaderFeedPagination = {
     },
     handleScroll(event) {
         const container = event.target;
-        const context = JSON.stringify([this.selectedFilterType, this.selectedFilterValue, this.smartTabMode, this.hideRead, this.searchQuery]);
+        const context = JSON.stringify([this.selectedFilterType, this.selectedFilterValue, this.hideRead, this.searchQuery]);
         if (this._autoLoadContext !== context) {
             this._autoLoadContext = context;
             this._autoLoadPaused = false;

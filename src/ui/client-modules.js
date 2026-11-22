@@ -15,11 +15,11 @@ export const READER_CLIENT_MODULES = [
     'feeds/list-publication.js',
     'feeds/page-session.js',
     'feeds/navigation.js',
-    'smart/refresh.js',
     'feeds/requests.js',
     'feeds/pagination.js',
     'feeds/list.js',
-    'smart/top-stories.js',
+    'smart/stories.js',
+    'smart/legacy-routes.js',
     'smart/navigation.js',
     'app/server-events.js',
     'feeds/reading-state.js',
@@ -56,7 +56,5 @@ export const READER_CLIENT_MODULES = [
     'sources/tinhte.js',
     'sources/ground-news.js',
     'board/view-heartbeat.js',
-    'smart/focus-lease.js',
-    'smart/viewport-priority.js',
     'sources/voz-lease.js'
 ].map(name => fileURLToPath(new URL(`../../public/js/${name}`, import.meta.url)));

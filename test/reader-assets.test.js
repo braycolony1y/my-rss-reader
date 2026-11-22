@@ -16,27 +16,28 @@ test('reader shell composes the card module and picks up subsequent component ed
         writeFile(paths.panels,'globalThis.panelValue = () => 42;'),
         writeFile(paths.script,'globalThis.answer = panelValue();')
     ]);
+    paths.clientModules = [paths.panels];
     const renderer = createReaderAssetRenderer(paths);
     assert.equal(await renderer.html(),'<main><article>First card</article></main>');
     await writeFile(paths.card,'<article>Updated card component</article>');
     assert.equal(await renderer.html(),'<main><article>Updated card component</article></main>');
     const context = vm.createContext({});
     vm.runInContext(await renderer.script(),context);
-    assert.equal(context.answer,42,'the panel module is available before the legacy factory executes');
+    assert.equal(context.answer,42,'a client module is available before the legacy factory executes');
     assert.throws(() => composeReaderHtml('<main></main>','card'),/marker is missing/);
 });
 
 test('renderer invalidates nested partials and client modules without caching stale output', async t => {
     const directory = await mkdtemp(path.join(tmpdir(), 'rss-reader-modules-'));
     t.after(() => rm(directory, { recursive: true, force: true }));
-    const paths = Object.fromEntries(['index', 'card', 'script', 'panels', 'shell', 'nested', 'feature'].map(name => [name, path.join(directory, name)]));
+    const paths = Object.fromEntries(['index', 'card', 'script', 'shell', 'nested', 'feature'].map(name => [name, path.join(directory, name)]));
     paths.components = { shell: paths.shell, nested: paths.nested };
     paths.clientModules = [paths.feature];
     await Promise.all([
         writeFile(paths.index, '<body><!-- reader:include shell -->\n</body>'),
         writeFile(paths.shell, `<main><!-- reader:include nested -->\n${CARD_COMPONENT_MARKER}</main>`),
         writeFile(paths.nested, '<nav>Initial navigation</nav>'), writeFile(paths.card, '<article>Card</article>'),
-        writeFile(paths.panels, ''), writeFile(paths.feature, 'const Feature = { answer: 41 };'),
+        writeFile(paths.feature, 'const Feature = { answer: 41 };'),
         writeFile(paths.script, 'globalThis.answer = Feature.answer;')
     ]);
     const renderer = createReaderAssetRenderer(paths);

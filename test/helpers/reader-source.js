@@ -9,6 +9,6 @@ export function readReaderHtml() {
         (_, pathname) => `<style>${readFileSync(new URL('../..' + pathname, import.meta.url), 'utf8')}</style>`);
 }
 export function readReaderClientSource() {
-    return composeReaderScript(readFileSync(READER_ASSET_PATHS.script,'utf8'), readFileSync(READER_ASSET_PATHS.panels,'utf8'),
+    return composeReaderScript(readFileSync(READER_ASSET_PATHS.script,'utf8'),
         READER_ASSET_PATHS.clientModules.map(file => readFileSync(file, 'utf8')));
 }

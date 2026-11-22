@@ -1,28 +1,20 @@
                 <template x-for="(article, articleIndex) in displayedArticles" :key="articleRowKey(article, articleIndex)">
                     <div class="article-row" x-show="!isSmartFeedbackHidden(article)" x-transition.opacity.duration.180ms>
-                        <div
-                            class="story-divider story-divider-outside"
-                            x-show="usesTopStories && !article.topStory?.isTop && (articleIndex === 0 || displayedArticles[articleIndex - 1]?.topStory?.isTop)">
-                            More stories
-                        </div>
-
                         <div class="article-card mb-4 md:mb-5 relative overflow-hidden bg-[#111827] rounded-2xl cursor-pointer group border border-white/5 hover:border-white/20 transition-all duration-300 shadow-lg"
                             :class="[
                                 (isMobile && mobileActiveCard === article.link) ? 'ring-2 ring-emerald-500' : '',
                                 readStates.has(article.link) ? 'is-read' : '',
                                 'has-story-briefing',
-                            selectedFilterType === 'smart' && smartTabMode === 'classic' ? 'is-smart-classic-card' : '',
+                            selectedFilterType === 'smart' ? 'is-smart-classic-card' : '',
                             selectedFilterType !== 'smart' ? 'is-standard-card' : ''
                             ]"
-                            :data-smart-cluster-id="usesTopStories ? (article.clusterId || article.link || '') : ''"
-                            :data-image-layout="usesTopStories ? 'top' : 'standard'"
+                            data-image-layout="standard"
                             :data-smart-card-page="Math.floor(articleIndex / (isMobile ? 15 : 40)) + 1"
                             @click="handleCardClick(article, $event)">
 
                         <!-- reader:include smart/feedback-button -->
                         <div class="card-ambient" aria-hidden="true"></div>
                         <div class="article-card-header">
-                        <span class="story-rank" x-show="usesTopStories && article.topStory?.isTop" x-text="'#' + article.topStory?.rank"></span>
                         
                         <!-- Background Image with Gradient Overlay -->
                         <div class="article-card-image absolute inset-y-0 right-0 w-[55%] md:w-[50%] z-0">
@@ -114,11 +106,11 @@
                                 <template x-if="article.isCluster">
                                     <div class="flex items-center gap-1.5 md:gap-2 ml-1"
                                         :title="(article.sources || []).join(', ')">
-                                        <span x-show="!usesTopStories || Number(article.sourceCount) > 1" class="text-white/20 hidden md:inline">•</span>
-                                        <span x-show="!usesTopStories" class="flex items-center gap-1 text-orange-300 whitespace-nowrap">
+                                        <span class="text-white/20 hidden md:inline">•</span>
+                                        <span class="flex items-center gap-1 text-orange-300 whitespace-nowrap">
                                             <span>🔥</span><span x-text="article.hotness"></span>
                                         </span>
-                                        <span x-show="!usesTopStories && article.hotnessLabel" class="px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-200 text-[10px] font-semibold uppercase tracking-wide whitespace-nowrap" x-text="article.hotnessLabel"></span>
+                                        <span x-show="article.hotnessLabel" class="px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-200 text-[10px] font-semibold uppercase tracking-wide whitespace-nowrap" x-text="article.hotnessLabel"></span>
                                         <span x-show="Number(article.sourceCount) > 1" class="flex items-center gap-1 text-cyan-300 whitespace-nowrap">
                                             <span x-text="article.sourceCount"></span><span
                                                 x-text="article.sourceCount === 1 ? 'source' : 'sources'"></span>
@@ -164,7 +156,7 @@
                                     <h2 class="text-[17px] md:text-[26px] font-extrabold text-white leading-tight md:leading-tight mb-2 md:mb-3 pr-2 md:pr-4 line-clamp-2 break-words"
                                         x-text="stripHtml(article.title)"></h2>
                                     <p class="text-[13px] md:text-[14px] text-gray-300 line-clamp-2 md:line-clamp-2 pr-2 md:pr-4 leading-snug md:leading-relaxed break-words"
-                                        x-text="usesTopStories ? storyExcerpt(article) : stripHtml(article.content)"></p>
+                                        x-text="stripHtml(article.content)"></p>
                                 </div>
 
                         </div>
@@ -174,7 +166,7 @@
                         </div>
                         </div>
 
-                        <template x-if="usesTopStories || (selectedFilterType === 'smart' && smartTabMode === 'classic' && storyCoverage(article).length > 4)">
+                        <template x-if="selectedFilterType === 'smart' && storyCoverage(article).length > 4">
 <!-- reader:include article/card-panel -->
                         </template>
                         <div class="article-actions-overlay absolute right-4 items-center gap-1.5 p-1.5 rounded-xl border shadow-xl flex-wrap justify-end z-20"

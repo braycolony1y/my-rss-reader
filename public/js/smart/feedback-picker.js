@@ -9,7 +9,7 @@ const ReaderSmartFeedback = {
             openSmartFeedback(article, event) {
                 if (this.selectedFilterType !== 'smart') return;
                 this.cancelSmartFeedback();
-                const section = article.topStory?.feed || (this.selectedFilterValue && this.selectedFilterValue !== '__all' ? this.selectedFilterValue : SmartFeedbackSemantics.section(article));
+                const section = (this.selectedFilterValue && this.selectedFilterValue !== '__all' ? this.selectedFilterValue : SmartFeedbackSemantics.section(article));
                 const subject = { ...article, feedbackSection: section };
                 this.feedbackReturnFocus = event?.currentTarget;
                 const bounds = event?.currentTarget?.getBoundingClientRect();
@@ -17,7 +17,7 @@ const ReaderSmartFeedback = {
                 const top = Math.max(12, Math.min(window.innerHeight - 530, (bounds?.bottom || 90) + 8));
                 this.feedbackPosition = `left:${left}px;top:${top}px`;
                 const pool = SmartFeedbackSemantics.pool(subject);
-                this.feedbackSession = { token: crypto.randomUUID(), article: subject, surface: this.usesTopStories ? 'smart_top' : 'classic',
+                this.feedbackSession = { token: crypto.randomUUID(), article: subject, surface: 'classic',
                     pool, displayed: pool.slice(0, 6), rejected: [], selected: [], round: 0, workVersion: 0, other: false, input: '', interpretation: null, reviewed: false };
                 this.feedbackMessage = '';
                 this.$nextTick(() => document.querySelector('#smart-feedback-picker button')?.focus());

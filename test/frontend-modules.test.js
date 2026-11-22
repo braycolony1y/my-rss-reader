@@ -68,7 +68,7 @@ test('head prefetch preserves authentication, saved-state guards and Smart route
     const global = new URL(run({ hash: '#smart/tech_world?article=encoded', width: 1440 })[0].url, 'http://fixture').searchParams;
     assert.equal(global.get('filterValue'), 'tech_global');
     assert.equal(global.get('smartRegion'), 'global');
-    assert.equal(global.get('smartMode'), 'top');
+    assert.equal(global.get('smartMode'), null, 'Top mode is never requested');
     assert.equal(global.get('limit'), '40');
     for (const options of [{ auth: false }, { saved: true }, { hash: '#category/Forum' }, { disabledStorage: true }]) assert.deepEqual(run(options), []);
 });

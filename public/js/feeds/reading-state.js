@@ -116,7 +116,7 @@ const ReaderFeedsReadingState = {
                     if (isAdding) {
                         array.push(link);
                         if (list === 'savedStates' || list === 'boardStates') {
-                            const sourceArticle = [this.overlayArticle, ...(this.topStories || []), ...(this.articles || []), ...(this.displayedArticles || [])]
+                            const sourceArticle = [this.overlayArticle, ...(this.articles || []), ...(this.displayedArticles || [])]
                                 .filter(Boolean)
                                 .find(article => [article.link, article.originalLink, article.resolvedLink].includes(link));
                             const params = new URLSearchParams({
@@ -338,7 +338,6 @@ const ReaderFeedsReadingState = {
                             if (data.boardStates) this.boardStates = this.applyPendingStateMutations('boardStates', data.boardStates);
                             if (data.hiddenStates) this.hiddenStates = this.applyPendingStateMutations('hiddenStates', data.hiddenStates);
                             if (data.userPreferences) this.userPreferences = { ...data.userPreferences, ...this.pendingPreferences };
-                            if (data.clusteringModel) this.clusteringModel = data.clusteringModel;
                             
                             // State sync updates badges and actions only. Removing cards here made
                             // the feed jump after returning from the reader or another browser tab.

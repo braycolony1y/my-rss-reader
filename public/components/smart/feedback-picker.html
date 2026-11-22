@@ -1,4 +1,4 @@
-<div x-init="$watch('selectedFilterType', () => feedbackContextChanged()); $watch('selectedFilterValue', () => feedbackContextChanged()); $watch('smartTabMode', () => feedbackContextChanged()); $watch('smartRegion', () => feedbackContextChanged())">
+<div x-init="$watch('selectedFilterType', () => feedbackContextChanged()); $watch('selectedFilterValue', () => feedbackContextChanged()); $watch('smartRegion', () => feedbackContextChanged())">
     <div class="smart-feedback-backdrop" x-show="feedbackSession" x-cloak @click.self="cancelSmartFeedback()" @keydown.escape.window="if (feedbackSession) cancelSmartFeedback()">
         <section id="smart-feedback-picker" class="smart-glass-panel smart-feedback-picker" role="dialog" aria-modal="true" aria-labelledby="feedback-heading"
             :style="feedbackPosition" @keydown="trapFeedbackFocus($event)" x-transition.opacity.duration.140ms>

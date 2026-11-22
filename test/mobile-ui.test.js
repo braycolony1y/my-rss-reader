@@ -54,8 +54,8 @@ test('Smart News restores compact cards immediately and revalidates without blan
     assert.match(script, /saveState\(\) \{[\s\S]*compactArticle[\s\S]*relatedArticles[\s\S]*sessionStorage, localStorage/);
     assert.match(script, /setTimeout\(\(\) => this\.fetchData\(false, true, true\), 50\)/);
     assert.match(script, /async fetchData\(isLoadMore = false, skipPageReset = false, keepVisible = false\)/);
-    assert.match(script, /if \(!keepVisible && !retainTop && !retainPublication\) this\.articles = \[\];/);
-    assert.match(script, /if \(keepVisible && this\.articles\.length > 0 && !this\.usesTopStories\)[\s\S]*this\.articles = this\.articles\.map/);
+    assert.match(script, /if \(!keepVisible && !retainPublication\) this\.articles = \[\];/);
+    assert.match(script, /if \(keepVisible && this\.articles\.length > 0\)[\s\S]*this\.articles = this\.articles\.map/);
     assert.match(script, /canUseEarlyRequest[\s\S]*await earlyRequest\.promise/);
 });
 
@@ -74,7 +74,7 @@ test('article image shadows can feather beyond content while the overlay contain
 test('Smart News API bypasses the regular article database path', () => {
     const server = readServerSource();
     const smartNews = readSmartSource();
-    assert.match(server, /if \(filterType === 'smart'\) return await serveSmartData\(req, res\);/);
+    assert.match(server, /STORIES_FILTER_TYPES\.has\(String\(filterType\)\.toLowerCase\(\)\)\) return await serveSmartData\(req, res\);/);
     assert.match(server, /get\('smartClusters', \{ type: 'json', shared: true \}\)/);
     assert.match(server, /timings\["smart-data"\][\s\S]{0,150}"Server-Timing"/);
     assert.match(server, /helpers: \{\s*fastParseRSS,\s*waitForHttpIdle: http\.waitForHttpIdle,\s*prefetchOpenCliOnlyArticles: \(\.\.\.args\) => prefetch\.prefetchOpenCliOnlyArticles\(\.\.\.args\),\s*resolveSmartArticleDestinations: googleNews\.resolveSmartArticleDestinations/);

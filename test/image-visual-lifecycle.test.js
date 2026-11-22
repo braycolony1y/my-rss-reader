@@ -65,15 +65,18 @@ test('old decoded soft image cannot mark a replacement ready', async () => {
 test('fallback attempts follow the current candidate and stop after default failure', () => {
     const context = vm.createContext({ URL });
     vm.runInContext(readFileSync('public/js/smart/image-fallback.js', 'utf8') + ';globalThis.next=ReaderStoryImageFallback.next', context);
-    const app = { usesTopStories: true, proxyImageUrl: x => x };
+    const app = { proxyImageUrl: x => x };
     const img = { src: 'A', isConnected: true };
     const fail = article => context.next(app, { target: img }, article);
-    fail({ image: 'A', imageCandidates: ['A2', 'A3'] }); assert.equal(img.src, 'A2');
-    img.src = 'B'; const b = { image: 'B', imageCandidates: ['B2', 'B3'] };
-    fail(b); assert.equal(img.src, 'B2'); fail(b); assert.equal(img.src, 'B3');
-    fail(b); assert.equal(img.src, '/public/default.jpg'); fail(b); assert.equal(img.src, '/public/default.jpg');
-    img.src = 'B'; fail(b); assert.equal(img.src, 'B2', 'a new successful primary can retry its own candidates');
-    img.isConnected = false; fail(b); assert.equal(img.src, 'B2');
+    const a = { image: 'A' };
+    fail(a); assert.equal(img.src, '/public/default.jpg');
+    fail(a); assert.equal(img.src, '/public/default.jpg', 'stops after the default image fails');
+    img.src = 'B'; const b = { image: 'B' };
+    fail(b); assert.equal(img.src, '/public/default.jpg', 'a new primary falls back to the default');
+    img.src = 'C'; img.isConnected = false; fail({ image: 'C' }); assert.equal(img.src, 'C', 'a detached image is left alone');
+    // A stale error from an earlier source does not own the current one.
+    const stale = { src: 'D2', currentSrc: 'D1', complete: false, isConnected: true, getAttribute: () => 'D2' };
+    context.next(app, { target: stale }, { image: 'D1' }); assert.equal(stale.src, 'D2');
 });
 
 test('failed soft decode can recover on a later load without retrying on every layout', async () => {

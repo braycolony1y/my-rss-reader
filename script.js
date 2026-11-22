@@ -7,7 +7,7 @@ function rssApp() {
         ReaderAppBootstrap.create,
         ReaderFeedsNavigation.create,
         ReaderFeedsList.create,
-        ReaderSmartTopStories.create,
+        ReaderSmartStories.create,
         ReaderSmartNavigation.create,
         ReaderAppServerEvents.create,
         ReaderFeedsReadingState.create,
@@ -38,6 +38,4 @@ ReaderTinhte.installComparison();
 ReaderGroundNews.install();
 ReaderTinhte.installNavigation();
 ReaderBoardView.install();
-ReaderSmartFocus.install();
-ReaderSmartViewport.install();
 ReaderVozLease.install();

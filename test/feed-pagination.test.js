@@ -9,9 +9,9 @@ function fixture(fetch) {
     vm.runInContext(fs.readFileSync(new URL('../public/js/article/prefetch-lifecycle.js',import.meta.url),'utf8'),context);
     for(const file of ['list-publication','page-session','requests','pagination','list'])vm.runInContext(fs.readFileSync(new URL(`../public/js/feeds/${file}.js`,import.meta.url),'utf8'),context);
     const app=vm.runInContext('ReaderFeedsList.create()',context);
-    Object.assign(app,{selectedFilterType:'category',selectedFilterValue:'Forums',usesTopStories:false,isMobile:true,
+    Object.assign(app,{selectedFilterType:'category',selectedFilterValue:'Forums',isMobile:true,
         hideRead:false,searchQuery:'',articles:[{link:'old'}],pendingReadLinks:[],pendingUnreadLinks:new Set(),pendingRecentReadLinks:new Set(),
-        readStates:new Set(),pendingPreferences:{},applyPendingStateMutations:(_,v)=>v,hideTooltip(){},scheduleBriefingRefresh(){},$nextTick:async()=>{},saveState(){}});
+        readStates:new Set(),pendingPreferences:{},applyPendingStateMutations:(_,v)=>v,hideTooltip(){},$nextTick:async()=>{},saveState(){}});
     return app;
 }
 const response = data => ({ok:true,json:async()=>data});
@@ -47,7 +47,7 @@ test('background refresh cannot cancel an in-flight explicit page transition',as
 test('duplicate-only append pauses auto-loading; a manual retry can resume progress',async()=>{
     let calls=0;const app=fixture(async()=>response({articles:[{link:++calls===1?'old':'new'}],hasMore:true}));app.isMobile=false;
     await app.loadMore();assert.equal(app._autoLoadPaused,true);assert.equal(app.isLoadingMore,false);
-    app._autoLoadContext=JSON.stringify(['category','Forums',undefined,false,'']);
+    app._autoLoadContext=JSON.stringify(['category','Forums',false,'']);
     app.handleScroll({target:{scrollTop:1000,scrollHeight:1100,clientHeight:800}});assert.equal(calls,1);
     await app.loadMore();assert.equal(calls,2);assert.equal(app._autoLoadPaused,false);
 });

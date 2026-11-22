@@ -93,7 +93,6 @@ const ReaderAppServerEvents = {
                                             data.value
                                     };
 
-                                    if (data.key === 'clusteringModel') this.clusteringModel = data.value;
                                     if (data.key === 'theme' && ['classic', 'glass', 'glass-light'].includes(data.value)) {
                                         this.theme = data.value;
                                         localStorage.setItem('theme', data.value);
@@ -243,14 +242,6 @@ const ReaderAppServerEvents = {
                         }
                     );
 
-                    /*
-                     * SMART_BRIEFING_SSE_V1
-                     *
-                     * Apply completed briefings directly so bursts across
-                     * multiple pages cannot cancel one another's refreshes.
-                     * Legacy events and material revisions still reconcile
-                     * through /api/data; viewport heartbeats recover missed events.
-                     */
                     source.addEventListener('content-filter-changed', event => {
                         if (document.hidden) return;
                         try {
@@ -267,85 +258,6 @@ const ReaderAppServerEvents = {
                         this.syncUserStatesInBackground();
                         if (this.selectedFilterType === 'board') this.fetchData(false, false, true);
                     });
-
-                    if (!this.briefingViewportListener) {
-                        this.briefingViewportListener = event => {
-                            if (event.detail.smartViewToken === this.smartViewToken) this.applyBriefingUpdates(event.detail.updates);
-                        };
-                        window.addEventListener('briefing-viewport-updated', this.briefingViewportListener);
-                    }
-
-                    source.addEventListener(
-                        'smart-briefing-changed',
-                        event => {
-                            if (
-                                document.hidden ||
-                                !this.usesTopStories
-                            ) {
-                                return;
-                            }
-
-                            let data = {};
-
-                            try {
-                                data =
-                                    JSON.parse(
-                                        event.data ||
-                                        '{}'
-                                    );
-                            } catch {
-                                data = {};
-                            }
-
-                            if (data.briefing && this.applyBriefingUpdates([data])) return;
-
-                            let targetAttempt = 0;
-
-                            if (
-                                data.clusterId
-                            ) {
-                                const index =
-                                    this.articles.findIndex(
-                                        article =>
-                                            (
-                                                article.clusterId ||
-                                                article.link
-                                            ) ===
-                                            data.clusterId
-                                    );
-
-                                /*
-                                 * Ignore look-ahead/background briefing jobs
-                                 * that are not currently rendered.
-                                 */
-                                if (index < 0) {
-                                    return;
-                                }
-
-                                const pageSize =
-                                    this.isMobile
-                                        ? 15
-                                        : 40;
-
-                                const targetPage =
-                                    Math.floor(
-                                        index /
-                                        pageSize
-                                    ) + 1;
-
-                                targetAttempt =
-                                    Math.max(
-                                        0,
-                                        targetPage - 1
-                                    );
-                            }
-
-                            this.scheduleBriefingRefresh(
-                                targetAttempt,
-                                500
-                            );
-                        }
-                    );
 
                     source.onerror =
                         () => {

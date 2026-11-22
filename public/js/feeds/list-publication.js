@@ -4,7 +4,6 @@ const ReaderListPublication = {
     contexts: new WeakMap(),
     context(app) {
         return JSON.stringify([app.selectedFilterType, app.selectedFilterValue || '',
-            app.selectedFilterType === 'smart' ? app.smartTabMode : '',
             Boolean(app.hideRead), app.searchQuery || '']);
     },
     retains(app) {

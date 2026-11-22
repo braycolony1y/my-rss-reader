@@ -30,7 +30,7 @@ export function installFlickerDiagnostics(win=window) {
     const ids=new WeakMap(),known=new WeakMap(),cleanups=[];let sequence=0,stopped=false,lastState='';
     const id=value=>value&&typeof value==='object'?(ids.has(value)?ids.get(value):(ids.set(value,++sequence),sequence)):0;
     const app=()=>win.Alpine?.$data(doc.body);
-    const context=()=>{const a=app();return {destination:fingerprint([a?.selectedFilterType,a?.selectedFilterValue,a?.smartTabMode].join('|')),generation:a?.articleRequestGeneration};};
+    const context=()=>{const a=app();return {destination:fingerprint([a?.selectedFilterType,a?.selectedFilterValue].join('|')),generation:a?.articleRequestGeneration};};
     const record=(type,detail)=>ring.record(type,detail);
     const cardInfo=card=>{
         const a=win.Alpine?.$data(card)?.article,root=app(),img=card.querySelector('.thumbnail-img');
@@ -84,7 +84,7 @@ export function installFlickerDiagnostics(win=window) {
     };
     win.fetch=wrappedFetch;cleanups.push(()=>{if(win.fetch===wrappedFetch)win.fetch=originalFetch;});
     const root=app();
-    for(const name of ['setFilter','fetchData','applyBriefingUpdates','openArticleOverlay','closeArticleOverlay','syncUserStatesInBackground']) {
+    for(const name of ['setFilter','fetchData','openArticleOverlay','closeArticleOverlay','syncUserStatesInBackground']) {
         if(typeof root?.[name]!=='function')continue;
         const original=root[name];
         const wrapped=function(...args){

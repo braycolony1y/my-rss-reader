@@ -13,9 +13,6 @@ async fetchData(isLoadMore = false, skipPageReset = false, keepVisible = false) 
                         const suffix = route?.articleUrl ? '?article=' + encodeURIComponent(route.articleUrl) : '';
                         window.history.replaceState(window.history.state, '', '#smart/' + this.selectedFilterValue + suffix);
                     }
-                    const smartTiming = this.usesTopStories ? {startedAt:performance.now()} : null;
-                    const topContext = this.usesTopStories ? JSON.stringify([this.selectedFilterValue,this.smartRegion,this.hideRead,this.searchQuery]) : null;
-                    const retainTop = topContext && this._renderedTopContext === topContext && this.articles.length > 0;
                     const retainPublication = ReaderListPublication.retains(this);
                     const requestGeneration = ++this.articleRequestGeneration;
                     this.articleListError = '';
@@ -30,8 +27,7 @@ async fetchData(isLoadMore = false, skipPageReset = false, keepVisible = false) 
                     if (!isLoadMore) {
                         this.isLoadingArticles = true;
                         this.loadingArticleStatus = 'Connecting to server...';
-                        if (!keepVisible && !retainTop && !retainPublication) this.articles = [];
-                        if (!keepVisible && !retainTop && !retainPublication) this.topStories = [];
+                        if (!keepVisible && !retainPublication) this.articles = [];
                         
                         if (this._connectTimer) clearInterval(this._connectTimer);
                         let connectWaitTime = 0;
@@ -72,7 +68,6 @@ async fetchData(isLoadMore = false, skipPageReset = false, keepVisible = false) 
                     this._preserveSmartVersionCall = false;
                     if ((isLoadMore || (skipPageReset && this.currentPage > 1)) && this.smartViewToken) params.set('smartView', this.smartViewToken);
                     if (this.selectedFilterType === 'smart') {
-                        params.set('smartMode', this.smartTabMode);
                         params.set('smartRegion', this.smartRegion);
                     }
                     // The user-preference and recent-read maps are ~85% of a list payload
@@ -139,20 +134,10 @@ async fetchData(isLoadMore = false, skipPageReset = false, keepVisible = false) 
                             
                             if (requestGeneration !== this.articleRequestGeneration) return;
                             if (ReaderFeedPageSession.exhausted(this, feedPageTransaction, data)) return { exhausted: true };
-                            if (smartTiming) { smartTiming.fetchMs=performance.now()-smartTiming.startedAt; smartTiming.renderStartedAt=performance.now(); }
-                            this._renderedTopContext = topContext;
-                            this.topStories = data.topStories || [];
-                            if (['top', 'classic'].includes(data.smartTabMode)) {
-                                this.smartTabMode = data.smartTabMode;
-                            }
                             this.smartViewToken = data.smartViewToken || '';
-                            this.rankingPending = data.rankingPending === true;
-                            this.topUpdatesAvailable = data.updatesAvailable === true;
 
                             if (data.viewReset && (isLoadMore || requestedPage > 1)) {
-                                // An expired snapshot is not the next page. Keep the reader's
-                                // position and expose the existing explicit refresh affordance.
-                                this.topUpdatesAvailable = true;
+                                // An expired view is not the next page. Keep the reader's position.
                                 this.hasMore = false;
                                 return { reset: true };
                             }
@@ -182,7 +167,7 @@ async fetchData(isLoadMore = false, skipPageReset = false, keepVisible = false) 
                                 if (this.hideRead && !['recent', 'saved', 'board'].includes(this.selectedFilterType)) {
                                     newArticles = newArticles.filter(a => !this.readStates.has(a.link));
                                 }
-                                if (keepVisible && this.articles.length > 0 && !this.usesTopStories) {
+                                if (keepVisible && this.articles.length > 0) {
                                     // A cache revalidation must not reorder, remove, or insert cards
                                     // while the user is reading. Merge fresh fields into the exact
                                     // visible list and leave membership/order for an explicit refresh.
@@ -202,17 +187,12 @@ async fetchData(isLoadMore = false, skipPageReset = false, keepVisible = false) 
                                     });
                                 } else {
                                     this.hideTooltip();
-                                    this.articles = this.usesTopStories && (keepVisible || retainTop)
-                                        ? ReaderSmartRefresh.reconcile(this.articles, newArticles)
-                                        : retainPublication ? ReaderListPublication.reconcile(this.articles, newArticles) : newArticles;
+                                    this.articles = retainPublication ? ReaderListPublication.reconcile(this.articles, newArticles) : newArticles;
                                 }
                                 
                                 const incomingPreferences = data.userPreferences || (this._fullStateLoaded ? this.userPreferences : {});
                                 if (data.userPreferences) this._fullStateLoaded = true;
                                 this.userPreferences = { ...incomingPreferences, ...this.pendingPreferences };
-                                if (this.userPreferences.clusteringModel) {
-                                    this.clusteringModel = this.userPreferences.clusteringModel;
-                                }
                                 this.userPreferences.boardFolders = [...new Set(['cache', ...(this.userPreferences.boardFolders || [])])];
                                 this.userPreferences.boardFolderMappings = this.userPreferences.boardFolderMappings || {};
                                 this.categoryOrder = data.categoryOrder || [];
@@ -253,12 +233,6 @@ async fetchData(isLoadMore = false, skipPageReset = false, keepVisible = false) 
                             this._articleListAbort = null;
                             clearInterval(this._connectTimer);
                             if (!isLoadMore) this.isLoadingArticles = false;
-                            this.scheduleBriefingRefresh();
-                            if (smartTiming?.renderStartedAt) this.$nextTick(() => requestAnimationFrame(() => {
-                                window.__smartRefreshTiming = {fetchMs:smartTiming.fetchMs, renderMs:performance.now()-smartTiming.renderStartedAt, cards:this.articles.length};
-                                performance.measure('smart-top-fetch', {start:smartTiming.startedAt,end:smartTiming.renderStartedAt});
-                                performance.measure('smart-top-render', {start:smartTiming.renderStartedAt,end:performance.now()});
-                            }));
                         }
                     }
                 }

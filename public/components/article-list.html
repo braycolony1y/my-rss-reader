@@ -3,8 +3,6 @@
         <div class="flex-1 min-h-0 overscroll-contain"
             :class="(showAddFeedModal || editModalOpen || debugModalOpen || articleOverlayOpen || geminiStatusOpen || articleOverlayClosing) ? 'overflow-hidden' : 'overflow-y-auto'"
             id="scroll-container"
-            data-smart-viewport-priority="SMART_VIEWPORT_DOM_V1"
-            :data-smart-top="usesTopStories ? '1' : '0'"
             :data-smart-view="smartViewToken || ''"
             :data-smart-filter="selectedFilterValue || ''"
             :data-smart-region="smartRegion || ''"
@@ -18,23 +16,6 @@
                 <div x-show="searchQuery && displayedArticles.length > 0" class="mb-4 text-gray-400 text-sm px-4">
                     Found <span x-text="displayedArticles.length" class="text-white font-bold"></span> results for
                     "<span x-text="searchQuery" class="text-white"></span>"
-                </div>
-
-                <div
-                    x-show="selectedFilterType === 'smart' && ((usesTopStories && topUpdatesAvailable) || topStoryError)"
-                    class="mb-4 px-2 md:px-0">
-                    <button
-                        type="button"
-                        x-show="usesTopStories && topUpdatesAvailable"
-                        class="story-update-notice"
-                        @click="refreshTopStories()">
-                        New updates available
-                    </button>
-                    <p
-                        role="alert"
-                        x-show="topStoryError"
-                        x-text="topStoryError">
-                    </p>
                 </div>
 
                 <!-- reader:article-card-component -->
@@ -57,11 +38,11 @@
                         :class="theme === 'glass-light' ? 'text-gray-900' : 'text-gray-200'"
                         x-text="'Loading ' + (headerTitle || 'articles') + '…'"></h3>
                     <p class="mt-2 transition" :class="theme === 'glass-light' ? 'text-gray-600' : 'text-gray-500'"
-                        x-text="loadingArticleStatus || (selectedFilterType === 'smart' ? 'Fetching ' + (headerTitle || 'Smart briefing') + ' from pre-clustered database (grouped automatically every 30 mins)…' : 'Fetching latest articles from database…')">
+                        x-text="loadingArticleStatus || (selectedFilterType === 'smart' ? 'Fetching ' + (headerTitle || 'Stories') + ' from pre-clustered database (grouped automatically every 30 mins)…' : 'Fetching latest articles from database…')">
                     </p>
                 </div>
 
-                <div x-show="displayedArticles.length === 0 && topStories.length === 0 && !isLoadingArticles && !articleListError" class="text-center py-20 px-4">
+                <div x-show="displayedArticles.length === 0 && !isLoadingArticles && !articleListError" class="text-center py-20 px-4">
                     <div class="inline-flex items-center justify-center w-16 h-16 rounded-full mb-4 transition"
                         :class="theme === 'glass-light' ? 'bg-black/5 text-gray-500' : 'bg-[#222] text-gray-500'">
                         <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">

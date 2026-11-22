@@ -59,11 +59,6 @@ const ReaderAppPersistence = {
                         for (const field of fields) {
                             if (article?.[field] !== undefined) compact[field] = article[field];
                         }
-                        if (app.usesTopStories && article?.topStory) {
-                            compact.topStory = { rank:article.topStory.rank, isTop:article.topStory.isTop, feed:article.topStory.feed, timeline:article.topStory.timeline, conflicts:article.topStory.conflicts, latest_material_update:article.topStory.latest_material_update };
-                            compact.briefing = article.briefing;
-                            compact.imageCandidates = article.imageCandidates;
-                        }
                         compact.content = String(article?.content || '').slice(0, includeRelated ? 300 : 160);
                         if (includeRelated && Array.isArray(article?.relatedArticles)) {
                             compact.relatedArticles = article.relatedArticles

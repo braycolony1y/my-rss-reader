@@ -163,7 +163,6 @@ test('all Alpine-bound reader settings exist before the first render', () => {
     assert.match(script, /editFeedExcludeFromSmart: false/);
     assert.match(script, /overlayRemainingAvailable: false/);
     assert.match(html, /<script src="\/script\.js\?v=[^"]+"><\/script>/);
-    assert.match(html, /class="mt-2 text-\[11px\] text-gray-400 space-y-0\.5"\s+x-data="\{ healthKey:/);
     assert.match(html, /x-for="\(item, idx\) in \(debugData\?\.prefetchQueue \|\| \[\]\)"/);
     assert.match(html, /:title="overlayArticle && savedStates\.includes\(overlayArticle\.link\) \? 'Remove from Read Later' : 'Read Later'"/);
     assert.match(html, /:title="isOnBoard\(overlayArticle\) \? 'Remove from Board' : 'Save to Board'"/);

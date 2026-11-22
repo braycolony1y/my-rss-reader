@@ -8,7 +8,6 @@ export const READER_ASSET_PATHS = Object.freeze({
     index: fileURLToPath(new URL('../../index.html', import.meta.url)),
     card: fileURLToPath(new URL('../../public/components/article-card.html', import.meta.url)),
     script: fileURLToPath(new URL('../../script.js', import.meta.url)),
-    panels: fileURLToPath(new URL('../../public/article-panels.js', import.meta.url)),
     clientModules: READER_CLIENT_MODULES,
     components: READER_COMPONENT_PATHS
 });
@@ -18,8 +17,8 @@ export function composeReaderHtml(index, card, partials = {}) {
     if (!html.includes(CARD_COMPONENT_MARKER)) throw new Error('Reader card component marker is missing');
     return html.replace(CARD_COMPONENT_MARKER, () => composeReaderPartials(card, partials));
 }
-export function composeReaderScript(script, panels, modules = []) {
-    return [panels, ...modules, script].join('\n');
+export function composeReaderScript(script, modules = []) {
+    return [...modules, script].join('\n');
 }
 
 // Revalidate source files on shell requests. Feed/API requests do not do this
@@ -41,7 +40,7 @@ export function createReaderAssetRenderer(paths = READER_ASSET_PATHS) {
         html: () => render('html', [paths.index, paths.card, ...components.map(([, file]) => file)],
             (index, card, ...contents) => composeReaderHtml(index, card,
                 Object.fromEntries(components.map(([name], i) => [name, contents[i]])))),
-        script: () => render('script', [paths.script, paths.panels, ...(paths.clientModules || [])],
-            (script, panels, ...modules) => composeReaderScript(script, panels, modules))
+        script: () => render('script', [paths.script, ...(paths.clientModules || [])],
+            (script, ...modules) => composeReaderScript(script, modules))
     };
 }
