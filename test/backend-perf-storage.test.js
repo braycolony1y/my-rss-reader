@@ -38,11 +38,9 @@ test('retention is finite, respects source TTLs and never admits user-state keys
     // Without reference information (write path) resolved mappings are never
     // evicted; only stale failures are dropped.
     assert.deepEqual(Object.keys(boundCacheObject('googleNewsUrlCache',entries,now)),['expired','owner','fresh','retry']);
-    for(const key of ['constructor','toString','__proto__','readStates','savedStates','hiddenStates','boardStates','recentReadAt','userPreferences','feeds','cacheMembers','cacheIdentityLedger','$cacheIdentityLedger.articles','smartPersonalFilters','topStoriesState','storyBriefings','articleFetchStrategyStats']){
+    for(const key of ['constructor','toString','__proto__','readStates','savedStates','hiddenStates','boardStates','recentReadAt','userPreferences','feeds','cacheMembers','cacheIdentityLedger','$cacheIdentityLedger.articles','smartPersonalFilters','topStoriesState','storyBriefings','articleFetchStrategyStats','smartEditorialAssessmentCache','smartEventVerificationCache','smartVerificationFailures']){
         assert.ok(!Object.hasOwn(CACHE_RETENTION,key));assert.equal(boundCacheObject(key,entries,now),entries);
     }
-    const huge=Object.fromEntries(Array.from({length:5100},(_,i)=>[String(i),{at:new Date(now-i).toISOString()}]));
-    assert.equal(Object.keys(boundCacheObject('smartVerificationFailures',huge,now)).length,5000);
 });
 
 test('cache listing keeps exact prefix semantics for supplementary Unicode and tombstones',async t=>{
@@ -72,23 +70,27 @@ test('full and paged cluster reads use one member query including empty member a
 
 test('derived cache timestamps and byte caps apply without changing unknown collections',async t=>{
     const now=Date.now(),day=86400000;
-    for(const [key,field]of [['smartEditorialAssessmentCache','assessedAt'],['smartEventVerificationCache','verifiedAt'],['smartVerificationFailures','at']]){
-        const entries={fresh:{[field]:new Date(now-1000).toISOString()},expired:{[field]:new Date(now-31*day).toISOString()},bad:{[field]:'bad'},future:{[field]:now+day}};
-        assert.deepEqual(Object.keys(boundCacheObject(key,entries,now)),['fresh'],key);
-    }
+    // Unresolved Google News lookups are failures: kept one day, never trusted with bad or future times.
+    const entries={fresh:{cachedAt:now-1000},expired:{cachedAt:now-2*day},bad:{cachedAt:'bad'},future:{cachedAt:now+day}};
+    assert.deepEqual(Object.keys(boundCacheObject('googleNewsUrlCache',entries,now)),['fresh']);
+    // Retired AI caches are left alone: archived rows must not be pruned before delete-ai-data removes them.
+    const stale={old:{createdAt:now-90*day}};
+    assert.equal(boundCacheObject('smartEventVerificationCache',stale,now),stale);
     const root=await directory(t),db=openSqlite(path.join(root,'reader.sqlite'));
+    const policy=CACHE_RETENTION.googleNewsUrlCache,originalMaxBytes=policy.maxBytes;
     try{
-        const repo=createRepository(db),payload='x'.repeat(10*1024*1024),key='smartEventVerificationCache';
-        for(let i=0;i<3;i++)repo.patchMap(key,{[i]:{createdAt:now-i,payload}});
+        policy.maxBytes=25*1024*1024;
+        const repo=createRepository(db),payload='x'.repeat(10*1024*1024),key='googleNewsUrlCache';
+        for(let i=0;i<3;i++)repo.patchMap(key,{[i]:{cachedAt:now-i,payload}});
         // Patches never sweep the collection; maintenance applies the byte cap.
         assert.equal(repo.info(key).item_count,3);
-        db.exec('BEGIN');assert.equal(pruneDerivedCaches(db,now).smartEventVerificationCache,1);db.exec('COMMIT');
+        db.exec('BEGIN');assert.equal(pruneDerivedCaches(db,now).googleNewsUrlCache,1);db.exec('COMMIT');
         assert.equal(repo.info(key).item_count,2);assert.deepEqual(Object.keys(JSON.parse(repo.read(key))),['0','1']);
         assert.equal(repo.info(key).digest,(()=>{const other=createRepository(db);other.write('comparison',repo.read(key));return other.info('comparison').digest;})());
         repo.patchMap('cacheIdentityLedger',{articles:{one:{auto_added:false}}});const first=repo.info('cacheIdentityLedger');
         repo.patchMap('cacheIdentityLedger',{articles:{two:{auto_added:true}}});const second=repo.info('cacheIdentityLedger');
         assert.notEqual(first.digest,second.digest);assert.ok(second.revision>first.revision);
-    }finally{db.close();}
+    }finally{policy.maxBytes=originalMaxBytes;db.close();}
 });
 
 test('failed compaction rolls back pruning and retries from the verified backup',async t=>{

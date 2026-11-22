@@ -1,6 +1,9 @@
 import { createHash } from 'node:crypto';
 
 export const hash = text => createHash('sha256').update(text).digest('hex');
+// TODO remove after delete-ai-data: '$topStoriesPublished.articles' and '$smartProgressivePublication.clusters'
+// (and the CHILD_FIELDS rows below) must keep mapping to the articles table until those collections are
+// deleted, otherwise reading or archiving the existing rows would look in the wrong table.
 export const ARTICLE_KEYS = new Set(['articles', 'smartRawArticles', 'smartClusters', 'smartClusteringInputs', '$topStoriesPublished.articles', '$smartProgressivePublication.clusters']);
 export const CHILD_FIELDS = {
     topStoriesPublished: new Set(['articles']),

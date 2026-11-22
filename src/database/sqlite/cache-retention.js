@@ -1,8 +1,9 @@
 import { normalizeStateUrl } from '../../utils/state-url.js';
 // ONLY derived caches belong in this allowlist. In particular the identity
-// ledger, personal filters, Top Stories continuity, fetch preferences, boards,
-// reading state and article/archive files MUST NOT be age/count pruned here.
-// Evicted AI results can be recomputed (and may cost another provider call).
+// ledger, fetch preferences, boards, reading state and article/archive files MUST NOT
+// be age/count pruned here. The retired AI caches (smartEditorialAssessmentCache,
+// smartEventVerificationCache, smartVerificationFailures) are no longer listed: their rows
+// are archived and left untouched until scripts/delete-ai-data.mjs removes them.
 const DAY = 86400000;
 export const CACHE_RETENTION = Object.freeze({
     // Article routes use a resolved mapping to find cached content of saved and
@@ -15,14 +16,6 @@ export const CACHE_RETENTION = Object.freeze({
     googleNewsUrlCache: { maxEntries: 100000, maxBytes: 96 * 1024 * 1024, protectResolved: true,
         resolved: entry => Boolean(entry?.resolvedUrl), urls: (id, entry) => [id, entry?.resolvedUrl],
         age: entry => entry?.resolvedUrl ? 180 * DAY : DAY, time: entry => entry?.cachedAt },
-    // Keys hash cluster content, so a changed cluster never reuses an old row.
-    smartEditorialAssessmentCache: { maxEntries: 20000, maxBytes: 24 * 1024 * 1024,
-        age: () => 30 * DAY, time: entry => entry?.createdAt ?? entry?.assessedAt ?? entry?.failedAt },
-    smartEventVerificationCache: { maxEntries: 20000, maxBytes: 24 * 1024 * 1024,
-        age: () => 30 * DAY, time: entry => entry?.createdAt ?? entry?.verifiedAt },
-    // The longest configurable suppression window is 24 hours.
-    smartVerificationFailures: { maxEntries: 5000, maxBytes: 4 * 1024 * 1024,
-        age: () => DAY, time: entry => entry?.at },
 });
 const timestamp = value => typeof value === 'number' ? value : Date.parse(value || '');
 // Descriptor of one row: the value itself is not retained, so callers can

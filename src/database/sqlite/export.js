@@ -4,6 +4,9 @@ import { createRepository } from './repository.js';
 import { syncDirectory } from './files.js';
 import { createCacheFiles } from './cache-files.js';
 
+// TODO remove after delete-ai-data: smartVerificationFailures, smartEventVerificationCache, smartEditorialAssessmentCache,
+// smartProgressive*, storyBriefings and topStoriesPublished are retired AI keys. They stay classified as Smart keys
+// so a legacy export taken before deletion still files them in smart-data.json, not database.json.
 const SMART_KEYS=new Set(['smartTopPrefilterState','smartClusters','smartRawArticles','smartCandidateLinks','smartCandidateSignature',
     'smartAiConfig','smartClusterVersion','smartStatus','smartEmbeddingIdentity','smartVerificationFailures','smartClusteringInputs',
     'smartClusteringFailedAttempt','smartClusteringAlgorithmVersion','smartClusterState','smartEventVerificationCache',

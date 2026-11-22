@@ -8,8 +8,8 @@ import {createDatabaseAccess} from './access.js';
 import {PUBLISHER_COOLDOWN_KEYS} from '../articles/publisher-cooldown-policy.js';
 import {encodeStoredSnapshot,decodeStoredValue,isSerializedValue,storedSnapshotState} from './stored-value.js';
 import { createParsedCache } from './parsed-cache.js';
-// Retired AI personal rules. No code reads or writes this key any more; it stays an allowed
-// state key only so the stored data can be archived before it is deleted.
+// Retired AI personal rules. No code reads or writes this key any more.
+// TODO remove after delete-ai-data: kept only because this legacy JSON store rejects unknown overlay keys.
 const PERSONAL_STATE_KEY = 'smartPersonalFilters';
 import { FILTER_STATE_KEY } from '../smart/prefilter/policy.js';
 import { writeJsonSnapshot } from './json-writer.js';
@@ -28,6 +28,11 @@ export function createLegacyDatabaseStore() {
 
     const SMART_DB_FILE = './smart-data.json';
     const SMART_STATE_FILE = './smart-state.json';
+    // TODO remove after delete-ai-data: storyBriefings, smartEventVerificationCache, smartEditorialAssessmentCache,
+    // topStoriesPublished, smartVerificationFailures, smartProgressive* (state-policy.js), topStoriesState,
+    // smartAiProviderHealth and smartPersonalFilters are retired AI keys. This legacy JSON store (offline
+    // comparison/rollback only) throws 'Invalid state overlay' on keys outside these sets, so they stay
+    // listed until scripts/delete-ai-data.mjs has removed them from the database.
     const SMART_STATE_KEYS = new Set([...SMART_INCREMENTAL_KEYS, FILTER_STATE_KEY, 'storyBriefings', 'smartStatus', 'smartClusteringCounters', 'smartEventVerificationCache', 'smartEditorialAssessmentCache']);
     let smartStateRevision = 0;
     let smartStateOverlay = {};

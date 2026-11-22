@@ -102,20 +102,7 @@ export async function publishSmartSnapshot(context) {
         currentSignature,
 
       smartAiConfig:
-        aiConfiguration,
-
-      // Final publication atomically retires any progressive view left by an older run.
-      smartProgressivePublication:
-        'null',
-      smartProgressiveClusterState:
-        JSON.stringify({
-          active: false,
-          provisional: false,
-          stage: 'ready',
-          version: '',
-          algorithmVersion: SMART_CLUSTER_VERSION,
-          completedAt: toVietnamIso(Date.now())
-        })
+        aiConfiguration
     },
     {
       allowLargeReduction:
