@@ -2,10 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { scoreStories, topSet } from '../src/ranking/score.js';
 import { loadModel, decodeVector } from '../src/ranking/model.js';
-import { applyHotFloor, hotOutlets } from '../src/ranking/hot-floor.js';
+import { applyHotFloor, hotOutlets, hotTier } from '../src/ranking/hot-floor.js';
 import { detectRoutine } from '../src/ranking/routine.js';
 import { clusterVector, coverage, timeFeatures } from '../src/ranking/features.js';
 import { HOT_FLOOR, ROUTINE_DAMPER } from '../src/ranking/config.js';
+import { registrableDomain, levenshteinSimilarity } from '../src/ranking/outlets.js';
+import { hotnessLabel } from '../src/ranking/classic.js';
 import { createVectorStore } from '../src/ranking/vector-store.js';
 
 const NOW = Date.UTC(2026, 10, 22, 12, 0, 0);
@@ -15,10 +17,13 @@ const model = loadModel();
 const blend = (feed, a) => { const c = model.centroids[feed]; const v = new Float32Array(384); for (let i = 0; i < 384; i++) v[i] = a * c.top[i] + (1 - a) * c.excl[i]; const n = Math.hypot(...v); return v.map(x => x / n); };
 const unitVec = seed => { const v = new Float32Array(384); for (let i = 0; i < 384; i++) v[i] = Math.sin(seed * (i + 1)); const n = Math.sqrt(v.reduce((s, x) => s + x * x, 0)); return v.map(x => x / n); };
 
+// Different outlets word the same story differently: a unique angle phrase per outlet keeps the headlines from being collapsed as syndicated copies.
+const ANGLES = ['amber', 'birch', 'cobalt', 'dune', 'ember', 'fjord', 'garnet', 'harbor', 'ivory', 'juniper', 'kestrel', 'lagoon', 'meadow', 'nectar', 'onyx', 'prairie', 'quartz', 'raven', 'saffron', 'tundra', 'umber', 'velvet', 'willow', 'xenon', 'yarrow', 'zephyr'];
+export const variant = (title, i) => !i ? title : `${title} ${ANGLES[i % ANGLES.length]} ${ANGLES[(i * 7 + 3) % ANGLES.length]} angle ${i}`;
 // A story reported by `outlets` (domains) starting `startAgoH` hours ago, one report every `gapMin` minutes.
 const story = (id, title, outlets, { feed = 'news_global', startAgoH = 2, gapMin = 10, vec = null, titles = null } = {}) => ({
   id, feed,
-  members: outlets.map((domain, i) => ({ title: titles?.[i] ?? (i ? `${title} (${domain})` : title), content: '', domain, sw: 1, t: NOW - startAgoH * HOUR + i * gapMin * 60000, vec }))
+  members: outlets.map((domain, i) => ({ title: titles?.[i] ?? variant(title, i), content: '', domain, sw: 1, t: NOW - startAgoH * HOUR + i * gapMin * 60000, vec }))
 });
 const GOLDEN = [['a', 0.827, 0.8681, 0.8727], ['b', 0.0019, 0.1021, 0.0051], ['c', 0.5438, 0.5368, 0.6743]];
 const outletNames = n => Array.from({ length: n }, (_, i) => `outlet${i}.com`);
@@ -176,6 +181,94 @@ test('topSet is a contiguous prefix by score plus floored stories', () => {
   const top = topSet(ranked, { kappa: 0 });
   assert.ok(top.has('hot'));
   assert.ok(top.size >= 1 && top.size < ranked.length);
+});
+
+const FLOOR = { minEligibility: 0 };
+const run = (clusters, hotFloor = FLOOR) => scoreStories(clusters, { now: NOW, hotFloor, damper: 0 });
+
+test('graded floor: 3-7 outlets are tier 1 (Hot, top 3), 8 or more are tier 2 (pinned #1, Breaking)', () => {
+  const t1 = story('t1', 'Council schedules a routine meeting for next week', outletNames(HOT_FLOOR.minOutlets));
+  const t2 = story('t2', 'Mayor announces a routine budget review hearing', outletNames(HOT_FLOOR.tier2Outlets));
+  const almost = story('almost', 'Library extends opening hours on weekends', outletNames(HOT_FLOOR.tier2Outlets - 1));
+  const { ranked, byId } = run([t1, t2, almost, ...fillers(12)]);
+  assert.equal(byId.get('t1').tier, 1);
+  assert.equal(byId.get('almost').tier, 1, 'one outlet short of tier 2 stays tier 1');
+  assert.equal(byId.get('t2').tier, 2);
+  assert.equal(byId.get('t2').hot, true);
+  assert.equal(ranked[0].id, 't2', 'tier 2 is pinned to #1 whatever its score');
+  assert.ok(ranked.findIndex(r => r.id === 't1') < HOT_FLOOR.maxRank + 2);
+  assert.equal(hotnessLabel({ tier: byId.get('t2').tier, hotness: 2 }), 'Breaking');
+  assert.equal(hotnessLabel({ tier: byId.get('t1').tier, hotness: 2 }), 'Hot');
+  // news_vietnam keeps its higher tier 1 minimum; tier 2 is the same for every section.
+  const vn = n => story('vn', 'Hội đồng lên lịch họp định kỳ vào tuần tới', outletNames(n), { feed: 'news_vietnam' });
+  assert.equal(run([vn(HOT_FLOOR.minOutlets)]).byId.get('vn').tier, 0);
+  assert.equal(run([vn(HOT_FLOOR.sectionOverrides.news_vietnam)]).byId.get('vn').tier, 1);
+  assert.equal(run([vn(HOT_FLOOR.tier2Outlets)]).byId.get('vn').tier, 2);
+});
+
+test('stories of one tier are ordered by outlet count, then by score', () => {
+  const items = [
+    { id: 'a', score: 0.9, tier: 2, hotOutlets: 8 }, { id: 'b', score: 0.1, tier: 2, hotOutlets: 11 }, { id: 'c', score: 0.5, tier: 2, hotOutlets: 11 },
+    { id: 'd', score: 0.2, tier: 1, hotOutlets: 6 }, { id: 'e', score: 0.1, tier: 1, hotOutlets: 7 }, { id: 'f', score: 0.8, tier: 0 }, { id: 'g', score: 0.7, tier: 0 },
+    { id: 'h', score: 0.6, tier: 0 }, { id: 'i', score: 0.3, tier: 0 }
+  ];
+  assert.deepEqual(applyHotFloor(items, { maxRank: 3 }).map(r => r.id), ['c', 'b', 'a', 'e', 'd', 'f', 'g', 'h', 'i']); // tier 2 first, then tier 1 (7 outlets before 6), already past rank 3
+  // End to end: the story with more outlets comes first even when it scores lower.
+  const small = story('small', 'Council schedules a routine meeting for next week', outletNames(8));
+  const big = story('big', 'Mayor announces a routine budget review hearing', outletNames(12).map(d => 'x' + d));
+  assert.deepEqual(run([small, big, ...fillers(6)]).ranked.slice(0, 2).map(r => r.id), ['big', 'small']);
+});
+
+test('syndicated reposts and one publisher under several hostnames count as one outlet', () => {
+  const title = 'Authorities detain suspected cartel leader after joint operation in northern region';
+  const wire = story('wire', title, Array.from({ length: 10 }, (_, i) => `paper${i}.com`), { titles: Array.from({ length: 10 }, (_, i) => i % 2 ? title.toUpperCase() : `${title} - Paper ${i}`) });
+  assert.equal(coverage(wire, NOW).distinct.size, 1, 'near-identical headlines from ten domains are one outlet');
+  const lead = 'The suspected leader was detained early on Friday morning following a joint operation by federal forces and state police in the northern region, officials said.';
+  const sameLead = { id: 'lead', feed: 'news_global', members: ['a.com', 'b.com', 'c.com'].map((domain, i) => ({ title: `Completely different headline number ${i} about unrelated words ${ANGLES[i]}`, content: lead, domain, t: NOW - HOUR + i * 60000 })) };
+  assert.equal(coverage(sameLead, NOW).distinct.size, 1, 'the same lead text collapses outlets');
+  const hosts = story('hosts', 'Council schedules a routine meeting', ['www.cnn.com', 'edition.cnn.com', 'amp.cnn.com', 'bbc.co.uk', 'news.bbc.co.uk', 'one.blogspot.com', 'two.blogspot.com']);
+  assert.equal(coverage(hosts, NOW).distinct.size, 4, 'cnn.com x3 -> 1, bbc.co.uk x2 -> 1, two separate blogspot blogs stay apart');
+  const genuine = story('gen', 'Council schedules a routine meeting', outletNames(6));
+  assert.equal(coverage(genuine, NOW).distinct.size, 6, 'differently worded reports stay separate');
+  // Syndication gives no floor, however many domains carry it.
+  const { byId } = run([wire, ...fillers(5)]);
+  assert.equal(byId.get('wire').tier, 0);
+  assert.equal(byId.get('wire').outlets, 1);
+  assert.equal(registrableDomain('news.google.com.vn'), 'google.com.vn');
+  assert.ok(levenshteinSimilarity('abcdefghij', 'abcdefghix') >= 0.9 && levenshteinSimilarity('abcdef', 'uvwxyz', 0.9) === 0);
+});
+
+test('routine stories earn neither tier, even with 12 outlets', () => {
+  const match = story('m', 'Arsenal beat Chelsea 2-1 in Premier League thriller', outletNames(12));
+  const { byId } = scoreStories([match, ...fillers(4)], { now: NOW, hotFloor: FLOOR });
+  assert.ok(byId.get('m').routine.includes('sports'));
+  assert.equal(byId.get('m').tier, 0);
+  assert.equal(byId.get('m').hot, false);
+});
+
+test('the floor decays: tier 2 expires after its max age or when outlet velocity stalls, tier 1 follows the active window', () => {
+  const fresh = story('fresh', 'Council schedules a routine meeting for next week', outletNames(9), { startAgoH: 2 });
+  const old = story('old', 'Mayor announces a routine budget review hearing', outletNames(9), { startAgoH: HOT_FLOOR.tier2MaxAgeHours + 1 });
+  const stalled = story('stalled', 'Library extends opening hours on weekends', outletNames(9), { startAgoH: HOT_FLOOR.tier2StallHours + 2, gapMin: 5 });
+  // Reports keep arriving (one outlet per 20 min for 12 h) but the story began more than the max age ago.
+  const trickle = story('trickle', 'Harbor authority reviews ferry timetable changes', outletNames(30), { startAgoH: HOT_FLOOR.tier2MaxAgeHours + 0.5, gapMin: 25 });
+  const { byId } = run([fresh, old, stalled, trickle, ...fillers(5)]);
+  assert.equal(byId.get('fresh').tier, 2);
+  assert.equal(byId.get('old').tier, 0, 'older than tier2MaxAgeHours: back to its normal score');
+  assert.equal(byId.get('stalled').tier, 0, 'no new outlet for tier2StallHours: back to its normal score');
+  assert.equal(byId.get('trickle').tier, 0, 'a long trickle of reports does not keep tier 2 beyond its max age');
+  // A big story is reported over many hours: 9 outlets at one per hour (never 8 inside the 4 h window) is still tier 2 while it is fresh and still growing.
+  const slow = story('slow', 'Border crossing reopens after a routine inspection', outletNames(9), { startAgoH: 9, gapMin: 60 });
+  assert.equal(run([slow, ...fillers(3)]).byId.get('slow').tier, 2);
+  assert.ok(run([slow, ...fillers(3)]).byId.get('slow').hotOutlets < HOT_FLOOR.tier2Outlets, 'the window count alone would only be tier 1');
+  // Timings are config: a longer max age keeps the old story pinned.
+  assert.equal(run([old, ...fillers(3)], { ...FLOOR, tier2MaxAgeHours: 24, tier2StallHours: 24 }).byId.get('old').tier, 2);
+  // Tier 1 is not subject to the tier 2 stall rule.
+  const t1 = story('t1', 'Council schedules a routine meeting for next week', outletNames(4), { startAgoH: HOT_FLOOR.tier2StallHours + 3 });
+  assert.equal(run([t1, ...fillers(3)]).byId.get('t1').tier, 1);
+  assert.equal(hotTier({ feed: 'news_global', hotOutlets: 9, firstT: NOW - HOUR, lastT: NOW - 60000, routine: [], pElig: 0.9 }, NOW), 2);
+  assert.equal(hotTier({ feed: 'news_global', hotOutlets: 9, firstT: NOW - HOUR, lastT: NOW - 60000, routine: ['sports'], pElig: 0.9 }, NOW), 0);
+  assert.equal(hotTier({ feed: 'news_global', hotOutlets: 9, firstT: NOW - HOUR, lastT: NOW - 60000, routine: [], pElig: 0.1 }, NOW), 0);
 });
 
 test('the vector store loads once, caches misses, and is inert when disabled', async () => {

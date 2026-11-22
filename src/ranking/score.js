@@ -4,12 +4,12 @@
 //   - corroboration and velocity of independent outlets,
 //   - existing multilingual-e5-small vectors compared with two frozen section centroids,
 // through three small linear heads (see model.json), then applies the routine damper and the
-// hot-news floor.
+// graded hot-news floor.
 //
 //   score = ( mix*pTop + (1-mix) * pElig * min(1, qHat/relTop) ) * (0.45 + 0.55 * exp(-ageHours/48))
 import { FEEDS, HOURS, coverage, dot, feedOneHot, noveltyFeatures, staticFeatures, timeFeatures } from './features.js';
 import { HOT_FLOOR } from './config.js';
-import { applyHotFloor, earnsHotFloor, hotOutlets } from './hot-floor.js';
+import { applyHotFloor, hotProfile, hotTier } from './hot-floor.js';
 import { loadModel } from './model.js';
 import { detectRoutine } from './routine.js';
 
@@ -33,9 +33,11 @@ function centroidSims(vec, centroids, feed) {
  * @param {object} [opts.model]     defaults to the shipped model
  * @param {object|null} [opts.centroids] override the model's centroids (null = no e5 centroid features)
  * @param {object} [opts.hotFloor]  override HOT_FLOOR; pass { minOutlets: Infinity } to disable
+ * @param {boolean} [opts.dedupeCorroboration] default true: syndicated and same-publisher outlets count once in the corroboration features; false = raw outlet count
  * @param {number|null} [opts.damper] override the routine damper strength (0 disables)
  * @returns {{ranked:object[], byId:Map<string,object>}} ranked: per section, floor applied, sorted; each item
- *   { id, feed, score, pElig, pTop, qHat, fresh, hot, hotOutlets, routine:string[], damp }
+ *   { id, feed, score, pElig, pTop, qHat, fresh, tier (0/1/2), hot (tier > 0), hotOutlets (distinct outlets in the best window),
+ *   outlets (distinct outlets in all), routine:string[], damp }
  */
 export function scoreStories(clusters, opts = {}) {
   const now = opts.now ?? Date.now(), model = opts.model ?? loadModel();
@@ -55,7 +57,7 @@ export function scoreStories(clusters, opts = {}) {
   for (const c of clusters) {
     const routine = opts.damper === undefined ? detectRoutine(c) : detectRoutine(c, { strength: opts.damper });
     const cov = coverage(c, now);
-    const tf = timeFeatures(c, now, routine.strength, cov);
+    const tf = timeFeatures(c, now, routine.strength, opts.dedupeCorroboration === false ? cov : { ...cov, independent: cov.distinctAll });
     const cs = centroidSims(c._vec, centroids, c.feed);
     const e5 = c._vec ? { ...(novelty.get(c.id) || {}), ...(cs || {}) } : {};
     const f = { ...c._sf, ...tf, ...feedOneHot(c), ...e5 };
@@ -69,9 +71,10 @@ export function scoreStories(clusters, opts = {}) {
     const pElig = sigmoid(ze), pTop = sigmoid(zt), qHat = Math.max(0, zq);
     const fresh = Math.exp(-tf.age_h / model.freshnessHours);
     const score = (model.mix * pTop + (1 - model.mix) * pElig * Math.min(1, qHat / model.relTop)) * (0.45 + 0.55 * fresh);
-    const outlets = hotOutlets(cov.independent, now, floorCfg);
-    const item = { id: c.id, feed: c.feed, score, pElig, pTop, qHat, fresh, hotOutlets: outlets, routine: routine.kinds, damp: routine.strength, hot: false };
-    item.hot = earnsHotFloor(item, floorCfg);
+    const prof = hotProfile(cov.distinct, now, floorCfg);
+    const item = { id: c.id, feed: c.feed, score, pElig, pTop, qHat, fresh, hotOutlets: prof.count, outlets: prof.total, firstT: prof.firstT, lastT: prof.lastT, routine: routine.kinds, damp: routine.strength, tier: 0, hot: false };
+    item.tier = hotTier(item, now, floorCfg);
+    item.hot = item.tier > 0;
     items.push(item);
   }
   const byFeed = new Map();

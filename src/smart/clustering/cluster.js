@@ -30,8 +30,7 @@ function getHotnessLabel(cluster) {
     return '';
   }
   return hotnessLabel({
-    hot: Boolean(cluster.ranking?.hot),
-    hotOutlets: Number(cluster.ranking?.hotOutlets || 0),
+    tier: Number(cluster.ranking?.tier || (cluster.ranking?.hot ? 1 : 0)),
     hotness,
     sourceCount,
     fresh: Number(cluster.ranking?.signals?.freshness || 0)

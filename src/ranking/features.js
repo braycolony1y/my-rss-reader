@@ -7,6 +7,7 @@
 //   vec    L2-normalised multilingual-e5-small vector of the member, optional
 import { LEX, GUARDS, POLICY_EXCLUDE } from './lexicons.js';
 import { NOVELTY_WINDOW_HOURS } from './config.js';
+import { isAggregator, outletGroups } from './outlets.js';
 
 export const FEEDS = ['news_vietnam', 'news_global', 'finance_vietnam', 'finance_global', 'tech_vietnam', 'tech_global'];
 export const HOURS = 3600000;
@@ -82,24 +83,30 @@ export function staticFeatures(cluster) {
  * Per-outlet coverage of a cluster as of `now` (members published later are ignored).
  * `firstSeen` maps outlet -> time of its first report; `independent` is the subset of
  * outlets that did not just reprint an identical headline and are not opinion pieces.
+ * `distinct` maps real outlets (aggregators dropped; one publisher under several hostnames, and syndicated or
+ * near-identical reposts, collapsed into one; see outlets.js) to the time of their first report; `distinctAll`
+ * is the same collapse over `independent` (aggregators kept), for the corroboration features.
  */
 export function coverage(cluster, now) {
   const ms = cluster.members.filter(m => !m.t || m.t <= now);
   const use = ms.length ? ms : cluster.members;
-  const firstSeen = new Map(), seenTitles = new Set(), independent = new Map();
+  const firstSeen = new Map(), seenTitles = new Set(), independent = new Map(), distinct = new Map(), distinctAll = new Map();
   let t0 = Infinity, tLast = 0;
   const sorted = [...use].sort((a, b) => (a.t || 0) - (b.t || 0));
-  for (const m of sorted) {
+  const groups = outletGroups(sorted, sorted.map(publisherOf));
+  for (let i = 0; i < sorted.length; i++) {
+    const m = sorted[i];
     const p = publisherOf(m);
     if (!firstSeen.has(p)) firstSeen.set(p, m.t || 0);
     const k = headlineKey(m.title);
     const opinion = LEX.x_opinion.test(m.title || '');
-    if (!seenTitles.has(k) && !opinion && !independent.has(p)) independent.set(p, m.t || 0);
+    if (!seenTitles.has(k) && !opinion && !independent.has(p)) { independent.set(p, m.t || 0); if (!distinctAll.has(groups[i])) distinctAll.set(groups[i], m.t || 0); }
+    if (!opinion && !isAggregator(p) && !distinct.has(groups[i])) distinct.set(groups[i], m.t || 0);
     seenTitles.add(k);
     if (m.t) { t0 = Math.min(t0, m.t); tLast = Math.max(tLast, m.t); }
   }
   if (!Number.isFinite(t0)) t0 = now;
-  return { used: use, firstSeen, independent, t0, tLast };
+  return { used: use, firstSeen, independent, distinct, distinctAll, t0, tLast };
 }
 
 /**

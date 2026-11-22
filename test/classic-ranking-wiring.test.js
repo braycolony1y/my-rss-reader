@@ -9,7 +9,7 @@ const image = 'https://example.com/image.jpg';
 const now = Date.now();
 const member = (n, domain, title, minutesAgo) => ({ link: `https://${domain}/${n}`, title, pubDate: new Date(now - minutesAgo * 60000).toISOString(), domain, sourceWeight: 1, smartCategory: 'news_global', content: 'Body text of the article.' });
 const story = (id, title, domains, minutesAgo = 30) => {
-    const [head, ...rest] = domains.map((d, i) => member(`${id}-${i}`, d, i ? `${title} (${d})` : title, minutesAgo - i));
+    const [head, ...rest] = domains.map((d, i) => member(`${id}-${i}`, d, i ? `${title} ${['amber', 'birch', 'cobalt', 'dune', 'ember'][i % 5]} ${['fjord', 'garnet', 'harbor', 'ivory', 'juniper'][(i * 2) % 5]} angle ${i}` : title, minutesAgo - i));
     return { ...head, clusterId: id, isCluster: true, image, relatedArticles: rest, clusterCount: domains.length };
 };
 const fixture = () => ({
@@ -108,8 +108,9 @@ test('rankClassicStories keeps the legacy display contract and labels', () => {
     assert.equal(displayHotness(0), 1);
     assert.equal(displayHotness(2), 10);
     assert.equal(displayHotness(0.456), 4.6);
-    assert.equal(hotnessLabel({ hot: true, hotOutlets: 9, hotness: 7 }), 'Breaking');
-    assert.equal(hotnessLabel({ hot: true, hotOutlets: 4, hotness: 3 }), 'Hot');
+    assert.equal(hotnessLabel({ tier: 2, hotness: 7 }), 'Breaking');
+    assert.equal(hotnessLabel({ tier: 2, hotness: 2 }), 'Breaking', 'tier 2 is Breaking whatever the score');
+    assert.equal(hotnessLabel({ tier: 1, hotness: 3 }), 'Hot');
     assert.equal(hotnessLabel({ hotness: 9 }), 'Hot');
     assert.equal(hotnessLabel({ sourceCount: 7, hotness: 6 }), 'Widely reported');
     assert.equal(hotnessLabel({ sourceCount: 2, hotness: 3 }), '');
@@ -121,11 +122,13 @@ test('hotness labels use the recalibrated thresholds and legacy mode keeps 5.5/6
     assert.equal(hotnessLabel({ hotness: 7.8 }), 'Hot');
     assert.equal(hotnessLabel({ hotness: 8.7, fresh: 0.9 }), 'Breaking');
     assert.equal(hotnessLabel({ hotness: 8.7, fresh: 0.3 }), 'Hot', 'a stale high score is Hot, not Breaking');
-    assert.equal(hotnessLabel({ hot: true, hotOutlets: 4, hotness: 3 }), 'Hot', 'the hot floor still lifts to Hot');
+    assert.equal(hotnessLabel({ tier: 1, hotness: 3 }), 'Hot', 'the hot floor still lifts to Hot');
     const cluster = hotness => ({ hotness, sourceCount: 1, ranking: { signals: { freshness: 0.9 } } });
     assert.equal(getHotnessLabel(cluster(7.0)), '');
     assert.equal(getHotnessLabel(cluster(8.0)), 'Hot');
     assert.equal(getHotnessLabel(cluster(8.8)), 'Breaking');
+    assert.equal(getHotnessLabel({ hotness: 3, sourceCount: 12, ranking: { tier: 2, hot: true } }), 'Breaking');
+    assert.equal(getHotnessLabel({ hotness: 3, sourceCount: 4, ranking: { tier: 1, hot: true } }), 'Hot');
     const before = process.env.CLASSIC_RANKING;
     process.env.CLASSIC_RANKING = 'legacy';
     try {
@@ -133,6 +136,7 @@ test('hotness labels use the recalibrated thresholds and legacy mode keeps 5.5/6
         assert.equal(getHotnessLabel({ hotness: 5.5, sourceCount: 1 }), 'Hot');
         assert.equal(getHotnessLabel({ hotness: 6.5, sourceCount: 6 }), 'Widely reported');
         assert.equal(getHotnessLabel({ hotness: 7.5, sourceCount: 4 }), 'Breaking');
+        assert.equal(getHotnessLabel({ hotness: 3, sourceCount: 12, ranking: { tier: 2, hot: true } }), '', 'legacy mode ignores the floor tiers');
         assert.equal(getHotnessLabel({ hotness: 7.5, sourceCount: 3 }), 'Hot');
     } finally { if (before === undefined) delete process.env.CLASSIC_RANKING; else process.env.CLASSIC_RANKING = before; }
 });

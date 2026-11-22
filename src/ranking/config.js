@@ -9,23 +9,29 @@ const num = (name, fallback, min, max) => {
 };
 
 /**
- * Hot-news floor. A story reported by at least `minOutlets` (or the section override) distinct, independent
- * outlets whose first reports fall inside one `windowHours` window, and whose most
- * recent report is at most `activeHours` old, is guaranteed a near-top place in its
- * section and the "Hot" label. Routine patterns (see routine.js) never trigger it.
+ * Graded hot-news floor over DISTINCT real outlets (aggregators dropped, syndicated reposts and one publisher's
+ * several hostnames collapsed; see outlets.js) whose first reports fall inside one `windowHours` window ending
+ * within `activeHours` of now. Routine patterns (routine.js) and off-section stories never trigger it.
+ *   Tier 1: `minOutlets` (section override, news_vietnam 5) or more: lifted into the top `maxRank` of the section, "Hot".
+ *   Tier 2: `tier2Outlets` or more distinct outlets reported so far (not limited to the window: big stories are covered over
+ *           many hours): pinned to #1 of the section, "Breaking" whatever the score. Only while fresh:
+ *           at most `tier2MaxAgeHours` after the first report and while a new outlet reported within `tier2StallHours`;
+ *           afterwards the story falls back to its normal score (no floor at all).
+ * Stories of one tier are ordered by outlet count (desc), then score.
  */
 export const HOT_FLOOR = Object.freeze({
   minOutlets: num('RANKING_HOT_MIN_OUTLETS', 3, 2, 20),
   /** Sections whose sources overlap heavily need more outlets (Vietnamese general news is covered by many near-identical outlets). */
   sectionOverrides: Object.freeze({ news_vietnam: 5 }),
+  tier2Outlets: num('RANKING_HOT_TIER2_OUTLETS', 8, 3, 50),
   windowHours: num('RANKING_HOT_WINDOW_HOURS', 4, 0.5, 48),
   activeHours: num('RANKING_HOT_ACTIVE_HOURS', 12, 1, 72),
-  /** Floored stories are lifted to at most this (1-based) rank of their section. */
+  tier2MaxAgeHours: num('RANKING_HOT_TIER2_MAX_AGE_HOURS', 12, 1, 72),
+  tier2StallHours: num('RANKING_HOT_TIER2_STALL_HOURS', 3, 0.5, 24),
+  /** Tier 1 stories are lifted to at most this (1-based) rank of their section. */
   maxRank: num('RANKING_HOT_MAX_RANK', 3, 1, 20),
   /** Stories the eligibility head considers off-section (pElig below this) never get the floor. */
-  minEligibility: num('RANKING_HOT_MIN_ELIG', 0.25, 0, 1),
-  /** Outlets within the window at which the label is upgraded from Hot to Breaking. */
-  breakingOutlets: num('RANKING_BREAKING_OUTLETS', 7, 3, 50)
+  minEligibility: num('RANKING_HOT_MIN_ELIG', 0.25, 0, 1)
 });
 
 /**
