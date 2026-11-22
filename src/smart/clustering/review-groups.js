@@ -1,5 +1,5 @@
 import { getArticleId, createGroupId } from '../articles/identity.js';
-import { postValidatePartition } from '../verification/validation.js';
+import { postValidatePartition } from './partition-validation.js';
 import { detectEventConflicts } from './event-evidence.js';
 
 function prepareIncrementalReviewGroups(groups, automatic) {
@@ -152,13 +152,15 @@ function integrateIncrementalReviews(automatic, reviewed, requests) {
     const members = [...new Map(touched.flatMap(g => g.articles).map(a => [getArticleId(a), a])).values()];
     const proposed = { clusters: [{ articleIds: members.map(getArticleId) }], uncertain: false };
     if (!postValidatePartition(proposed, members)) {
+      // A resolver merge is optional: when it does not validate against the established events it is simply not applied.
+      if (partition.verification?.method === 'deterministic_resolver') continue;
       const error = new Error('Incremental match conflicts with established event; retaining previous clusters.');
       error.code = 'CLUSTER_VERIFICATION_UNRESOLVED'; throw error;
     }
     groups = groups.filter(g => !touched.includes(g));
     groups.push({ ...partition, articles: members });
   }
-  // Do not turn an explicit AI separation into a merge through a different pair.
+  // Do not turn an explicit separation into a merge through a different pair.
   for (const request of requests) {
     const partitions = reviewed.filter(partition => partition.reviewRequestId === request.id);
     if (
