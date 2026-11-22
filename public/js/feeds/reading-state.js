@@ -45,27 +45,21 @@ const ReaderFeedsReadingState = {
                 },
 
                 hiddenArticleCount() {
-                    const links = this.dedupeStateLinks(this.hiddenStates);
-                    if (!links.length) return 0;
-                    const aliases = new Map(Object.entries(this.hiddenStateAliases || {}));
-                    const count = () => new Set(links.map(link => aliases.get(link) || link)).size;
-                    if (!links.some(link => !aliases.has(link) && this.isGoogleNewsArticleUrl(link))) {
-                        return aliases.size ? count() : links.length;
+                    const aliases = this.hiddenStateAliases;
+                    const identities = new Set();
+                    for (const value of this.hiddenStates) {
+                        const link = this.normalizeStateLink(value);
+                        if (link) identities.add(Object.hasOwn(aliases, link) ? aliases[link] : link);
                     }
-                    const hidden = new Set(links);
-                    const collect = article => {
-                        if (article?.originalLink && article.link) {
-                            const wrapper = this.normalizeStateLink(article.originalLink);
-                            const destination = this.normalizeStateLink(article.link);
-                            if (wrapper !== destination && hidden.has(wrapper) && hidden.has(destination)) {
-                                aliases.set(wrapper, destination);
-                            }
-                        }
-                        for (const member of article?.relatedArticles || []) collect(member);
-                    };
-                    for (const article of this.articles || []) collect(article);
-                    collect(this.overlayArticle);
-                    return count();
+                    return identities.size;
+                },
+
+                mergeHiddenStateAliases(aliases) {
+                    const hidden = new Set(this.hiddenStates.map(link => this.normalizeStateLink(link)));
+                    this.hiddenStateAliases = Object.fromEntries(
+                        Object.entries({ ...this.hiddenStateAliases, ...aliases })
+                            .filter(([wrapper, destination]) => hidden.has(wrapper) || hidden.has(destination))
+                    );
                 },
 
                 adjustArticleUnreadCounts(article, delta) {
@@ -181,6 +175,10 @@ const ReaderFeedsReadingState = {
                     const isAdding = !this.hasArticleState(list, article);
                     if (isAdding) {
                         array.push(link);
+                        if (list === 'hiddenStates' && removalLinks.length === 2) {
+                            const [wrapper, destination] = removalLinks;
+                            this.hiddenStateAliases = { ...this.hiddenStateAliases, [wrapper]: destination };
+                        }
                         if (list === 'savedStates' || list === 'boardStates') {
                             const sourceArticle = [this.overlayArticle, ...(this.articles || []), ...(this.displayedArticles || [])]
                                 .filter(Boolean)
@@ -195,6 +193,7 @@ const ReaderFeedsReadingState = {
                         void this.flushPendingStateMutations();
                     } else {
                         this[list] = array.filter(url => !removalLinks.includes(this.normalizeStateLink(url)));
+                        if (list === 'hiddenStates') this.mergeHiddenStateAliases();
                         for (const alias of removalLinks) this.queueStateMutation(list, alias, false);
                         void this.flushPendingStateMutations();
                         
@@ -390,7 +389,7 @@ const ReaderFeedsReadingState = {
                             if (data.savedStates) this.savedStates = this.applyPendingStateMutations('savedStates', data.savedStates);
                             if (data.boardStates) this.boardStates = this.applyPendingStateMutations('boardStates', data.boardStates);
                             if (data.hiddenStates) this.hiddenStates = this.applyPendingStateMutations('hiddenStates', data.hiddenStates);
-                            if (data.hiddenStateAliases) this.hiddenStateAliases = data.hiddenStateAliases;
+                            if (data.hiddenStates || data.hiddenStateAliases) this.mergeHiddenStateAliases(data.hiddenStateAliases);
                             if (data.userPreferences) this.userPreferences = { ...data.userPreferences, ...this.pendingPreferences };
                             
                             // State sync updates badges and actions only. Removing cards here made

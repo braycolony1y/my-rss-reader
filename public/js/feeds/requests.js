@@ -162,6 +162,7 @@ async fetchData(isLoadMore = false, skipPageReset = false, keepVisible = false) 
                                 // The server is authoritative. Merging with an old browser snapshot
                                 // kept removed entries forever and made the sidebar count drift.
                                 this.hiddenStates = this.applyPendingStateMutations('hiddenStates', data.hiddenStates || []);
+                                this.mergeHiddenStateAliases?.();
                                 
                                 let newArticles = data.articles || [];
                                 if (this.hideRead && !['recent', 'saved', 'board'].includes(this.selectedFilterType)) {

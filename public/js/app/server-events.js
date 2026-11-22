@@ -238,6 +238,7 @@ const ReaderAppServerEvents = {
                                     applyArrayDelta(
                                         this.hiddenStates
                                     );
+                                this.mergeHiddenStateAliases?.();
                             }
                         }
                     );

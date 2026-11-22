@@ -4,10 +4,14 @@ import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
 import { registerSettingsRoutes } from '../src/routes/settings-routes.js';
 
-function readingState(fetch = async () => ({ ok: true })) {
-    const context = vm.createContext({ fetch, URL });
-    vm.runInContext(readFileSync(new URL('../public/js/feeds/reading-state.js', import.meta.url), 'utf8'), context);
-    vm.runInContext(readFileSync(new URL('../public/js/article/navigation.js', import.meta.url), 'utf8'), context);
+function loadClientModule(context, path) {
+    vm.runInContext(readFileSync(new URL(`../public/js/${path}.js`, import.meta.url), 'utf8'), context);
+}
+
+function readingState(fetch = async () => ({ ok: true }), context = vm.createContext({ URL })) {
+    context.fetch = fetch;
+    loadClientModule(context, 'feeds/reading-state');
+    loadClientModule(context, 'article/navigation');
     return vm.runInContext('Object.assign(ReaderArticleNavigation.create(), ReaderFeedsReadingState.create())', context);
 }
 
@@ -99,16 +103,16 @@ test('single and batch state updates cap distinct identities and keep both alias
     assert.deepEqual(state.hiddenStates, [...legacy.slice(-1996), originalLink, destination, single, ...batch]);
 });
 
-test('hidden badge counts loaded article aliases once and keeps unmatched entries', () => {
+test('hidden badge counts normalized aliases once and keeps unmatched entries', () => {
     const app = readingState();
     const originalLink = 'https://news.google.com/read/example';
     const link = 'https://example.com/decoded';
-    app.articles = [{ link: 'https://example.com/parent', relatedArticles: [{ link, originalLink }] }, { link, originalLink }];
+    app.hiddenStateAliases = { [originalLink]: link };
     app.hiddenStates = [originalLink + '/', link, link + '/', 'https://example.com/elsewhere', 'https://example.com/elsewhere/'];
     assert.equal(app.hiddenArticleCount(), 2);
 });
 
-test('hidden badge skips reading articles for plain hidden links and known Google News aliases', () => {
+test('hidden badge never reads articles even when a Google News wrapper has no alias', () => {
     const app = readingState();
     const originalLink = 'https://news.google.com/rss/articles/example';
     const destination = 'https://example.com/hidden';
@@ -118,8 +122,125 @@ test('hidden badge skips reading articles for plain hidden links and known Googl
     app.hiddenStates = [destination, destination + '/#fragment', 'https://example.com/other'];
     assert.equal(app.hiddenArticleCount(), 2);
     app.hiddenStates.push(originalLink);
+    assert.equal(app.hiddenArticleCount(), 3);
     app.hiddenStateAliases = { [originalLink]: destination };
     assert.equal(app.hiddenArticleCount(), 2);
+    app.hiddenStates.push('https://news.google.com/rss/articles/undecoded');
+    assert.equal(app.hiddenArticleCount(), 3);
+});
+
+test('hiding a decoded article records its normalized alias and counts one identity', async () => {
+    const app = readingState();
+    const link = 'https://example.com/story';
+    const wrapper = 'https://news.google.com/read/story';
+    app.articles = [];
+    await app.toggleState('hiddenStates', { link: link + '/#part', originalLink: wrapper + '/' });
+    assert.equal(app.hiddenStateAliases[wrapper], link);
+    assert.equal(app.hiddenArticleCount(), 1);
+
+    app.hiddenStates.push(wrapper);
+    assert.equal(app.hiddenArticleCount(), 1);
+});
+
+test('unhiding clears the alias when neither link remains hidden', async () => {
+    const app = readingState();
+    const article = { link: 'https://example.com/story', originalLink: 'https://news.google.com/read/story' };
+    app.articles = [];
+    app.hiddenStates = [article.originalLink, article.link];
+    app.hiddenStateAliases = { [article.originalLink]: article.link };
+
+    await app.toggleState('hiddenStates', { link: article.originalLink });
+    assert.equal(app.hiddenStateAliases[article.originalLink], article.link);
+    assert.equal(app.hiddenArticleCount(), 1);
+
+    await app.toggleState('hiddenStates', article);
+    assert.equal(Object.hasOwn(app.hiddenStateAliases, article.originalLink), false);
+    assert.equal(app.hiddenArticleCount(), 0);
+});
+
+test('server state refresh merges local and server aliases and prunes unhidden pairs', async () => {
+    const local = { link: 'https://example.com/local', originalLink: 'https://news.google.com/read/local' };
+    const server = { link: 'https://example.com/server', originalLink: 'https://news.google.com/read/server' };
+    const removed = { link: 'https://example.com/removed', originalLink: 'https://news.google.com/read/removed' };
+    const snapshot = {
+        hiddenStates: [local.link, local.originalLink + '/', server.link, server.originalLink],
+        hiddenStateAliases: { [server.originalLink]: server.link }
+    };
+    const app = readingState(async () => ({ ok: true, json: async () => snapshot }));
+    app.isLoggedIn = true;
+    app.articles = [];
+    app.flushUserPreferences = async () => {};
+    await app.toggleState('hiddenStates', local);
+    await app.toggleState('hiddenStates', removed);
+
+    await app.syncUserStatesInBackground();
+    assert.deepEqual({ ...app.hiddenStateAliases }, { [local.originalLink]: local.link, [server.originalLink]: server.link });
+    assert.equal(app.hiddenArticleCount(), 2);
+
+    snapshot.hiddenStates = [local.link];
+    snapshot.hiddenStateAliases = {};
+    await app.syncUserStatesInBackground();
+    assert.deepEqual({ ...app.hiddenStateAliases }, { [local.originalLink]: local.link });
+    assert.equal(app.hiddenArticleCount(), 1);
+});
+
+test('startup restores persisted aliases alongside the server snapshot and pending hide writes', async () => {
+    const local = { link: 'https://example.com/local', originalLink: 'https://news.google.com/read/local' };
+    const server = { link: 'https://example.com/server', originalLink: 'https://news.google.com/read/server' };
+    const storage = new Map();
+    const context = vm.createContext({
+        document: { cookie: 'auth=true', getElementById: () => null, addEventListener() {} },
+        window: { addEventListener() {} },
+        sessionStorage: { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value) },
+        localStorage: { getItem: () => null, setItem() {} },
+        setTimeout() {}, setInterval() {}
+    });
+    const snapshot = {
+        hiddenStates: [local.originalLink, server.originalLink, server.link],
+        hiddenStateAliases: { [server.originalLink]: server.link }
+    };
+    const fetch = async url => url === '/api/user-states' ? { ok: true, json: async () => snapshot } : { ok: false };
+    const app = readingState(fetch, context);
+    for (const path of ['app/persistence', 'app/bootstrap', 'feeds/page-session']) loadClientModule(context, path);
+    Object.assign(app, vm.runInContext('ReaderAppPersistence.create()', context), {
+        isLoggedIn: true, articles: [server], selectedFilterType: 'smart', selectedFilterValue: 'news_global'
+    });
+    await app.toggleState('hiddenStates', local);
+    assert.equal(JSON.parse(storage.get('rssAppState')).hiddenStateAliases[local.originalLink], local.link);
+
+    const restored = vm.runInContext('Object.assign(ReaderFeedsReadingState.create(), ReaderAppBootstrap.create())', context);
+    Object.assign(restored, {
+        categories: [], $watch() {}, $nextTick() {}, installTooltipDismissListeners() {}, loadCacheState() {},
+        fetchContentFilterSettings() {}, fetchSmartSettings() {}, fetchSmartSources() {}, startServerEvents() {},
+        fetchSyncStatus() {}, fetchGeminiDebugStats() {}, getFilterFromHash: () => ({ type: 'smart', value: 'news_global' }),
+        fetchData() { assert.fail('Expected to restore the cached cards'); }
+    });
+    await restored.initApp();
+    assert.deepEqual({ ...restored.hiddenStateAliases }, { [local.originalLink]: local.link, [server.originalLink]: server.link });
+    assert.equal(restored.hiddenStates.includes(local.link), true);
+    assert.equal(restored.hiddenArticleCount(), 2);
+});
+
+test('hidden state events keep a pair until its last hidden link is removed', () => {
+    const article = { link: 'https://example.com/story', originalLink: 'https://news.google.com/read/story' };
+    const listeners = new Map();
+    const context = vm.createContext({ document: { hidden: false }, EventSource: class {
+        addEventListener(name, listener) { listeners.set(name, listener); }
+    } });
+    const app = readingState(undefined, context);
+    loadClientModule(context, 'app/server-events');
+    Object.assign(app, vm.runInContext('ReaderAppServerEvents.create()', context), { isLoggedIn: true });
+    app.hiddenStates = [article.originalLink, article.link];
+    app.hiddenStateAliases = { [article.originalLink]: article.link };
+    app.startServerEvents();
+
+    const remove = link => listeners.get('user-state-changed')({ data: JSON.stringify({
+        kind: 'toggle', list: 'hiddenStates', changes: [{ link, present: false }]
+    }) });
+    remove(article.originalLink);
+    assert.equal(app.hiddenStateAliases[article.originalLink], article.link);
+    remove(article.link);
+    assert.deepEqual({ ...app.hiddenStateAliases }, {});
 });
 
 test('hidden badge includes each repaired identity once even when its article is off-page', async () => {
@@ -143,7 +264,7 @@ test('hidden badge includes each repaired identity once even when its article is
     app.articles = [];
     app.flushUserPreferences = async () => {};
     await app.syncUserStatesInBackground();
-    assert.deepEqual(app.hiddenStateAliases, { [originalLink]: destination });
+    assert.deepEqual({ ...app.hiddenStateAliases }, { [originalLink]: destination });
     assert.equal(app.hiddenArticleCount(), 2);
     app.hiddenStates = [originalLink];
     assert.equal(app.hiddenArticleCount(), 1);

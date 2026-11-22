@@ -103,7 +103,8 @@ test('lean Stories requests preserve held metadata and reconcile authoritative s
         return response({ articles: [{ link: 'new' }], readStates: ['server-read'], savedStates: [], boardStates: [], hiddenStates: [] }); });
     Object.assign(app, { selectedFilterType: 'smart', selectedFilterValue: 'news_global', smartRegion: 'global',
         normalizeSmartDestination: value => value, getFilterFromHash: () => ({}), _fullStateLoaded: true,
-        feeds: [{ url: 'feed' }], categoryOrder: ['news'], userPreferences: { held: true }, hiddenStates: ['stale-hidden'] });
+        feeds: [{ url: 'feed' }], categoryOrder: ['news'], userPreferences: { held: true }, hiddenStates: ['stale-hidden'],
+        hiddenStateAliases: { 'https://news.google.com/read/stale': 'stale-hidden' } });
     await app.fetchData();
     assert.equal(params.get('lean'), '1');
     assert.equal(app.feeds[0].url, 'feed');
@@ -111,6 +112,7 @@ test('lean Stories requests preserve held metadata and reconcile authoritative s
     assert.equal(app.userPreferences.held, true);
     assert.deepEqual([...app.readStates], ['server-read']);
     assert.equal(app.hiddenStates.length, 0);
+    assert.deepEqual({ ...app.hiddenStateAliases }, {});
 });
 
 test('hide-read filters wrapper-keyed decoded cards on initial load and append', async () => {

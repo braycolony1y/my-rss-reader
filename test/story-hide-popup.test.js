@@ -23,6 +23,7 @@ async function setup({ keywords = ['giá vàng'], suggestions = [{ keyword: 'vin
             if (options.method === 'POST') stored = JSON.parse(options.body).keywords;
             return { ok: true, json: async () => ({ keywords: stored }) };
         }
+        if (path === '/api/toggle') return { ok: true };
         throw new Error('unexpected ' + path);
     };
     const context = vm.createContext({ console, crypto, AbortController, setTimeout, clearTimeout, fetch, URLSearchParams,
@@ -30,17 +31,18 @@ async function setup({ keywords = ['giá vàng'], suggestions = [{ keyword: 'vin
     vm.runInContext(await readFile('public/js/feeds/reading-state.js', 'utf8'), context);
     vm.runInContext(await readFile('public/js/smart/feedback-picker.js', 'utf8') + '\nthis.factory = ReaderSmartFeedback;', context);
     const ui = context.factory.create();
+    const states = vm.runInContext('ReaderFeedsReadingState.create()', context);
     const toggles = [];
     Object.assign(ui, {
-        ...vm.runInContext('ReaderFeedsReadingState.create()', context),
+        ...states,
         selectedFilterType: 'smart', articles: [story, other], hiddenStates: [], blockedKeywords: [], blockedKeywordsDraft: [], contentFilterSettingsOpen: false,
+        unreadCounts: { total: 2, feeds: {}, categories: {} },
         $nextTick: () => {}, stripHtml: value => value,
         normalizeKeywordPhrase: value => String(value || '').normalize('NFKC').toLowerCase().trim(),
         normalizeKeywordList(values) { return [...new Set(values.map(value => this.normalizeKeywordPhrase(value)).filter(Boolean))]; },
         async toggleState(list, article) {
             toggles.push([list, article]);
-            if (this.hasArticleState(list, article)) this[list] = this[list].filter(link => link !== article.link && link !== article.originalLink);
-            else this[list].push(article.link);
+            return states.toggleState.call(this, list, article);
         },
         fetchData: async () => ({}), openContentFilterSettings() { this.opened = true; },
     });
@@ -120,15 +122,20 @@ test('cards matching the new keywords are hidden immediately, only in Stories', 
 
 test('with no keyword chosen the default action hides just this story, and Undo restores it', async () => {
     const { ui, calls, toggles } = await setup();
-    ui.openSmartFeedback(story, {});
+    const article = { ...story, originalLink: 'https://news.google.com/read/stable' };
+    ui.openSmartFeedback(article, {});
     await settle();
     await ui.confirmSmartFeedback();
     assert.deepEqual(toggles.map(([list, article]) => [list, article.link]), [['hiddenStates', story.link]]);
     assert.ok(!calls.some(call => call.path === '/api/content-filter-settings'));
     assert.equal(ui.isSmartFeedbackHidden(story), true);
+    assert.equal(ui.hiddenStateAliases[article.originalLink], article.link);
+    assert.equal(ui.hiddenArticleCount(), 1);
     await ui.undoSmartFeedback();
     assert.deepEqual(toggles.map(([list, article]) => [list, article.link]), [['hiddenStates', story.link], ['hiddenStates', story.link]]);
     assert.equal(ui.isSmartFeedbackHidden(story), false);
+    assert.equal(Object.hasOwn(ui.hiddenStateAliases, article.originalLink), false);
+    assert.equal(ui.hiddenArticleCount(), 0);
 });
 
 test('hiding and undoing a repaired story honor its wrapper alias', async () => {
@@ -142,7 +149,7 @@ test('hiding and undoing a repaired story honor its wrapper alias', async () => 
     await ui.undoSmartFeedback();
     assert.equal(toggles.length, 1);
     assert.equal(toggles[0][1].originalLink, article.originalLink);
-    assert.deepEqual(ui.hiddenStates, []);
+    assert.equal(ui.hiddenStates.length, 0);
 });
 
 test('suggestion failure still allows typing; cancel and context changes close without writing', async () => {
